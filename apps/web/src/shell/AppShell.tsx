@@ -264,7 +264,7 @@ import {
   commandShortcuts,
   DRAWING_IMPORT_UNAVAILABLE,
   MODEL_ONLY_TOOLS,
-  modelOnlyReason,
+  modelOnlyText,
 } from './commands';
 import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
@@ -1447,12 +1447,15 @@ function Shell({
     }),
     [stores, exportSheets, notify],
   );
+  // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {
     if (dialogOpen || jointOpen) {
       dialog?.cancel();
       jointDialog?.cancel();
-    } else if (!reopenSketch(stores)) store.getState().undo();
-  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores]);
+    } else if (session.getState().mode === 'sheet' || !reopenSketch(stores)) {
+      store.getState().undo();
+    }
+  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -1944,7 +1947,7 @@ function Shell({
     }
     // Home's model-only tools say why they don't run in the drawing (plan §3.1).
     if (mode === 'sheet' && MODEL_ONLY_TOOLS.has(tool)) {
-      notify('info', `${modelOnlyReason(mode)} ${TOOLS[tool].label}.`);
+      notify('info', modelOnlyText(mode, TOOLS[tool].label));
       return;
     }
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.

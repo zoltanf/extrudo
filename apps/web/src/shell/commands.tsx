@@ -604,13 +604,17 @@ export const MODEL_ONLY_TOOLS: ReadonlySet<string> = new Set([
 
 /** A model-only tool in a sketch: the command with the reason it can't run. */
 function modelOnly(ctx: CommandContext, command: AppCommand): AppCommand {
-  const reason = `${modelOnlyReason(ctx.mode)} ${command.label}.`;
+  const reason = modelOnlyText(ctx.mode, command.label);
   return { ...command, unavailable: reason, run: () => ctx.notify('info', reason) };
 }
 
-/** The start of what a model-only tool says in another mode: "Finish the drawing to use". */
-export function modelOnlyReason(mode: EditMode): string {
-  return mode === 'sheet' ? 'Finish the drawing to use' : 'Finish the sketch to use';
+/**
+ * What a model-only tool says in another mode: "Finish the drawing to use Canvas." (a
+ * label's "…" is left out before the full stop).
+ */
+export function modelOnlyText(mode: EditMode, label: string): string {
+  const finish = mode === 'sheet' ? 'Finish the drawing to use' : 'Finish the sketch to use';
+  return `${finish} ${label.replace(/…$/, '')}.`;
 }
 
 /**

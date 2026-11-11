@@ -309,9 +309,16 @@ export function SheetSetup({
             ))}
           </Select>
         </Row>
-        {template &&
-          sheetTitleFields(template).map(({ field, label }) => (
-            <Row key={field} label={label}>
+      </div>
+      {template && (
+        // The typed fields, label above: Title first and across, the others two by two.
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1.5" data-sheet-title-fields="">
+          {titleFields(template).map(({ field, label }) => (
+            <div
+              key={field}
+              className={`flex min-w-0 flex-col gap-0.5 ${field === 'title' ? 'col-span-2' : ''}`}
+            >
+              <span className="truncate text-xs text-muted">{label}</span>
               <CommitField
                 key={`${sheet.id}:${field}:${fields[field] ?? ''}`}
                 label={label}
@@ -325,15 +332,16 @@ export function SheetSetup({
               {field === 'drawnBy' && !fields.drawnBy && remembered && (
                 <button
                   type="button"
-                  className="mt-0.5 max-w-full truncate rounded-input px-1 text-left text-sm text-accent hover:bg-accent-soft"
+                  className="max-w-full truncate rounded-input px-1 text-left text-sm text-accent hover:bg-accent-soft"
                   onClick={() => setField(field, label, remembered)}
                 >
                   Use “{remembered}”
                 </button>
               )}
-            </Row>
+            </div>
           ))}
-      </div>
+        </div>
+      )}
       <Button
         className="border-success/60 font-semibold text-ink hover:bg-success/10"
         onClick={onFinish}
@@ -346,3 +354,12 @@ export function SheetSetup({
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** The template's typed fields, the title first. */
+function titleFields(template: 'simple' | 'full') {
+  const fields = sheetTitleFields(template);
+  return [
+    ...fields.filter((f) => f.field === 'title'),
+    ...fields.filter((f) => f.field !== 'title'),
+  ];
+}
