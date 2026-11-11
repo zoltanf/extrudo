@@ -15,6 +15,15 @@ export {
   sheetDimensionText,
 } from './dimensions';
 export {
+  chosenSheets,
+  type SheetFileOptions,
+  type SheetFiles,
+  type SheetModel,
+  sheetFileContext,
+  sheetFiles,
+  withEveryStickyNote,
+} from './export';
+export {
   formatSheetScale,
   layoutSheet,
   SHEET_LINE,

@@ -406,6 +406,9 @@ importers:
       '@extrudo/script':
         specifier: workspace:*
         version: link:../script
+      '@extrudo/sheets':
+        specifier: workspace:*
+        version: link:../sheets
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch

@@ -1205,3 +1205,100 @@ schema change, no kernel change.
   cell edit through the Table card only (the plan asks for typing in place); `{version}` as
   the version's description (empty for many versions; `V3` is the name the app shows);
   asking the kernel for rows on every sheet change (a typed text would ask again).
+
+## Amendment (S6, the API, the script and the CLI), 2026-11-11
+
+Package 1 of S6 (plan §9's first two bullets, §10's "done when" for the CLI). No schema
+change, no kernel facade change, no new dependency (one new workspace edge: `@extrudo/cli`
+→ `@extrudo/sheets`).
+
+- **`@extrudo/api`** (`packages/api/src/sheets.ts`): `d.addSheet(name, options)`,
+  `d.sheets()`, `d.sheet(name | id)`; `SheetHandle` (`update` for Sheet Setup with fields
+  merged over the stored ones, an empty text clearing one; `rename`, `move`, `remove`,
+  `views`, `view`, `items`, `item`, `addView` for a base view from a standard name or a
+  direction, `addText`, `addSticky`, `addTable`), `SheetViewHandle` (`update`, `remove`,
+  `project`, `addDimension`, `addLeader`, `addCentreMark`, `addCentreLine`, `addPartsList`,
+  `addBalloon`) and `SheetItemHandle` (`update` with stored fields, `null` clearing;
+  `remove`). Each call is **one of core's sheet commands**, so one undo step and a document
+  the loader takes; a bad call is an `ApiError` and changes nothing. IDs from the counter:
+  `sh`, `sv`, `si` (`storedIds` skips past a loaded design's). Defaults follow New Sheet:
+  A3 landscape, 1:1, first angle, one decimal, a border, the Simple title block with the
+  design's name as `title` and its units; **no date and no author** are written by
+  themselves (the API reads no clock unless given one). `start: 'standard'` is New Drawing's
+  Standard views in the **same `addSheet` step** (Front, and Top, the side and Isometric
+  projected from it, named as the app names projected views); the API has no kernel, so
+  they go on a grid of the paper (or `at: { front, top, side, iso }`), not fitted to the
+  model as the app's dialog does. Projected names come from the projected frame matched
+  against `SHEET_STANDARD_VIEWS`.
+- **Anchors** take the forms the API already names geometry with: a face, edge or vertex
+  reference (the whole thing), `{ ref, at }`, `{ ref, silhouette }`, `[x, y]` or
+  `{ free }`. They are stored as `{ ref: { kind, id, fingerprint } }`. **A reference
+  without a fingerprint is refused** with a message that says where one comes from: the
+  document requires it (S3), and the API cannot compute one. `{ ref, fingerprint }` gives
+  one beside a handle's reference. Parts list rows are given as `[{ body, name?,
+  material? }]` and stored by body ID.
+- **Scripts refuse** `addSheet`, `sheet` and `sheets` by name (`REFUSED_METHODS`, "A
+  script can only add features: design.addSheet() would add a sheet."), as they refuse
+  annotations; the three handle classes are listed as unreachable in the bridge's test.
+- **Export as Script** (`packages/api/src/emit/sheets.ts`) writes a whole design's sheets
+  after its annotations: one `design.addSheet` per sheet with every setup field the API
+  would not give by itself (the title block's fields always, since the API's default
+  fields are the new design's), the views in stored order (a projected one held back until
+  its parent is written; always with its name), and the items in stored order (parts lists
+  first only when a balloon comes before its list, which the app never stores); anchors
+  as `{ ref, fingerprint, at? | silhouette? }`, bodies as `design.ref('body', …)`. A run
+  of the timeline writes no sheets. `fingerprintExpr` and `numbers` moved to
+  `emit/refs.ts` (shared). The printer now hugs a trailing object after a single array
+  argument (`addPartsList([300, 20], {`), as Biome does.
+- **One place for a sheet's outputs outside the app**, in two halves, each in the package
+  that owns what it needs: **`@extrudo/kernel`'s `sheetModelNow(kernel, doc, sheets,
+  bodies, onProgress?)`** (`kernel/src/sheets/now.ts`) draws every view exactly, resolves
+  every anchor and reads every parts list now (`exportAnchorsOf`, `exportPartsOf`; a kernel
+  that can't answer throws `EXPORT_UNMEASURED` / `EXPORT_UNLISTED`); its `kernel` is the
+  structural `SheetModelKernel`, which both `KernelService` (the CLI) and the app's
+  `Recomputer` (the desktop agent tools, next package) satisfy. **`@extrudo/sheets`'
+  `sheetFiles(doc, model, options)`** (`sheets/src/export.ts`, pure, no kernel) fills the
+  layout context as the app's export does (`sheetFileContext`: units, views, anchors,
+  `sheetPartBodies`, `evaluate`, and `date`, `version`, `density` only when given) and
+  writes one PDF or one SVG per sheet; `withEveryStickyNote` and `chosenSheets` beside it.
+  `sheetModelNow`'s views use `sheetViewWants` and `sheetViewLines`, **moved unchanged from
+  `apps/web/src/sheets/viewLines.ts` to `kernel/src/sheets/lines.ts`** (with `baseViewOf`,
+  `sheetViewWant`, `pieceContour`; the app module re-exports them), and `exportAnchorsOf`,
+  `isAnchored`, `EXPORT_UNMEASURED` moved unchanged from `sheetAnchors.ts`, and
+  `exportPartsOf`, `EXPORT_UNLISTED` from S5's `sheetParts.ts` (both re-export them). The kernel's lines type is `ViewLines`, structurally the `SheetViewLines` layout
+  takes, so neither package imports the other. Rejected: one function in `@extrudo/sheets`
+  calling the kernel (it would make the kernel a run-time dependency of the layout package,
+  which ADR-0143 §7 keeps kernel-free); a CLI-only copy of the app's export (a second copy
+  for the agent tools would follow).
+- **CLI** (`packages/cli`): `info` lists sheets after annotations ("Plate  A3 landscape ·
+  1:1 · 4 views · 9 items · 1 detached anchor"; `--json` `sheets` with `problems`);
+  `export --format pdf|svg` writes them (`DesignJob.exportSheets`): a PDF of the chosen
+  sheets, or one SVG each; `--sheet <name|id>` (repeatable) chooses, page order kept;
+  without `--out` beside the design (`<design>.pdf`, `<design> - <sheet>.pdf` for one sheet
+  of several, `<design> - <sheet>.svg`), with `--out` that file, or that folder for several
+  SVGs. `check --sheets` (`DesignJob.checkSheets`) exits 2 when an anchor is detached,
+  naming each item and the kernel's reason (`sheetItemStatus`); moved and invalid items
+  are listed and don't fail. Sheet flags with a model format, and model flags with a sheet
+  format, are usage errors.
+- **What the document can't know** (the owner's rule: repeatable, nothing personal):
+  `{date}` writes `--date` (`YYYY-MM-DD` or `today`), **by default the day the design was
+  last changed** (`meta.modified`), so the same file and flags write the same bytes;
+  `{version}` writes `--version-name`, by default **the newest version saved in the file**
+  (`V<n>`, as the app's `versionLabel`), else it stays as typed; a parts list's Mass needs
+  `--density` (g/cm³), else it is empty (the filament is an app preference); `--stickies`
+  writes on-screen sticky notes too (default: only those switched to Print). No author or
+  other personal field is ever filled.
+- **CI**: the unit job's step "A drawing exported by the CLI" runs `check --sheets` and
+  `export --format pdf` on `fixtures/sheets/plate.extrudo` and checks the PDF's pages and
+  text (`scripts/check-sheet-pdf.mjs`, Node's zlib, no PDF library). The fixture is built by
+  `packages/cli/src/sheet-fixture.ts` through the API with fingerprints from a real
+  recompute; `UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets` writes it again.
+- **Docs**: `docs/api/README.md` § Sheets (compile-checked), `docs/api/sheets.md`
+  **generated** by `pnpm api:generate` from the document schema's `.describe()` texts
+  (`packages/api/src/sheet-docs.ts`), `docs/cli.md`.
+- **Tests**: `api/src/sheets.test.ts` (each call, its stored shape and its undo; refusals
+  change nothing), the emitter's round trip of a design with every view and item kind
+  (`emit.test.ts`), the script's refusals, `cli/src/sheets.test.ts` (the fixture, `info`,
+  PDF pages and text, the same bytes twice, `--date`/`--stickies`/`--sheet`, SVG per
+  sheet, `check --sheets` passing and failing on a suppressed feature, a detached
+  diameter written as `Ø?`).

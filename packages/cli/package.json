@@ -22,6 +22,7 @@
     "@extrudo/io": "workspace:*",
     "@extrudo/kernel": "workspace:*",
     "@extrudo/script": "workspace:*",
+    "@extrudo/sheets": "workspace:*",
     "@extrudo/openscad": "workspace:*",
     "@extrudo/sketch": "workspace:*",
     "@extrudo/storage": "workspace:*"

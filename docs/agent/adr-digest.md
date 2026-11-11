@@ -4622,7 +4622,25 @@ again, Print Info's density), never from what the screen kept; a parts list's `a
 (moves are never scaled by the view); what is typed over a row goes under the row's first body and going back to the
 model's removes it under every body of the row; a balloon picks through `usePickTool` with its own spec, only on a body
 its view's list shows, numbered by **the first list of that view in the sheet's order**; a cell may be committed empty
-(other typed items may not); `{version}` is `V<n>` of the newest saved version. e2e: `e2e/sheet-lists.spec.ts`.
+(other typed items may not); `{version}` is `V<n>` of the newest saved version. e2e: `e2e/sheet-lists.spec.ts`. **S6 the API, the script and the CLI
+(package 1):** `packages/api/src/sheets.ts` (`d.addSheet`/`sheets`/`sheet`, `SheetHandle`, `SheetViewHandle`,
+`SheetItemHandle`, `sheetAnchorOf`; IDs `sh`/`sv`/`si`), `emit/sheets.ts` (`sheetStatements`), `sheet-docs.ts`
+(`docs/api/sheets.md`, generated), the kernel's `sheets/lines.ts` (`sheetViewWants`, `sheetViewWant`, `baseViewOf`,
+`pieceContour`, `sheetViewLines`, `ViewLines`: moved from the app's `viewLines.ts`, which re-exports them) and
+`sheets/now.ts` (`sheetModelNow`, `SheetModelKernel`, `exportAnchorsOf`, `exportPartsOf`, `isAnchored`, `EXPORT_UNMEASURED`,
+`EXPORT_UNLISTED`: moved from the app's `sheetAnchors.ts` and `sheetParts.ts`, which re-export them), `@extrudo/sheets`' `export.ts` (`sheetFiles`, `sheetFileContext`, `withEveryStickyNote`,
+`chosenSheets`), the CLI's `DesignJob.exportSheets`/`checkSheets`, `ComputeResult.sheets`, `sheet-fixture.ts` and
+`fixtures/sheets/plate.extrudo`, `scripts/check-sheet-pdf.mjs` (CI). Rules a change must keep: **every API sheet call is
+one core command** (one undo step), and an anchor's ref is stored with its fingerprint or refused (the API never invents
+one); the API writes no date or author by itself and places standard views on a paper grid (it has no kernel); **scripts
+refuse `addSheet`, `sheet`, `sheets`**; Export as Script writes sheets for a whole design only, every setup field the API
+would not default (title-block fields always), views and items in stored order; **a sheet's outputs outside the app go
+through `sheetModelNow` then `sheetFiles`**, never a copy of the app's export: the kernel half asks the model (exact views,
+anchors and parts lists now, never kept), the sheets half is pure and kernel-free (`ViewLines` matches `SheetViewLines`
+structurally; neither package imports the other); the CLI's `{date}` defaults to the design's `meta.modified` day,
+`{version}` to the newest version in the file, Mass to none (`--date`, `--version-name`, `--density` change them), so a
+file and its flags always write the same bytes; `check --sheets` fails on a detached anchor only. The fixture is built
+through the API with fingerprints from a real recompute (`UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets`).
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

@@ -1,0 +1,157 @@
+/**
+ * The generated sheet reference (P6-24 S6): `docs/api/sheets.md`, every field
+ * a sheet, a view and each kind of item stores, with its type and the text of
+ * the document schema's own `.describe()` (`core/src/sheet-schema.ts`). The
+ * calls that make them are in `README.md`'s Sheets section; this page says
+ * what each stored field means, and `pnpm api:generate` keeps it in step with
+ * the schema.
+ */
+import {
+  SheetBalloonItemSchema,
+  SheetCentreLineItemSchema,
+  SheetCentreMarkItemSchema,
+  SheetDimensionItemSchema,
+  SheetLeaderItemSchema,
+  SheetPartsListItemSchema,
+  SheetSchema,
+  SheetStickyItemSchema,
+  SheetTableItemSchema,
+  SheetTextItemSchema,
+  SheetViewSchema,
+  z,
+} from '@extrudo/core';
+
+/** Where the page goes, from the repository root. */
+export const SHEET_DOCS_PATH = 'docs/api/sheets.md';
+
+interface Json {
+  type?: string | string[];
+  description?: string;
+  enum?: unknown[];
+  const?: unknown;
+  items?: Json | Json[];
+  prefixItems?: Json[];
+  anyOf?: Json[];
+  oneOf?: Json[];
+  properties?: Record<string, Json>;
+  required?: string[];
+  additionalProperties?: Json | boolean;
+  minItems?: number;
+  maxItems?: number;
+}
+
+/** The sections, in the order the page lists them, and the API call that makes each. */
+const SECTIONS: readonly [string, string, z.ZodType, readonly string[]][] = [
+  ['Sheet', '`d.addSheet(name, options)`, `sheet.update(setup)`', SheetSchema, ['views', 'items']],
+  [
+    'View',
+    '`sheet.addView(name, options)`, `view.project(side, at)`, `view.update(setup)`',
+    SheetViewSchema,
+    [],
+  ],
+  ['Text', '`sheet.addText(text, at, options)`', SheetTextItemSchema, []],
+  ['Dimension', '`view.addDimension(type, anchors, at, options)`', SheetDimensionItemSchema, []],
+  ['Leader note', '`view.addLeader(anchor, at, text)`', SheetLeaderItemSchema, []],
+  ['Sticky note', '`sheet.addSticky(text, at, options)`', SheetStickyItemSchema, []],
+  ['Centre mark', '`view.addCentreMark(anchor)`', SheetCentreMarkItemSchema, []],
+  ['Centre line', '`view.addCentreLine(anchors)`', SheetCentreLineItemSchema, []],
+  ['Parts list', '`view.addPartsList(at, options)`', SheetPartsListItemSchema, []],
+  ['Balloon', '`view.addBalloon(anchor, at, list)`', SheetBalloonItemSchema, []],
+  ['Table', '`sheet.addTable(at, rows, options)`', SheetTableItemSchema, []],
+];
+
+/** A JSON Schema node as the reference's type column reads it. */
+function typeOf(node: Json): string {
+  if (node.const !== undefined) return JSON.stringify(node.const);
+  if (node.enum) return node.enum.map((v) => JSON.stringify(v)).join(' \\| ');
+  const choices = node.anyOf ?? node.oneOf;
+  if (choices) return choices.map(typeOf).join(' \\| ');
+  if (node.prefixItems) return `[${node.prefixItems.map(typeOf).join(', ')}]`;
+  const type = Array.isArray(node.type) ? node.type.join(' \\| ') : node.type;
+  if (type === 'array') {
+    const item = Array.isArray(node.items) ? node.items[0] : node.items;
+    if (!item) return 'array';
+    const inner = typeOf(item);
+    return inner.includes(' \\| ') ? `(${inner})[]` : `${inner}[]`;
+  }
+  if (type === 'object') {
+    if (node.properties) {
+      // `{ kind: "base", direction, up }`, `{ ref, at? }`: the keys a value has.
+      const required = new Set(node.required ?? []);
+      const keys = Object.entries(node.properties).map(([key, value]) =>
+        value.const !== undefined
+          ? `${key}: ${JSON.stringify(value.const)}`
+          : `${key}${required.has(key) ? '' : '?'}`,
+      );
+      return `{ ${keys.join(', ')} }`;
+    }
+    return typeof node.additionalProperties === 'object'
+      ? `Record<string, ${typeOf(node.additionalProperties)}>`
+      : 'object';
+  }
+  return type ?? 'any';
+}
+
+const cell = (text: string) => text.replaceAll('|', '\\|').replaceAll('\n', ' ');
+
+function section(
+  title: string,
+  made: string,
+  schema: z.ZodType,
+  skip: readonly string[],
+): string[] {
+  const json = z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Json;
+  const required = new Set(json.required ?? []);
+  const rows = Object.entries(json.properties ?? {})
+    .filter(([name]) => !skip.includes(name))
+    .map(([name, node]) => {
+      const choices = node.anyOf ?? node.oneOf ?? [];
+      const description =
+        node.description ??
+        choices
+          .map((choice) => choice.description ?? choice.properties?.kind?.description)
+          .filter(Boolean)
+          .join(' Or: ');
+      return `| \`${name}\` | ${typeOf(node)} | ${required.has(name) ? 'yes' : ''} | ${cell(description)} |`;
+    });
+  return [
+    `## ${title}`,
+    '',
+    `Made by ${made}.`,
+    '',
+    '| Field | Type | Required | What it is |',
+    '|---|---|---|---|',
+    ...rows,
+    '',
+  ];
+}
+
+/** The page's text. */
+export function sheetReference(): string {
+  return [
+    '---',
+    'title: Sheet reference',
+    'section: Guide',
+    'order: 7',
+    '---',
+    '',
+    '# Sheet reference',
+    '',
+    '<!-- GENERATED by `pnpm api:generate` from `packages/core/src/sheet-schema.ts` — do not edit. -->',
+    '',
+    'What a drawing sheet stores (P6-24, ADR-0143), field by field, as `d.toJSON()` writes it:',
+    'the sheet, its views and each kind of item. The calls that make them are in',
+    '[the README](./README.md#sheets). Positions on the sheet are mm from its top-left',
+    "corner, Y down; an item tied to a view is placed in the view's own mm (model size,",
+    'x right, y up). Nothing derived is stored: no line of a view, no measured value, no',
+    "parts list row; they are worked out each time the sheet is drawn. An anchor's `ref`",
+    'always carries its fingerprint.',
+    '',
+    ...SECTIONS.flatMap(([title, made, schema, skip]) => section(title, made, schema, skip)),
+  ].join('\n');
+}
+
+/** The generated page, by its path from the repository root. */
+export function sheetPages(): Map<string, string> {
+  return new Map([[SHEET_DOCS_PATH, sheetReference()]]);
+}

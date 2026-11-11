@@ -21,14 +21,13 @@ import {
   type SheetId,
   type SheetParts,
 } from '@extrudo/core';
+import type { SheetPartsKernel } from '@extrudo/kernel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { checkPrintField, chosenDensity, type MaterialChoice } from '../print/material';
 import { isoDate } from './defaults';
 
-/** What the parts lists need of the kernel: `Recomputer.sheetParts`. */
-export interface SheetPartsKernel {
-  sheetParts(sheet: Sheet, options?: { quiet?: boolean }): Promise<SheetParts | undefined>;
-}
+// The export's half moved to the kernel (S6), where the CLI's export shares it.
+export { EXPORT_UNLISTED, exportPartsOf, type SheetPartsKernel } from '@extrudo/kernel';
 
 /** Whether `sheet` has a parts list (only then is the kernel asked). */
 export const hasPartsLists = (sheet: Sheet) => sheet.items.some((i) => i.kind === 'partsList');
@@ -100,29 +99,6 @@ export function useSheetParts(
         : was,
     );
   return { parts: own ? state.parts : undefined, merge };
-}
-
-/** Why an export stops when the kernel can't read a sheet's parts lists. */
-export const EXPORT_UNLISTED =
-  "its parts lists couldn't be read from the model. Try again once the model is computed.";
-
-/**
- * The parts lists' bodies to export `sheets` with: what the kernel says now, never what the
- * screen kept. Sheets without a parts list aren't asked about. Throws `EXPORT_UNLISTED` when
- * the kernel can't answer for one.
- */
-export async function exportPartsOf(
-  kernel: SheetPartsKernel,
-  sheets: readonly Sheet[],
-): Promise<SheetParts> {
-  let out: SheetParts = { lists: {}, bodies: {} };
-  for (const sheet of sheets) {
-    if (!hasPartsLists(sheet)) continue;
-    const fresh = await kernel.sheetParts(sheet, { quiet: true });
-    if (!fresh) throw new Error(EXPORT_UNLISTED);
-    out = mergeParts(out, fresh);
-  }
-  return out;
 }
 
 /** What the app knows that a sheet's fields and Mass need, and the document doesn't hold. */
