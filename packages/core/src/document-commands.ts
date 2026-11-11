@@ -50,7 +50,7 @@ export const renameDocument = defineCommand<{ name: string }>(
 /**
  * Brings back a saved version's content (FR-PRJ-03, P2-14): its settings,
  * parameters, timeline, groups, components, joints, bodies, views,
- * configurations, attachments and annotations. The document's ID, name and
+ * configurations, attachments, annotations and sheets. The document's ID, name and
  * dates stay, so the project stays the same project. One undo step.
  * Attachments come back with the rest: a version's texts need the fonts it
  * carried (P4-03b), and its groups come back with the timeline they were folds
@@ -74,6 +74,8 @@ export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
     draft.components = doc.components;
     draft.joints = doc.joints;
     draft.annotations = doc.annotations;
+    if (doc.sheets) draft.sheets = doc.sheets;
+    else delete draft.sheets;
     const counter = Math.max(draft.annotationCounter ?? 0, doc.annotationCounter ?? 0);
     if (counter > 0) draft.annotationCounter = counter;
     normalizeGroupsInPlace(draft);

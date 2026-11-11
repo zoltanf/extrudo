@@ -533,7 +533,7 @@ test('Home and Construct show every tool as a tile at 1440 px, each 64 px wide',
   );
   await expect(toolbar.locator('[data-toolbar-group="Files"]')).toHaveCount(0);
   await expect(toolbar.locator('[data-toolbar-group="Extend"]')).toHaveCount(0);
-  for (const name of ['Import .extrudo', 'Import Model', 'Import Drawing', 'Export Model']) {
+  for (const name of ['Import .extrudo', 'Import Model', 'Import SVG/DXF', 'Export Model']) {
     await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
   }
   await page.getByRole('tab', { name: 'Construct' }).click();

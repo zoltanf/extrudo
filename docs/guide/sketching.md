@@ -37,7 +37,7 @@ to know first:
 - [Polygon](./tools/polygon.md), [Slot](./tools/slot.md) and [Ellipse](./tools/ellipse.md)
 - [Fit Point Spline](./tools/spline.md) and [Control Point Spline](./tools/splineControl.md)
 - [Text](./tools/text.md) (`Shift+T`), whose letters become profiles like any other shape
-- [Import Drawing](./tools/importDrawing.md), for an SVG or DXF file
+- [Import SVG/DXF](./tools/importDrawing.md), for an SVG or DXF file
 
 While a tool runs you can type. Press a digit and the heads-up box beside the pointer takes it:
 the length of a line, then `Tab` for its angle; the width of a rectangle, then `Tab` for its

@@ -1,11 +1,15 @@
 import {
+  type AnnotationId,
   type BodyId,
   type ExtrudoDocument,
   type Feature,
   type FeatureId,
   type GeomRef,
   originPlaneRef,
+  type SheetId,
+  type SheetViewId,
   sketchInputs,
+  z,
 } from '@extrudo/core';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Kernel } from '../kernel';
@@ -20,7 +24,12 @@ import {
   testFeatures,
   withExpr,
 } from './testing';
-import type { RecomputeRequest, RecomputeResult } from './types';
+import type {
+  ExpandContext,
+  KernelFeatureDefinition,
+  RecomputeRequest,
+  RecomputeResult,
+} from './types';
 
 let oc: OcctModule;
 let kernel: Kernel;
@@ -589,5 +598,68 @@ describe('memory', () => {
     await done(lenient.recompute({ doc }));
     expect(leaks).toEqual([1]);
     own.dispose();
+  });
+});
+
+describe('the document a script sees (ADR-0126, ADR-0143)', () => {
+  it('leaves out the annotations and the sheets, which may name what comes after it', async () => {
+    const seen: ExtrudoDocument[] = [];
+    features.registry.register({
+      type: 'test-expand',
+      label: 'test-expand',
+      category: 'create',
+      icon: 'test',
+      inputsSchema: z.strictObject({}),
+      evaluate: () => {
+        throw new Error('an expanding feature is not evaluated');
+      },
+      expand: (ctx: ExpandContext) => {
+        seen.push(ctx.doc);
+        return { features: [], log: [] };
+      },
+    } as unknown as KernelFeatureDefinition);
+    const doc: ExtrudoDocument = {
+      ...testDocument([
+        testFeature('s', 'test-expand'),
+        testFeature('b', 'test-box', { size: '10 mm' }),
+      ]),
+      annotations: [
+        {
+          id: 'n1' as AnnotationId,
+          number: 1,
+          text: 'On b',
+          anchor: { kind: 'model', ref: { kind: 'body', id: 'b:0' }, at: [0, 0, 0] },
+        },
+      ],
+      annotationCounter: 1,
+      sheets: [
+        {
+          id: 'sh1' as SheetId,
+          name: 'Sheet 1',
+          size: 'A4',
+          orientation: 'landscape',
+          scale: [1, 1],
+          projection: 'first',
+          decimals: 1,
+          views: [
+            {
+              id: 'v1' as SheetViewId,
+              name: 'Front',
+              at: [100, 100],
+              from: { kind: 'base', direction: [0, 1, 0], up: [0, 0, 1] },
+              bodies: ['b:0' as BodyId],
+            },
+          ],
+          items: [],
+        },
+      ],
+    };
+    const result = await recompute(doc);
+    expect(result.features['s' as FeatureId]?.status).toBe('ok');
+    expect(result.features['b' as FeatureId]?.status).toBe('ok');
+    expect(seen).toHaveLength(1);
+    expect(Object.keys(seen[0] ?? {})).not.toContain('sheets');
+    expect(Object.keys(seen[0] ?? {})).not.toContain('annotations');
+    expect(seen[0]?.features).toEqual([]);
   });
 });

@@ -148,9 +148,9 @@ integer; the current one is **2**). The rules:
   `projections`, a reference's `fingerprint` were all added this way, and so
   were the components of P6-05: `components`, `bodies[..].component` and
   `features[..].component`, section 4.7, and its `joints`, section 4.8, and
-  the `annotations` and `annotationCounter` of P6-23, section 4.10), and
-  new feature types (`Feature.type`
-  is an open string).
+  the `annotations` and `annotationCounter` of P6-23, section 4.10, and
+  the `sheets` of P6-24, section 4.11), new feature types (`Feature.type`
+  is an open string), and new kinds of sheet item (section 4.11.3).
 - **Objects are strict, reading is lenient.** Every object in the schema
   names the keys it doesn't know, and the reader **leaves them out** and
   tells the user (since P3-13; before, a file with an optional field added
@@ -158,7 +158,9 @@ integer; the current one is **2**). The rules:
   opens a newer file of the same version, losing only what it doesn't know.
   The same holds for a feature's input names: the recompute ignores an input
   its feature type doesn't define and marks the feature with a warning
-  ("This version of Extrudo doesn't know the input…"). Writers of other
+  ("This version of Extrudo doesn't know the input…"). A sheet item whose
+  `kind` the reader doesn't know is left out the same way and listed by its
+  path (`sheets.0.items.2`); an item with no `kind` is damage. Writers of other
   tools must not add private keys to the document all the same: a reader
   drops them, and there is no `extensions` bag in format 2.
 - **Reading a document** (`loadDocument`):
@@ -222,6 +224,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `joints` | array of Joint | no | As-built joints between components, in browser order (section 4.8). Absent means the design has none. |
 | `annotations` | array of Annotation | no | Numbered notes on geometry, points and sketches (section 4.10). Absent means the design has none. |
 | `annotationCounter` | integer | no | At least 1: the highest annotation `number` ever given (section 4.10). Absent until the first annotation; stays when every annotation is deleted. |
+| `sheets` | array of Sheet | no | Drawing sheets made from the model, in page order (section 4.11). Absent means the design has none. |
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
 | `render` | object | no | Render Picture settings (section 4.9). Absent until the first render. |
@@ -249,6 +252,11 @@ Whole-document rules (checked after the per-field rules):
 - Annotation `id`s are unique and annotation `number`s are unique; every
   `number` is at most `annotationCounter`; a `sketch` anchor names a feature
   of type `sketch` in `features` (section 4.10).
+- Sheet `id`s are unique and sheet `name`s are unique case-insensitively;
+  view `id`s and item `id`s are unique in the whole design; view `name`s are
+  unique case-insensitively in their sheet; a projected view's `parent` is
+  another view of the same sheet, with no cycle; a dimension's `view` is a
+  view of its sheet and its anchors fit its type (section 4.11).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
@@ -550,6 +558,107 @@ its `sketch` annotations; deleting a sketch entity clears `entity` and turns
   { "id": "9a0e…", "number": 3, "text": "Logo here", "anchor": { "kind": "free", "at": [0, -12, 2.5] }, "done": true }
 ],
 "annotationCounter": 3
+```
+
+### 4.11 `sheets[]` (Sheet)
+
+A drawing sheet (P6-24, ADR-0143): one page with views of the model and items
+placed on it, exported as PDF or SVG. **Nothing derived is stored**: a view
+says what to draw (a direction, a scale, a style, which bodies), never the
+lines, so opening the file computes the views again. Every layout number is
+stored as a number: positions and sizes in mm on the sheet, measured from its
+top-left corner with y down. Nothing in the recompute reads `sheets`, so an
+older reader that leaves the key out (section 3) opens the same geometry. The
+array is in page order.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among sheets, permanent (section 10). |
+| `name` | string | yes | 1 to 100 characters; unique among the sheets, compared case-insensitively. |
+| `size` | string or [number, number] | yes | A named paper, `A4`, `A3`, `A2`, `A1`, `A0` (ISO 216), `letter` (215.9 × 279.4 mm), `legal` (215.9 × 355.6) or `tabloid` (279.4 × 431.8), or a custom paper's two sides in mm, each 10 to 10000. |
+| `orientation` | string | yes | `landscape` (the paper's long side across) or `portrait`, for a named and a custom size alike. |
+| `scale` | [number, number] | yes | Both positive: sheet length to model length, `[1, 2]` is 1:2. The views' scale unless a view has its own. |
+| `projection` | string | yes | `first` or `third`: the projection angle that places projected views. |
+| `decimals` | integer | yes | 0 to 4: the decimals dimensions show. |
+| `border` | object | no | A border round the sheet; absent means none. Its one field, `zones` (`true` only), adds zone letters and numbers along it. |
+| `titleBlock` | object | no | A title block; absent means none. `template` is `simple` or `full`; `fields` is a record from a field name (a letter, then up to 39 letters and digits, like `title` or `drawnBy`) to what was typed, at most 2000 characters; a field not in the record is empty. |
+| `views` | array of SheetView | yes | The views (4.11.1), drawn in order. May be empty. |
+| `items` | array of SheetItem | yes | Texts and other items (4.11.3), drawn in order after the views. May be empty. |
+
+#### 4.11.1 `SheetView`
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among every sheet's views, permanent. |
+| `name` | string | yes | 1 to 100 characters, like "Front"; unique in its sheet, compared case-insensitively. |
+| `at` | [number, number] | yes | The view's origin on the sheet, mm from the top-left corner, y down. |
+| `from` | object | yes | Which way it looks (4.11.2). |
+| `scale` | [number, number] | no | The view's own scale, like the sheet's `scale`; absent means the sheet's. Never on a projected view. |
+| `style` | string | no | `visible` (visible edges only), `hidden` (visible edges and hidden ones dashed), `shaded` or `shaded-edges`. Absent means `hidden`. Never on a projected view. |
+| `bodies` | array of IDs | no | The bodies drawn, each once, at least one; absent means every shown body. An ID the design has no body for is skipped when the view is drawn, so deleting a feature or a body never changes a sheet. |
+| `tangentEdges` | boolean | no | `false` only: tangent edges are left out. |
+| `centreLines` | boolean | no | `false` only: centre lines are left out. |
+| `label` | boolean | no | `true` only: the view's name and scale are drawn under it. |
+
+#### 4.11.2 `from`
+
+An object whose **`kind`** says which of two it is:
+
+| `kind` | Fields | Meaning |
+|---|---|---|
+| `base` | `direction` ([x, y, z]), `up` ([x, y, z]) | A base view: looks along `direction` with `up` pointing up the sheet, both world vectors, not zero, not parallel, of any length. |
+| `projected` | `parent` (ID), `side` (string) | A projected view: made from `parent`, another view of the same sheet (itself base or projected, with no cycle), it stays aligned with it and takes its scale and style. `side` is where it sits from the parent: `left`, `right`, `above`, `below`, or one of the isometric corners `iso-above-left`, `iso-above-right`, `iso-below-left`, `iso-below-right`; the sheet's `projection` turns it into a direction. |
+
+#### 4.11.3 `SheetItem`
+
+An object whose **`kind`** says what it is. Every item has an `id`, unique
+among every sheet's items. This version knows two kinds; later versions add
+more (notes, lists), and a reader leaves out an item of a kind it doesn't
+know (section 3).
+
+| `kind` | Fields | Meaning |
+|---|---|---|
+| `text` | `at` ([x, y]), `text` (string), `size` (number, optional), `width` (number, optional) | A text placed on the sheet. `at` is its top-left corner, mm. `text` is plain, up to 2000 characters and not blank; it may contain newlines. `size` is the letter height in mm, absent means 3.5. `width`, when present, is the width it wraps at, in mm. |
+| `dimension` | `view` (ID), `type` (string), `direction` (string, optional), `anchors` (array of SheetAnchor, 4.11.4), `at` ([x, y]), `decimals` (integer, optional), `before` (string, optional), `after` (string, optional), `reference` (boolean, optional) | A dimension in a view, measured from the model and never driving it; **its value is not stored**, it is measured each time the sheet is drawn. `view` is a view of the same sheet (removing the view removes the dimension). `type` is `linear` (a distance), `radius` or `diameter` (a circle) or `angle` (between two lines). `direction`, for a linear one only: `horizontal`, `vertical` or `aligned`; absent means it follows where the dimension is placed. `anchors` are one or two, fitting the type: `linear` takes one whole edge or outline (its length) or two anchors that are points or lines; `radius` one circle (a whole circular edge or a cylinder's face); `diameter` one circle or two outlines (a cylinder seen from the side); `angle` two lines (whole edges or outlines). Whether a whole edge is a line or a circle is the model's to say when the sheet is drawn. `at` is where its text is, in the view's own mm (model size, x right, y up, the world origin at 0, 0), so it moves and scales with the view; when the anchors' geometry moves (a parameter changes), the text moves as far as their fingerprint points moved. `decimals` is 0 to 4, absent means the sheet's. `before` and `after` are written around the value (and before `R` or `Ø`), up to 100 characters each. `reference` (`true` only) writes it in brackets. |
+
+#### 4.11.4 `SheetAnchor`
+
+What a dimension measures from: one of three shapes, told apart by their keys.
+
+| Shape | Fields | Meaning |
+|---|---|---|
+| On geometry | `ref` (GeomRef), `at` (string, optional) | `ref` names a `vertex`, an `edge` or a `face` by its persistent name (section 10) and **must carry its `fingerprint`**; an `index:` reference is refused. `at` takes one point of an edge: `start`, `end`, `middle` or `centre` (a circle's or an ellipse's); absent means the whole edge, the vertex, or a cylinder's face (for a radius or diameter). A vertex and a face never have `at`. |
+| On an outline | `ref` (GeomRef), `silhouette` (`1` or `-1`) | The outline of a cylinder or cone `face` as the dimension's view sees it: `1` is the one on the side the face's axis (with its canonical sign: first non-zero component positive) crossed with the view's direction points to, `-1` the other. |
+| Free | `free` ([x, y]) | A point in the view's own mm, tied to nothing. |
+
+An anchor whose geometry is gone is not an error: the file still loads and
+the dimension is drawn as detached (the reference resolves as a feature's
+does, section 10: by its name, a related name or its fingerprint).
+
+```json
+"sheets": [
+  {
+    "id": "0b7e…",
+    "name": "Bracket",
+    "size": "A3",
+    "orientation": "landscape",
+    "scale": [1, 2],
+    "projection": "first",
+    "decimals": 1,
+    "titleBlock": { "template": "simple", "fields": { "title": "Bracket" } },
+    "views": [
+      { "id": "41c2…", "name": "Front", "at": [120, 150], "from": { "kind": "base", "direction": [0, 1, 0], "up": [0, 0, 1] } },
+      { "id": "7d90…", "name": "Right", "at": [260, 150], "from": { "kind": "projected", "parent": "41c2…", "side": "right" } }
+    ],
+    "items": [
+      { "kind": "text", "id": "c3a1…", "at": [20, 20], "text": "All edges 0.5 mm" },
+      {
+        "kind": "dimension", "id": "9e04…", "view": "41c2…", "type": "linear", "at": [0, -12],
+        "anchors": [{ "ref": { "kind": "edge", "id": "e[box:…:side:front|box:…:cap:start]", "fingerprint": { "type": "line", "at": [0, -20, 0], "dir": [1, 0, 0], "size": 60 } } }]
+      }
+    ]
+  }
+]
 ```
 
 ---

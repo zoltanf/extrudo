@@ -62,6 +62,33 @@ export const SKETCH_SLOTS: readonly SlotSpec[] = [
   },
 ];
 
+/**
+ * The same, in the drawing (P6-24, ADR-0143): the sheet's own tools, then Undo and Finish
+ * Drawing. Slices S2 to S5 put their tools (views, dimensions, notes) in the empty wedges.
+ */
+export const SHEET_SLOTS: readonly SlotSpec[] = [
+  { command: 'newSheet', label: 'New Sheet', icon: { name: 'new-sheet', category: 'file' } },
+  {
+    command: 'sheetSetup',
+    label: 'Sheet Setup',
+    icon: { name: 'sheet-setup', category: 'file' },
+  },
+  {
+    command: 'exportSheets',
+    label: 'Export PDF',
+    icon: { name: 'export-pdf', category: 'export' },
+  },
+  { command: 'fit', label: 'Fit' },
+  { command: 'nextSheet', label: 'Next Sheet' },
+  { command: 'undo', label: 'Undo' },
+  { command: 'previousSheet', label: 'Previous Sheet' },
+  {
+    command: 'finishDrawing',
+    label: 'Finish Drawing',
+    icon: { name: 'finish-sketch', category: 'file' },
+  },
+];
+
 export interface ResolvedSlot {
   spec: SlotSpec;
   /** The offered command, or `undefined` when there is none here. */
@@ -143,7 +170,9 @@ export function resolveSlots(
  * the ones you'd want again (a sketch tool, Extrude, Fillet...). Undo, Redo
  * and Delete would be dangerous to repeat by accident, view and panel
  * commands aren't work, and leaving a sketch or opening a dialog such as
- * Parameters or Export isn't something to run twice.
+ * Parameters or Export isn't something to run twice. The same holds in the drawing:
+ * entering or leaving it (Make › Drawing, Finish Drawing) and its dialogs (Sheet Setup,
+ * Export PDF); New Sheet stays repeatable.
  */
 export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'finishSketch',
@@ -156,6 +185,10 @@ export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'recordMacro',
   'stopMacro',
   'exportScript',
+  'sheets',
+  'finishDrawing',
+  'sheetSetup',
+  'exportSheets',
 ]);
 
 /** Whether running the tool `id` counts as "the last command" for Repeat last. */

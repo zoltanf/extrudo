@@ -91,7 +91,13 @@ const small = { size: 14 } as const;
 
 /** The overflow entries for this selection, in groups (a group's first entry has a separator). */
 export function contextEntries(input: ContextInput): MarkingEntry[] {
-  const groups = input.mode === 'sketch' ? sketchGroups(input) : modelGroups(input);
+  // The drawing's sheet has no model selection to act on (P6-24): its menu is the ring alone.
+  const groups =
+    input.mode === 'sheet'
+      ? []
+      : input.mode === 'sketch'
+        ? sketchGroups(input)
+        : modelGroups(input);
   const out: MarkingEntry[] = [];
   for (const group of groups) {
     group.forEach((entry, i) => {

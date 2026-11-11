@@ -31,6 +31,7 @@ import {
   removeProjection,
   type SelectionItem,
   type SessionStore,
+  type SheetId,
   type ViewId,
 } from '@extrudo/core';
 import type { BodyMesh, Recomputer } from '@extrudo/kernel';
@@ -70,6 +71,8 @@ import { CustomizerPanel } from '../customizer/CustomizerPanel';
 import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
 import {
   type IconName,
+  MarkingMenu,
+  type MarkingSlot,
   type NotificationStore,
   type Toast,
   type ToastOptions,
@@ -164,6 +167,25 @@ import { useModelSelection } from '../selection/useModelSelection';
 import { storeAccess } from '../settings/displaySettings';
 import type { SectionId } from '../settings/inventory';
 import { SettingsDialog } from '../settings/SettingsDialog';
+import {
+  addNewSheet,
+  createSheet,
+  deleteSheet,
+  duplicateSheet,
+  finishDrawing,
+  keepSheetOpen,
+  moveSheetTo,
+  openSheet,
+  openSheets,
+  renameSheet,
+  stepSheet,
+} from '../sheets/mode';
+import { NewSheetsDialog } from '../sheets/NewSheetsDialog';
+import type { SheetCanvasControl } from '../sheets/SheetCanvas';
+import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExportDialog';
+import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
+import { SheetTabs } from '../sheets/SheetTabs';
+import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
@@ -242,6 +264,8 @@ import {
   buildCommands,
   commandShortcuts,
   DRAWING_IMPORT_UNAVAILABLE,
+  MODEL_ONLY_TOOLS,
+  modelOnlyText,
 } from './commands';
 import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
@@ -278,6 +302,8 @@ const TOPOLOGY_NOUNS = { face: 'Face', edge: 'Edge', vertex: 'Vertex' } as const
 
 // three.js loads in its own chunk, so the shell paints before it arrives.
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
+/** The drawing's sheet (P6-24): its own chunk, with `@extrudo/sheets` and the text shaper. */
+const SheetWorkspace = lazy(() => import('../sheets/SheetWorkspace'));
 
 /**
  * The view with the open dialog's preview and the session's hover, read here:
@@ -576,6 +602,18 @@ function Shell({
   // The selected toolbar tab: its tabs are in the top bar, its tools in the row below (ADR-0079).
   const [toolbarTab, setToolbarTab] = useToolbarTab(mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
+  // The drawing (P6-24, ADR-0143): the sheet shown while the mode is `sheet`.
+  const activeSheetId = useStore(session, (s) => s.activeSheetId);
+  const sheetMode = mode === 'sheet' && activeSheetId !== undefined;
+  const [newSheetsOpen, setNewSheetsOpen] = useState(false);
+  const [sheetExport, setSheetExport] = useState<SheetExportRequest>();
+  const sheetControl = useRef<SheetCanvasControl | undefined>(undefined);
+  const sheetNameField = useRef<HTMLInputElement>(null);
+  const [sheetMenu, setSheetMenu] = useState<{
+    at: { x: number; y: number };
+    slots: readonly (MarkingSlot | undefined)[];
+    radial: boolean;
+  }>();
   const activeTool = useStore(session, (s) => s.activeTool);
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
@@ -638,6 +676,15 @@ function Shell({
   const stores = useMemo<SketchModeStores>(
     () => ({ store, session, viewport, model }),
     [store, session, viewport, model],
+  );
+  // An undo, a redo or a restore that takes the open sheet away opens its neighbour, or ends
+  // the drawing with the last one (P6-24).
+  useEffect(
+    () =>
+      store.subscribe((s, prev) => {
+        if (s.doc.sheets !== prev.doc.sheets) keepSheetOpen(stores, prev.doc.sheets ?? []);
+      }),
+    [store, stores],
   );
 
   // The drawing-tool host (P1-02). Made in an effect so Strict Mode's second mount gets a live
@@ -1335,17 +1382,21 @@ function Shell({
     open: false,
     screenshot: null,
   });
+  // In the drawing the web build attaches the sheet, not the 3D view hidden under it.
   const capture = useCallback(async (): Promise<Blob | null> => {
     try {
+      const inSheet = session.getState().mode === 'sheet';
       return (
         (await platform.desktop?.capturePage()) ??
-        (await viewport.getState().snapshot?.(1600)) ??
+        (inSheet
+          ? await sheetControl.current?.snapshot(1600)
+          : await viewport.getState().snapshot?.(1600)) ??
         null
       );
     } catch {
       return null;
     }
-  }, [platform.desktop, viewport]);
+  }, [platform.desktop, viewport, session]);
   // Two frames before a capture, so the menu that was just closed (or the dialog and its
   // overlay on a retake) are gone from the window capture.
   const openBugReport = useCallback(async () => {
@@ -1379,12 +1430,60 @@ function Shell({
   // keys, the search, the marking menu and the top bar's buttons all run these.
   // Undo right after Finish Sketch reopens the sketch at its last edit (ADR-0010's
   // amendment of 2026-11-06); the next Undo takes back one edit.
+  // The drawing's sheet actions (P6-24): the sheet tabs', the browser rows' and Ctrl+K's.
+  // Export PDF and Export This Sheet open the export dialog (mock-up 4) on those sheets.
+  const exportSheets = useCallback(
+    (ids?: readonly SheetId[]) => setSheetExport(ids ? { ids } : {}),
+    [],
+  );
+  // What is selected on the sheet (P6-24): Delete takes it away, the arrow keys nudge it,
+  // each one undo step. The title block is neither deleted nor moved here.
+  const sheetTargets = useMemo(
+    () => (mode === 'sheet' ? selectedTargets(selection) : []),
+    [mode, selection],
+  );
+  const sheetChange = useCallback(
+    (change: () => void) => {
+      try {
+        change();
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        notify('error', error.message);
+      }
+    },
+    [notify],
+  );
+  const removeSheetSelection = useCallback(
+    () =>
+      sheetChange(() => {
+        deleteTargets(store, sheetTargets);
+        session.getState().clearSelection();
+      }),
+    [sheetChange, store, sheetTargets, session],
+  );
+  const sheetActions = useMemo<SheetRowActions>(
+    () => ({
+      open: (id) => void openSheet(stores, id),
+      rename: (id, name) => renameSheet(stores, id, name),
+      duplicate: (id) => void duplicateSheet(stores, id),
+      exportOne: (id) => exportSheets([id]),
+      remove: (id) => deleteSheet(stores, id),
+      notify,
+      select: (id, target) => {
+        if (openSheet(stores, id)) session.getState().select([{ kind: 'sheet', id: target }]);
+      },
+    }),
+    [stores, exportSheets, notify, session],
+  );
+  // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {
     if (dialogOpen || jointOpen) {
       dialog?.cancel();
       jointDialog?.cancel();
-    } else if (!reopenSketch(stores)) store.getState().undo();
-  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores]);
+    } else if (session.getState().mode === 'sheet' || !reopenSketch(stores)) {
+      store.getState().undo();
+    }
+  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -1408,6 +1507,9 @@ function Shell({
         undo,
         redo,
         ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
+        ...(!listing &&
+          m === 'sheet' &&
+          sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
         // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
         ...(!listing &&
           m === 'model' &&
@@ -1476,6 +1578,14 @@ function Shell({
           list: doc.views.map((v) => ({ id: v.id, name: v.name })),
           save: () => namedViewSaveStore.getState().show(),
           restore: (id: ViewId) => viewActions.restore(id),
+        },
+        sheets: {
+          list: (doc.sheets ?? []).map((sh) => ({ id: sh.id, name: sh.name })),
+          open: (id) => void openSheet(stores, id as SheetId),
+          newSheets: () => setNewSheetsOpen(true),
+          openSheets: () => void openSheets(stores),
+          fit: () => sheetControl.current?.fit(),
+          step: (delta) => stepSheet(stores, delta),
         },
         theme: { choice, set: setChoice },
         settings: { open: () => setSettingsOpen(true) },
@@ -1562,6 +1672,8 @@ function Shell({
       facesRemovable,
       selectedNotes,
       removeModelSelection,
+      sheetTargets,
+      removeSheetSelection,
       selectedComponent,
       selectedComponentName,
       activeComponent,
@@ -1570,6 +1682,7 @@ function Shell({
       selection,
       viewActions,
       doc.views,
+      doc.sheets,
       construction,
       stores,
       viewport,
@@ -1727,6 +1840,38 @@ function Shell({
             },
           ]
         : []),
+      // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
+      ...(mode === 'sheet' && sheetTargets.some(movable)
+        ? (
+            [
+              ['ArrowLeft', -1, 0],
+              ['ArrowRight', 1, 0],
+              ['ArrowUp', 0, -1],
+              ['ArrowDown', 0, 1],
+            ] as const
+          ).flatMap(([key, x, y]) =>
+            [1, 10].map((step) => ({
+              keys: step === 1 ? key : `Shift+${key}`,
+              run: () =>
+                sheetChange(() =>
+                  moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
+                ),
+            })),
+          )
+        : []),
+      // In the drawing, Esc stops Pan or Zoom, or else clears the selection; it never leaves
+      // the mode (plan §3.2).
+      ...(mode === 'sheet'
+        ? [
+            {
+              keys: 'Escape',
+              run: () => {
+                if (viewport.getState().tool) viewport.getState().setTool(undefined);
+                else session.getState().clearSelection();
+              },
+            },
+          ]
+        : []),
       // Esc puts dragged geometry back, or else clears the selection (P1-09).
       ...(mode === 'sketch' && !drawing
         ? [
@@ -1761,6 +1906,9 @@ function Shell({
       dialog,
       jointOpen,
       jointDialog,
+      sheetTargets,
+      sheetChange,
+      store,
     ],
   );
   const chordPrefix = useShortcuts(shortcuts);
@@ -1827,6 +1975,34 @@ function Shell({
     // The Home tab's file commands (ADR-0079) run what the File menu's items ran.
     if (isFileCommand(tool)) {
       fileActions[FILE_COMMANDS[tool]]?.();
+      return;
+    }
+    // The drawing (P6-24, ADR-0143): Make › Drawing opens the sheet edited last, or New
+    // drawing when there is none; the Drawing tab's tools work on the open sheet.
+    if (tool === 'sheets') {
+      if (!openSheets(stores)) setNewSheetsOpen(true);
+      return;
+    }
+    if (tool === 'finishDrawing') {
+      finishDrawing(stores);
+      return;
+    }
+    if (tool === 'exportSheets') {
+      exportSheets();
+      return;
+    }
+    if (tool === 'newSheet' || tool === 'sheetSetup') {
+      if (mode !== 'sheet') return;
+      if (tool === 'newSheet') addNewSheet(stores);
+      else {
+        session.getState().clearSelection();
+        sheetNameField.current?.focus();
+      }
+      return;
+    }
+    // Home's model-only tools say why they don't run in the drawing (plan §3.1).
+    if (mode === 'sheet' && MODEL_ONLY_TOOLS.has(tool)) {
+      notify('info', modelOnlyText(mode, TOOLS[tool].label));
       return;
     }
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
@@ -2519,7 +2695,9 @@ function Shell({
     enabled:
       mode === 'model'
         ? !picking && !dialogOpen && !jointOpen && !projecting && !measuring && !section.choosing
-        : !projecting && sketchPlane !== undefined,
+        : mode === 'sheet'
+          ? !newSheetsOpen
+          : !projecting && sketchPlane !== undefined,
     radial: markingStyle.radial,
     overrides: markingSlots.overrides,
     placement: placementActions,
@@ -2785,6 +2963,17 @@ function Shell({
             {...(mode === 'model' && {
               annotations: annotationActions,
               selectedAnnotations,
+              sheetsFolder: <SheetsFolder sheets={doc.sheets ?? []} actions={sheetActions} />,
+            })}
+            {...(sheetMode && {
+              sheetTree: (
+                <SheetsTree
+                  sheets={doc.sheets ?? []}
+                  active={activeSheetId}
+                  selected={sheetTargets}
+                  actions={sheetActions}
+                />
+              ),
             })}
             componentActions={componentActions}
             {...(jointActions && {
@@ -2902,204 +3091,246 @@ function Shell({
               },
             })}
         />
-        <ViewportBoundary>
+        {/* In the drawing the sheet covers the view, which stays mounted but inert. */}
+        <div className="contents" inert={sheetMode}>
+          <ViewportBoundary>
+            <Suspense
+              fallback={
+                <section
+                  aria-label="Viewport"
+                  aria-busy="true"
+                  className="min-w-0 flex-1"
+                  style={{ background: 'var(--x-viewport-glow)' }}
+                />
+              }
+            >
+              <DialogViewport
+                dialog={dialog}
+                viewport={viewport}
+                namedViews={namedViewEntries}
+                bodies={shownBodies}
+                meta={bodyMeta}
+                components={componentsSummary(componentList)}
+                joints={jointsSummary(doc, jointReports, componentOfBody)}
+                jointAxes={jointAxes}
+                {...(posing && {
+                  posed: posing.matrices,
+                  jointPose: posing.summary,
+                  poseBar: {
+                    text: posing.text,
+                    onReset: () =>
+                      viewport.getState().setJointPose(jointPose && { ...jointPose, value: 0 }),
+                  },
+                })}
+                activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
+                isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
+                onExitIsolation={() => session.getState().isolateComponent(undefined)}
+                session={session}
+                doc={doc}
+                sketches={sketches}
+                sketchPlane={sketchPlane}
+                planePicker={planePicker}
+                construction={constructionDrawings}
+                ghostsFor={ghostsFor}
+                canvases={canvasList}
+                calibration={calibration}
+                sketchInput={sketchInput}
+                commandRunning={drawing || picking || projecting || measuring || section.choosing}
+                onStopCommand={stopCommand}
+                selection={jointItems ?? dialogItems ?? selection}
+                modelSelect={modelSelect}
+                viewMenu={viewMenu}
+                sectionClips={section.clips}
+                {...(section.box?.value && {
+                  sectionBox: { box: section.box.value, on: section.box.state.on },
+                })}
+                {...(overhang.summary !== undefined && {
+                  overhang: { view: overhang.view, summary: overhang.summary },
+                })}
+                {...(thickness.summary !== undefined && {
+                  thickness: { thin: thickness.shading, summary: thickness.summary },
+                })}
+                {...(jointCheck.summary !== undefined && {
+                  jointCheck: {
+                    summary: jointCheck.summary,
+                    ...(jointMarks.collisions && { collisions: jointMarks.collisions }),
+                  },
+                })}
+              >
+                {chordPrefix !== undefined && (
+                  <ChordHint prefix={chordPrefix} commands={commands} />
+                )}
+                {dialogOpen && dialog && (
+                  <DialogOverlay
+                    controller={dialog}
+                    viewport={viewport}
+                    settings={doc.settings}
+                    bodies={shownBodies}
+                  />
+                )}
+                {jointMarks.leader && (
+                  <ClearanceOverlay
+                    {...jointMarks.leader}
+                    viewport={viewport}
+                    settings={doc.settings}
+                  />
+                )}
+                {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
+                  <JointHandle
+                    viewport={viewport}
+                    joint={poseJoint}
+                    report={poseReport}
+                    centre={poseCentre}
+                    value={jointPose.value}
+                    onChange={(value) =>
+                      viewport.getState().setJointPose({
+                        joint: poseJoint.id,
+                        value: clampPose(poseJoint, poseRange, value),
+                      })
+                    }
+                  />
+                )}
+                {thickness.spot && (
+                  <ThicknessOverlay
+                    spot={thickness.spot}
+                    viewport={viewport}
+                    settings={doc.settings}
+                    {...(section.clips.length > 0 && { clip: section.clips })}
+                  />
+                )}
+                {sectioning && (
+                  <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
+                )}
+                {measuring && measured.measurement?.pair && (
+                  <MeasureOverlay
+                    pair={measured.measurement.pair}
+                    viewport={viewport}
+                    settings={doc.settings}
+                  />
+                )}
+                {(mode === 'model' || sketchPlane) && (
+                  <AnnotationsOverlay
+                    store={store}
+                    session={session}
+                    model={model}
+                    viewport={viewport}
+                    ui={annotationsUi}
+                    {...(openSketch && { openSketch })}
+                    reanchor={reanchor}
+                    interactive={
+                      !picking &&
+                      !dialogOpen &&
+                      !jointOpen &&
+                      !drawing &&
+                      (!activeTool || annotating) &&
+                      !section.choosing
+                    }
+                    onError={(message) => notify('error', message)}
+                  />
+                )}
+                {showConstraints && tools && activeSketchId && sketchPlane && (
+                  <tools.Glyphs
+                    store={store}
+                    session={session}
+                    viewport={viewport}
+                    sketchId={activeSketchId}
+                    frame={sketchPlane}
+                    interactive={!drawing && !annotating}
+                    over={status?.over}
+                    onDelete={remove}
+                  />
+                )}
+                {showDimensions && tools && activeSketchId && sketchPlane && (
+                  <tools.Labels
+                    store={store}
+                    session={session}
+                    viewport={viewport}
+                    host={tools.host}
+                    sketchId={activeSketchId}
+                    frame={sketchPlane}
+                    interactive={!drawing && !annotating}
+                    notify={notify}
+                    onDelete={remove}
+                  />
+                )}
+                {!drawing && tools && activeSketchId && sketchPlane && (
+                  <tools.Selection
+                    store={store}
+                    session={session}
+                    viewport={viewport}
+                    sketchId={activeSketchId}
+                    frame={sketchPlane}
+                  />
+                )}
+                {mode === 'sketch' && activeSketch && !drawing && (
+                  <SelectionPanel
+                    store={store}
+                    session={session}
+                    host={host}
+                    onDelete={remove}
+                    fonts={fontPicker}
+                    notify={notify}
+                  />
+                )}
+                {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
+                {mode === 'sketch' && activeTool === 'text' && textOpen && (
+                  <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
+                )}
+                {/* The Import Drawing tool's panel (P4-06), likewise. */}
+                {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
+                  <ImportDrawingPanel store={store} host={host} />
+                )}
+                {drawing && tools && activeSketchId && sketchPlane && (
+                  <tools.Overlay
+                    host={tools.host}
+                    store={store}
+                    viewport={viewport}
+                    sketchId={activeSketchId}
+                    frame={sketchPlane}
+                  />
+                )}
+              </DialogViewport>
+              {appearancePopover}
+            </Suspense>
+          </ViewportBoundary>
+        </div>
+        {/* The drawing's sheet (P6-24) covers the 3D view, which stays mounted underneath:
+            thumbnails and (later) shaded views use its snapshot. */}
+        {sheetMode && activeSheetId && (
           <Suspense
             fallback={
-              <section
-                aria-label="Viewport"
+              <div
                 aria-busy="true"
-                className="min-w-0 flex-1"
+                className="absolute inset-0 z-[5]"
                 style={{ background: 'var(--x-viewport-glow)' }}
               />
             }
           >
-            <DialogViewport
-              dialog={dialog}
-              viewport={viewport}
-              namedViews={namedViewEntries}
-              bodies={shownBodies}
-              meta={bodyMeta}
-              components={componentsSummary(componentList)}
-              joints={jointsSummary(doc, jointReports, componentOfBody)}
-              jointAxes={jointAxes}
-              {...(posing && {
-                posed: posing.matrices,
-                jointPose: posing.summary,
-                poseBar: {
-                  text: posing.text,
-                  onReset: () =>
-                    viewport.getState().setJointPose(jointPose && { ...jointPose, value: 0 }),
-                },
-              })}
-              activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
-              isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
-              onExitIsolation={() => session.getState().isolateComponent(undefined)}
+            <SheetWorkspace
+              stores={stores}
+              store={store}
               session={session}
-              doc={doc}
-              sketches={sketches}
-              sketchPlane={sketchPlane}
-              planePicker={planePicker}
-              construction={constructionDrawings}
-              ghostsFor={ghostsFor}
-              canvases={canvasList}
-              calibration={calibration}
-              sketchInput={sketchInput}
-              commandRunning={drawing || picking || projecting || measuring || section.choosing}
-              onStopCommand={stopCommand}
-              selection={jointItems ?? dialogItems ?? selection}
-              modelSelect={modelSelect}
-              viewMenu={viewMenu}
-              sectionClips={section.clips}
-              {...(section.box?.value && {
-                sectionBox: { box: section.box.value, on: section.box.state.on },
-              })}
-              {...(overhang.summary !== undefined && {
-                overhang: { view: overhang.view, summary: overhang.summary },
-              })}
-              {...(thickness.summary !== undefined && {
-                thickness: { thin: thickness.shading, summary: thickness.summary },
-              })}
-              {...(jointCheck.summary !== undefined && {
-                jointCheck: {
-                  summary: jointCheck.summary,
-                  ...(jointMarks.collisions && { collisions: jointMarks.collisions }),
-                },
-              })}
-            >
-              {chordPrefix !== undefined && <ChordHint prefix={chordPrefix} commands={commands} />}
-              {dialogOpen && dialog && (
-                <DialogOverlay
-                  controller={dialog}
-                  viewport={viewport}
-                  settings={doc.settings}
-                  bodies={shownBodies}
-                />
-              )}
-              {jointMarks.leader && (
-                <ClearanceOverlay
-                  {...jointMarks.leader}
-                  viewport={viewport}
-                  settings={doc.settings}
-                />
-              )}
-              {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
-                <JointHandle
-                  viewport={viewport}
-                  joint={poseJoint}
-                  report={poseReport}
-                  centre={poseCentre}
-                  value={jointPose.value}
-                  onChange={(value) =>
-                    viewport.getState().setJointPose({
-                      joint: poseJoint.id,
-                      value: clampPose(poseJoint, poseRange, value),
-                    })
-                  }
-                />
-              )}
-              {thickness.spot && (
-                <ThicknessOverlay
-                  spot={thickness.spot}
-                  viewport={viewport}
-                  settings={doc.settings}
-                  {...(section.clips.length > 0 && { clip: section.clips })}
-                />
-              )}
-              {sectioning && (
-                <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
-              )}
-              {measuring && measured.measurement?.pair && (
-                <MeasureOverlay
-                  pair={measured.measurement.pair}
-                  viewport={viewport}
-                  settings={doc.settings}
-                />
-              )}
-              {(mode === 'model' || sketchPlane) && (
-                <AnnotationsOverlay
-                  store={store}
-                  session={session}
-                  model={model}
-                  viewport={viewport}
-                  ui={annotationsUi}
-                  {...(openSketch && { openSketch })}
-                  reanchor={reanchor}
-                  interactive={
-                    !picking &&
-                    !dialogOpen &&
-                    !jointOpen &&
-                    !drawing &&
-                    (!activeTool || annotating) &&
-                    !section.choosing
-                  }
-                  onError={(message) => notify('error', message)}
-                />
-              )}
-              {showConstraints && tools && activeSketchId && sketchPlane && (
-                <tools.Glyphs
-                  store={store}
-                  session={session}
-                  viewport={viewport}
-                  sketchId={activeSketchId}
-                  frame={sketchPlane}
-                  interactive={!drawing && !annotating}
-                  over={status?.over}
-                  onDelete={remove}
-                />
-              )}
-              {showDimensions && tools && activeSketchId && sketchPlane && (
-                <tools.Labels
-                  store={store}
-                  session={session}
-                  viewport={viewport}
-                  host={tools.host}
-                  sketchId={activeSketchId}
-                  frame={sketchPlane}
-                  interactive={!drawing && !annotating}
-                  notify={notify}
-                  onDelete={remove}
-                />
-              )}
-              {!drawing && tools && activeSketchId && sketchPlane && (
-                <tools.Selection
-                  store={store}
-                  session={session}
-                  viewport={viewport}
-                  sketchId={activeSketchId}
-                  frame={sketchPlane}
-                />
-              )}
-              {mode === 'sketch' && activeSketch && !drawing && (
-                <SelectionPanel
-                  store={store}
-                  session={session}
-                  host={host}
-                  onDelete={remove}
-                  fonts={fontPicker}
-                  notify={notify}
-                />
-              )}
-              {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
-              {mode === 'sketch' && activeTool === 'text' && textOpen && (
-                <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
-              )}
-              {/* The Import Drawing tool's panel (P4-06), likewise. */}
-              {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
-                <ImportDrawingPanel store={store} host={host} />
-              )}
-              {drawing && tools && activeSketchId && sketchPlane && (
-                <tools.Overlay
-                  host={tools.host}
-                  store={store}
-                  viewport={viewport}
-                  sketchId={activeSketchId}
-                  frame={sketchPlane}
-                />
-              )}
-            </DialogViewport>
-            {appearancePopover}
+              viewport={viewport}
+              sheetId={activeSheetId}
+              browserInset={browser.collapsed ? 0 : browser.size}
+              control={sheetControl}
+              nameField={sheetNameField}
+              preferences={platform.preferences}
+              notify={notify}
+              onMenu={(at) => {
+                const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
+                if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
+              }}
+            />
           </Suspense>
-        </ViewportBoundary>
+        )}
+        <MarkingMenu
+          at={sheetMode ? sheetMenu?.at : undefined}
+          slots={sheetMenu?.slots ?? []}
+          entries={[]}
+          radial={sheetMenu?.radial ?? true}
+          onClose={() => setSheetMenu(undefined)}
+        />
         {picking && (
           <PlanePrompt
             session={session}
@@ -3228,29 +3459,60 @@ function Shell({
         {toasts && !(mode === 'sketch' && activeSketch) && (
           <Toasts
             place="view"
-            clearRight={dialogOpen ? DIALOG_COLUMN : undefined}
+            clearRight={dialogOpen || sheetMode ? DIALOG_COLUMN : undefined}
             toasts={toasts.toasts}
             onDismiss={toasts.onDismiss}
             onKeep={toasts.onKeep}
           />
         )}
       </main>
-      <Timeline
-        store={store}
-        activeSketch={activeSketch?.name}
-        actions={featureActions}
-        groups={groups}
-        selection={timelineSelection}
-        viewport={viewport}
-        model={model}
-        session={session}
-        editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
-        pluginHint={pluginHint}
-        macro={macro}
-        notifications={history}
-        selectionSize={
-          measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
-        }
+      {sheetMode ? (
+        <SheetTabs
+          sheets={doc.sheets ?? []}
+          session={session}
+          units={doc.settings.units}
+          notify={notify}
+          {...(history && { notifications: history })}
+          actions={{
+            ...sheetActions,
+            add: () => addNewSheet(stores),
+            move: (id, index) => moveSheetTo(stores, id, index),
+          }}
+        />
+      ) : (
+        <Timeline
+          store={store}
+          activeSketch={activeSketch?.name}
+          actions={featureActions}
+          groups={groups}
+          selection={timelineSelection}
+          viewport={viewport}
+          model={model}
+          session={session}
+          editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
+          pluginHint={pluginHint}
+          macro={macro}
+          notifications={history}
+          selectionSize={
+            measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
+          }
+        />
+      )}
+      <SheetExportDialog
+        request={sheetExport}
+        doc={doc}
+        files={platform.files}
+        preferences={platform.preferences}
+        notify={notify}
+        onClose={() => setSheetExport(undefined)}
+      />
+      <NewSheetsDialog
+        open={newSheetsOpen}
+        onOpenChange={setNewSheetsOpen}
+        onCreate={(options) => {
+          setNewSheetsOpen(false);
+          createSheet(stores, options);
+        }}
       />
       <MacroDialog
         recorded={recorded}
