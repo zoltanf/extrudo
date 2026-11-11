@@ -122,6 +122,10 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
       'Not a preference: the recent-actions log an edge or dev build keeps in localStorage (ADR-0127).',
   },
   {
+    key: 'export.sheets',
+    reason: "The Export drawing dialog's own memory: the format of the last export (ADR-0143).",
+  },
+  {
     key: 'export.script',
     reason: "The Export as script dialog's own memory: language and resolution of the last export.",
   },

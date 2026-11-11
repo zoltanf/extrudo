@@ -167,7 +167,6 @@ import { useModelSelection } from '../selection/useModelSelection';
 import { storeAccess } from '../settings/displaySettings';
 import type { SectionId } from '../settings/inventory';
 import { SettingsDialog } from '../settings/SettingsDialog';
-import { exportSheetsPdf } from '../sheets/exportSheets';
 import {
   addNewSheet,
   createSheet,
@@ -183,6 +182,7 @@ import {
 } from '../sheets/mode';
 import { NewSheetsDialog } from '../sheets/NewSheetsDialog';
 import type { SheetCanvasControl } from '../sheets/SheetCanvas';
+import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExportDialog';
 import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
 import { SheetTabs } from '../sheets/SheetTabs';
 import type { FontPicker } from '../sketch/addFont';
@@ -605,6 +605,7 @@ function Shell({
   const activeSheetId = useStore(session, (s) => s.activeSheetId);
   const sheetMode = mode === 'sheet' && activeSheetId !== undefined;
   const [newSheetsOpen, setNewSheetsOpen] = useState(false);
+  const [sheetExport, setSheetExport] = useState<SheetExportRequest>();
   const sheetControl = useRef<SheetCanvasControl | undefined>(undefined);
   const sheetNameField = useRef<HTMLInputElement>(null);
   const [sheetMenu, setSheetMenu] = useState<{
@@ -1425,16 +1426,10 @@ function Shell({
   // Undo right after Finish Sketch reopens the sketch at its last edit (ADR-0010's
   // amendment of 2026-11-06); the next Undo takes back one edit.
   // The drawing's sheet actions (P6-24): the sheet tabs', the browser rows' and Ctrl+K's.
+  // Export PDF and Export This Sheet open the export dialog (mock-up 4) on those sheets.
   const exportSheets = useCallback(
-    (ids?: readonly SheetId[]) => {
-      exportSheetsPdf(store.getState().doc, platform.files, ids).catch((error: unknown) => {
-        notify(
-          'error',
-          `The PDF couldn't be written: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
-    },
-    [store, platform.files, notify],
+    (ids?: readonly SheetId[]) => setSheetExport(ids ? { ids } : {}),
+    [],
   );
   const sheetActions = useMemo<SheetRowActions>(
     () => ({
@@ -3442,6 +3437,14 @@ function Shell({
           }
         />
       )}
+      <SheetExportDialog
+        request={sheetExport}
+        doc={doc}
+        files={platform.files}
+        preferences={platform.preferences}
+        notify={notify}
+        onClose={() => setSheetExport(undefined)}
+      />
       <NewSheetsDialog
         open={newSheetsOpen}
         onOpenChange={setNewSheetsOpen}

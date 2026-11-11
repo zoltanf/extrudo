@@ -905,7 +905,7 @@ export const TOOLS = {
     label: 'Export PDF',
     icon: 'export-pdf',
     category: 'export',
-    hint: 'Download the drawing’s sheets as one PDF, a page per sheet.',
+    hint: 'Export the drawing’s sheets: one PDF with a page per sheet, or an SVG per sheet.',
   },
   finishDrawing: {
     id: 'finishDrawing',
