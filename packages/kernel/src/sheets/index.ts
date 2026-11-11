@@ -12,6 +12,28 @@ export {
   type ViewPiece,
 } from './geometry';
 export {
+  baseViewOf,
+  pieceContour,
+  type SheetViewWant,
+  sheetViewLines,
+  sheetViewWant,
+  sheetViewWants,
+  type ViewLines,
+  type ViewLinesCurve,
+} from './lines';
+export {
+  EXPORT_UNLISTED,
+  EXPORT_UNMEASURED,
+  exportAnchorsOf,
+  exportPartsOf,
+  isAnchored,
+  type SheetAnchorsKernel,
+  type SheetModelKernel,
+  type SheetModelNow,
+  type SheetPartsKernel,
+  sheetModelNow,
+} from './now';
+export {
   isSheetViewsCancelled,
   type SheetViewProgress,
   type SheetViewRequest,

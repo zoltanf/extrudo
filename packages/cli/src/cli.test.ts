@@ -516,7 +516,7 @@ describe('the command line itself', () => {
       [['frobnicate', design], 'There is no "frobnicate" command'],
       [['info'], 'extrudo info needs a design file'],
       [['export', design], 'needs --format'],
-      [['export', design, '--format', 'obj'], '--format takes stl, 3mf, step or scad'],
+      [['export', design, '--format', 'obj'], '--format takes stl, 3mf, step, scad, pdf or svg'],
       [['export', design, '--format', 'stl', '--param', 'width'], '--param takes name=expression'],
       [['export', design, '--format', 'stl', '--resolution', 'smooth'], '--resolution takes'],
       [['check', design, '--format', 'stl'], '--format is for extrudo export'],
