@@ -1727,7 +1727,7 @@ end to end, faster than in established desktop CAD.
     drawing's Start with, a dragged body, the view's menu (ADR-0143's S2 amendments).
   - [x] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states
     (ADR-0143's S3 amendments; `e2e/sheet-dimensions.spec.ts`).
-  - [ ] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
+  - [x] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
   - [ ] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
     fields.
   - [ ] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;

@@ -2216,6 +2216,29 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `/FlateDecode` streams first. `SHEET_SHOTS=<dir>` makes the spec save light and dark
   screenshots for a person to look at.
 
+### `e2e/sheet-notes.spec.ts`
+
+- **The notes tools** (P6-24 S4, ADR-0143's S4 notes tools amendment), on the wall bracket template with New
+  drawing's Standard views (A3, 1:1; view IDs from `[data-sheet-view-row]` by name). The top view's box gives the
+  model's x 0..40 and y −40..40 (`tAt`): the holes' rims at (25 + 2.6, ±20), the foot's long edges at y ±40.
+- Tiles `#toolbar-groups [data-label="Centre Mark" | "Centreline" | "Text" | "Leader Note" | "Sticky Note"]`, keys
+  `t` and `n`. Panels are the regions "<Tool> tool" with `[data-note-step]` (what to do next; "Reading the pick…"
+  while the kernel answers). Hover markers are the Dimension tool's (`[data-dimension-hover]`), plus
+  `[data-face-hover]` for a face under the pointer (Leader Note); a following leader is `[data-dimension-preview]`.
+- Typing: the field is `[data-sheet-editor="text" | "leader" | "sticky"]` (focused when it opens): type, Shift+Enter
+  for a new line, Enter to finish (the field goes). Wait for the field to go before the next click. A double-click on
+  a text's glyphs (`[data-sheet-text] text[data-key="item:<id>"]`) opens the field again.
+- Items: rows `[data-sheet-item-row]` under the folder button "Notes" (and "Dimensions"); find a new item by diffing
+  the row IDs. A centre line is one horizontal path of zero height: check `path[data-key]` counts, not visibility.
+  One undo step per item: Ctrl+Z takes the row away, Ctrl+Y brings it back.
+- Cards: regions "Text" (`exact`), "Leader note", "Sticky note" (switch "Print"), "Centre mark", "Centre line"; the
+  view card's switch "Centre lines". The export dialog's switch "Sticky notes"; its summary ends "· 1 sticky note left
+  out" while a note is on screen only. "On screen only" is a text run on the sheet (screen only).
+- Snap: the floating bar's button "Snap" (pressed by default). A drag shows `[data-sheet-guides]`; specs that measure
+  an exact drag (`sheets.spec.ts`' selection test, `sheet-views.spec.ts`' Projected View test) switch it off first.
+- A lost leader: the status text is the kernel's ("The feature this was drawn on is deleted."); its handle is
+  `[data-repick-handle="0"]`, dragged like a dimension's onto an edge.
+
 ### `e2e/shell-feature.spec.ts`
 
 - **Shell e2e** (`e2e/shell-feature.spec.ts`, P3-03; not `shell.spec.ts`, the

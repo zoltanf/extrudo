@@ -918,9 +918,11 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   "Drawn by" is never filled in by itself: the last name typed there is
   offered as a "Use …" button.
 - **The screen:** tabs Home and **Drawing** (Views: Base View, Projected View; Dimensions:
-  Dimension; Sheet: New Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
+  Dimension, Centre Mark, Centreline; Notes: Text, Leader Note, Sticky Note; Sheet: New Sheet,
+  Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
   mounted underneath, inert): white paper in both themes with a shadow, a
-  floating bar with Select, Pan, Zoom, Fit and the zoom level. Pan and zoom
+  floating bar with Select, Pan, Zoom, Fit, the zoom level, **Snap** (on by default) and
+  **Show sticky notes** (on by default; screen only, never stored). Pan and zoom
   follow the mouse preset's bindings (no orbit), the wheel zooms at the
   pointer, F6 fits the sheet. Right-click opens the marking menu with the
   sheet's wedges. Esc stops Pan or Zoom, then clears the selection; it never
@@ -931,8 +933,9 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   Export This Sheet and Delete. **Ctrl+PageUp / Ctrl+PageDown** step through
   them; a browser may keep those keys for its own tabs, and the sheet tabs are
   always clickable. The status text and the bell stay on the right.
-- **The browser** lists the Sheets tree (each sheet with its views and title
-  block), then Bodies. The model's folders keep their open or closed state
+- **The browser** lists the Sheets tree (each sheet with its views, a Dimensions
+  folder, a **Notes** folder with its texts, leader notes, sticky notes, centre marks
+  and centre lines, and its title block), then Bodies. The model's folders keep their open or closed state
   for when the drawing ends.
 - **Selecting on the sheet** (Select, no nav tool), by what each drawn item
   belongs to, so it is the same for every item kind: the pointer
@@ -1026,6 +1029,43 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   vertex or an outline picks that again** (one undo step, "Pick again"). Show
   the unit and arrows inside or outside are not offered (no field yet: the
   arrows go outside by themselves when there is no room).
+- **Centre Mark** (no key): a click on a circle (a hole's rim) or on a cylinder's
+  outline (its face) places a cross on its centre at once (one undo step, "Centre
+  mark"); only those can be hovered. **Centreline** (no key): a cylinder's or cone's
+  outline places a dash-dot line along its axis at once; a straight edge waits for a
+  second, parallel one in the same view (only parallel ones can be hovered) and the
+  line runs midway between them ("Centre line"). What the model says doesn't make one
+  (a cone's outline for a centre mark, an axis seen end-on) is not placed: the tool says
+  why. Both stay on until Esc; neither is ever made by itself.
+- **Leader Note** (`N`): hovering highlights what a click takes, an edge, a vertex at a
+  line's end, an outline, or a **face** under the pointer (a dot at the pointer; the face
+  is the one a ray along the view's direction meets first). After the pick the note
+  follows the pointer in blue; a click places it and its text is typed there. On a face
+  the leader ends in a dot instead of an arrowhead.
+- **Text** (`T`): a click on the paper starts a text there (its top-left), typed in
+  place; the panel's Letter height (empty: 3.5 mm) is used for the next ones. **Sticky
+  Note** (no key): a click starts a 60 × 40 mm note there in the panel's colour (yellow,
+  orange, pink, blue or green), typed in place; it says "On screen only" until its
+  **Print** switch is on. **Typing on the sheet** is the same for the three kinds:
+  **Enter** finishes (one undo step: "Text", "Leader note", "Sticky note"),
+  **Shift+Enter** starts a new line, **Esc** leaves it (a new one is not made); a click
+  elsewhere finishes too, and only finishes (it starts nothing). Blank text makes or
+  changes nothing. **A double-click** on a text, a leader note or a sticky note types it
+  again where it is (one undo step, "Edit text"). All three tools stay on until Esc.
+- **A note selected** shows its card, each change one undo step, every number an
+  expression field: a **text** its Text (Enter writes, Shift+Enter a new line), Letter
+  height and Wrap width ("None": no wrapping); a **leader note** its view, what it points
+  at and its Text; a **sticky note** its Text, Colour, Width, Height (5 to 1000 mm) and
+  Print; a **centre mark or line** its view (and that it is hidden when the view's
+  Centre lines is off). All have Delete. A lost or moved leader note, centre mark or
+  line says why (the kernel's reason when it gives one: "The feature this was drawn on
+  is deleted.") and has a handle per anchor: dragging it onto what its tool takes picks
+  that again ("Pick again"). The browser's row and the status text say why too.
+- **Snap** (plan §4.2): a dragged selection snaps to the other items' and views' edges
+  and middles, and a dimension to rows an even 10 mm from another dimension of its
+  direction (or onto its row), each axis on its own, within 5 px; a placed text, note
+  or a dimension or leader following the pointer snaps the same way. Dashed guides show
+  where. Snap off in the floating bar turns it all off; arrow keys never snap.
 - **A view's menu** (right-click on a view): Projected View from This, Fit
   Scale (the largest standard scale at which its base view fits inside the
   border, the views projected from it scaled with it, one undo step, "Fit
@@ -1044,19 +1084,22 @@ notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code sa
   faces they show, the model's current view, each named view; "Custom
   direction" when it matches none); Scale (the sheet's, 1:1 to 1:50, 2:1, 5:1,
   or Custom with two number fields); Style (Visible edges, Visible and
-  hidden); Show: Tangent edges, View label; Bodies: All shown, then each body
+  hidden); Show: Tangent edges, Centre lines (hides the view's centre marks and lines),
+  View label; Bodies: All shown, then each body
   at the marker (the last one can't be unticked); Delete and Finish Drawing.
   A view still named after its direction takes the new direction's name; a new
   scale keeps the middle of its lines in place. A projected view's card shows
-  its parent and its label only. Each change is one undo step.
+  its parent, its Centre lines and its label only. Each change is one undo step.
 - **Undo:** every sheet edit is one undo step with its own label; Finish
   Drawing is none. Undo in the drawing is a plain undo (it doesn't reopen a
   sketch finished before). An undo that takes the open sheet away opens its
   neighbour, or ends the drawing with the last sheet.
 - **Export drawing** (Export PDF, Ctrl+E; Export This Sheet): the sheets as
   checkboxes, **PDF** (one file, a page per chosen sheet) or **SVG** (a file
-  per sheet), the file name and a summary ("2 pages · A3 landscape, A4
-  landscape"); no sheet chosen can't export. The format is remembered. Export
+  per sheet), the file name, **Sticky notes** (off: only the notes switched to Print
+  go in, and the summary adds "· 1 sticky note left out"; on: every one) and a summary
+  ("2 pages · A3 landscape, A4 landscape"); no sheet chosen can't export. The format and
+  the switch are remembered. Export
   first draws every view of the chosen sheets exactly (the summary says
   "Drawing the views · 2 of 4"; closing the dialog stops it and writes
   nothing), so a file never holds the quick placeholder lines. Lengths are
@@ -1094,7 +1137,8 @@ position (they work on any layout). The keys live in one table,
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
 ADR-0081 §4). In the drawing (§4a): V Base View, P Projected View, D Dimension (Sketch
-Dimension's key: a sketch and the drawing are never open together), Ctrl+E Export PDF,
+Dimension's key: a sketch and the drawing are never open together), T Text (Trim's in a
+sketch), N Leader Note (Annotate's on the model), Ctrl+E Export PDF,
 Ctrl+PageDown and Ctrl+PageUp the next and previous sheet.
 
 The sketch constraints have no usual keys in mainstream CAD, so they are **K, then a
