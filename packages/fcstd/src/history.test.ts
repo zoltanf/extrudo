@@ -25,7 +25,7 @@ import {
 import { type FcstdImportOptions, importFcstd } from './import';
 import type { ImportKernel, ShapeMeasure } from './import-kernel';
 import { nodeImportKernel } from './node-kernel-test-support';
-import { circle, line } from './sketch-fixtures';
+import { arc, circle, line } from './sketch-fixtures';
 
 let planegcs: PlanegcsModule;
 let base: ReturnType<typeof nodeImportKernel>;
@@ -223,6 +223,44 @@ describe('each mapped input of a pad and a pocket', () => {
       color: '#3366cc',
       visible: false,
     });
+  });
+});
+
+describe('a vent plate of 60 slots', () => {
+  it('comes in with its history: 244 drawn curves are within the profile cap', async () => {
+    // A 130 × 50 plate with 6 rows of 10 slots, each 8 mm long and 2 mm wide (two lines, two arcs).
+    const [a, r, h] = [3, 1, 5];
+    const slots: string[] = [];
+    for (let i = 0; i < 10; i++)
+      for (let j = 0; j < 6; j++) {
+        const [x, y] = [10 + 12 * i, 5 + 8 * j];
+        slots.push(
+          line(x - a, y + r, x + a, y + r),
+          arc(x + a, y, r, -Math.PI / 2, Math.PI / 2),
+          line(x + a, y - r, x - a, y - r),
+          arc(x - a, y, r, Math.PI / 2, (3 * Math.PI) / 2),
+        );
+      }
+    const slot = 2 * r * 2 * a + Math.PI * r * r;
+    const rim = 4 * a + 2 * Math.PI * r;
+    const face = 130 * 50 - 60 * slot;
+    const stored = measureText({
+      solids: 1,
+      volume: face * h,
+      area: 2 * face + (2 * (130 + 50) + 60 * rim) * h,
+      box: { min: [0, 0, 0], max: [130, 50, h] },
+    });
+    const r0 = await run([
+      {
+        name: 'Body',
+        label: 'Vent',
+        sketches: [{ name: 'Sketch', geometry: [...rectangle(0, 0, 130, 50), ...slots] }],
+        features: [{ name: 'Pad', type: 'Pad', length: h, stored }],
+      },
+    ]);
+    expect(only(r0).stop).toBeUndefined();
+    expect(only(r0).outcome).toBe('history');
+    expect(r0.features).toEqual(['sketch Sketch', 'extrude Pad']);
   });
 });
 

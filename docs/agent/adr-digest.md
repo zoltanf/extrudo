@@ -4779,6 +4779,6 @@ synchronous throw into a kernel failure, and a throw from a feature's own work s
 is checked before a feature's work and before an S3 shape is decoded; one FreeCAD feature or sketch belongs to one body
 per file (`chain` for another), each sketch decoded once (`AddSketchOptions.decoded`); stored text over
 `MAX_STORED_BREP_BYTES` (= the kernel's `MAX_BREP_BYTES`, kept equal by a test) is refused by its archive size, never
-decoded; `MAX_FEATURE_EXPRESSIONS` 64 (`expressionsDropped`); `MAX_PROFILE_CURVES` 200 drawn curves before regions are
-detected, and `profileRefs` stays linear per region (its own scan-line point, box prefilter; never `interiorPoint`
+decoded; `MAX_FEATURE_EXPRESSIONS` 64 (`expressionsDropped`); `MAX_PROFILE_CURVES` 500 drawn curves (worst cases measured under 3 s; past it the grid case
+is the region detection, to bound in `@extrudo/sketch`) before regions are detected, and `profileRefs` stays linear per region (its own scan-line point, box prefilter; never `interiorPoint`
 there). Known limit: the document is sent per feature (cost features × design size, bounded by the caps and the time).

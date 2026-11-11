@@ -710,14 +710,25 @@ The app's worker loads planegcs for `addSketch`, as the f3d worker does.
   archive's size before it is inflated or decoded. A mapped feature keeps at
   most 64 expressions (`MAX_FEATURE_EXPRESSIONS`; the library's most on one
   PartDesign feature is 2) and counts the rest (`expressionsDropped`). A profile
-  sketch may draw at most 200 curves (`MAX_PROFILE_CURVES`; the library's
-  largest profile sketch draws 25), checked before its regions are detected;
+  sketch may draw at most 500 curves (`MAX_PROFILE_CURVES`; the library's
+  largest profile sketch draws 25, but a vent of 60 slots draws 240 and a
+  plate of 250 holes 250), checked before its regions are detected;
   `profileRefs` finds a region's point from at most 8 scan lines (linear in its
   vertices; `@extrudo/sketch`'s `interiorPoint` tries every height, the square,
   8.5 s for 200 concentric circles) and tests a loop only where its box holds
-  the point. Measured at the cap (`history-hardening.test.ts`): a grid of 200
-  crossing lines 0.2 s (9,801 regions, refused by `MAX_PROFILE_REGIONS` after
-  the detection), 200 concentric circles 0.6 s. The library's numbers are
+  the point. Measured unloaded, one run each (`profileRefs` with the detection,
+  and the process's peak memory):
+
+  | Drawn curves | Grid of crossing lines | Concentric circles |
+  |---|---|---|
+  | 500 | 1.1 s, 485 MB (62,001 regions, refused by `MAX_PROFILE_REGIONS` after the detection) | 2.1 s, 410 MB |
+  | 1,000 | 5.6 s, 961 MB (249,001 regions) | 7.0 s, 586 MB |
+  | 2,000 | 25.6 s, 3.1 GB (998,001 regions) | 1.9 s, 928 MB (2,000 regions, refused) |
+
+  500 is the highest whose worst cases stay under 3 s. Past it the grid is
+  the region detection itself (time and memory grow with the regions, which
+  grow with the square of the lines), so raising the cap needs a bound inside
+  `@extrudo/sketch`'s detection, not here. The library's numbers are
   unchanged and no cap touches a library file.
 - **Known limit (for S13):** the design so far is serialised and sent to the
   kernel for every feature, so a file's cost grows with features × design

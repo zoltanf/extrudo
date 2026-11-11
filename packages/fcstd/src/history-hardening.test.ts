@@ -230,7 +230,7 @@ describe("a profile sketch's cost", () => {
     ];
     const r = await run([body]);
     expect(r.report.bodies[0]?.stop).toMatchObject({ reason: 'sketch' });
-    expect(r.report.bodies[0]?.stop?.detail).toMatch(/more than 200/);
+    expect(r.report.bodies[0]?.stop?.detail).toMatch(new RegExp(`more than ${MAX_PROFILE_CURVES}`));
   });
 
   // The worst cases at the cap, measured: a grid of crossing lines and concentric circles.
@@ -247,10 +247,11 @@ describe("a profile sketch's cost", () => {
       for (let i = 0; i < half; i++) k.line([i, -1], [i, half]);
       for (let i = 0; i < half; i++) k.line([-1, i], [half, i]);
     });
-    // 99 × 99 cells: past the region cap, refused after the detection.
-    expect(refs).toMatch(/9801 closed regions/);
+    // 249 × 249 cells: past the region cap, refused after the detection.
+    expect(refs).toMatch(/62001 closed regions/);
     console.log(`grid of ${MAX_PROFILE_CURVES} lines: ${Math.round(ms)} ms`);
-    expect(ms).toBeLessThan(5000);
+    // About 1–2 s unloaded (the ADR's table); room for a loaded runner.
+    expect(ms).toBeLessThan(10_000);
   }, 60_000);
 
   it('picks the faces of concentric circles at the cap in a few seconds', () => {
@@ -260,7 +261,8 @@ describe("a profile sketch's cost", () => {
     // Bullseye: every other ring, from the outermost.
     expect(refs).toHaveLength(MAX_PROFILE_CURVES / 2);
     console.log(`${MAX_PROFILE_CURVES} concentric circles: ${Math.round(ms)} ms`);
-    expect(ms).toBeLessThan(5000);
+    // About 1–2 s unloaded (the ADR's table); room for a loaded runner.
+    expect(ms).toBeLessThan(10_000);
   }, 60_000);
 
   it('still picks a plate with holes and an island as FreeCAD does', () => {

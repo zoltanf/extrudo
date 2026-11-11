@@ -54,11 +54,14 @@ export const MAX_BODY_FEATURES = 500;
 /** The most features the walk takes over a whole file. */
 export const MAX_FILE_FEATURES = 2_000;
 /**
- * The most drawn (not construction) curves a profile sketch may have
- * (the library's largest has 25): it bounds the region detection and the
- * face picking below (ADR-0144's S5 amendment has the measured worst cases).
+ * The most drawn (not construction) curves a profile sketch may have: it
+ * bounds the region detection and the face picking below. The library's
+ * largest has 25; ordinary parts (a vent of 60 slots, 240 curves; a plate of
+ * 250 holes) need hundreds. Measured unloaded at 500 (ADR-0144's S5
+ * amendment): a grid of crossing lines 1.1 s and 485 MB, concentric circles
+ * 2.1 s and 410 MB; at 1,000 both pass 5 s, the grid in the region detection.
  */
-export const MAX_PROFILE_CURVES = 200;
+export const MAX_PROFILE_CURVES = 500;
 /** The most closed regions a profile sketch may have for its faces to be picked (each pick tests every region). */
 export const MAX_PROFILE_REGIONS = 1_000;
 /** The most bodies one rebuild may answer with: more means the kernel read something it shouldn't have. */
