@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Where drawings live: three concepts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5AA9FF}a:hover{color:#A4CFFF}
+.col{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px}
+.col h2{margin:0;font-size:18px;font-weight:600;letter-spacing:-.02em;display:flex;align-items:center;gap:10px}
+.col p{margin:0;font-size:13px;line-height:1.5;color:#B9C1CF}
+.tag{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#15171C;background:#FFB23E;border-radius:999px;padding:2px 8px}
+.wf{width:100%;height:auto;display:block}
+.w-bg{fill:#1B1F27;stroke:#343B4A}
+.w-pn{fill:#20252F}
+.w-ln{stroke:#343B4A;fill:none}
+.w-gl{fill:#2C3545}
+.w-tx{font-family:'Instrument Sans',system-ui,sans-serif;font-size:6.5px;font-weight:600;letter-spacing:.08em;fill:#939CAD}
+.w-on{fill:#E9EDF3}
+.w-k{stroke:#111318;stroke-width:.8;fill:none}
+.w-row{fill:#343B4A}
+</style>
+</helmet>
+<div style="width:1200px; height:420px; box-sizing:border-box; padding:36px 40px; display:flex; gap:32px; background:#15181F; color:#E9EDF3; font-family:'Instrument Sans',system-ui,sans-serif">
+
+  <div class="col">
+    <h2>A · A mode, like a sketch <span class="tag">Proposed</span></h2>
+    <svg class="wf" viewBox="0 0 352 220" role="img" aria-label="The app with the tabs Home and Drawing, a toolbar ending in a green Finish tile, the browser, a white sheet and a strip of sheet tabs at the bottom">
+      <rect class="w-bg" x=".5" y=".5" width="351" height="219" rx="8"></rect>
+      <rect class="w-gl" x="68" y="50" width="283" height="150"></rect>
+      <rect class="w-pn" x="1" y="50" width="67" height="150"></rect>
+      <rect class="w-pn" x="1" y="200" width="350" height="19"></rect>
+      <path class="w-ln" d="M1 18H351M1 50H351M68 50V200M1 200H351"></path>
+      <rect x="8" y="6" width="7" height="7" rx="1.5" fill="#FFB23E"></rect>
+      <text class="w-tx" x="24" y="12">HOME</text>
+      <text class="w-tx w-on" x="50" y="12">DRAWING</text>
+      <rect x="50" y="16.5" width="33" height="1.5" fill="#FFB23E"></rect>
+      <rect x="8" y="25" width="14" height="14" rx="3" fill="rgba(61,214,163,.3)"></rect><rect x="25" y="25" width="14" height="14" rx="3" fill="rgba(61,214,163,.3)"></rect>
+      <rect x="48" y="25" width="14" height="14" rx="3" fill="rgba(124,155,255,.3)"></rect><rect x="65" y="25" width="14" height="14" rx="3" fill="rgba(124,155,255,.3)"></rect>
+      <rect x="88" y="25" width="14" height="14" rx="3" fill="rgba(60,199,212,.3)"></rect><rect x="105" y="25" width="14" height="14" rx="3" fill="rgba(60,199,212,.3)"></rect>
+      <rect x="128" y="25" width="14" height="14" rx="3" fill="rgba(255,126,182,.3)"></rect>
+      <rect x="151" y="25" width="14" height="14" rx="3" fill="rgba(255,201,60,.3)"></rect>
+      <rect x="174" y="25" width="14" height="14" rx="3" fill="rgba(61,214,140,.35)" stroke="#3DD68C"></rect>
+      <path d="M178 32.5l2.3 2.3 4-4.8" fill="none" stroke="#3DD68C" style="stroke-width:1.2; stroke-linecap:round; stroke-linejoin:round"></path>
+      <rect class="w-row" x="8" y="60" width="40" height="4" rx="2"></rect><rect class="w-row" x="14" y="70" width="44" height="4" rx="2"></rect><rect x="20" y="80" width="38" height="4" rx="2" fill="rgba(255,178,62,.5)"></rect><rect class="w-row" x="20" y="90" width="30" height="4" rx="2"></rect><rect class="w-row" x="14" y="100" width="36" height="4" rx="2"></rect>
+      <rect x="112" y="62" width="196" height="126" fill="#FFFFFF"></rect>
+      <path class="w-k" d="M128 76h54v24h-54ZM128 112h54v34h-54ZM196 76h34v24h-34ZM246 92l16-9 16 9v18l-16 9-16-9ZM236 160h72M236 172h72M236 160v28"></path>
+      <rect x="8" y="204" width="44" height="11" rx="3" fill="rgba(255,178,62,.16)" stroke="#FFB23E"></rect>
+      <rect x="56" y="204" width="36" height="11" rx="3" fill="#1B1F27" stroke="#343B4A"></rect>
+      <text class="w-tx w-on" x="13" y="212">1 · ASSY</text><text class="w-tx" x="61" y="212">2 · LID</text>
+    </svg>
+    <p>The tabs become Home and Drawing, the view becomes the sheet, the timeline becomes sheet tabs. Finish Drawing goes back to the model.</p>
+  </div>
+
+  <div class="col">
+    <h2>B · A Model / Drawing switch</h2>
+    <svg class="wf" viewBox="0 0 352 220" role="img" aria-label="The app with a two-way switch, Model and Drawing, at the left of the top bar, and three tabs of drawing tools beside it">
+      <rect class="w-bg" x=".5" y=".5" width="351" height="219" rx="8"></rect>
+      <rect class="w-gl" x="68" y="50" width="283" height="150"></rect>
+      <rect class="w-pn" x="1" y="50" width="67" height="150"></rect>
+      <rect class="w-pn" x="1" y="200" width="350" height="19"></rect>
+      <path class="w-ln" d="M1 18H351M1 50H351M68 50V200M1 200H351"></path>
+      <rect x="8" y="6" width="7" height="7" rx="1.5" fill="#FFB23E"></rect>
+      <rect x="22" y="4" width="72" height="11" rx="5.5" fill="#20252F" stroke="#343B4A"></rect>
+      <rect x="57" y="5" width="36" height="9" rx="4.5" fill="rgba(255,178,62,.2)" stroke="#FFB23E"></rect>
+      <text class="w-tx" x="28" y="12">MODEL</text><text class="w-tx w-on" x="61" y="12">DRAWING</text>
+      <text class="w-tx w-on" x="104" y="12">VIEWS</text><text class="w-tx" x="132" y="12">ANNOTATE</text><text class="w-tx" x="174" y="12">SHEET</text>
+      <rect x="104" y="16.5" width="22" height="1.5" fill="#FFB23E"></rect>
+      <rect x="8" y="25" width="14" height="14" rx="3" fill="rgba(61,214,163,.3)"></rect><rect x="25" y="25" width="14" height="14" rx="3" fill="rgba(61,214,163,.3)"></rect><rect x="42" y="25" width="14" height="14" rx="3" fill="rgba(61,214,163,.3)"></rect><rect x="59" y="25" width="14" height="14" rx="3" fill="rgba(61,214,163,.3)"></rect>
+      <rect class="w-row" x="8" y="60" width="40" height="4" rx="2"></rect><rect class="w-row" x="14" y="70" width="44" height="4" rx="2"></rect><rect class="w-row" x="20" y="80" width="38" height="4" rx="2"></rect><rect class="w-row" x="20" y="90" width="30" height="4" rx="2"></rect>
+      <rect x="112" y="62" width="196" height="126" fill="#FFFFFF"></rect>
+      <path class="w-k" d="M128 76h54v24h-54ZM128 112h54v34h-54ZM196 76h34v24h-34ZM246 92l16-9 16 9v18l-16 9-16-9ZM236 160h72M236 172h72M236 160v28"></path>
+      <rect x="8" y="204" width="44" height="11" rx="3" fill="rgba(255,178,62,.16)" stroke="#FFB23E"></rect>
+      <rect x="56" y="204" width="36" height="11" rx="3" fill="#1B1F27" stroke="#343B4A"></rect>
+    </svg>
+    <p>A switch that is always in the top bar, each side with its own tabs. More room for tools, but it is the workspace switcher again.</p>
+  </div>
+
+  <div class="col">
+    <h2>C · Its own window</h2>
+    <svg class="wf" viewBox="0 0 352 220" role="img" aria-label="Two windows: the model behind, and in front a second window that shows only the sheet and its tools">
+      <rect class="w-bg" x=".5" y=".5" width="250" height="160" rx="8"></rect>
+      <rect class="w-gl" x="48" y="38" width="202" height="108"></rect>
+      <path class="w-ln" d="M1 14H250M1 38H250M48 38V146M1 146H250"></path>
+      <text class="w-tx" x="20" y="10">HOME</text><text class="w-tx w-on" x="46" y="10">SOLID</text><text class="w-tx" x="72" y="10">MODIFY</text>
+      <path d="M96 84l34-18 34 18v30l-34 18-34-18Z" fill="#6B7488" stroke="rgba(233,237,243,.5)"></path><path d="M96 84l34 18 34-18M130 102v30" fill="none" stroke="rgba(233,237,243,.5)"></path>
+      <rect class="w-bg" x="100.5" y="58.5" width="251" height="161" rx="8"></rect>
+      <rect class="w-gl" x="101" y="96" width="250" height="104"></rect>
+      <rect class="w-pn" x="101" y="200" width="250" height="19"></rect>
+      <path class="w-ln" d="M101 72H351M101 96H351M101 200H351"></path>
+      <text class="w-tx w-on" x="110" y="68">BOX WITH A LID · DRAWING</text>
+      <rect x="108" y="77" width="12" height="12" rx="3" fill="rgba(61,214,163,.3)"></rect><rect x="123" y="77" width="12" height="12" rx="3" fill="rgba(124,155,255,.3)"></rect><rect x="138" y="77" width="12" height="12" rx="3" fill="rgba(60,199,212,.3)"></rect><rect x="153" y="77" width="12" height="12" rx="3" fill="rgba(255,201,60,.3)"></rect>
+      <rect x="150" y="104" width="152" height="90" fill="#FFFFFF"></rect>
+      <path class="w-k" d="M162 114h40v18h-40ZM162 142h40v26h-40ZM214 114h26v18h-26ZM246 174h56M246 183h56M246 174v20"></path>
+      <rect x="108" y="204" width="40" height="11" rx="3" fill="rgba(255,178,62,.16)" stroke="#FFB23E"></rect>
+    </svg>
+    <p>Sheets open in a second window or browser tab, beside the model. Good on two screens; two shells to keep in step, and two things to save.</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

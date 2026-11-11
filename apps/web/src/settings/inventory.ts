@@ -122,6 +122,10 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
       'Not a preference: the recent-actions log an edge or dev build keeps in localStorage (ADR-0127).',
   },
   {
+    key: 'export.sheets',
+    reason: "The Export drawing dialog's own memory: the format of the last export (ADR-0143).",
+  },
+  {
     key: 'export.script',
     reason: "The Export as script dialog's own memory: language and resolution of the last export.",
   },
@@ -143,6 +147,11 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
     reason: 'A dismissal: the notice about software rendering was seen.',
   },
   { key: 'browser.assemblyHint', reason: "A dismissal: the browser's assembly hint was closed." },
+  {
+    key: 'sheet.drawnBy',
+    reason:
+      'Offered in place, never written by itself: the last "Drawn by" typed in Sheet Setup (ADR-0143).',
+  },
   {
     key: 'newDesignUnits',
     reason: 'Edited in place: the unit select on the New design card (ADR-0113 §1).',

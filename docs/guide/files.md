@@ -50,7 +50,8 @@ These are in the Home tab's **Import** group.
 
 - **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import…**
   card does the same, and takes `.f3d` and the model files below too: a model file becomes a
-  new design with the Import Model dialog open.
+  new design with the Import Model dialog open. A design downloaded from a GitHub issue is
+  often an `.extrudo.gz`: import it as it is, no need to unpack it first.
 - **Import Model** brings in a STEP file, an STL, 3MF or OBJ mesh, or an OpenSCAD `.scad`
   file, as bodies in the current design. A STEP file keeps its exact surfaces. A mesh becomes a
   [mesh body](./bodies.md) and must be closed. **Mesh to Solid** turns it into a solid with
@@ -65,7 +66,7 @@ These are in the Home tab's **Import** group.
   file's own shape, without history (an **Import Body3** feature at the end of the timeline),
   and one **Remove rebuilt bodies** feature takes the rebuilt version out: suppress it to see
   what the timeline made.
-- **Import Drawing** needs an open sketch. It reads an SVG or DXF file and adds its lines and
+- **Import SVG/DXF** needs an open sketch. It reads an SVG or DXF file and adds its lines and
   curves to the sketch, at the **Scale** and **Units** you choose. **Fixed** (on by default)
   pins the curves where they are, so they do not move when you add constraints.
 - **Canvas** lays a picture on a plane for you to trace. **Calibrate** sets its real size from

@@ -47,6 +47,9 @@ import {
   type PatternReport,
   PLUGIN_MEDIA_TYPE,
   pluginFileOf,
+  type Sheet,
+  type SheetAnchors,
+  type SheetParts,
   type SketchReport,
   type SweepReport,
   type ThreadReport,
@@ -77,6 +80,7 @@ import {
   type ExportProgress,
   isKernelCrash,
 } from './service';
+import type { SheetViewProgress, SheetViewRequest, SheetViewResult } from './sheets/views';
 
 export interface RecomputerOptions {
   spawn: SpawnKernel;
@@ -733,6 +737,65 @@ export class Recomputer {
     this.client.call((api) => api.cancelCheck()).catch(() => {});
   }
 
+  /**
+   * Sheet views of what the model store shows (P6-24 S2), one at a time;
+   * `onView` hears each and may stop the run, as may `cancelSheetViews`
+   * (rejects with `isSheetViewsCancelled`).
+   */
+  sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+    options?: WaitOptions,
+  ): Promise<SheetViewResult[]> {
+    return this.#wait('Computing the sheet views…', options, () =>
+      this.client.call((api) => api.sheetViews(requests, onView)),
+    );
+  }
+
+  /**
+   * The version of each body the model store holds now (the last finished
+   * recompute's, `BodyResult.version`), which a sheet view result's
+   * `versions` are compared with to tell stale lines (P6-24 S2).
+   */
+  bodyVersions(): Record<BodyId, string> {
+    return this.#have();
+  }
+
+  /** Stops running sheet views before their next view. */
+  cancelSheetViews(): void {
+    this.client.call((api) => api.cancelSheetViews()).catch(() => {});
+  }
+
+  /**
+   * A sheet's dimension anchors against what the model store shows (P6-24
+   * S3): per dimension, per anchor, its state and 3D geometry. Undefined if
+   * the kernel can't say (keep the last result then).
+   */
+  async resolveSheet(sheet: Sheet, options?: WaitOptions): Promise<SheetAnchors | undefined> {
+    try {
+      return await this.#wait("Reading the sheet's dimensions…", options, () =>
+        this.client.call((api) => api.resolveSheet(sheet)),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * What a sheet's parts lists need of the model (P6-24 S5): per list, its
+   * view's bodies and their measures. Undefined if the kernel can't say
+   * (keep the last result then).
+   */
+  async sheetParts(sheet: Sheet, options?: WaitOptions): Promise<SheetParts | undefined> {
+    try {
+      return await this.#wait("Reading the sheet's parts lists…", options, () =>
+        this.client.call((api) => api.sheetParts(sheet)),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
   /** The dialog closed: drops a pending preview. */
   endPreview(): void {
     this.#endPreview();
@@ -904,8 +967,9 @@ export class Recomputer {
         }
         const full = this.#document.getState().doc;
         const marker = full.timelineMarker;
-        // Annotations may name sketches past the marker (ADR-0126); a command can't read them.
-        const { annotations: _notes, annotationCounter: _counter, ...rest } = full;
+        // Annotations may name sketches past the marker (ADR-0126) and sheets bodies past
+        // it (ADR-0143); a command can't read either.
+        const { annotations: _notes, annotationCounter: _counter, sheets: _sheets, ...rest } = full;
         const doc: ExtrudoDocument = {
           ...rest,
           features: full.features.slice(0, marker),

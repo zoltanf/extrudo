@@ -1,0 +1,23 @@
+{
+  "name": "@extrudo/sheets",
+  "version": "0.10.0",
+  "private": true,
+  "description": "Drawing sheets laid out as display lists (border, title block, text, views) and written as PDF and SVG. No DOM; runs in Node.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/core": "workspace:*",
+    "@extrudo/fonts": "workspace:*",
+    "@extrudo/io": "workspace:*",
+    "@extrudo/sketch": "workspace:*"
+  },
+  "devDependencies": {
+    "@extrudo/kernel": "workspace:*"
+  }
+}

@@ -1,0 +1,1 @@
+- 2026-11-07 · **Updates**: while a new version is ready, the Menu's bottom strip has **Restart** (desktop) or **Reload** (web) next to the update state; like the update message's button, it saves every open design first.

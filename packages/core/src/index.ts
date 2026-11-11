@@ -89,6 +89,11 @@ export * from './rib';
 export * from './scale';
 export * from './schema';
 export * from './script';
+export * from './sheet-anchors';
+export * from './sheet-fields';
+export * from './sheet-frame';
+export * from './sheet-schema';
+export * from './sheets';
 export * from './shell';
 export * from './sketch/commands';
 export * from './sketch/curves';
@@ -107,6 +112,7 @@ export {
   createSessionStore,
   type DocumentState,
   type DocumentStore,
+  type EditMode,
   type FeatureStatus,
   type GeneratedFeatureStatus,
   type JointReport,

@@ -26,7 +26,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Import .extrudo](./importProject.md) — Open an .extrudo file as a new design.
 - [Import STEP, mesh, OpenSCAD or .f3d](./importBody.md) — Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d file opens as a new design.
-- [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
+- [Import SVG/DXF](./importDrawing.md) — Bring an SVG or DXF file into the sketch as ordinary curves.
 - [Canvas](./canvas.md) — Lay a picture on a plane as a reference to trace, and calibrate it to real scale.
 
 ### Export
@@ -160,7 +160,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Control Point Spline](./splineControl.md) — A smooth curve guided by the points you click. Enter to finish.
 - [Conic](./conic.md) — A conic from its two ends and the shoulder point. Rho sets how full it is.
 - [Text](./text.md) — Type text on the sketch. Its letters are closed regions like any other profile.
-- [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
+- [Import SVG/DXF](./importDrawing.md) — Bring an SVG or DXF file into the sketch as ordinary curves.
 - [Project](./project.md) — Bring body edges, faces, vertices and bodies, and curves of earlier sketches, into the sketch; they follow their source.
 - [Intersect](./intersect.md) — Bring in the curves where a face or body meets the sketch plane; they follow the model.
 - [Mirror](./sketchMirror.md) — Mirror curves about a line; the copies stay symmetric.
@@ -219,3 +219,20 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Export](./export.md) — STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 - [Render Picture](./render.md) — Render a presentable picture of the design.
+- [Drawing](./sheets.md) — Sheets of the design to print or send: open the drawing, or start one.
+
+## Drawing
+
+### Views
+
+- [Base View](./baseView.md) — A view of the model from a direction you choose: the frame follows the pointer, a click places it.
+- [Projected View](./projectedView.md) — Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.
+
+### Sheet
+
+- [New Sheet](./newSheet.md) — Add an empty sheet after this one.
+- [Sheet Setup](./sheetSetup.md) — The sheet’s name, paper, border, title block, scale and projection.
+
+### Output
+
+- [Export PDF](./exportSheets.md) — Export the drawing’s sheets: one PDF with a page per sheet, or an SVG per sheet.

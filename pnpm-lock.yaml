@@ -281,6 +281,9 @@ importers:
       '@extrudo/script':
         specifier: workspace:*
         version: link:../../packages/script
+      '@extrudo/sheets':
+        specifier: workspace:*
+        version: link:../../packages/sheets
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../../packages/sketch
@@ -448,6 +451,12 @@ importers:
         specifier: workspace:*
         version: link:../kernel
 
+  packages/fcstd:
+    dependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+
   packages/fonts: {}
 
   packages/io:
@@ -516,6 +525,25 @@ importers:
       sucrase:
         specifier: ^3.35.0
         version: 3.35.1
+
+  packages/sheets:
+    dependencies:
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/fonts':
+        specifier: workspace:*
+        version: link:../fonts
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../io
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/sketch:
     dependencies:

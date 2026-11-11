@@ -1,14 +1,15 @@
+import type { EditMode } from '@extrudo/core';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_KEYMAP } from '../commands/keymap';
 import { searchCommands } from '../commands/search';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
-import { buildCommands, type CommandContext, commandShortcuts } from './commands';
+import { buildCommands, type CommandContext, commandShortcuts, modelOnlyReason } from './commands';
 import { clearHelpTarget, setHelpTarget } from './helpTarget';
 import { menuModel, NATIVE_MENU_OWN } from './menuModel';
 import { lastHoveredTool, setHoveredTool } from './Toolbar';
 
-function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): CommandContext {
+function context(mode: EditMode, over: Partial<CommandContext> = {}): CommandContext {
   return {
     mode,
     runTool: vi.fn(),
@@ -34,6 +35,21 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
     theme: { choice: 'dark', set: vi.fn() },
     settings: { open: vi.fn() },
     ...over,
+  };
+}
+
+/** Two sheets and the drawing's actions, as spies (P6-24). */
+function twoSheets(): NonNullable<CommandContext['sheets']> {
+  return {
+    list: [
+      { id: 's1', name: 'Assembly' },
+      { id: 's2', name: 'Lid' },
+    ],
+    open: vi.fn(),
+    newSheets: vi.fn(),
+    openSheets: vi.fn(),
+    fit: vi.fn(),
+    step: vi.fn(),
   };
 }
 
@@ -131,6 +147,8 @@ describe('buildCommands', () => {
     const ids = new Set([
       ...buildCommands(context('model')).map((c) => c.id),
       ...buildCommands(context('sketch')).map((c) => c.id),
+      // The drawing's sheet keys exist with two sheets or more (P6-24).
+      ...buildCommands(context('sheet', { sheets: twoSheets() })).map((c) => c.id),
       // The shell opens the search itself, centred or at the pointer.
       'search',
       'searchAtPointer',
@@ -305,6 +323,23 @@ describe('buildCommands', () => {
     expect(inSketch?.unavailable).toBe('Finish the sketch to use Customizer.');
     inSketch?.run();
     expect(ctx.notify).toHaveBeenCalledWith('info', 'Finish the sketch to use Customizer.');
+  });
+
+  it('gives a model-only tile its reason in a sketch and the drawing, none in the model', () => {
+    expect(modelOnlyReason('sketch', 'importBody')).toBe(
+      'Finish the sketch to use Import STEP, mesh, OpenSCAD or .f3d.',
+    );
+    expect(modelOnlyReason('sketch', 'canvas')).toBe('Finish the sketch to use Canvas.');
+    expect(modelOnlyReason('sheet', 'customizer')).toBe('Finish the drawing to use Customizer.');
+    expect(modelOnlyReason('model', 'canvas')).toBeUndefined();
+    // Other Home tools run in a sketch.
+    expect(modelOnlyReason('sketch', 'parameters')).toBeUndefined();
+  });
+
+  it('gives no reason, and does not throw, for an ID that is not a tool (a plugin feature)', () => {
+    for (const mode of ['model', 'sketch', 'sheet'] as const) {
+      expect(modelOnlyReason(mode, 'plugin:nameplate')).toBeUndefined();
+    }
   });
 
   it('starts tools through the context', () => {
@@ -544,5 +579,64 @@ describe('Look at Selection (UI spec §3.1)', () => {
     expect(command?.group).toBe('View');
     command?.run();
     expect(run).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the drawing's commands (P6-24, ADR-0143)", () => {
+  const ids = (ctx: CommandContext) => buildCommands(ctx).map((c) => c.id);
+
+  it('offers New Drawing, Open Drawing and a command per sheet in the model', () => {
+    const sheets = twoSheets();
+    const commands = buildCommands(context('model', { sheets }));
+    expect(ids(context('model', { sheets }))).toEqual(
+      expect.arrayContaining(['newSheets', 'openSheets', 'sheet:s1', 'sheet:s2']),
+    );
+    commands.find((c) => c.id === 'sheet:s2')?.run();
+    expect(sheets.open).toHaveBeenCalledWith('s2');
+    expect(commands.find((c) => c.id === 'sheet:s1')?.label).toBe('Sheet: Assembly');
+    // With no sheet there is nothing to open.
+    expect(ids(context('model', { sheets: { ...sheets, list: [] } }))).not.toContain('openSheets');
+  });
+
+  it('in the drawing: Home and Drawing tools, Finish Drawing, the sheet keys and F6 on the sheet', () => {
+    const sheets = twoSheets();
+    const commands = buildCommands(context('sheet', { sheets }));
+    const offered = commands.map((c) => c.id);
+    expect(offered).toEqual(
+      expect.arrayContaining([
+        'newSheet',
+        'sheetSetup',
+        'exportSheets',
+        'finishDrawing',
+        'parameters',
+        'nextSheet',
+        'previousSheet',
+      ]),
+    );
+    // The model's tabs and the camera's views are not offered on a sheet.
+    for (const id of ['extrude', 'line', 'viewTop', 'lookAtSelection', 'openSheets']) {
+      expect(offered).not.toContain(id);
+    }
+    expect(commands.find((c) => c.id === 'exportSheets')?.keys).toEqual(['Mod+E']);
+    expect(commands.find((c) => c.id === 'nextSheet')?.keys).toEqual(['Mod+PageDown']);
+    commands.find((c) => c.id === 'fit')?.run();
+    expect(sheets.fit).toHaveBeenCalled();
+    commands.find((c) => c.id === 'previousSheet')?.run();
+    expect(sheets.step).toHaveBeenCalledWith(-1);
+  });
+
+  it("says Home's model-only tools need the drawing finished", () => {
+    const ctx = context('sheet', { sheets: twoSheets() });
+    const commands = buildCommands(ctx);
+    const canvas = commands.find((c) => c.id === 'canvas');
+    expect(canvas?.unavailable).toMatch(/^Finish the drawing to use /);
+    canvas?.run();
+    expect(ctx.notify).toHaveBeenCalledWith('info', canvas?.unavailable);
+    expect(commands.find((c) => c.id === 'parameters')?.unavailable).toBeUndefined();
+  });
+
+  it('offers no sheet keys with one sheet', () => {
+    const one = { ...twoSheets(), list: [{ id: 's1', name: 'Assembly' }] };
+    expect(ids(context('sheet', { sheets: one }))).not.toContain('nextSheet');
   });
 });

@@ -47,7 +47,12 @@ import {
   SAVE_AS_ID,
 } from './menuTemplate';
 import { isAllowedNavigation } from './navigation';
-import { createOpenQueue, extrudoPathFromArgv, isExtrudoPath } from './openPaths';
+import {
+  createOpenQueue,
+  extrudoPathFromArgv,
+  isExtrudoPath,
+  isGzippedExtrudoPath,
+} from './openPaths';
 import { allowPermission, isSpaceMouse } from './permissions';
 import { createPreferencesFile } from './preferences';
 import { APP_URL, handleAppProtocol, registerAppScheme } from './protocol';
@@ -215,7 +220,8 @@ function main(): void {
   async function openDialog(): Promise<void> {
     const options: OpenDialogOptions = {
       properties: ['openFile'],
-      filters: [{ name: 'Extrudo', extensions: ['extrudo'] }],
+      // `gz` too: a design from a GitHub issue is an `.extrudo.gz` (main refuses other `.gz`).
+      filters: [{ name: 'Extrudo', extensions: ['extrudo', 'gz'] }],
     };
     const win = getWindow();
     const result = win
@@ -253,17 +259,22 @@ function main(): void {
         return;
       }
       const bytes = await readFile(path);
+      // A gzipped file opens as a copy (the renderer doesn't link it), so it
+      // gets no write-back and no place in the recent list.
+      const linked = !isGzippedExtrudoPath(path);
       // Main chose this path, so the renderer may write it back later.
-      paths.issue(path);
-      recent.add(path);
-      app.addRecentDocument(path);
+      if (linked) {
+        paths.issue(path);
+        recent.add(path);
+        app.addRecentDocument(path);
+      }
       send(CHANNELS.fileOpenPath, {
         path,
         name,
         bytes: new Uint8Array(bytes),
         modified: info.mtimeMs,
       });
-      recentChanged();
+      if (linked) recentChanged();
     } catch {
       // The file is gone or unreadable: forget it rather than keep a dead entry.
       recent.remove(path);

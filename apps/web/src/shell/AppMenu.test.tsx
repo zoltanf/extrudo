@@ -126,6 +126,25 @@ describe('the app menu panel', () => {
     expect(markup()).toContain('GitHub');
   });
 
+  it('offers Restart (desktop) or Reload (web) in the strip only while an update is ready', () => {
+    const strip = (state: UpdateState, action?: string, over: Partial<MenuPanelProps> = {}) => {
+      const store = createStore<UpdateState>(() => state);
+      const updates = { store, apply: async () => true, ...(action && { action }) };
+      return markup({ updates, onApplyUpdate: vi.fn(), ...over });
+    };
+    const ready: UpdateState = { waiting: true, version: '0.10.0' };
+    expect(strip(ready, 'Restart')).toContain('>Restart</button>');
+    expect(strip(ready)).toContain('>Reload</button>');
+    expect(strip({ waiting: false }, 'Restart')).not.toContain('>Restart<');
+    expect(strip({ waiting: false, check: 'current' })).not.toContain('>Reload<');
+    expect(strip(ready, 'Restart', { onApplyUpdate: undefined })).not.toContain('>Restart<');
+    // It comes first and is the group's Tab stop; Check now and GitHub follow.
+    const html = strip(ready, 'Restart', { onCheckUpdates: vi.fn() });
+    const links = html.slice(html.indexOf('aria-label="Links"'));
+    expect([...links.matchAll(/tabindex="(-?\d)"/g)].map((m) => m[1])).toEqual(['0', '-1', '-1']);
+    expect(html.indexOf('>Restart<')).toBeLessThan(html.indexOf('>Check now<'));
+  });
+
   it('gives each state a dot colour as well as the word', () => {
     expect(updateWord(undefined)).toEqual({ dot: 'bg-muted' });
     expect(updateWord({ waiting: true }).dot).toBe('bg-warning');

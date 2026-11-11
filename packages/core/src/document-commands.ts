@@ -35,6 +35,8 @@ import {
   type ViewSection,
   ViewSectionSchema,
 } from './schema';
+import { mapSheetFieldTexts, renameSheetFieldReferences } from './sheet-fields';
+import type { Sheet } from './sheet-schema';
 import { dimensionUnit } from './sketch/dimensions';
 import type { SketchDimension } from './sketch/schema';
 import { referencedFeatures } from './timeline';
@@ -50,7 +52,7 @@ export const renameDocument = defineCommand<{ name: string }>(
 /**
  * Brings back a saved version's content (FR-PRJ-03, P2-14): its settings,
  * parameters, timeline, groups, components, joints, bodies, views,
- * configurations, attachments and annotations. The document's ID, name and
+ * configurations, attachments, annotations and sheets. The document's ID, name and
  * dates stay, so the project stays the same project. One undo step.
  * Attachments come back with the rest: a version's texts need the fonts it
  * carried (P4-03b), and its groups come back with the timeline they were folds
@@ -74,6 +76,8 @@ export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
     draft.components = doc.components;
     draft.joints = doc.joints;
     draft.annotations = doc.annotations;
+    if (doc.sheets) draft.sheets = doc.sheets;
+    else delete draft.sheets;
     const counter = Math.max(draft.annotationCounter ?? 0, doc.annotationCounter ?? 0);
     if (counter > 0) draft.annotationCounter = counter;
     normalizeGroupsInPlace(draft);
@@ -260,6 +264,14 @@ function rewriteReferences(draft: DocumentDraft, oldName: string, newName: strin
       section.center = [rename(cx), rename(cy), rename(cz)];
       section.half = [rename(hx), rename(hy), rename(hz)];
     }
+  }
+  // A sheet text's `{= …}` fields (ADR-0143's S5 amendment).
+  if (draft.sheets) {
+    draft.sheets = draft.sheets.map((sheet) =>
+      mapSheetFieldTexts(sheet as Sheet, (text) =>
+        renameSheetFieldReferences(text, oldName, newName),
+      ),
+    );
   }
 }
 

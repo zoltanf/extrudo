@@ -50,11 +50,15 @@ fillet/chamfer/shell/hole/pattern/mirror/boolean, construction geometry,
 parameters, a timeline, a local project store, and STL/3MF/STEP/SVG/DXF export.
 
 **Later** (Phase 5+): scripting and code features, OpenSCAD import, a headless
-CLI, the desktop app, a plugin API, and components with simple assemblies.
+CLI, the desktop app, a plugin API, components with simple assemblies, and
+drawings: 2D sheets made from the model, with dimensions and a parts list,
+exported to PDF (the owner, 2026-11-10; ADR-0143; they stood under *Out of
+scope* until then).
 
-**Out of scope** (no plans): CAM/toolpaths, FEA simulation, 2D engineering
-drawings, sheet metal, T-splines/sculpt, rendering, real-time cloud
-collaboration.
+**Out of scope** (no plans): CAM/toolpaths, FEA simulation, sheet metal,
+T-splines/sculpt, rendering, real-time cloud collaboration. Drawings that
+claim conformance to a drawing standard, GD&T and 2D drafting without a model
+stay out too.
 
 ## 5. Functional requirements
 
@@ -201,6 +205,23 @@ for the phase's release, **S** = should, **C** = could.
 | FR-UX-05 | First-run guided tutorial ("make your first box") and a starter template gallery. | S | 3 |
 | FR-UX-06 | Friendly error messages. A failed fillet says "radius too large for edge X (max ≈ 2.4 mm)", not a kernel error code. | M | 3 |
 | FR-UX-07 | Internationalization-ready strings (English first). | S | 1 |
+
+### 5.11 Drawings (FR-DR)
+
+Added on 2026-11-10 (ADR-0143; the specification is
+`docs/plans/drawings-2026-11-10.md`). A drawing is a set of sheets that show
+the model and follow it; dimensions are measured and never drive the model.
+
+| ID | Requirement | Pri | Phase |
+|---|---|---|---|
+| FR-DR-01 | A design holds an ordered list of sheets, each with a size (A0–A4, Letter, Legal, Tabloid or custom), an orientation, an optional border and a title block. Sheets are saved in the `.extrudo` document and every change to them is undoable. | M | 6 |
+| FR-DR-02 | A drawing mode, entered from the Make tab or the browser and left with Finish Drawing: its own toolbar tab, the sheet in place of the 3D view, one tab per sheet. Its line views need no WebGL. | M | 6 |
+| FR-DR-03 | Views of chosen bodies from a chosen direction at a scale, with exact visible and hidden lines. Projected views stay aligned with their base view, in first or third angle per sheet. Views follow the model when it changes. | M | 6 |
+| FR-DR-04 | Dimensions on views: linear (horizontal, vertical, aligned), radius, diameter and angle, with decimals per sheet and per dimension. They follow the model; a dimension whose geometry is gone is kept and shown as detached. | M | 6 |
+| FR-DR-05 | Notes: text, leader notes, centre marks and centre lines, and sticky notes that stay out of the export unless switched to print. | M | 6 |
+| FR-DR-06 | A parts list filled from a view's bodies (item, quantity with identical bodies merged, name, material, size from the bounding box), balloons numbered by it, and free tables. | M | 6 |
+| FR-DR-07 | Export of chosen sheets to PDF (vector, one page per sheet at true size, text that can be selected) and SVG. What is on screen is what is exported. | M | 6 |
+| FR-DR-08 | Sheets in the document API, the CLI (`export --format pdf`) and the desktop MCP tools. | S | 6 |
 
 ## 6. Non-functional requirements
 

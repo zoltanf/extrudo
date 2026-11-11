@@ -59,7 +59,7 @@ describe('tool demos', () => {
     }
   });
 
-  it("has a clip for every tool of the Sketch tab's menus but Import Drawing", () => {
+  it("has a clip for every tool of the Sketch tab's menus but Import SVG/DXF", () => {
     const groups = TABS.find((t) => t.id === 'sketch')?.groups ?? [];
     const menus = groups.flatMap((group) => group.more ?? []);
     expect(menus.length).toBeGreaterThan(20);

@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { expect, type Page, test } from '@playwright/test';
 import {
   type AttachmentId,
@@ -206,6 +207,23 @@ test('opens a design a newer Extrudo saved, and says what it left out (P3-13)', 
   await expect(
     page.getByRole('status').filter({ hasText: 'saved by a newer Extrudo (file format 3' }),
   ).toContainText("1 setting this version doesn't know was left out.");
+});
+
+test('imports a gzipped design (.extrudo.gz, as a GitHub issue attaches one)', async ({ page }) => {
+  await page.goto('./');
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
+  ]);
+  await chooser.setFiles({
+    name: 'Shared.extrudo.gz',
+    mimeType: 'application/gzip',
+    buffer: gzipSync(writeArchive(createDocument({ name: 'Shared in an issue' }))),
+  });
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  await expect(
+    page.getByRole('button', { name: 'Project name: Shared in an issue. Rename' }),
+  ).toBeVisible();
 });
 
 test('import refuses a file that is not a project', async ({ page }) => {

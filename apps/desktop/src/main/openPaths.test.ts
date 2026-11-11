@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createOpenQueue, extrudoPathFromArgv, isExtrudoPath } from './openPaths';
+import {
+  createOpenQueue,
+  extrudoPathFromArgv,
+  isExtrudoPath,
+  isGzippedExtrudoPath,
+} from './openPaths';
 
 describe('extrudoPathFromArgv (P6-01 slice 2)', () => {
   it('finds an .extrudo path among the arguments, case-insensitively', () => {
@@ -20,6 +25,14 @@ describe('extrudoPathFromArgv (P6-01 slice 2)', () => {
     expect(isExtrudoPath('/tmp/a.extrudo.bak')).toBe(false);
     expect(isExtrudoPath('/tmp/a.txt')).toBe(false);
     expect(isExtrudoPath('')).toBe(false);
+  });
+
+  it('takes a gzipped .extrudo too, and tells it apart', () => {
+    expect(isExtrudoPath('/tmp/a.extrudo.gz')).toBe(true);
+    expect(isExtrudoPath('/tmp/A.EXTRUDO.GZ')).toBe(true);
+    expect(isExtrudoPath('/tmp/a.stl.gz')).toBe(false);
+    expect(isGzippedExtrudoPath('/tmp/a.extrudo.gz')).toBe(true);
+    expect(isGzippedExtrudoPath('/tmp/a.extrudo')).toBe(false);
   });
 });
 

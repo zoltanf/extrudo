@@ -30,6 +30,7 @@ import {
   setFeatureSuppressed,
   setFeatureVisibility,
 } from '@extrudo/core';
+import { finishDrawing } from '../sheets/mode';
 import { editSketch, type SketchModeStores } from '../sketch/mode';
 
 export interface FeatureActions {
@@ -130,8 +131,16 @@ export function createFeatureActions(
   return {
     edit(id) {
       const f = feature(id);
-      if (f && readSketch(f)) return editSketch(stores, id);
-      if (!f || session.getState().mode === 'sketch') return false;
+      if (!f) return false;
+      const sketch = readSketch(f) !== undefined;
+      // From the drawing (a recompute error's Edit, say), the drawing ends first: a sketch
+      // or a feature dialog belongs to the model (P6-24).
+      if (session.getState().mode === 'sheet') {
+        if (!sketch && !(dialogs.hasDialog?.(f.type) ?? false)) return false;
+        finishDrawing(stores);
+      }
+      if (sketch) return editSketch(stores, id);
+      if (session.getState().mode === 'sketch') return false;
       return dialogs.editFeature?.(id) ?? false;
     },
     canEdit: (f, index, marker) =>

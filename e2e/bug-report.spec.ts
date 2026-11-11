@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openAppMenu, openProject, pickMenuItem } from './helpers';
+import { openAppMenu, openProject, pickMenuItem, pickTool, selectTab } from './helpers';
 
 // ADR-0092: Report a bug drafts a GitHub issue. The external host is answered
 // locally (nothing leaves the machine). Reading the PNG back from the
@@ -105,6 +105,34 @@ test('Remove drops the screenshot and Take screenshot brings it back', async ({ 
   await expect(d.getByRole('img', { name: 'Screenshot' })).toHaveCount(0);
   await d.getByRole('button', { name: 'Take screenshot' }).click();
   await expect(d.getByRole('img', { name: 'Screenshot' })).toBeVisible();
+});
+
+test('in the drawing the screenshot is the sheet, not the hidden 3D view (P6-24)', async ({
+  page,
+}) => {
+  await openProject(page);
+  await selectTab(page, 'Make');
+  await pickTool(page, 'Drawing');
+  await page
+    .getByRole('dialog', { name: 'New drawing' })
+    .getByRole('button', { name: 'Create Drawing' })
+    .click();
+  await expect(page.getByRole('region', { name: 'Sheet', exact: true })).toBeVisible();
+  await pickMenuItem(page, 'App', 'Report a bug');
+  const shot = dialog(page).getByRole('img', { name: 'Screenshot' });
+  await expect(shot).toBeVisible();
+  // A3 landscape's shape, its longer side 1600 px.
+  await expect
+    .poll(() =>
+      shot.evaluate((img: unknown) => {
+        const { naturalWidth, naturalHeight } = img as {
+          naturalWidth: number;
+          naturalHeight: number;
+        };
+        return `${naturalWidth}x${naturalHeight}`;
+      }),
+    )
+    .toBe('1600x1131');
 });
 
 test("About's footer opens the dialog", async ({ page }) => {

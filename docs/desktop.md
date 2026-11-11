@@ -152,6 +152,10 @@ Import dialog that follows is the one for a STEP file. The design stores the
 STEP, not the original file, so it opens in the browser too; the browser itself
 can't convert these files and says the desktop app does.
 
+A `.fcstd` file also stores the shapes its features went through. cadmpeg
+writes them as hidden solids, and they come in as hidden bodies (the eye is off
+in the browser): what shows is the part, and the hidden bodies can be removed.
+
 A file over 100 MB, a conversion that takes longer than 2 minutes or a file
 cadmpeg's own check refuses is not imported; the message is cadmpeg's last
 line of output. A conversion that gives no solid body (cadmpeg couldn't read
@@ -233,7 +237,7 @@ so publishing the release is what ships an update. Prereleases are ignored.
 
 | Install | What happens |
 |---|---|
-| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
+| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches; the Menu strip has the same **Restart** while the update waits), or installs on the next quit |
 | Windows (NSIS) | the same |
 | Windows portable exe | the same as a deb: there is no installer to run, so it says a version is out and offers the release page; download the new exe and keep the `Extrudo-data` folder beside it |
 | Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |

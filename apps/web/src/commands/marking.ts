@@ -8,6 +8,7 @@
  * its layout; the day the command appears in `buildCommands`, the slot
  * lights up with no change here (Press Pull did so in P3-08).
  */
+import type { EditMode } from '@extrudo/core';
 import type { IconName, ToolCategory } from '../design-system';
 import type { AppCommand } from '../shell/commands';
 
@@ -61,6 +62,30 @@ export const SKETCH_SLOTS: readonly SlotSpec[] = [
   },
 ];
 
+/**
+ * The same, in the drawing (P6-24, ADR-0143): the sheet's own tools, then Undo and Finish
+ * Drawing. Base View took Sheet Setup's wedge (S2): the right column shows the setup
+ * whenever nothing is selected. Later slices' tools replace wedges the same way.
+ */
+export const SHEET_SLOTS: readonly SlotSpec[] = [
+  { command: 'baseView', label: 'Base View', icon: { name: 'base-view', category: 'create' } },
+  { command: 'newSheet', label: 'New Sheet', icon: { name: 'new-sheet', category: 'file' } },
+  {
+    command: 'exportSheets',
+    label: 'Export PDF',
+    icon: { name: 'export-pdf', category: 'export' },
+  },
+  { command: 'fit', label: 'Fit' },
+  { command: 'nextSheet', label: 'Next Sheet' },
+  { command: 'undo', label: 'Undo' },
+  { command: 'previousSheet', label: 'Previous Sheet' },
+  {
+    command: 'finishDrawing',
+    label: 'Finish Drawing',
+    icon: { name: 'finish-sketch', category: 'file' },
+  },
+];
+
 export interface ResolvedSlot {
   spec: SlotSpec;
   /** The offered command, or `undefined` when there is none here. */
@@ -77,10 +102,7 @@ export interface ResolvedSlot {
  * `marking.slots` preference. Per mode, one entry per wedge: a command ID, or
  * `null` (and a missing entry) for the table's own wedge.
  */
-export interface MarkingOverrides {
-  model?: readonly (string | null)[];
-  sketch?: readonly (string | null)[];
-}
+export type MarkingOverrides = Partial<Record<EditMode, readonly (string | null)[]>>;
 
 export const MARKING_SLOTS_KEY = 'marking.slots';
 
@@ -145,7 +167,9 @@ export function resolveSlots(
  * the ones you'd want again (a sketch tool, Extrude, Fillet...). Undo, Redo
  * and Delete would be dangerous to repeat by accident, view and panel
  * commands aren't work, and leaving a sketch or opening a dialog such as
- * Parameters or Export isn't something to run twice.
+ * Parameters or Export isn't something to run twice. The same holds in the drawing:
+ * entering or leaving it (Make › Drawing, Finish Drawing) and its dialogs (Sheet Setup,
+ * Export PDF); New Sheet stays repeatable.
  */
 export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'finishSketch',
@@ -158,6 +182,10 @@ export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'recordMacro',
   'stopMacro',
   'exportScript',
+  'sheets',
+  'finishDrawing',
+  'sheetSetup',
+  'exportSheets',
 ]);
 
 /** Whether running the tool `id` counts as "the last command" for Repeat last. */

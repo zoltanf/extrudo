@@ -6,15 +6,16 @@
  * "ring or list" preference and the Appearance popover that the list's
  * "Appearance…" opens at the menu.
  */
-import type { BodyId, Feature, FeatureId, SelectionItem, SessionStore } from '@extrudo/core';
+import type {
+  BodyId,
+  EditMode,
+  Feature,
+  FeatureId,
+  SelectionItem,
+  SessionStore,
+} from '@extrudo/core';
 import { type ReactElement, useMemo, useState } from 'react';
-import {
-  MARKING_SLOTS_KEY,
-  type MarkingOverrides,
-  MODEL_SLOTS,
-  resolveSlots,
-  SKETCH_SLOTS,
-} from '../commands/marking';
+import { MARKING_SLOTS_KEY, type MarkingOverrides, resolveSlots } from '../commands/marking';
 import type { PlacementActions } from '../components/placement';
 import { type MarkingSlot, Popover, ToolIcon } from '../design-system';
 import type { Preferences } from '../platform/preferences';
@@ -25,6 +26,7 @@ import type { BodyActions, BodyEntry } from './bodies';
 import type { AppCommand } from './commands';
 import { contextEntries } from './contextEntries';
 import type { GroupActions } from './groupActions';
+import { MODES } from './modes';
 
 /** The preference: `true` (the default) draws the ring, `false` one plain list. */
 export const MARKING_RADIAL_KEY = 'marking.radial';
@@ -55,12 +57,12 @@ export function useMarkingSlots(preferences: Preferences) {
   return {
     overrides,
     /** Assigns `command` to wedge `index` of the mode; `null` gives the table's wedge back. */
-    assign(mode: 'model' | 'sketch', index: number, command: string | null) {
+    assign(mode: EditMode, index: number, command: string | null) {
       const list = Array.from({ length: 8 }, (_, i) => overrides[mode]?.[i] ?? null);
       list[index] = command;
       write({ ...overrides, [mode]: list.some((c) => c !== null) ? list : undefined });
     },
-    resetAll(mode: 'model' | 'sketch') {
+    resetAll(mode: EditMode) {
       write({ ...overrides, [mode]: undefined });
     },
   };
@@ -77,7 +79,7 @@ const SKETCH_KINDS: ReadonlySet<string> = new Set([
 ]);
 
 export interface ViewMenuInput {
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   session: SessionStore;
   viewport: ViewportStore;
   commands: readonly AppCommand[];
@@ -132,8 +134,11 @@ export function useViewMenu(input: ViewMenuInput): {
         if (target && !state.selection.some((i) => sameItem(i, target))) {
           state.select([target], 'replace');
         }
-        const specs = mode === 'sketch' ? SKETCH_SLOTS : MODEL_SLOTS;
-        const slots = resolveSlots(specs, commands, overrides?.[mode]).map<MarkingSlot>((slot) => {
+        const slots = resolveSlots(
+          MODES[mode].markingSlots,
+          commands,
+          overrides?.[mode],
+        ).map<MarkingSlot>((slot) => {
           const { command, spec } = slot;
           const tool = spec.icon;
           return {

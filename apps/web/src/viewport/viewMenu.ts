@@ -4,11 +4,11 @@
  * knows the commands, the selection and the actions. The view hands over the
  * request and draws whatever comes back as a marking menu.
  */
-import type { SelectionItem } from '@extrudo/core';
+import type { EditMode, SelectionItem } from '@extrudo/core';
 import type { MarkingEntry, MarkingSlot } from '../design-system';
 
 export interface ViewMenuRequest {
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   /** Model mode: the item the pointer is over (what a click would select), if any. */
   top?: SelectionItem;
   /** Model mode: the stack under the pointer, front first ("Select other…"'s rows). */

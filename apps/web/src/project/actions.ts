@@ -88,6 +88,13 @@ export function loadProject(platform: Platform, id: ProjectId): Promise<ExtrudoD
 }
 
 /**
+ * What an Extrudo design file is picked as: an `.extrudo`, or one gzipped
+ * (`.extrudo.gz`, how a design comes from a GitHub issue), which
+ * `readArchive` unpacks.
+ */
+export const DESIGN_ACCEPT = `${FILE_EXTENSION},.gz,application/zip,application/gzip`;
+
+/**
  * Lets the user pick an `.extrudo` file (or takes `picked`) and imports it;
  * `undefined` if they cancel. An `.f3d` picked here is imported as one too.
  */
@@ -95,8 +102,7 @@ export async function importProject(
   platform: Platform,
   picked?: File,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file =
-    picked ?? (await platform.files.pick(`${FILE_EXTENSION},application/zip,${F3D_ACCEPT}`));
+  const file = picked ?? (await platform.files.pick(`${DESIGN_ACCEPT},${F3D_ACCEPT}`));
   if (!file) return undefined;
   if (/\.f3d$/i.test(file.name)) {
     const id = await importF3dFile(platform, file);
@@ -118,9 +124,7 @@ export async function importProject(
 export async function importAnyFile(
   platform: Platform,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file = await platform.files.pick(
-    `${FILE_EXTENSION},application/zip,${importAccept(!!platform.convertCad)}`,
-  );
+  const file = await platform.files.pick(`${DESIGN_ACCEPT},${importAccept(!!platform.convertCad)}`);
   if (!file) return undefined;
   // Another CAD program's file is a model too where the Import dialog converts it (ADR-0115 §1).
   const model =
@@ -332,19 +336,25 @@ export async function exportProject(platform: Platform, id: ProjectId, name: str
  * Opens a `.extrudo` file the desktop app was handed (Open…, an association,
  * argv or the Open Recent list; P6-01 slice 2). Main already read the bytes;
  * the project is imported and linked to that file, as a linked-folder file is
- * (ADR-0065 §3), then opened. Leaves the notices for the project's page, the
- * way `importProject` does.
+ * (ADR-0065 §3), then opened; an `.extrudo.gz` is imported but not linked.
+ * Leaves the notices for the project's page, the way `importProject` does.
  */
 export async function openExternalFile(
   platform: Platform,
   file: OpenedFile,
 ): Promise<ProjectSummary> {
+  // A gzipped file (`.extrudo.gz`, from a GitHub issue) comes in as a copy, the
+  // way Import… brings it: linking it would write a plain zip back into a `.gz`.
+  const gzipped = /\.gz$/i.test(file.path);
   // A file already linked to a project opens that project rather than importing
   // a second copy (P6-01 slice 2, finding 3): the desktop links an opened path
   // `external`, so a second open (a re-launch, a double-click) navigates to it.
-  const existing = (await platform.projects.list()).find(
-    (summary) => !summary.trashed && summary.linked?.external && summary.linked.file === file.path,
-  );
+  const existing = gzipped
+    ? undefined
+    : (await platform.projects.list()).find(
+        (summary) =>
+          !summary.trashed && summary.linked?.external && summary.linked.file === file.path,
+      );
   if (existing) {
     navigate(projectHref(existing.id));
     return existing;
@@ -356,12 +366,14 @@ export async function openExternalFile(
       onNotice: (message) => notices.push(message),
     },
   );
-  await platform.projects.link(summary.id, {
-    file: file.path,
-    modified: file.modified,
-    sha256: sha256Hex(file.bytes),
-    external: true,
-  });
+  if (!gzipped) {
+    await platform.projects.link(summary.id, {
+      file: file.path,
+      modified: file.modified,
+      sha256: sha256Hex(file.bytes),
+      external: true,
+    });
+  }
   for (const notice of notices) noteOnOpen(summary.id, notice);
   navigate(projectHref(summary.id));
   return summary;

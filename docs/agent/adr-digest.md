@@ -172,7 +172,7 @@ direction) set. The app caches per `SketchData` (`sketch/profiles.ts`),
 shades them (`--x-profile-fill`, palette "Show profiles"), and with no
 tool the host hovers/selects a profile where no entity is (kind
 `profile`, ID `profileRefId(sketch, region)`); the properties panel shows
-the area. ADR-0021 (P1-12) added the timeline and browser menus
+the area. **Its amendment (2026-11-10), the pair search:** from 32 segments `cutSegments` takes its pairs from `nearPairsWithin` (`profiles/pairs.ts`, a grid sized by the median box); **the output must stay bit for bit** (IDs are stored): the grid may only leave out pairs whose boxes are apart (its boxes widened 2 × `PROFILE_TOLERANCE`, then the same `overlap` and `cutPair`), pairs come in the all-pairs order (`i`, then `j`), a non-finite box falls back to every pair, the hole search skips a region only outside its polygon's box (y exact, x by a margin, NaN never), no spreads of segment lists; `pairs.test.ts` checks against `detectProfilesAllPairs`. ADR-0021 (P1-12) added the timeline and browser menus
 (`shell/featureActions.ts` shared by both, `FeatureMenu.tsx`, design
 system `ContextMenu`): rename (F2, popover on a chip, field in a row),
 optional `Feature.visible` (`setFeatureVisibility`, one undo step per eye
@@ -436,7 +436,13 @@ on an indirect frame **that has a seam** is `ShapeCustom::DirectFaces`' result
 with every reversed wire rebuilt forward (OCCT's writer otherwise reverses the wire itself and its
 `ShapeFix_Wire` reorder flips a seam wire's circles); any other body goes in
 as it is, byte-identical. Guarded by `export.test.ts`'s rim-fillet test
-(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses).
+(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses). **Its fourth amendment (2026-11-11, P6-25 S1)**: the
+rebuilt face is made on the **bare** face (`Located(TopLoc_Location())`) and
+given the explorer face's location back before `Replace` (never
+`EmptyCopied()` of a located face plus its relative wires: `BRep_Builder::Add`
+moves a child by the parent's inverse location); one rebuild per `TShape`.
+Guarded by `step-located.test.ts` (three FreeCAD-made B-rep shapes, plain,
+coloured and assembly STEP).
 `@extrudo/io` has
 `TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
@@ -1576,7 +1582,19 @@ after the `up` turn moves all of a file's bodies so their joint box (STEP:
 bottom on z = 0. Keep **absent = `file`** (stored designs never move; making
 absent mean `centre` needs a format bump), the dialog's default `centre`, one
 move for all bodies, and the mesh pieces ordered before the move (the body IDs
-don't change with the position). **P4-12**:
+don't change with the position). **Its amendment of 2026-11-10** (a STEP file's
+hidden solids): the facade's `readStepHidden(text)` (`Kernel.readStepHidden`,
+booleans) says per solid, in `readStep`'s order, whether an `INVISIBILITY` lists
+the solid itself, a styled item of it or a layer it is on; the lists are scanned
+from the text (`stepInvisibleIds`: OCCT drops a solid listed directly, which is
+what cadmpeg writes) and resolved through OCCT's model and transfer process. The
+import calls it only when the text has `INVISIBILITY(` and reports
+`ImportReport.hidden` (body IDs); `followBodyNames` (`importedHidden`) stores
+`visible: false`. Keep: **every solid stays a body** (never drop one for being
+hidden: stored designs would lose bodies and IDs would shift), the plain reader
+(the same solids as `readStep`) and the count guard, a file that hides every
+solid hides none, and the eye set **only when the body is first named**.
+**P4-12**:
 a file that names a colour reports an `ImportReport` (`colors` per body ID,
 found through each body's first face name; `ModelState.imports`), and
 `followBodyNames` takes it into `BodyMeta.color` **only when it first names the
@@ -2815,8 +2833,10 @@ tile was hovered; then User Guide, Tutorial, **Online Tutorials** (the `docsTuto
 label everywhere), Examples, Tool Reference); the **strip** `[data-update-strip]`
 (`data-update-word`: "Update ready: <v>" / "Checking…" / "Up to date" / nothing, from
 `UpdateState.waiting` and the new `UpdateState.check` the desktop's `desktopUpdates`
-sets; a dot colour plus the word, never colour alone), the version, **Check now**
-(desktop only, stays open) and **GitHub**. Rail controls change preferences through
+sets; a dot colour plus the word, never colour alone), the version, **Restart** /
+**Reload** (`updates.action`; only while `waiting`, first in the group, accent; closes the
+panel and runs `applyUpdate`, the toast's save-then-apply path, so a failed save applies
+nothing), **Check now** (desktop only, stays open) and **GitHub**. Rail controls change preferences through
 `display.set`, `onThemeChange` and the marking toggle and leave the panel open; an item
 closes it and keeps the focus where it went (`onCloseAutoFocus`); Escape returns it to
 the Menu button. On open the panel itself takes the focus (no tooltip opens); arrows
@@ -4378,3 +4398,226 @@ alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user
 user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows <name>") instead of `FormulaMark`;
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
+
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views and the first view tools built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
+each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
+adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
+"sheet" (page); **code says `sheet` only** (`doc.sheets`, `SheetSchema`, mode `'sheet'`, `apps/web/src/sheets/`,
+`@extrudo/sheets`), never a new `drawing` identifier (io's `Drawing` type and AppShell's `drawing` flag exist); Import
+Drawing becomes "Import SVG/DXF" with S1. **Shell:** a mode like sketch (tabs HOME + DRAWING, the sheet in place of the 3D
+view, sheet tabs in place of the timeline, Finish Drawing); S1a generalises `'model' | 'sketch'` to an `EditMode` type and a
+per-mode table **with no behaviour change** before any drawing code; the sheet is SVG and must work without WebGL.
+**Document:** one optional top-level `sheets` list (no `formatVersion` bump); **nothing derived is stored** (no projected
+lines, no measured values, no cache); anchors are `GeomRef`s with a fingerprint, never `index:`, resolved like annotations
+(`ok`/`moved`/`detached`), and a lost anchor never fails a recompute or refuses a delete; layout numbers are stored
+evaluated; the author's name is written only when typed. **Undo:** every sheet edit is its own command and undo step, no
+open transaction, Finish is not a step. **Geometry:** views show the bodies at the marker; hidden-line spans come from a
+new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kernel/src/sheets/` and runs in Node;
+**dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
+writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
+(no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S0 (plan §13):** HLR cost
+follows overlapping curved edges, not size (B7's side views about 3.4 s each, B9 along its axis 3.8 s, a 209-face
+assembly 0.25 s for six views), and one view is one uninterruptible call: views compute one at a time with progress,
+cancel acts between views, the per-direction cache is required. Views come from **`Kernel.hlrSpans`** (our own walk of
+`HLRBRep_Algo`'s data: edge index, kind, an outline's face, range, visible and hidden spans in the edge's 3D parameter),
+**never `HLRBRep_HLRToShape`** (no faster, and its edges lose the model edge's name). Rules in the walk: HLR's status
+intervals are already 3D parameters (never convert them with `Parameter3d`); split edges map back through the
+outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
+(`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
+`writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; decided 2026-11-11, Courier stays: Adobe's Helvetica widths
+are rejected, third-party data needing a NOTICE entry for slightly better selection boxes), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
+`HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
+vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
+**S2 kernel views (package 1):** the frame in `core/src/sheet-frame.ts` (`SheetViewFrame`, `sheetBaseFrame`,
+`sheetProjectedFrame`, `sheetViewFrame`, `toSheetView`, `SHEET_STANDARD_VIEWS`, `sheetStandardFrom`; view coordinates
+are mm at model scale, x right, y up, world origin at 0, 0; third angle shows the side a view is placed on, first the
+opposite; **isometric sides are the same in both angles**), the evaluator in `kernel/src/sheets/` (`exactView` from
+`hlrSpans`, `quickView` from `hlrPolySpans`; `ViewGeometry` with curves `visible`/`hidden`/`outline`/`tangent`, pieces
+`line`/`arc`/`ellipse`/`polyline`, `edge`/`face` topological names, `partial` with `skipped` for mesh and missing
+bodies), `RecomputeEngine.sheetView` (cache of 64 by body versions, skipped bodies, direction, up, exact/quick) and
+`KernelApi.sheetViews(requests, onView)` / `cancelSheetViews()`. Rules a change must keep: **raw edge and face indices
+never leave `sheets/evaluate.ts`** (the compound's indices map back through `Kernel.locate`); **every kind of curve
+comes back** and style and tangent edges are the app's filters (`shownCurves`), never in the key; scale and position
+are never in the key; **a quick view never names a curve** (`exact: false`; nothing anchors, measures or snaps to it);
+**before `hlrPolySpans` a body gets its display mesh** if this engine never meshed it (`#meshed`), since the
+polygonal run would leave a mesh of its own that the display mesher keeps; views run one at a time with a yield
+between them, and only `onView`'s `false` or `cancelSheetViews()` stops a run (not a newer call, not a recompute: a
+later view draws the new bodies and its `versions` say so). Goldens: `pnpm vitest run
+packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path as its value and runs every test).
+**S3 dimensions (package 1, no UI):** the `dimension` item and `SheetAnchor` (`{ ref, at? }`, `{ ref, silhouette: 1 |
+-1 }`, `{ free }`) in `core/src/sheet-schema.ts` with `dimensionProblems` (the anchors fit the type; `direction` only on
+`linear`), refs reminted by `remintSheets`; report types and `sheetSilhouetteSide`, `keepLastAnchors` in
+`core/src/sheet-anchors.ts`; `kernel/src/sheets/anchors.ts` (`resolveSheetAnchor`), `RecomputeEngine.resolveSheet`,
+`KernelApi.resolveSheet(sheet)` and `Recomputer.resolveSheet`; measuring and layout in `sheets/src/dimensions.ts`
+(`measureSheetDimension`, `layoutSheetDimension`, `sheetDimensionText`, `SHEET_DIMENSION`; `layoutSheet` takes
+`context.anchors` and `context.units`). Rules a change must keep: **no value is stored** (a dimension's text is measured
+each time; `at` and free anchors are view mm, so they move and scale with the view); **every anchor ref has a fingerprint
+and is never `index:`**; an anchor resolves through `#references` like an annotation (rolled back or not found:
+`detached`; related name or fingerprint: `moved`) **except that an anchor naming a deleted or suppressed feature is
+`detached` with a `message` before any related-name or fingerprint search** (`lostFeature`, the features read from the
+name by `featuresOfName`; the owner, 2026-11-11: a missing number beats a wrong one; annotations still take the closest
+match), **a lost anchor never throws, never fails a recompute and never
+refuses a delete**; a resolved anchor whose geometry can't give what is asked (a line's centre, a flat face's radius)
+is `ok`/`moved` with a `message` and no `geometry`, which layout draws as `invalid`; **linear and angle values are
+measured in the view's plane, radius and diameter on the circle itself**; the text follows the anchors by the mean
+move of their fingerprint points; display items carry `state` (`moved`, `detached`, `invalid`) for the screen, **never
+a screen colour**; a detached dimension draws from the geometry the caller kept (`keepLastAnchors`), else its text alone
+at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (axis with canonical sign × view direction).
+`@extrudo/sheets` has the kernel as a devDependency only (`dimensions.kernel.test.ts`; `SHEETS_OUT=<dir>` writes a sample
+PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
+through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
+geometry with no near match.
+**S4 notes (package 1, no UI):** items `leader` (`view`, one `anchor`, `at` in view mm, `text`), `sticky` (`at`,
+`size` in sheet mm, `text`, `color` from `SHEET_STICKY_COLORS`, absent yellow; `print` only `true`), `centreMark` and
+`centreLine` (`view`, `anchors`) in `core/src/sheet-schema.ts`, their rules in `sheetItemProblems` (leader: any one
+anchor; centre mark: one whole edge or a cylinder's face; centre line: two whole edges or outlines, or one face);
+`sheets/src/anchored.ts` (what every anchored item shares, out of `dimensions.ts`) and `sheets/src/notes.ts`
+(`layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`, `sheetItemStatus`, `sheetItemShown`,
+`sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`). Rules a change must keep: **`sheetItemAnchors(item)` is the one
+place that says which items have anchors** (the kernel resolves them, `remintSheets` rewrites them through
+`mapSheetItemAnchors`, layout reads reports by that index); every anchored item gets S3's resolve and its
+deleted/suppressed rule, the message in its own words (`lostFeature(ref, features, kind)`); **a whole face stands
+for what the kind takes** (`faceAs`: circle for dimension and centre mark, `axis` geometry for a centre line, the
+centroid point for a leader); **a sticky note without `print` never reaches an export** (`output: 'export'`, the
+default of `sheetsToPdf`/`sheetToSvg`; `layoutSheet` defaults to `screen`, which marks it "On screen only"); a view's
+`centreLines: false` hides its centre marks and lines; centre lines are dash-dot **built as segments** with a long
+dash at each end; a lost or invalid centre mark or line draws nothing (the browser row says why), a lost leader its
+text alone at `at`; **nothing is generated for a view by itself** (no automatic centre marks).
+**S5 lists (package 1, no UI):** items `partsList` (`view`, `at` sheet mm, `columns` from `SHEET_PARTS_COLUMNS` shown in
+the order listed, `rows` = only what was typed over a row, by body ID: `name`, `material` free text), `balloon` (`view`,
+one `anchor` never `free`, `at` view mm, `list` = a parts list of the same sheet) and `table` (`at`, column widths,
+`rows` with one cell per column) in `core/src/sheet-schema.ts`; `core/src/sheet-fields.ts` (`fillSheetFields`,
+`mapSheetFieldTexts`, `renameSheetFieldReferences`); `KernelApi.sheetParts` (`RecomputeEngine.sheetParts`,
+`sheetListBodies` in `kernel/src/sheets/views.ts`: per list its view's bodies, base view's `bodies` as listed else shown
+bodies in timeline order, with volume and tight box from `Kernel.properties`, Print Info's) and `sheets/src/parts.ts`
+(`sheetPartBodies`, `sheetPartsRows`, `sheetPartsCells`, `sheetBalloonStatus`, `layoutSheetPartsList`,
+`layoutSheetTable`, `layoutSheetBalloon`). Rules a change must keep: **a parts list's rows, quantities, sizes, masses
+and a balloon's number are computed each time, never stored**; rows merge on equal volume and box (sides sorted) **and**
+the same component name or name stem (`sheetNameStem`), typed values never split a row; a balloon's number comes from
+`SheetAnchorReport.body` (set by `resolveSheetAnchor`, kept by `keepLastAnchors`); **deleting a parts list (or its view)
+deletes its balloons** in the same step; mass needs `context.density` (an app preference, never in the document);
+**`mapSheetFieldTexts` is the one place that says which texts take fields** (text items, leader notes, table cells,
+typed title-block fields): layout fills them through it and `rewriteReferences` renames `{= …}` through it; a field
+without a value, an unknown one and a failing expression stay as typed; `{date}`/`{version}`/`{= …}` values come
+through the layout context (`date`, `version`, `evaluate`); parts list cells are one fitted line, table cells wrap.
+**S1a (modes, done, no
+behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
+`MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
+`markingSlots`, `repeatSample`, `finish`), read by `visibleTabs`/`defaultTab` (`tools.ts`), the Finish tile (`Toolbar.tsx`),
+`viewMenu.tsx`, `MarkingMenuEditor.tsx`, `settings/KeyboardPage.tsx` and AppShell's marking listing (`EDIT_MODES`,
+`perMode`); the session's `enterMode(mode, fields)`/`exitMode()` are the only way in and out (`enterSketch`/`exitSketch`
+call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
+`enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
+`mode === 'sketch'` stays about sketching. **S1 document (done):** `doc.sheets` (`core/src/sheet-schema.ts`: `SheetSchema`,
+`SheetViewSchema` with `from` `base`/`projected`, `SheetItemSchema` union with `text` only, `sheetProblems`,
+`sheetPaperSize`, `projectedFrom`, `sheetItemView`, `isUnknownSheetItem`; IDs `SheetId`/`SheetViewId`/`SheetItemId`)
+and commands in `core/src/sheets.ts` (`addSheet`, `updateSheet`, `removeSheet`, `moveSheet`, `addSheetView`,
+`updateSheetView`, `removeSheetView`, `addSheetItem`, `updateSheetItem`, `removeSheetItems`; `changes` with `null`
+deleting); file format §4.11. Rules a change must keep: **every sheet command ends by validating the sheets it
+leaves** (`settle`: the schema plus `sheetProblems`), and a new rule goes into `sheetProblems` so the loader and the
+commands agree; sheet, view and item IDs are **unique in the whole design**; a new item kind is one schema added to
+`SheetItemSchema`'s union, and one tied to a view names it in a field called `view` (so `sheetItemView` and the
+`removeSheetView` cascade find it); **an unknown item `kind` is dropped on load** (`parseLeniently`, listed in
+`dropped`), never fails the design; deleting a feature or body never touches or refuses on a sheet (an unknown
+`bodies` entry is skipped when drawn); `restoreVersion` copies `sheets`, `remintSheets` renames copied bodies, and
+the script and plugin-command documents leave `sheets` out (`recompute/engine.ts`, `recomputer.ts`). **S1 layout and
+output (done, no UI):** the display list is io's `DisplayList` (`packages/io/src/display.ts`: `DisplayPath`,
+`DisplayText`, sheet mm, **origin top-left, y down**); `@extrudo/sheets` (`packages/sheets/`, GPL, no DOM, Node;
+`core, sketch, io, fonts`) has `layoutSheet(sheet, { name?, sheets?, views? })`, `sheetsToPdf`, `sheetToSvg`, the title
+block templates (`title-block.ts`: `SHEET_TITLE_BLOCKS`, `sheetTitleFields`) and text (`text.ts`). Rules a change must
+keep: **the screen, the SVG and the PDF draw the same list** (the screen through `displayPathData`, `displayPaint`,
+`displayTextLayer`, never its own layout); **`displayPdfPage` is the only y flip** into `writePdf`; a view's lines come
+in through `context.views` as `SheetViewLines` (io contours in the view's frame, mm at 1:1, y up, origin at the view's
+`at`) and layout alone scales, flips and places them; derived title-block cells (`scale`, `sheet`, `projection`)
+never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/text` (`shapeText`, `measureText`) in
+`SHEET_FONTS` (Inter Regular and Bold), which the caller loads; every item carries a `SheetDisplayKey` (`paper`,
+`border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
+`packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
+packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet. **S1 the mode (done):** `EditMode` `'sheet'` with
+`activeSheetId`; `apps/web/src/sheets/` holds `mode.ts` (`openSheet`, `openSheets`, `finishDrawing`, `leaveSketch`,
+`keepSheetOpen`, `createSheet`, `addNewSheet`, `duplicateSheet`, `deleteSheet`, `renameSheet`, `moveSheetTo`, `stepSheet`,
+`changeSheet`), `selection.ts` (targets by display key), `exportSheets.ts` and the lazy `SheetWorkspace` (`SheetCanvas`,
+`SheetSetup`, `SheetTabs`, `SheetsTree`, `NewSheetsDialog`, `SheetExportDialog`); UI spec §4a. Rules a change must keep:
+**`sheet` in code, except the tool `finishDrawing`**; every sheet command calls `leaveSketch` before its first dispatch
+and is one undo step with its own label, Finish Drawing none; undo in the mode is a plain undo (never `reopenSketch`);
+the screen draws `layoutSheet`'s list and nothing of its own, and moves the paper through the DOM, not React state;
+**selection is by display key** (`item:<id>`, `view:<id>`, `title-block`; session item `{ kind: 'sheet', id }`), never by
+item kind, and a multi-target move or delete is one undo step (`runAsOneStep`); an item tied to a view moves in the
+view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` loads lazily only
+(`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
+that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
+`MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside
+`newSheet`. e2e: `e2e/sheets.spec.ts`. **S2 the view tools (package 2):** `apps/web/src/sheets/viewLines.ts`
+(`sheetViewWants`, `sheetViewWant`, `sheetViewLines`, `pieceContour`, `linesAreCurrent`, `sheetViewNotice`),
+`viewRunner.ts` (`SheetViewRunner`, `sheetViewRunner(kernel)`: `want`, `cancel`, `retry`, `peek`, `exact`), `views.ts`
+(`LOOKING_FROM`, `lookingFromChoices`, `placedAt`, `rescaledAt`, `placeBaseView`, `changeSheetView`), `SheetViewCard.tsx`;
+`SheetViewLines.bounds`/`.state` in `@extrudo/sheets`; `Recomputer.bodyVersions()`. Rules a change must keep: **a view's `at`
+is where the world origin lands on the sheet** (aligned views share a coordinate; placing stores the origin that puts the
+quick lines' middle under the pointer; a new scale moves `at` to keep that middle); a request always names its bodies
+(base view's or every shown body) and its key is direction, up and bodies only; **lines are current only when every drawn
+body's version equals `bodyVersions()`**, otherwise shown with `state: 'stale'` (dimmed on screen, ignored by the writers);
+one run at a time, quick first for views with nothing current, exact after, `quiet` with the workspace's own notice (300 ms,
+Cancel between views, Draw after a cancel); the runner never re-runs the same remaining work by itself; **an export computes
+every view exactly first** (`exact`) and never writes quick lines; notices under views are on screen only, never in the
+display list; layout's per-view items and the selection's per-item boxes must stay keyed by object identity (a new lines
+object per result, the same one while unchanged). **Part 2:** `useProjectedView.ts`, `standardViews.ts` (lazy),
+`views.ts` (`projectedSide`, `projectedAt`, `projectedName`, `placeProjectedView`, `rescaleSheetView`, `fitScale`),
+`selection.ts` (`viewDeltas`). Rules: **a projected view beside its parent stores the parent's `at.y`, one above or below its
+`at.x`, exactly** (in the document, not only on screen); a drag keeps that line unless Alt or the parent moves too, and a
+moved or rescaled view carries the views projected from it in the same undo step; **layout of new views (Standard views, a
+dropped body, Projected View's place) uses exact bounds**, never the quick ones (stray pieces); Standard views are one base
+view and three projected from it; the view label is centred under the lines' bounds; template goldens fix the template's
+IDs (edge names, and so the curves' order and direction, follow them). e2e: `e2e/sheet-views.spec.ts`.
+
+ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
+background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
+reads the file and maps it onto a design through `@extrudo/api`; everything that needs geometry goes through an interface
+the caller supplies (a throwaway kernel worker in the app, a kernel in Node for tests and the CLI). **Rules:** every mapped
+feature is rebuilt and compared with the shape the file stores for it, and **the stored shape wins** where they differ; a
+reference (`EdgeN`/`FaceN`) is the N-th element of the referenced object's **stored** shape, matched by geometry on the
+rebuilt body and written as a persistent reference, never an index, and never guessed when none or several match; stored
+shapes enter a design only as STEP attachments on `import` features (ADR-0084's pattern, no schema change); **B-rep text is
+read only by the import's throwaway kernel**, never by the project's kernel and never stored; `Kernel.readBrep` heals
+nothing and keeps the text's sub-shape order (the references depend on it); readers stay linear in their input (ADR-0083's
+hostile-file amendments), the XML reader has no DTD or entities; **no library file, file name or content in the
+repository** (`FCSTD_SAMPLES=<dir>` runs the private corpus, authored files only in tests).
+
+**ADR-0144, S1 (kernel):** `Kernel.readBrep` (`packages/kernel/src/kernel.ts`) refuses with a `KernelError`, before
+the text reaches the WASM heap: over **`MAX_BREP_BYTES`** (32 MB of UTF-8, exported), a table count (`Locations` …
+`TShapes`) that isn't 0…10 digits or exceeds half the text, a word of 200+ characters, `nan`/`inf` or an exponent over
+308; it keeps the short-form rule for 18+-digit integer parts exactly (never digits after a point). The facade's
+`readBrep` reads through **`CheckedShapeSet`** (a `BRepTools_ShapeSet` whose `ReadGeometry` overrides peek ahead with
+`tellg`/`seekg`): the `TShapes` count, and per shape its flags and sub-shape list, which must end in `*`, every
+reference naming a shape already read, nesting at most `MAX_DEPTH` (256); the root reference the same; the stream
+**throws on failure** (`exceptions(failbit | badbit)`); after the read **`missingGeometry`** refuses an edge without a 3D
+curve (a degenerate edge's null one is allowed), a null pcurve or surface record, a face with neither surface nor
+triangulation. Refusals are plain words (`std::runtime_error` text; any other failure "the text is damaged or cut
+short."). **Not stopped (a second parser would be needed):** a B-spline record's pole count of 10^9 or -1 (OCCT sizes
+the array first and writes past it) — the import's throwaway kernel and time budget bound them;
+`read-brep-hostile.test.ts` keeps them as `it.skip`. Every hostile case there must end in a shape or a `KernelError`
+under 5 s with `liveShapes` unchanged and the good box readable next. A new check must keep all of the library's
+stored shapes reading (S1: all of them, see the amendment).
+
+**ADR-0144, S2 (reader):** `packages/fcstd` (`@extrudo/fcstd`, deps `fflate` only so far; registered in
+`scripts/check-boundaries.mjs`) reads an `.FCStd` into plain data and knows nothing of Extrudo's document, API or
+kernel; the format is `packages/fcstd/FORMAT.md` (update it with anything newly read). `archive.ts` `unzipFcstd` walks
+the central directory itself and checks every entry before inflating any (`MAX_ENTRIES` 20,000, `MAX_ENTRY_BYTES`
+128 MB, `MAX_TOTAL_BYTES` 512 MB declared, `MAX_RATIO` 500 + 4 kB; stored/deflate only; ZIP64, encryption, several
+disks, shared local headers refused); entries inflate **only on `get`**, streaming into the declared size, which they
+must fill, CRC-32 checked; names are keys only (a non-plain name or a second entry of a name is left out with a
+problem). `xml.ts` is our own reader: no DTD, no entity but the five predefined and numeric references, limits
+`MAX_DEPTH` 256, `MAX_ATTRIBUTES` 256, `MAX_NODES` 4 M, a tree in one forward pass, null-prototype attribute records
+(keep them so: names come from the file). `model.ts` `readFcstd` decodes a property **by its value element, never its
+declared type**; numbers through `finite` (a bad number drops that property with a problem, never the file); an unknown
+element is kept raw (`kind: 'unknown'`) and counted in `unknownTypes`, never an error; sketch geometry and constraints
+stay raw records (S4 interprets them); a Python proxy's value is never decoded. Stored shapes: follow the property's
+`file` attribute (`storedShapeEntry`), never derive an entry name; `storedShapeText` never parses B-rep text (only the
+import's kernel does) and gives `undefined` plus a problem for empty, missing, binary or non-B-rep entries.
+`finalShapes` (decision 7, rule in FORMAT.md) is O(objects + links) with indexes built once, ends on container loops
+and link cycles (`MAX_LINK_HOPS` 32) with a problem, and must keep the library's count (383 objects, the same per
+file as the investigation's; change the rule only with the corpus run's new numbers). Everything left out goes to
+`FcDocument.problems`. `corpus.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_CENSUS` optional).

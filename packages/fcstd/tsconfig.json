@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // No DOM (like @extrudo/api): Node's types for the tests that read fixtures.
+  "compilerOptions": { "lib": ["es2023", "dom"], "types": ["node"] },
+  "include": ["src"]
+}

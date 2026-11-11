@@ -1,3 +1,4 @@
+import type { EditMode } from '@extrudo/core';
 import { useEffect, useState } from 'react';
 import { tabOfTool } from '../shell/tools';
 
@@ -16,7 +17,7 @@ export const toolSelector = (id: string) => `[data-tool="${id}"]`;
  * another tab is selected or the tile is in its group's menu. `a || b` means the
  * first of the two that is on the page (`useTargetBox`).
  */
-export const toolOrTabSelector = (id: string, mode: 'model' | 'sketch'): string => {
+export const toolOrTabSelector = (id: string, mode: EditMode): string => {
   const tab = tabOfTool(id, mode);
   return tab ? `${toolSelector(id)} || [role="tab"][data-tab="${tab}"]` : toolSelector(id);
 };

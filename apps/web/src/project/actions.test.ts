@@ -1,3 +1,4 @@
+import { gzipSync } from 'node:zlib';
 import { Design } from '@extrudo/api';
 import { type BodyId, createDocument } from '@extrudo/core';
 import type { BodyPlan, BodyStep, ImportResult } from '@extrudo/f3d';
@@ -63,6 +64,19 @@ describe('openExternalFile (P6-01 slice 2, finding 3)', () => {
     const second = await openExternalFile(platform, openedFile('/models/A.extrudo'));
     expect(second.id).toBe(first.id);
     expect(await projects.list()).toHaveLength(1);
+  });
+
+  it('opens an .extrudo.gz as a copy, not linked to the file', async () => {
+    const projects = memoryProjectStore();
+    const platform = fakePlatform(projects);
+    const file = openedFile('/models/A.extrudo.gz');
+    const gz = { ...file, bytes: new Uint8Array(gzipSync(file.bytes)) };
+    const first = await openExternalFile(platform, gz);
+    expect((await projects.get(first.id))?.linked).toBeUndefined();
+    expect(globals.window?.location.hash).toBe(`#/p/${encodeURIComponent(first.id)}`);
+    // Not linked, so a second open is another copy, as a second Import… is.
+    const second = await openExternalFile(platform, gz);
+    expect(second.id).not.toBe(first.id);
   });
 
   it('a different path still imports a new project', async () => {

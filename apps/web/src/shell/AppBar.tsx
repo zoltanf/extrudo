@@ -90,6 +90,8 @@ export interface AppBarProps {
   helpTool(): HelpTool | undefined;
   /** The strip's Check now (desktop only, ADR-0075's 2026-10-09 amendment); absent on the web. */
   onCheckUpdates?(): void;
+  /** The strip's Restart / Reload while an update is ready (`applyUpdate`). */
+  onApplyUpdate?: (() => void) | undefined;
   /** About Extrudo. */
   onAbout(): void;
   /** Report a bug (ADR-0092). */
@@ -139,6 +141,7 @@ export function AppBar({
   onDocs,
   helpTool,
   onCheckUpdates,
+  onApplyUpdate,
   version,
   updates,
   onAbout,
@@ -225,6 +228,7 @@ export function AppBar({
           version={version}
           updates={updates}
           onCheckUpdates={onCheckUpdates}
+          onApplyUpdate={onApplyUpdate}
           onSource={onSource}
           onQuit={onQuit}
           onCloseDesign={onCloseDesign}

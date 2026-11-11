@@ -1,0 +1,1 @@
+- 2026-11-11 · **Model-only tiles explain themselves in a sketch**: a click on Home's Import, Canvas or Customizer tile while a sketch is open now says "Finish the sketch to use …" instead of doing nothing, as the Drawing mode does.

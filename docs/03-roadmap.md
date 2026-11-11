@@ -1698,6 +1698,68 @@ end to end, faster than in established desktop CAD.
   - [x] S3 Sketch mode.
   - [x] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
 
+- [ ] **P6-24 Drawings: 2D sheets made from the model** (owner, 2026-11-10; FR-DR-01 to
+  FR-DR-08; ADR-0143). A drawing mode that works like sketch mode (tabs Home + Drawing, the
+  sheet in place of the 3D view, sheet tabs in place of the timeline, Finish Drawing):
+  sheets with a border and title block, views of chosen bodies with exact visible and
+  hidden lines, dimensions that follow the model, notes, sticky notes, a parts list with
+  balloons, and export to PDF and SVG. Sheets are saved in the document (`doc.sheets`,
+  additive) and every edit is undoable. The specification, the mock-ups and what each slice
+  is done by: `docs/plans/drawings-2026-11-10.md` (§10). **First release: S1 to S5.**
+  Acceptance per slice: the plan's "Done when", `pnpm check`, the affected e2e specs, CI
+  green, and an amendment to ADR-0143. *Deps:* S1 needs S1a; S2 needs S0's answer; S0 and
+  S1a can run side by side.
+  - [x] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
+    with outlined text and a selectable layer. Done 2026-11-11: HLR timed (plan §13; B1 has
+    no body fixture); `hlrSpans` and `hlrPolySpans` built and checked against known views
+    and drawings; `writePdf` checked in three readers (ADR-0143's S0 amendment).
+  - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
+    behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
+    `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).
+  - [x] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
+    text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF. Done 2026-11-11: the
+    document, layout and output, and the Drawing mode (ADR-0143's three S1 amendments); a
+    text item is drawn, selected, moved, deleted and exported, but no tool in the app places
+    one yet.
+  - [x] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;
+    Base and Projected View; Standard views. Done 2026-11-11: views drawn from the model
+    in the app (quick, then exact, Cancel), Base View, Projected View, the view card, New
+    drawing's Start with, a dragged body, the view's menu (ADR-0143's S2 amendments).
+  - [ ] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states.
+  - [ ] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
+  - [ ] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
+    fields.
+  - [ ] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;
+    an example design with a sheet.
+
+- [ ] **P6-25 FreeCAD file import, with history** (owner, 2026-11-11; ADR-0144). Extrudo
+  opens `.FCStd` files itself, in the browser and the desktop app: sketches with their
+  constraints, the feature history where the features map, parameters, and the file's own
+  stored shape (as a STEP attachment) wherever a step can't be rebuilt. Every rebuilt
+  feature is checked against the shape the file stores for it. The investigation, the
+  measurements on a 60-file library and the prototype: `docs/plans/freecad-import-2026-11-10.md`.
+  Acceptance per slice: `pnpm check`, CI green, the slice's own tests on authored files, its
+  numbers on the private library (`FCSTD_SAMPLES`) in the pull request, and an amendment to
+  ADR-0144 with its rules in the digest. *Deps:* the table in ADR-0144; S1 and S2 can run
+  side by side.
+  - [x] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
+    shape whose root carries a location. *Done 2026-11-11 (ADR-0144's S1 amendment,
+    ADR-0034's fourth amendment).*
+  - [x] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
+    `FORMAT.md` (2026-11-11; ADR-0144's S2 amendment).
+  - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
+    the app flow and report; the cadmpeg route no longer takes this format.
+  - [ ] S4 Sketches: geometry, constraints, placement.
+  - [ ] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape.
+  - [ ] S6 Fillet and Chamfer, their edges found by geometry.
+  - [ ] S7 Patterns, Mirrored, Hole.
+  - [ ] S8 The stored-shape step in the middle of a body.
+  - [ ] S9 Projected geometry in sketches, up-to-face, reference axes.
+  - [ ] S10 Parameters and expressions.
+  - [ ] S11 Part workbench: primitives and booleans as a timeline.
+  - [ ] S12 Structure: part containers, links as copies, files from before bodies, meshes.
+  - [ ] S13 User guide page; a second hostile-file pass.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here
