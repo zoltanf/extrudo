@@ -212,6 +212,83 @@ The spikes' numbers, drawings and readers are in the plan's §13.
   and views drawn from it match the polygonal ones. What S0 left unmeasured is in the plan's
   §13.4.
 
+## Amendment (S2, kernel views), 2026-11-11
+
+Package 1 of S2: the kernel turns a sheet view into 2D lines; no UI. Files:
+`packages/core/src/sheet-frame.ts` (the frame math only), `packages/kernel/src/sheets/`
+(`geometry.ts`, `evaluate.ts`, `views.ts`), `RecomputeEngine.sheetView`,
+`KernelApi.sheetViews` and `cancelSheetViews`, `Recomputer.sheetViews`. No facade change.
+
+- **The frame** (`SheetViewFrame`: `direction`, `up`, `right = direction × up`, unit and
+  square). A view's own coordinates are mm at model scale, x right, y up, the world origin
+  at (0, 0) (`toSheetView`); the app applies scale and position and flips y for the sheet.
+  `sheetBaseFrame(direction, up)` turns `up` square to the direction.
+  `sheetProjectedFrame(parent, projection, side)`: in third angle a view shows the side it
+  is placed on, in first angle the opposite side; a view above or below keeps the parent's
+  `right`, one left or right keeps its `up`, so the views line up. **Isometric sides are
+  pictorial and the same in both angles**: `iso-above-right` looks from above, from the
+  right and from the parent's viewer (the parent's direction plus the third-angle
+  directions of those two neighbours: a true isometric of the parent's axes), with the
+  parent's up kept as close as it can be. `sheetViewFrame(sheet, id)` walks the parents;
+  `SHEET_STANDARD_VIEWS` and `sheetStandardFrom(name)` give the six standard base views
+  (Z up, the front faces −Y).
+- **`ViewGeometry`** (plan §6.2): curves `{ kind, body, edge?, face?, pieces }`. Kinds:
+  `visible` (a sharp edge seen), `hidden` (any edge or outline behind the model; an
+  outline's has `face`), `outline` (a silhouette seen), `tangent` (a smooth edge seen);
+  hidden tangent edges and seams are left out. Pieces: `line`, `arc`, `ellipse` (angles
+  counter-clockwise in view coordinates), exact for lines, circles and ellipses (a tilted
+  circle is an ellipse arc, one seen edge-on a line) and `polyline` otherwise (64 samples
+  per curve). `edge` and `face` are topological names (ADR-0005); an outline that lies on a
+  seam keeps the seam's edge name too. Then `bounds`, `status` (`partial` when a body was
+  skipped: `skipped` lists `{ body, reason: 'mesh' | 'missing' }`), and `exact`.
+- **Every kind comes back**: the view's style and its tangent-edge switch are filters the
+  app applies (`shownCurves`), so they are in no key and changing them computes nothing.
+- **In the evaluator** the bodies go through hidden-line removal as one compound, so one
+  body hides another; each entry maps back through `Kernel.locate` to its body and that
+  body's own edge or face index, then to the name. Raw indices never leave
+  `sheets/evaluate.ts`. A hidden stretch lying under a drawn line, or under a drawn arc of
+  the same circle, is taken out (a box's back edges behind its front ones); pieces of one
+  edge that continue each other are joined (HLR splits an edge at outline points; two
+  halves of a circle seen edge-on lie on one line and join into it).
+- **The quick view** (`quick: true`) is `hlrPolySpans` chained into polylines, with no
+  names and `exact: false`; a quick request is given the exact result when the cache has
+  it. **What it does to the display mesh**: `hlrPolySpans` meshes a face that has no
+  triangulation and leaves that mesh on it, and the display mesher keeps a mesh at least as
+  fine as it asks for. Measured on a box with a round boss at the display tessellation
+  (0.05 mm, 0.3 rad): 204 triangles; after a polygonal run at 0.005 mm first, 462; at
+  0.05 mm and 0.5 rad first, 156 (coarser than asked); display mesh first and the
+  polygonal run after it, 204. So the engine gives a body it has not meshed for display
+  (`#meshed`; after a kernel restart the app already holds every mesh and `have` skips
+  them) its display mesh, at the last recompute's tessellation, before a quick view.
+- **The cache** is in the engine: up to 64 views, keyed by the drawn bodies' versions, the
+  skipped bodies, the frame's direction and up, and exact or quick; plain data, no shapes
+  held; emptied with the engine. Scale, position and style are not in the key.
+- **`sheetViews(requests, onView?)`** computes one view at a time in the order asked,
+  each one synchronous engine run, and yields between views: `onView(result, done,
+  total)` hears each result; a `false` from it, or `cancelSheetViews()`, stops the run
+  before the next view with `SheetViewsCancelledError`. A recompute may run between two
+  views, and the later view then draws the new bodies (each result carries the `versions`
+  it was drawn from). A view that fails is `{ id, error }`; the others still come.
+  `Recomputer.sheetViews` goes through `#wait` ("Computing the sheet views…", ADR-0105).
+  A request without `bodies` draws the bodies at the marker that are shown (not hidden,
+  not ghosts: `effectiveBodyDisplay`).
+- **Times** on the Arch ARM VM, under load from other work, per view (front, right, top,
+  iso, first angle): exact B2 1.5–10 ms, B4 6–18 ms, B5 4–11 ms, B10 10–36 ms, B7 3.5 and
+  3.7 s for front and right (the knurl side views) and 4.5 and 22 ms for top and iso;
+  quick 0.3–7 ms each.
+- **Tests**: `sheet-frame.test.ts` (third angle first, then first angle and the isometric
+  sides), `sheets/geometry.test.ts` (the 2D math), `sheets/views.test.ts` (a box, a holed
+  box and a cylinder from the standard directions in both angles, names, cache hit and
+  miss, shown bodies, a mesh body, the display mesh), `sheets/service.test.ts` (order,
+  progress, both cancels, a recompute between views) and `sheets/golden.test.ts` (the four
+  standard views of B2, B4, B5, B7 and B10 as golden SVGs, `--update` after the path rewrites them,
+  `SHEET_TIMES=1` prints times, `SHEET_QUICK=<dir>` writes the quick views beside them).
+- **Rejected**: filtering by style in the kernel (the style would join the key and a
+  switch would recompute); stopping a run when a newer `sheetViews` call comes (adding
+  one view would stop the exact runs of the others); stopping a run on every recompute
+  (every sheet edit sends one); isometric sides that follow the projection angle (in first
+  angle, `iso-above-right` would look from below and the left).
+
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
 Built with no behaviour change, before any drawing code.

@@ -1,0 +1,1 @@
+- 2026-11-11 · **STEP of placed shapes, for the FreeCAD import**: the kernel's STEP writer keeps the solid of a shape whose solid carries a placement (186 of the 1,012 solids a library of FreeCAD files stores lost it; no shape made in Extrudo was affected), and the kernel reads OCCT's B-rep text with a 32 MB limit and checks against damaged files (ADR-0144's S1 amendment).

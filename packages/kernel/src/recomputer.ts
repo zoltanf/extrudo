@@ -77,6 +77,7 @@ import {
   type ExportProgress,
   isKernelCrash,
 } from './service';
+import type { SheetViewProgress, SheetViewRequest, SheetViewResult } from './sheets/views';
 
 export interface RecomputerOptions {
   spawn: SpawnKernel;
@@ -731,6 +732,26 @@ export class Recomputer {
   /** Stops a running clearance check. */
   cancelCheck(): void {
     this.client.call((api) => api.cancelCheck()).catch(() => {});
+  }
+
+  /**
+   * Sheet views of what the model store shows (P6-24 S2), one at a time;
+   * `onView` hears each and may stop the run, as may `cancelSheetViews`
+   * (rejects with `isSheetViewsCancelled`).
+   */
+  sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+    options?: WaitOptions,
+  ): Promise<SheetViewResult[]> {
+    return this.#wait('Computing the sheet views…', options, () =>
+      this.client.call((api) => api.sheetViews(requests, onView)),
+    );
+  }
+
+  /** Stops running sheet views before their next view. */
+  cancelSheetViews(): void {
+    this.client.call((api) => api.cancelSheetViews()).catch(() => {});
   }
 
   /** The dialog closed: drops a pending preview. */

@@ -75,6 +75,8 @@ describe('KernelClient', () => {
       resolveAnnotation: async (annotation) => ({ id: annotation.id, status: 'ok' }),
       checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
       cancelCheck: async () => {},
+      sheetViews: async () => [],
+      cancelSheetViews: async () => {},
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -122,6 +124,8 @@ describe('KernelClient', () => {
       resolveAnnotation: async (annotation) => ({ id: annotation.id, status: 'ok' }),
       checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
       cancelCheck: async () => {},
+      sheetViews: async () => [],
+      cancelSheetViews: async () => {},
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),
