@@ -29,7 +29,7 @@ current. Useful variables:
 
 | Asset | Where | Command | Redo when |
 |---|---|---|---|
-| **README screenshots**: 8 scenes, light and dark theme, WebP | `docs/images/readme/` | `E2E_GPU=1 pnpm demos -g readme` | The look of the app changed (toolbar, panels, colours, templates), before a release |
+| **README screenshots**: 9 scenes, light and dark theme, WebP | `docs/images/readme/` | `E2E_GPU=1 pnpm demos -g readme` | The look of the app changed (toolbar, panels, colours, templates), before a release |
 | **Tooltip clips** of the toolbar tools, WebM | `apps/web/public/demos/` | `pnpm demos` (or one: `pnpm demos -g "demo: fillet"`) | A tool's UI or behaviour changed |
 | **Template thumbnails** on the home screen | `apps/web/src/home/templates/` | `pnpm demos -g thumbnail` | A template changed |
 | **Example pictures** for the guide's gallery | `docs/guide/images/examples/` | `pnpm demos -g example` | An example in `fixtures/examples/` changed |
@@ -37,6 +37,8 @@ current. Useful variables:
 | **Tutorial pictures**, one per step | `docs/guide/tutorials/images/<name>/` | `pnpm demos -g tutorials` | A tutorial or the UI it walks through changed |
 | **Tool reference pages** and the examples page | `docs/guide/tools/`, `docs/guide/examples.md` | `pnpm docs:generate` | A tool, its key or its clip changed (a test fails when they are stale) |
 | **API methods and pages** | `packages/api/src/generated/`, `docs/api/features/` | `pnpm api:generate` | A feature input changed (a test fails when they are stale) |
+
+The Drawing tab's clips start from the spool holder's sheets, `fixtures/demos/sheetEmpty`, `sheetBase`, `sheetViews` and `sheetList.extrudo` (written by `packages/cli/src/demo-designs.test.ts`), and zoom the paper rather than the 3D view.
 
 The `meshToSolid` clip starts from `fixtures/demos/meshToSolid.stl` (a 40 × 30 × 5 mm plate with a hole), written by the same test as the designs and imported through Home › Import Model.
 
@@ -67,8 +69,9 @@ to redo: review them with the page when the app's behaviour they show changes.
    ```
 
    About 2 minutes. It writes `docs/images/readme/<scene>-light.webp` and
-   `<scene>-dark.webp` for: home, model, drawing, sketch, fillet, assembly,
-   print and customizer (`e2e/readme-shots.spec.ts`).
+   `<scene>-dark.webp` for: home, model, drawing (a sketch, despite its name), sketch, fillet,
+   assembly, sheet (the spool holder example's drawing), print and customizer
+   (`e2e/readme-shots.spec.ts`).
    One scene alone: `pnpm demos -g readme --skip-build -g drawing`.
 2. Look at every picture: no tooltip or menu left open, the model fills the
    view, both themes look right. `git diff --stat` shows which changed.

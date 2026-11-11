@@ -823,6 +823,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `assetsInlineLimit` and inlines as a data URL, so no asset file exists to
   skip). The B1 plate fixture is the sketch stage only (no extrude, 0 bodies),
   so the Plate example opens on its sketch, not on a body.
+- The list has 13 rows since the Spool holder (P6-24 S6). Its test opens
+  `#/example/spool-holder`, Make › `pickTool(page, 'Drawing')` (the design has a sheet, so
+  no New drawing dialog), and polls the text layer `[data-sheet-text] text` (60 s) for the
+  measured "80.0", "60.0", "40.0", "Ø12.4" and the parts list's "Bracket", "Axle", "PETG";
+  no path may carry `data-state="detached"`. The copy's bodies get new IDs, so a broken
+  `remintSheets` shows here as lost anchors and an empty list.
 
 ### `e2e/export-3d.spec.ts`
 
@@ -975,13 +981,24 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   entries) and the browser with a component (first `data-bodies` body, then
   `pickTool(page, 'New Component')`).
 
+- The drawings page (P6-24 S6, `docs/guide/images/drawings/`): the spool holder example
+  (`#/example/spool-holder`) with an init script setting `extrudo.whatsNew.lastVersion` to
+  `apps/web/package.json`'s version (an example opened first counts as a returning visit,
+  so "Updated to Extrudo …" would cover the picture); `openTheDrawing` waits for given
+  strings in the text layer and for no `data-state="stale"` path. The lost dimension: open
+  the drawing once (the screen keeps each dimension's last geometry only after it was
+  drawn), Finish Drawing, suppress `chip('Screw hole 2')`, open it again: the 60 is red and
+  dashed (`[data-state="detached"][stroke-dasharray]`); opened only after the suppress it
+  would be a bare "?". The New drawing dialog is the wall bracket's (no sheet yet), shot
+  once `[data-new-sheets-summary]` reads "4 views of …".
+
 ### `e2e/readme-shots.spec.ts`
 
 - Skipped unless `RECORD_ASSETS=1`; `pnpm demos -g readme` (`--skip-build`
   when `dist` is current; `E2E_GPU=1` where there is a GPU is faster; the
   status bar's frame rate, recompute time and renderer are hidden with
-  `e2e/screenshot.css`) records the README's eight scenes (home,
-  model, drawing, sketch, fillet, assembly, print, customizer) at 1440 × 900 into
+  `e2e/screenshot.css`) records the README's nine scenes (home,
+  model, drawing, sketch, fillet, assembly, sheet, print, customizer) at 1440 × 900 into
   `docs/images/readme/<scene>-<light|dark>.webp`. Each theme is a `describe`
   with `test.use({ colorScheme })`: the app follows the system scheme while
   no theme is picked. Shots are WebP q 0.9 encoded by `OffscreenCanvas` in a
@@ -992,7 +1009,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `chip('Sketch1').dblclick()` and the
   Sketch palette, `chip('Fillet1').dblclick()` until `data-preview-status=ok`,
   the hinge fixture imported then F6 (Fit), Make › Print Info until
-  `data-print-state=ready`, Customizer until `data-customizer-state`.
+  `data-print-state=ready`, Customizer until `data-customizer-state`. **sheet** (P6-24 S6;
+  "drawing" is the older sketch scene): the spool holder example with the What's new
+  version set (as in `guide-shots.spec.ts`), Make › Drawing, until the text layer holds
+  "80.0", "Ø12.4", "Bracket" and "Axle". Record it alone with `-g "sheet$"`.
 
 ### `e2e/help-links.spec.ts`
 
@@ -1928,6 +1948,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/record-assets.spec.ts`
 
 - See `e2e/onboarding.spec.ts`: `RECORD_ASSETS=1` only, the demo recorder.
+- **The Drawing tab's clips** (P6-24 S6): `sheetScene` imports `fixtures/demos/sheet*.extrudo`
+  (the spool holder, A4 landscape 1:1, first angle; front view origin at sheet mm (75, 82),
+  top view at (75, 140): `frontAt(x, z)`, `topAt(x, y)`), opens it with `runTool(page,
+  'sheets', 'print')` and waits for no stale line. `frameSheet` zooms the paper with the wheel
+  at a sheet region's middle until it fills 0.95 of the 400 × 250 FRAME (poll the paper's box
+  width, not `data-zoom`: it is rounded) and pans with **Ctrl + a middle drag** (a pan in every
+  preset; a right drag would be a pan only in some). `pickOnSheet` glides and waits for
+  `[data-dimension-hover]` before clicking. **Rest the pointer outside every view's box**
+  (`restOnSheet`: Esc, glide, Esc): a pointer over a view tints it the whole clip. A frame
+  whose right edge passes sheet x 127 shows the title block's corner. New Sheet refits the
+  window (a new sheet is fitted, and A3 and A4 have the same shape), so its frame is taken at
+  fit without zooming. Make › Drawing's clip opens and finishes the drawing once before
+  recording: the first opening loads the mode and shows a blank frame. Runs of identical
+  frames last 400 ms in a clip, so a clip that only switches (New Sheet, Sheet Setup, Finish
+  Drawing) is about 1.5 s.
 - `demo: meshToSolid` starts from a mesh, not a design: `demoProject('blank')`, Home › Import Model with `fixtures/demos/meshToSolid.stl` (the demo-designs test writes it), the Import dialog's OK before `record`. Then the Body field picks: `runTool`, wait for the dialog, `pickModel(…, /./)` on the plate's top (the hover is a `face:` kind, not `body:`; a face click *before* the tool selects no body, so the Body field stays empty and OK disabled). Waits: `data-regions` matches `/planes/` (colours on), `previewed`, 600 ms; after `commit` the row loses `data-body-mesh`. The parked pointer must miss the axes (an axis hover lights it orange): `clip.y + 130` at the right edge is clear.
 
 ### `e2e/render-tile.spec.ts`

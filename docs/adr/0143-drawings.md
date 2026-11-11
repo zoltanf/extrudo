@@ -1302,3 +1302,27 @@ change, no kernel facade change, no new dependency (one new workspace edge: `@ex
   PDF pages and text, the same bytes twice, `--date`/`--stickies`/`--sheet`, SVG per
   sheet, `check --sheets` passing and failing on a suppressed feature, a detached
   diameter written as `Ø?`).
+
+## Amendment (S6, the guide, clips and example), 2026-11-11
+
+What a person reads and sees about drawings: `docs/guide/drawings.md` (pictures recorded by
+`e2e/guide-shots.spec.ts`, dark theme like the other concept pages), a clip for every tile of
+the Drawing tab, Finish Drawing and Make › Drawing (`e2e/record-assets.spec.ts`), the Spool
+holder example (`fixtures/benchmarks/spool-holder.extrudo`, built and checked by
+`packages/cli/src/example-sheet.test.ts`), and a README scene. Decided here:
+
+- **One model for the example and the clips.** `packages/cli/src/spool-holder.ts` builds the
+  spool holder (a bracket with a bore and two screw holes, an axle with a flange) and holds
+  its A4 view places; the example adds the finished sheet with fingerprints from a real
+  recompute, and the clips' designs (`fixtures/demos/sheetEmpty`, `sheetBase`, `sheetViews`,
+  `sheetList`) add only views and a parts list, which need no fingerprint. A change to the
+  model changes both, so both tests must be re-run with `WRITE_FIXTURES=1` and the clips
+  recorded again.
+- **The clips zoom the paper, not the 3D view**, round a region of the sheet; Export PDF's
+  clip is its dialog, as Export's is. The 16 clips are 0.69 MB (10.6 to 79 kB each); all
+  126 clips are 5.87 MB of `demos.test.ts`'s 6 MB, so the next batch of clips needs that
+  limit raised or older clips re-encoded smaller. `DEMO_CLIPS_PENDING` is gone and
+  `WHOLE_TABS` includes the Drawing tab.
+- **The README scene is named `sheet`**: `drawing` is the older scene of a dimensioned
+  sketch. Renaming that one would rewrite existing pictures, which wait for the re-recording
+  before the release (the owner, 2026-11-11, "Leave for release").

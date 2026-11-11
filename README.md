@@ -41,6 +41,8 @@ inspired by that workflow and shares no code or artwork with any such product.
 <tr><td><a href="docs/images/readme/fillet-light.webp"><img src="docs/images/readme/fillet-light.webp" alt="Feature dialogs, light theme"></a></td><td><a href="docs/images/readme/fillet-dark.webp"><img src="docs/images/readme/fillet-dark.webp" alt="Feature dialogs, dark theme"></a></td></tr>
 <tr><td colspan="2"><b>Assemblies</b>: A hinge, two components joined by a revolute joint</td></tr>
 <tr><td><a href="docs/images/readme/assembly-light.webp"><img src="docs/images/readme/assembly-light.webp" alt="An assembly, light theme"></a></td><td><a href="docs/images/readme/assembly-dark.webp"><img src="docs/images/readme/assembly-dark.webp" alt="An assembly, dark theme"></a></td></tr>
+<tr><td colspan="2"><b>Drawings</b>: A sheet of the spool holder example: views, dimensions, notes and a parts list</td></tr>
+<tr><td><a href="docs/images/readme/sheet-light.webp"><img src="docs/images/readme/sheet-light.webp" alt="A drawing sheet, light theme"></a></td><td><a href="docs/images/readme/sheet-dark.webp"><img src="docs/images/readme/sheet-dark.webp" alt="A drawing sheet, dark theme"></a></td></tr>
 <tr><td colspan="2"><b>3D printing</b>: Print Info: weight, filament and cost for the chosen material</td></tr>
 <tr><td><a href="docs/images/readme/print-light.webp"><img src="docs/images/readme/print-light.webp" alt="3D printing, light theme"></a></td><td><a href="docs/images/readme/print-dark.webp"><img src="docs/images/readme/print-dark.webp" alt="3D printing, dark theme"></a></td></tr>
 <tr><td colspan="2"><b>Customizer</b>: Sliders for a template's main parameters</td></tr>
@@ -86,6 +88,10 @@ handles, and patterns that skip single instances.
 same design and timeline. Rigid, revolute and slider joints connect the parts:
 pose a joint in the view and check its clearance over its whole range, for a
 print-in-place hinge. 3MF and STEP exports keep each component together.
+
+**Drawings.** Sheets made from the model, to print or send: standard and projected views with
+hidden lines, dimensions measured from the model, notes, centre marks, parts lists with
+balloons, tables and a title block with fields, exported as PDF or SVG.
 
 **Import.** STEP files as solid bodies; STL, 3MF and OBJ meshes as
 bodies you can still cut, join, move and split; pictures on a plane to trace

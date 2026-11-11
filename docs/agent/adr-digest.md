@@ -1098,7 +1098,8 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
 network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every tile of the Solid, Modify, Construct, Make and
-Sketch tabs since the owner's UI review 3, R3-16; `WHOLE_TABS` in `demos.test.ts` checks it per
+Sketch tabs since the owner's UI review 3, R3-16, and of the Drawing tab with Finish Drawing since P6-24 S6;
+`WHOLE_TABS` in `demos.test.ts` checks it per
 tab; and every tool of the Sketch tab's ▾ menus but Import Drawing since ADR-0116's batch 5) and `demos.test.ts` checks it against the files (150 kB each, 6 MB in all). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
 without `RECORD_ASSETS=1`; `-g "demo: extrude$"` records one) records the clips and the template pictures through
