@@ -476,6 +476,15 @@ for (const [template, slug] of [
   test(`New drawing with Standard views of the ${template} template: four views, as the golden`, async ({
     page,
   }) => {
+    // The template's IDs fixed: its edges' names, and so the order and direction of the
+    // curves, follow its feature IDs, which are new on every call.
+    await page.addInitScript(() => {
+      let n = 0;
+      crypto.randomUUID = () =>
+        `00000000-0000-4000-8000-${(++n).toString(16).padStart(12, '0')}` as ReturnType<
+          Crypto['randomUUID']
+        >;
+    });
     await page.goto('./');
     await startFromTemplate(page, template);
     await kernelReady(page);
@@ -503,7 +512,7 @@ for (const [template, slug] of [
     });
     for (const id of await viewIds(page))
       expect((await lines(page, id)).drawn.length).toBeGreaterThan(0);
-    // The SVG export, its paths in a stable order (a template's feature IDs are new each time).
+    // The SVG export, its paths in a stable order.
     await page.locator('#toolbar-groups [data-label="Export PDF"]').click();
     const exportDialog = page.getByRole('dialog', { name: 'Export drawing' });
     await exportDialog.getByRole('radio', { name: 'SVG' }).click();
