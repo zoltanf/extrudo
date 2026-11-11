@@ -4434,4 +4434,16 @@ behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spel
 `perMode`); the session's `enterMode(mode, fields)`/`exitMode()` are the only way in and out (`enterSketch`/`exitSketch`
 call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
 `enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
-`mode === 'sketch'` stays about sketching.
+`mode === 'sketch'` stays about sketching. **S1 document (done):** `doc.sheets` (`core/src/sheet-schema.ts`: `SheetSchema`,
+`SheetViewSchema` with `from` `base`/`projected`, `SheetItemSchema` union with `text` only, `sheetProblems`,
+`sheetPaperSize`, `projectedFrom`, `sheetItemView`, `isUnknownSheetItem`; IDs `SheetId`/`SheetViewId`/`SheetItemId`)
+and commands in `core/src/sheets.ts` (`addSheet`, `updateSheet`, `removeSheet`, `moveSheet`, `addSheetView`,
+`updateSheetView`, `removeSheetView`, `addSheetItem`, `updateSheetItem`, `removeSheetItems`; `changes` with `null`
+deleting); file format §4.11. Rules a change must keep: **every sheet command ends by validating the sheets it
+leaves** (`settle`: the schema plus `sheetProblems`), and a new rule goes into `sheetProblems` so the loader and the
+commands agree; sheet, view and item IDs are **unique in the whole design**; a new item kind is one schema added to
+`SheetItemSchema`'s union, and one tied to a view names it in a field called `view` (so `sheetItemView` and the
+`removeSheetView` cascade find it); **an unknown item `kind` is dropped on load** (`parseLeniently`, listed in
+`dropped`), never fails the design; deleting a feature or body never touches or refuses on a sheet (an unknown
+`bodies` entry is skipped when drawn); `restoreVersion` copies `sheets`, `remintSheets` renames copied bodies, and
+the script and plugin-command documents leave `sheets` out (`recompute/engine.ts`, `recomputer.ts`).
