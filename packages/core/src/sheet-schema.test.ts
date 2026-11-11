@@ -232,23 +232,21 @@ describe('sheet helpers', () => {
 });
 
 describe('loading a sheet item of a kind this version does not know (ADR-0143)', () => {
-  /** A file as a newer Extrudo would write it: a balloon between two texts, a table. */
+  /** A file as a newer Extrudo would write it: a weld symbol between two texts, a hatch. */
   function newer(): Record<string, unknown> {
     const doc = withSheets([full(), sheet('s2', 'Sheet 2')]);
     const raw = JSON.parse(JSON.stringify(doc));
     raw.sheets[0].items.splice(1, 0, {
-      kind: 'balloon',
+      kind: 'weldSymbol',
       id: 'b1',
       view: 'v1',
       at: [5, 5],
-      list: 'p1',
     });
     raw.sheets[1].items.push({
-      kind: 'table',
+      kind: 'hatch',
       id: 'k1',
       at: [1, 1],
-      columns: [40],
-      rows: [['later']],
+      pattern: 'later',
     });
     return raw;
   }

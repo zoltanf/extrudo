@@ -255,8 +255,9 @@ Whole-document rules (checked after the per-field rules):
 - Sheet `id`s are unique and sheet `name`s are unique case-insensitively;
   view `id`s and item `id`s are unique in the whole design; view `name`s are
   unique case-insensitively in their sheet; a projected view's `parent` is
-  another view of the same sheet, with no cycle; a dimension's `view` is a
-  view of its sheet and its anchors fit its type (section 4.11).
+  another view of the same sheet, with no cycle; an item's `view` is a view
+  of its sheet and its anchors fit its kind; a balloon's `list` is a parts
+  list of its sheet; a table's rows have one cell per column (section 4.11).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
@@ -612,9 +613,9 @@ An object whose **`kind`** says which of two it is:
 #### 4.11.3 `SheetItem`
 
 An object whose **`kind`** says what it is. Every item has an `id`, unique
-among every sheet's items. This version knows six kinds; later versions add
-more (balloons, lists, tables), and a reader leaves out an item of a kind it
-doesn't know (section 3). An item that belongs to a view names it in `view`, a
+among every sheet's items. This version knows nine kinds; later versions may
+add more, and a reader leaves out an item of a kind it doesn't know
+(section 3). An item that belongs to a view names it in `view`, a
 view of the same sheet, and its positions are in the view's own mm (model
 size, x right, y up, the world origin at 0, 0), so it moves and scales with
 the view; removing the view removes it. An item on the sheet itself (a text,
@@ -628,15 +629,30 @@ a sticky note) has its positions in sheet mm from the top-left, y down.
 | `sticky` | `at` ([x, y]), `size` ([number, number]), `text` (string), `color` (string, optional), `print` (boolean, optional) | A coloured note on the sheet. `at` is its top-left corner and `size` its width and height, mm, 5 to 1000 each. `text` is plain, up to 2000 characters and not blank, wrapped inside the note. `color` is `yellow`, `orange`, `pink`, `blue` or `green`; absent means yellow. `print` (`true` only) puts it in exports; absent, it is shown on screen only. |
 | `centreMark` | `view` (ID), `anchors` (array of SheetAnchor) | A cross on a circle's centre. `anchors` is one: a whole edge that is a circle, or a cylinder's face. |
 | `centreLine` | `view` (ID), `anchors` (array of SheetAnchor) | A dash-dot centre line. `anchors` are two lines (whole edges or outlines) that are parallel in the view, the line running midway between them, or one cylinder's or cone's face, the line along its axis. |
+| `partsList` | `view` (ID), `at` ([x, y]), `columns` (array of strings, optional), `rows` (object, optional) | A table filled from the bodies of `view` (its base view's `bodies`, else every shown body) **each time the sheet is drawn: its rows are not stored**. Identical bodies share a row with a quantity: equal volume and bounding box, and the same component name or the same name stem (the name without a trailing number, so "Shelf 1" and "Shelf 2"). `at` is its top-left corner in sheet mm. `columns` are the columns shown, in that order, each once, from `item`, `qty`, `name`, `material`, `size` (the bounding box's three sides, longest first, in the design's unit) and `mass` (from the app's filament density, which is not in the file); absent means all six. `rows` holds only what was typed over a row: an object from the ID of the row's first body to `{ name?, material? }`, each up to 200 characters; `material` is free text. An entry for a body the list no longer shows is kept and ignored. |
+| `balloon` | `view` (ID), `anchor` (SheetAnchor), `at` ([x, y]), `list` (ID) | A numbered circle with a leader to a body. `anchor` is on geometry (a vertex, an edge or one of its points, a face, an outline), never a free point; the number is the item of that body's row in `list`, **a `partsList` of the same sheet**, and is not stored. `at` is the circle's centre in the view's own mm; it follows the anchor as a leader note's text does. Deleting the parts list deletes its balloons. |
+| `table` | `at` ([x, y]), `columns` (array of numbers), `rows` (array of arrays of strings) | A free table on the sheet. `at` is its top-left corner, mm. `columns` are the columns' widths in mm, 1 to 1000 each, 1 to 50 columns. `rows` are 1 to 500 rows, top to bottom, each with **exactly one cell per column**: plain text up to 2000 characters, which may be empty or contain newlines; a row is as tall as its text. |
 
 The view's `centreLines` (`false`) leaves its centre marks and centre lines
 out. Nothing is added to a view by itself: every centre mark and line is an
 item someone placed.
 
+**Text fields.** The text of a `text` and a `leader` item, a `table`'s cells
+and the title block's `fields` may hold fields in braces, filled in each time
+the sheet is drawn and stored as typed: `{name}` (the design's name),
+`{sheet}` and `{sheets}` (this sheet's page number and the number of sheets),
+`{scale}` (the sheet's, like `1:2`), `{date}` (the day it is drawn),
+`{version}` (the newest saved version's name) and `{= expr}`, an expression
+over the design's parameters (section 5.2) written with its unit at the
+sheet's decimals (`{= clearance}` gives `0.20 mm`). Renaming a parameter
+rewrites the names in `{= …}` too. A field that has no value, one this
+version doesn't know and an expression that doesn't evaluate are drawn as
+typed.
+
 #### 4.11.4 `SheetAnchor`
 
-What a dimension measures from, or a leader note, a centre mark or a centre
-line is drawn on: one of three shapes, told apart by their keys.
+What a dimension measures from, or a leader note, a centre mark, a centre
+line or a balloon is drawn on: one of three shapes, told apart by their keys.
 
 | Shape | Fields | Meaning |
 |---|---|---|
@@ -672,7 +688,13 @@ another edge.
         "kind": "dimension", "id": "9e04…", "view": "41c2…", "type": "linear", "at": [0, -12],
         "anchors": [{ "ref": { "kind": "edge", "id": "e[box:…:side:front|box:…:cap:start]", "fingerprint": { "type": "line", "at": [0, -20, 0], "dir": [1, 0, 0], "size": 60 } } }]
       },
-      { "kind": "sticky", "id": "5f1d…", "at": [300, 30], "size": [50, 30], "text": "Check the fit after the first print." }
+      { "kind": "sticky", "id": "5f1d…", "at": [300, 30], "size": [50, 30], "text": "Check the fit after the first print." },
+      { "kind": "partsList", "id": "a8e2…", "view": "41c2…", "at": [250, 220], "columns": ["item", "qty", "name", "material", "size"], "rows": { "Pad1:0": { "material": "PETG" } } },
+      {
+        "kind": "balloon", "id": "b310…", "view": "41c2…", "at": [-40, 25], "list": "a8e2…",
+        "anchor": { "ref": { "kind": "face", "id": "f[pad:Pad1:side:0]", "fingerprint": { "type": "plane", "at": [-30, 0, 10] } } }
+      },
+      { "kind": "table", "id": "d6c4…", "at": [20, 230], "columns": [30, 60], "rows": [["Clearance", "{= clearance}"], ["Sheet", "{sheet} of {sheets}"]] }
     ]
   }
 ]
