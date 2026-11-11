@@ -48,3 +48,18 @@ export async function sheetSnapshot(
     URL.revokeObjectURL(url);
   }
 }
+
+/**
+ * A sheet's exported SVG (`sheetToSvg`: the export's look, its text outlined) as a PNG
+ * whose longer side is `size` px, or `null` if it fails: the agent tools' `export_sheet`
+ * (P6-24 S6). Parsed as XML, never run; drawn the same way as `sheetSnapshot`.
+ */
+export async function sheetSvgSnapshot(
+  svg: string,
+  paper: { width: number; height: number },
+  size: number,
+): Promise<Blob | null> {
+  const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+  if (!(parsed instanceof SVGSVGElement)) return null;
+  return sheetSnapshot(parsed, paper, size);
+}

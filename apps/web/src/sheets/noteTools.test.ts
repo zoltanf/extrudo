@@ -5,9 +5,9 @@ import {
   type SheetViewId,
   sheetItemProblems,
 } from '@extrudo/core';
+import { withEveryStickyNote } from '@extrudo/sheets';
 import { describe, expect, it } from 'vitest';
 import type { PickShape, SheetHit, SheetPick, SheetPickable } from './dimensionTool';
-import { withEveryStickyNote } from './exportSheets';
 import {
   LEADER_PLACEHOLDER,
   noteAccepts,

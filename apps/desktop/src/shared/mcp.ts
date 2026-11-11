@@ -22,8 +22,8 @@ export interface McpToolResult {
   isError?: boolean;
 }
 
-/** The formats an agent may export (the `export` tool). */
-export const AGENT_EXPORT_FORMATS = ['stl', '3mf', 'step'] as const;
+/** The formats an agent may export (the `export` tool; a sheet's PDF from `export_sheet`). */
+export const AGENT_EXPORT_FORMATS = ['stl', '3mf', 'step', 'pdf'] as const;
 export type AgentExportFormat = (typeof AGENT_EXPORT_FORMATS)[number];
 
 /** An exported file main writes under `userData/agent-exports`; the renderer never names a path. */

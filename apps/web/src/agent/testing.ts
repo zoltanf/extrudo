@@ -61,6 +61,12 @@ export function fakeHost(
     redo: () => store.getState().redo(),
     save: async () => {},
     exportModel: async () => new Uint8Array([1, 2, 3]),
+    sheetKernel: () => undefined,
+    sheetFields: async () => ({}),
+    finishDrawing: () => {
+      if (session.getState().mode === 'sheet') session.getState().exitMode();
+    },
+    sheetPng: async () => new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }),
   };
   return { host, store, session, model, applied, ran };
 }

@@ -1302,3 +1302,76 @@ change, no kernel facade change, no new dependency (one new workspace edge: `@ex
   PDF pages and text, the same bytes twice, `--date`/`--stickies`/`--sheet`, SVG per
   sheet, `check --sheets` passing and failing on a suppressed feature, a detached
   diameter written as `Ø?`).
+
+## Amendment (S6, the agent tools), 2026-11-11
+
+Package 2 of S6 (plan §9's MCP bullet). No schema change, no kernel facade change, no new
+dependency, no change to the CSP.
+
+- **Six tools** (`apps/web/src/agent/sheetTools.ts`, schemas in `schemas.ts`, listed and
+  stale-checked in the skill's `references/tools.md`):
+  - `list_sheets` `{}` → `{ open, sheets }`: each sheet's name, paper (size, orientation,
+    mm), scale, projection, decimals, title block; its views (`at` on the sheet, `from` as a
+    standard name, a direction or `{ parent, side }`, the scale it is drawn at, and `right`
+    and `up`, the world directions of the view's x and y, so an agent can work out view mm);
+    its items (kind, view, text, a dimension's `type`, measured `value` and printed `text`,
+    `state` ok, moved, detached or invalid with the kernel's `message`; `pending` while the
+    kernel can't say). `open` is the sheet open in the app, or null.
+  - `add_sheet` `{ name?, size?, orientation?, projection?, scale?, start ('standard' |
+    'empty'), bodies?, titleBlock?, fields? }` → the sheet as `list_sheets` gives it. The
+    standard start is fitted as New drawing fits it: the app's `planSheetStart` measures the
+    views and lays them out, and its scale and places go to `d.addSheet` as `scale` and `at`
+    (the API alone puts them on a paper grid). Title-block fields are the API's defaults (the
+    design's name and units: no date, no author) unless given.
+  - `add_view` `{ sheet, at, from? | parent + side, name?, scale?, style?, bodies? }` → `{ id,
+    name }`: a base view (`sheet.addView`) or a projected one (`view.project`); a projected
+    view given a direction, scale, style or bodies is refused (they are its parent's).
+    `style` offers `visible` and `hidden` only (shaded views are a later decision).
+  - `add_dimension` `{ sheet, view, type, anchors, at, direction?, decimals?, before?, after? }`
+    → `{ id, value, text, state }`. Anchors are named as the other tools name geometry: `{ face
+    }`, `{ edge }`, `{ edgeBetween: [face, face] }`, `{ vertex }` (each with `body?`, an edge with
+    `at?`, a face with `silhouette?`) or `{ free: [x, y] }`. **The fingerprint comes from the
+    kernel's `reference(body, kind, name)`**, asked of the view's bodies in turn (its base view's
+    own, else the shown ones), before the API is called; a name in none of them is refused with
+    its input path. **The dimension is measured on the scratch sheet before it goes in**
+    (`resolveSheet` of that sheet, `measureSheetDimension`): `detached` or `invalid` is refused
+    and nothing changes, so the answer's value is always one the model gives.
+  - `add_note` `{ sheet, text, at, size? }` (a text, sheet mm) or `{ sheet, text, at, view, anchor }`
+    (a leader note, view mm; measured first like a dimension) → `{ id, kind }`. It is the one tool
+    beyond the plan's five: without it a sheet an agent makes has no notes, and a drawing to hand
+    over usually needs one ("Deburr all edges"). Moving or deleting items is left out: `undo`
+    takes back an agent's last step, and the person edits sheets in the app.
+  - `export_sheet` `{ format ('pdf' | 'png'), sheets?, size?, stickies? }`, paced with `export`
+    (one per 2 s): **the kernel's `sheetModelNow` then `@extrudo/sheets`' `sheetFiles`**, with the
+    fields the app's Export drawing fills (today, the newest version, the filament's density:
+    `AgentHost.sheetFields`, the shell's `sheetFields`). A PDF goes to main as the reply's file
+    (`format: 'pdf'`, added to `AGENT_EXPORT_FORMATS`; written under `userData/agent-exports`,
+    its path answered). **A PNG is the sheet's SVG drawn onto a canvas through a `blob:` image**
+    (`sheetSvgSnapshot`, beside Report a Bug's `sheetSnapshot`; the text is outlined in that SVG,
+    so no font is needed to draw it), longer side 512–2400 px (default 1600), at most four sheets,
+    one image each. The answer's text lists what the file can't show as the screen does: each
+    sheet's detached items (written with "?"), views that couldn't be drawn, sticky notes left out.
+- **One transaction per change**: each tool builds its change with the API on
+  `Design.from(doc, { ids: newId })` and dispatches the same core command (`addSheet`,
+  `addSheetView`, `addSheetItem`) inside the agent tools' `change`, so it is one step `Agent: …`,
+  refused with `BUSY` while a sketch or a dialog is open, and answers `problems`. `change`, the
+  replies and the body-reference helpers moved from `tools.ts` to `agent/change.ts`, so both tool
+  files share them without an import cycle.
+- **The mode**: the sheet tools work with the drawing open or closed and never open or close it
+  (a change to the open sheet shows at once; New drawing in the app opens the sheet, `add_sheet`
+  doesn't). **`screenshot` finishes an open drawing first** (`AgentHost.finishDrawing`, the app's
+  `finishDrawing`, plan §8) and adds a line saying so. No other tool needs the 3D view.
+- **The app's export uses the shared path**: `exportSheets.ts` writes through `sheetFiles` (the
+  fields and the every-sticky-note copy were its own); its views still come from the project's
+  view runner (its cache serves the canvas's current lines), its anchors and parts lists from
+  `exportAnchorsOf`/`exportPartsOf` as before. `withEveryStickyNote` is `@extrudo/sheets`' only.
+- **Main's 60 s answer limit** applies: a sheet whose views take longer to draw exactly (or to
+  fit, for `add_sheet`) answers the timeout. The kernel tests' small designs answer well inside
+  it; large designs were not measured.
+- **Tests**: `agent/sheetTools.kernel.test.ts` on the real kernel (a fitted standard sheet and its
+  undo; a linear and a diameter dimension answering 40 and 16, following a parameter to 50; an
+  unknown edge and a radius on a straight edge refused with nothing changed; base and projected
+  views, a text and a leader note, each one step; a PDF with the value, the fields filled, then
+  the plate suppressed: `list_sheets` says detached, the PDF and the PNG's SVG write "?"), and in
+  `tools.test.ts` an empty sheet's call, stored shape and undo, refusals (a name in use, no kernel,
+  an unknown sheet), the mode rule and `BUSY`.
