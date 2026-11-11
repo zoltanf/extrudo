@@ -373,6 +373,15 @@ describe('B2 (the storage box): a dimension follows the model', () => {
   const resolve = (sheet: Sheet, id: string) =>
     (engine as RecomputeEngine).resolveSheet(sheet)[id as SheetItemId] ?? [];
 
+  // The Dimension tool picks a view's curve, which carries its edge's name, not an index.
+  it('gives the same reference for an edge by its name as by its index', {
+    timeout: 60_000,
+  }, async () => {
+    const { floor } = await picks();
+    expect(engine?.reference(body, 'edge', floor.id)).toEqual(floor);
+    expect(engine?.reference(body, 'edge', 'e[no such edge]')).toBeUndefined();
+  });
+
   it('follows a parameter change: the height edge grows with `height`', {
     timeout: 60_000,
   }, async () => {

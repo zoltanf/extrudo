@@ -15,7 +15,8 @@ export function Segmented<T extends string>({
 }: {
   label: string;
   value: T;
-  options: readonly { value: T; label: string }[];
+  /** `name`: the accessible name when the label is shortened ("Horiz." for "Horizontal"). */
+  options: readonly { value: T; label: string; name?: string }[];
   onChange(value: T): void;
 }) {
   return (
@@ -31,6 +32,8 @@ export function Segmented<T extends string>({
           type="button"
           role="radio"
           aria-checked={option.value === value}
+          aria-label={option.name}
+          title={option.name}
           onClick={() => option.value !== value && onChange(option.value)}
           className="min-w-0 flex-1 truncate rounded-[5px] px-1 text-xs text-muted hover:text-ink aria-checked:bg-accent-soft aria-checked:font-semibold aria-checked:text-accent"
         >

@@ -878,7 +878,7 @@ export const TOOLS = {
     hint: 'Render a presentable picture of the design.',
   },
   // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch. The
-  // tools of later slices (dimensions, notes, tables) are not listed until they exist.
+  // tools of later slices (notes, tables) are not listed until they exist.
   sheets: {
     id: 'sheets',
     label: 'Drawing',
@@ -899,6 +899,13 @@ export const TOOLS = {
     icon: 'projected-view',
     category: 'create',
     hint: 'Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.',
+  },
+  sheetDimension: {
+    id: 'sheetDimension',
+    label: 'Dimension',
+    icon: 'sheet-dimension',
+    category: 'sketch',
+    hint: 'A length, distance, radius, diameter or angle measured from the model: pick, then click where the number goes.',
   },
   newSheet: {
     id: 'newSheet',
@@ -1207,13 +1214,14 @@ export const TABS: Tab[] = [
     ],
   },
   // The drawing's own tab (P6-24, ADR-0143), shown in place of every tab but Home while a
-  // sheet is open; Finish Drawing sits after its groups. Dimensions, Notes and Tables join
-  // it with their slices.
+  // sheet is open; Finish Drawing sits after its groups. Notes and Tables join it with their
+  // slices.
   {
     id: 'sheet',
     label: 'Drawing',
     groups: [
       { label: 'Views', tools: ['baseView', 'projectedView'] },
+      { label: 'Dimensions', tools: ['sheetDimension'] },
       { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
       { label: 'Output', tools: ['exportSheets'] },
     ],

@@ -65,11 +65,16 @@ export const SKETCH_SLOTS: readonly SlotSpec[] = [
 /**
  * The same, in the drawing (P6-24, ADR-0143): the sheet's own tools, then Undo and Finish
  * Drawing. Base View took Sheet Setup's wedge (S2): the right column shows the setup
- * whenever nothing is selected. Later slices' tools replace wedges the same way.
+ * whenever nothing is selected; Dimension took New Sheet's (S3: the sheet tabs' + adds one).
+ * Later slices' tools replace wedges the same way.
  */
 export const SHEET_SLOTS: readonly SlotSpec[] = [
   { command: 'baseView', label: 'Base View', icon: { name: 'base-view', category: 'create' } },
-  { command: 'newSheet', label: 'New Sheet', icon: { name: 'new-sheet', category: 'file' } },
+  {
+    command: 'sheetDimension',
+    label: 'Dimension',
+    icon: { name: 'sheet-dimension', category: 'sketch' },
+  },
   {
     command: 'exportSheets',
     label: 'Export PDF',

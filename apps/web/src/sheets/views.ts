@@ -239,7 +239,8 @@ export interface NewBaseView {
   bodies?: BodyId[];
 }
 
-function run(stores: SheetModeStores, command: Command): string | undefined {
+/** Runs one sheet command as one undo step (ending an open sketch first); a refusal's message. */
+export function runSheetCommand(stores: SheetModeStores, command: Command): string | undefined {
   try {
     leaveSketch(stores);
     stores.store.getState().dispatch(command);
@@ -266,7 +267,7 @@ export function placeBaseView(
     ...(view.style && view.style !== 'hidden' && { style: view.style }),
     ...(view.bodies && { bodies: view.bodies }),
   };
-  const error = run(stores, {
+  const error = runSheetCommand(stores, {
     ...addSheetView({ sheet: sheet.id, view: made }),
     label: 'Base view',
   });
@@ -280,7 +281,7 @@ export function changeSheetView(
   changes: SheetViewChanges,
   label: string,
 ): string | undefined {
-  return run(stores, { ...updateSheetView({ id, changes }), label });
+  return runSheetCommand(stores, { ...updateSheetView({ id, changes }), label });
 }
 
 // Projected views (S2 part 2) -----------------------------------------------------
@@ -341,7 +342,7 @@ export function placeProjectedView(
     at,
     from: { kind: 'projected', parent, side },
   };
-  const error = run(stores, {
+  const error = runSheetCommand(stores, {
     ...addSheetView({ sheet: sheet.id, view }),
     label: 'Projected view',
   });

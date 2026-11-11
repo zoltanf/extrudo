@@ -280,13 +280,21 @@ export class RecomputeEngine {
    * persistent name and fingerprint, ready to store in a feature's `ref`
    * input. Undefined if there is no such body or sub-shape.
    */
-  reference(body: BodyId, kind: SubShapeKind, index: number, base = false): GeomRef | undefined {
+  reference(
+    body: BodyId,
+    kind: SubShapeKind,
+    index: number | string,
+    base = false,
+  ): GeomRef | undefined {
     const shape = (base ? this.#previewBase : this.#latest).get(body);
     const names = shape === undefined ? undefined : this.#names.get(shape);
     if (shape === undefined || !names) return undefined;
-    const id = namesOf(names, kind)[index];
+    const all = namesOf(names, kind);
+    // By its persistent name (a sheet view's curve, P6-24 S3), or by its index.
+    const at = typeof index === 'string' ? all.indexOf(index) : index;
+    const id = all[at];
     if (id === undefined) return undefined;
-    const fingerprint = fingerprintOf(this.#describe(shape), names, kind, index);
+    const fingerprint = fingerprintOf(this.#describe(shape), names, kind, at);
     return { kind, id, fingerprint };
   }
 

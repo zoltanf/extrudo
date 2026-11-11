@@ -537,7 +537,8 @@ export class Recomputer {
 
   /**
    * The persistent reference of a face, edge or vertex of a body the model
-   * store shows (by its mesh index), or with `base` of the last preview's
+   * store shows (by its mesh index, or by its persistent name: a sheet view's
+   * curve carries that), or with `base` of the last preview's
    * base, with its fingerprint (ADR-0005): what a feature dialog's
    * selection field stores. Undefined if the kernel no longer has it or
    * can't be reached.
@@ -545,7 +546,7 @@ export class Recomputer {
   async reference(
     body: BodyId,
     kind: SubShapeKind,
-    index: number,
+    index: number | string,
     base = false,
     options?: WaitOptions,
   ): Promise<GeomRef | undefined> {

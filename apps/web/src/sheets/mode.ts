@@ -36,7 +36,11 @@ import { cancelCreateSketch, finishSketch, type SketchModeStores } from '../sket
 import { copyName, copySheet, type NewSheetOptions, newSheet, sheetNameProblem } from './defaults';
 
 /** The tools that run on the sheet (the session's `activeTool`) until they finish or Esc. */
-export const SHEET_TOOLS: ReadonlySet<string> = new Set(['baseView', 'projectedView']);
+export const SHEET_TOOLS: ReadonlySet<string> = new Set([
+  'baseView',
+  'projectedView',
+  'sheetDimension',
+]);
 
 /** The stores the drawing mode works on: the sketch mode's (it may have to finish a sketch). */
 export type SheetModeStores = SketchModeStores;
