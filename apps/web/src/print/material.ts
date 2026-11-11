@@ -100,6 +100,21 @@ export function chosenDensityExpression(choice: MaterialChoice): string {
   return choice.material === 'custom' ? choice.density : densityExpression(choice, choice.material);
 }
 
+/**
+ * The density in use, g/cm³, with `evaluate` checking the expression (`checkPrintField`'s
+ * rules): a preset whose own density no longer evaluates (a deleted parameter) falls back to
+ * the built-in number; a custom one that doesn't evaluate is `undefined`. Print Info's weight
+ * and a sheet's parts list Mass both take it.
+ */
+export function chosenDensity(
+  choice: MaterialChoice,
+  evaluate: (field: 'density', expression: string) => EvaluateResult,
+): number | undefined {
+  const result = evaluate('density', chosenDensityExpression(choice));
+  if (!result.ok && choice.material !== 'custom') return presetDensity(choice.material);
+  return result.ok ? result.value : undefined;
+}
+
 /** Whether a person changed a preset's density (an override that isn't the built-in number). */
 export function isDensityOverridden(choice: MaterialChoice, id: MaterialId): boolean {
   return choice.densities?.[id] !== undefined;

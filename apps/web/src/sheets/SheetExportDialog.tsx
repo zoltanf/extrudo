@@ -34,6 +34,7 @@ import {
   sheetExportPlan,
 } from './exportSheets';
 import { detachedDimensions, type SheetAnchorsKernel } from './sheetAnchors';
+import type { SheetFieldExtras, SheetPartsKernel } from './sheetParts';
 import type { SheetViewsKernel } from './viewRunner';
 
 /** What opened the dialog: every sheet (Export PDF), or the sheets given (Export This Sheet). */
@@ -50,7 +51,10 @@ export interface SheetExportDialogProps {
     kernel: SheetViewsKernel;
     bodies(): readonly BodyId[];
     anchors?: SheetAnchorsKernel;
+    parts?: SheetPartsKernel;
   };
+  /** What the fields and Mass need besides the document (S5), read when the export starts. */
+  fields?: () => Promise<SheetFieldExtras>;
   preferences: Preferences;
   notify(tone: 'info' | 'error', text: string): void;
   onClose(): void;
@@ -75,6 +79,7 @@ export function SheetExportDialog({
   notify,
   onClose,
   views,
+  fields,
 }: SheetExportDialogProps) {
   const sheets = doc.sheets ?? [];
   const [chosen, setChosen] = useState<ReadonlySet<SheetId>>(new Set());
@@ -168,19 +173,23 @@ export function SheetExportDialog({
           if (plan.sheets.length === 0 || busy) return;
           setBusy(true);
           preferences.set(SHEET_EXPORT_KEY, { format, stickies });
-          exportSheets(
-            doc,
-            files,
-            plan,
-            format,
-            views && {
-              kernel: views.kernel,
-              bodies: views.bodies(),
-              ...(views.anchors && { anchors: views.anchors }),
-              onProgress: (done, total) => setDrawing(total > 0 ? { done, total } : undefined),
-            },
-            { stickies },
-          )
+          (fields ? fields() : Promise.resolve({}))
+            .then((extras) =>
+              exportSheets(
+                doc,
+                files,
+                plan,
+                format,
+                views && {
+                  kernel: views.kernel,
+                  bodies: views.bodies(),
+                  ...(views.anchors && { anchors: views.anchors }),
+                  ...(views.parts && { parts: views.parts }),
+                  onProgress: (done, total) => setDrawing(total > 0 ? { done, total } : undefined),
+                },
+                { stickies, fields: extras },
+              ),
+            )
             .then(() => onClose())
             .catch((error: unknown) => {
               if (isSheetViewsCancelled(error)) return;

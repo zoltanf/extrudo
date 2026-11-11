@@ -167,8 +167,11 @@ export interface SheetCanvasProps {
    * `--sheet-mm` (px per mm, written with the zoom).
    */
   editor?: ReactNode;
-  /** A double-click on a target with no tool running (plan §4.2: edit a text in place). */
-  onOpen?: (target: SheetTarget) => void;
+  /**
+   * A double-click on a target with no tool running, at sheet `point` mm (plan §4.2: edit a
+   * text in place; a table's cell under the point, S5).
+   */
+  onOpen?: (target: SheetTarget, point: [number, number]) => void;
   /**
    * Snapping a dragged selection (S4, plan §4.2), with the dimensions' rows; absent when the
    * floating bar's Snap is off.
@@ -614,7 +617,7 @@ export function SheetCanvas({
           return;
         const [x, y] = at(event.clientX, event.clientY);
         const target = hitTarget(latest.current.boxes, x, y, Math.max(0.8, 5 / view.current.scale));
-        if (target) open(target);
+        if (target) open(target, [x, y]);
       }}
       onPointerLeave={() => {
         latest.current.pointer?.onLeave?.();

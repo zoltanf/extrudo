@@ -28,7 +28,8 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     expect(drawing?.groups.map((g) => [g.label, g.tools])).toEqual([
       ['Views', ['baseView', 'projectedView']],
       ['Dimensions', ['sheetDimension', 'sheetCentreMark', 'sheetCentreLine']],
-      ['Notes', ['sheetText', 'sheetLeader', 'sheetSticky']],
+      ['Notes', ['sheetText', 'sheetLeader', 'sheetBalloon', 'sheetSticky']],
+      ['Tables', ['sheetPartsList', 'sheetTable']],
       ['Sheet', ['newSheet', 'sheetSetup']],
       ['Output', ['exportSheets']],
     ]);
