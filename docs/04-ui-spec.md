@@ -980,8 +980,11 @@ Projected View, Standard views and the view card; dimensions and notes come with
   on, is suppressed. Unsuppress it to show the dimension again.", "…, has an
   error. Fix it to show the dimension again.") or "This dimension lost its
   edge: drag an end onto an edge, or delete it.". The export resolves the
-  anchors too and draws what the screen draws, in black; its summary adds
-  "· 1 dimension detached" when some are.
+  anchors again and writes only the model as it is now, in black: a lost
+  dimension is its text alone with "?" for the value, a lost leader note its
+  text without the arrow, a lost centre mark or line nothing; its summary adds
+  "· 1 dimension detached, written as ?" when some are. If the model can't be
+  measured, the export stops and says so.
 - **Base View** (`V`): the right column shows its choices (Looking from, Scale,
   Style), a frame with the view's quick lines follows the pointer, a click
   places the view with the middle of its lines there (one undo step, "Base

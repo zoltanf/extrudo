@@ -2196,7 +2196,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - Deleting or suppressing a feature needs the timeline: Finish Drawing, the chip's menu, then
   double-click the sheet row again. Undo in the drawing is a plain undo (a feature deleted in
   the model comes back).
-- The export's PDF text layer writes strings in hex (`<3734> Tj` is "74"); inflate the
+- An export with a lost dimension writes it as "?" (`<3f> Tj`), never its last value: the spec
+  checks that after deleting the pocket (the dialog's summary ends "· 1 dimension detached,
+  written as ?").
+- The export's PDF text layer writes strings in lowercase hex (`<3734> Tj` is "74"); inflate the
   `/FlateDecode` streams first. `SHEET_SHOTS=<dir>` makes the spec save light and dark
   screenshots for a person to look at.
 

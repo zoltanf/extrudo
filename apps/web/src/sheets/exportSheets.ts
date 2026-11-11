@@ -17,7 +17,7 @@ import type { FileAccess } from '../platform/files';
 import { safeFileName } from '../platform/files';
 import { ensureUiFonts } from '../sketch/fonts';
 import { sizeLabel } from './defaults';
-import { exportAnchors, type SheetAnchorsKernel } from './sheetAnchors';
+import { exportAnchorsOf, type SheetAnchorsKernel } from './sheetAnchors';
 import type { SheetViewsKernel } from './viewRunner';
 
 /**
@@ -84,8 +84,9 @@ export function sheetExportPlan(
  * Writes the plan: one PDF of its sheets, or an SVG per sheet. The other sheets still count
  * for "sheet n of N". With `views`, every view of the chosen sheets is drawn exactly from
  * the model first (S2: an export never holds the quick placeholder); a view that can't be
- * drawn is its frame, and the items' anchors are resolved (S3). Rejects with
- * `isSheetViewsCancelled` when that is cancelled. Returns the file names.
+ * drawn is its frame, and the items' anchors are resolved again, nothing kept (S3: a lost
+ * dimension is its text with "?"; the export fails when the kernel can't measure them).
+ * Rejects with `isSheetViewsCancelled` when that is cancelled. Returns the file names.
  */
 export async function exportSheets(
   doc: ExtrudoDocument,
@@ -105,15 +106,10 @@ export async function exportSheets(
     const wants = plan.sheets.flatMap((sheet) => sheetViewWants(doc, sheet, views.bodies));
     lines = await sheetViewRunner(views.kernel).exact(wants, views.onProgress);
   }
-  // The items' anchors at the model now, keeping the geometry the screen kept for a lost one.
-  let anchors: SheetAnchors | undefined;
-  if (views?.anchors) {
-    anchors = {};
-    for (const sheet of plan.sheets) {
-      const fresh = await views.anchors.resolveSheet(sheet, { quiet: true });
-      Object.assign(anchors, exportAnchors(sheet.id, fresh));
-    }
-  }
+  // The items' anchors at the model now, nothing kept: a lost dimension is written as "?".
+  const anchors: SheetAnchors | undefined = views?.anchors
+    ? await exportAnchorsOf(views.anchors, plan.sheets)
+    : undefined;
   const context = {
     name: doc.name,
     sheets: all,

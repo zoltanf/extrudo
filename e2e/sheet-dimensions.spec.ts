@@ -151,6 +151,9 @@ async function downloaded(page: Page, click: () => Promise<unknown>) {
   return readFile(await download.path());
 }
 
+/** A string as the PDF's text layer writes it (lowercase hex: "74" is <3734>). */
+const hexOf = (value: string) => Buffer.from(value, 'latin1').toString('hex');
+
 /** A PDF's page content, its streams inflated. */
 function pdfContent(bytes: Buffer): string {
   const all = bytes.toString('latin1');
@@ -235,9 +238,20 @@ test('a deleted or suppressed feature detaches its dimension; undo attaches it a
   await page.locator('#toolbar-groups [data-label="Export PDF"]').click();
   const dialog = page.getByRole('dialog', { name: 'Export drawing' });
   await expect(dialog.locator('[data-sheet-export-summary]')).toHaveText(
-    '1 page · A3 landscape · 1 dimension detached',
+    '1 page · A3 landscape · 1 dimension detached, written as ?',
   );
-  await page.keyboard.press('Escape');
+  // The export writes only what the model says now: the lost dimension is its text alone,
+  // "?", never the last value the screen kept.
+  const lostPdf = await downloaded(page, () =>
+    dialog.getByRole('button', { name: 'Export' }).click(),
+  );
+  if (process.env.SHEET_SHOTS) {
+    await writeFile(join(process.env.SHEET_SHOTS, 'export-detached.pdf'), lostPdf);
+  }
+  const content = pdfContent(lostPdf);
+  expect(content).toContain(`<${hexOf('?')}> Tj`);
+  expect(content).not.toContain(`<${hexOf('74')}> Tj`);
+  expect(content).toContain(`<${hexOf('40')}> Tj`);
 
   // Undo in the drawing is a plain undo: the pocket is back, and so is the dimension.
   await page.keyboard.press('Control+z');

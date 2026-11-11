@@ -18,7 +18,8 @@ import { itemReason } from './SheetTabs';
 import {
   detachedDimensions,
   drawnItems,
-  exportAnchors,
+  EXPORT_UNMEASURED,
+  exportAnchorsOf,
   type SheetAnchorsKernel,
   sheetItemsStore,
   useSheetAnchors,
@@ -104,18 +105,31 @@ describe('detachedDimensions', () => {
   });
 });
 
-describe('exportAnchors', () => {
-  it('keeps the geometry the screen kept, and is what the screen drew when the kernel is silent', () => {
-    const id = 'd1' as SheetItemId;
-    const kept: SheetAnchors = { [id]: [{ status: 'ok', geometry: LINE as never }] };
-    sheetItemsStore.setState({ kept: new Map([['s1' as SheetId, kept]]) });
-    expect(
-      exportAnchors('s1' as SheetId, { [id]: [{ status: 'detached', message: 'Gone.' }] }),
-    ).toEqual({
-      [id]: [{ status: 'detached', geometry: LINE, message: 'Gone.' }],
+describe('exportAnchorsOf', () => {
+  const id = 'd1' as SheetItemId;
+  const withDimension = sheetWith([dimension('d1', [{ ref: ref('a') }])]);
+
+  it('writes only what the kernel says now, never the geometry the screen kept', async () => {
+    sheetItemsStore.setState({
+      kept: new Map([['s1' as SheetId, { [id]: [{ status: 'ok', geometry: LINE as never }] }]]),
     });
-    expect(exportAnchors('s1' as SheetId, undefined)).toBe(kept);
-    expect(exportAnchors('s2' as SheetId, undefined)).toEqual({});
+    const lost = { [id]: [{ status: 'detached' as const, message: 'Gone.' }] };
+    const asked: Sheet[] = [];
+    const kernel: SheetAnchorsKernel = {
+      resolveSheet: async (sheet) => {
+        asked.push(sheet);
+        return lost;
+      },
+    };
+    expect(await exportAnchorsOf(kernel, [withDimension, sheetWith([text], 's2')])).toEqual(lost);
+    // A sheet without anchored items isn't asked about.
+    expect(asked.map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it("fails when the kernel can't answer, rather than writing what the screen had", async () => {
+    const kernel: SheetAnchorsKernel = { resolveSheet: async () => undefined };
+    await expect(exportAnchorsOf(kernel, [withDimension])).rejects.toThrow(EXPORT_UNMEASURED);
+    expect(await exportAnchorsOf(kernel, [sheetWith([text])])).toEqual({});
   });
 });
 

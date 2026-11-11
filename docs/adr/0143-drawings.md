@@ -844,8 +844,8 @@ kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached d
   answer comes (`drawnItems`), so nothing is drawn detached because the kernel has not answered.
   Without a kernel, or when the first answer fails, every item is drawn (detached).
 - **Nothing stored**: the anchors live in memory; `sheetItemsStore` keeps, per sheet visited, what
-  was drawn (`kept`), each open-sheet item's text, state and reason (`rows`) for the browser and
-  the status bar.
+  was drawn (`kept`, for the screen only: a sheet opened again starts from it), each open-sheet
+  item's text, state and reason (`rows`) for the browser and the status bar.
 - **States on screen** (plan §4.6): `detached` in the paper's red (`#d93d3d`, the light theme's
   error colour, since the paper is white in both themes) with dashed lines (1.6 1 mm); `invalid`
   in red, solid; `moved` drawn as usual. The browser's row warns ("moved"; red "lost its edge"),
@@ -853,13 +853,25 @@ kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached d
   dimension's reason is the kernel's** (deleted, suppressed, failed feature) when it gives one,
   else the plan's "This dimension lost its edge: …" (`measureSheetDimension`); leader notes and
   centre marks keep their own words.
-- **The export** resolves every chosen sheet's anchors before it writes, keeping the geometry the
-  screen kept (`exportAnchors`), and passes the design's units (it wrote millimetres before). Its
-  dialog resolves as it opens and adds "· n dimensions detached" to the summary.
+- **The export writes only the model as it is now** (`exportAnchorsOf`): it resolves every chosen
+  sheet with anchored items again and keeps **no** geometry, since the writers ignore `state` and a
+  kept "74" would print black, like a valid one: the wrong number the owner's rule is there to
+  prevent. On the page a lost dimension is its text alone at its place with "?" for the value (as
+  a file just opened shows it), a lost leader note its typed text without the arrow, a lost centre
+  mark or line nothing. If the kernel can't answer, the export stops with "The drawing couldn't be
+  exported: its dimensions couldn't be measured from the model. Try again once the model is
+  computed." and writes nothing. It passes the design's units (it wrote millimetres before). Its
+  dialog resolves as it opens and adds "· n dimensions detached, written as ?" to the summary. The
+  screen is unchanged: last geometry, red and dashed, the reason in the status bar.
 - **The browser** (plan §3.1): a Dimensions folder in each sheet's folder when it has dimensions,
   a row per dimension (its text on the open sheet, else "Dimension"; its view's name), a click
   selects it on its sheet.
-- **Rejected**: drawing anchored items detached until the first answer (every opening would
+- **Left for a later schema change** (the owner, 2026-11-11): mock-up 3's "Show the unit" and the
+  card's "arrows inside or outside" (plan §4.3). The item has no field for either; the layout puts
+  the arrows outside by itself when there is no room between the extension lines.
+- **Rejected**: the export keeping the screen's last geometry for a lost dimension (it printed a
+  black "74" on B2 with the pocket deleted); writing what the screen last had when the kernel
+  can't answer; drawing anchored items detached until the first answer (every opening would
   flash red); keeping the whole sheet bare until then (views would wait on dimensions); the
   theme's error token on the paper (it is a light red in the dark theme, meant for a dark
   background); a message for each kind in the browser row (the status text has room for it).
