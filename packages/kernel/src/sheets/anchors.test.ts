@@ -476,3 +476,196 @@ describe('B2 (the storage box): a dimension follows the model', () => {
     expect([line.start[2], line.end[2]]).toEqual([0, 0]);
   });
 });
+
+describe('notes and centre lines on a plate with a hole (ADR-0143, S4)', () => {
+  // A 60 × 40 × 10 plate (z 0 to 10) with a Ø8 hole through it at x = 10.
+  const plate = (length: string): ExtrudoDocument =>
+    testDocument([
+      primitive('Plate', 'box', { numbers: { length, width: '40 mm', height: '10 mm' } }),
+      primitive('Hole', 'cylinder', {
+        numbers: { diameter: '8 mm', height: '10 mm', x: '10 mm' },
+        operation: 'cut',
+      }),
+    ]);
+  const body = 'Plate:0' as BodyId;
+  const DRAWN_ON = 'The feature this was drawn on is deleted.';
+
+  function notesSheet(anchors: { edge: AnchorRef; rim: AnchorRef; wall: AnchorRef }): Sheet {
+    const { edge, rim, wall } = anchors;
+    return {
+      ...sheetWith([]),
+      items: [
+        {
+          kind: 'leader',
+          id: 'n1' as SheetItemId,
+          view: 'front' as SheetViewId,
+          anchor: { ref: edge },
+          at: [45, 20],
+          text: 'Break this edge',
+        },
+        {
+          kind: 'leader',
+          id: 'n2' as SheetItemId,
+          view: 'front' as SheetViewId,
+          anchor: { ref: wall },
+          at: [20, 25],
+          text: 'Ream',
+        },
+        {
+          kind: 'centreMark',
+          id: 'top-c1' as SheetItemId,
+          view: 'top' as SheetViewId,
+          anchors: [{ ref: rim }],
+        },
+        {
+          kind: 'centreMark',
+          id: 'top-c2' as SheetItemId,
+          view: 'top' as SheetViewId,
+          anchors: [{ ref: wall }],
+        },
+        {
+          kind: 'centreLine',
+          id: 'c3' as SheetItemId,
+          view: 'front' as SheetViewId,
+          anchors: [{ ref: wall }],
+        },
+        {
+          kind: 'sticky',
+          id: 'k1' as SheetItemId,
+          at: [10, 10],
+          size: [40, 20],
+          text: 'Not anchored',
+        },
+      ],
+    };
+  }
+
+  async function picks(doc: ExtrudoDocument) {
+    await recompute(doc);
+    const shape = shapeOf(body);
+    const edges = kernel.describe(shape).edges;
+    const rimIndex = edges.findIndex(
+      (e) => e.type === 'circle' && Math.abs(e.midpoint[2] - 10) < 1e-6,
+    );
+    return {
+      edge: edgeAt(body, [30, -20, 5]),
+      rim: engine?.reference(body, 'edge', rimIndex) as AnchorRef,
+      wall: faceOf(body, 'cylinder'),
+    };
+  }
+
+  it('resolves each kind: an edge, a face as a point for a leader, a circle and an axis', async () => {
+    const anchors = await picks(plate('60 mm'));
+    const out = (engine as RecomputeEngine).resolveSheet(notesSheet(anchors));
+    // Only the items with anchors, one report per anchor.
+    expect(Object.keys(out).sort()).toEqual(['c3', 'n1', 'n2', 'top-c1', 'top-c2']);
+    const [edge] = out['n1' as SheetItemId] ?? [];
+    expect(edge).toMatchObject({
+      status: 'ok',
+      resolved: anchors.edge,
+      geometry: { type: 'line' },
+    });
+    // A leader's face is a point on it: the hole wall's centroid, on its axis.
+    const [dot] = out['n2' as SheetItemId] ?? [];
+    expect(dot?.geometry?.type).toBe('point');
+    if (dot?.geometry?.type !== 'point') throw new Error('not a point');
+    expect(near(dot.geometry.point, [10, 0, 5])).toBe(true);
+    const [rim] = out['top-c1' as SheetItemId] ?? [];
+    expect(rim?.geometry).toMatchObject({ type: 'circle', radius: 4 });
+    const [wall] = out['top-c2' as SheetItemId] ?? [];
+    expect(wall?.geometry).toMatchObject({ type: 'circle', radius: 4 });
+    // A centre line's face is its axis, as long as the hole.
+    const [axis] = out['c3' as SheetItemId] ?? [];
+    expect(axis?.status).toBe('ok');
+    if (axis?.geometry?.type !== 'axis') throw new Error('not an axis');
+    const { start, end } = axis.geometry;
+    expect([start[0], start[1], end[0], end[1]].map((x) => Math.round(x * 1e6) / 1e6)).toEqual([
+      10, 0, 10, 0,
+    ]);
+    expect([start[2], end[2]].sort((a, b) => a - b).map((z) => Math.round(z * 1e6) / 1e6)).toEqual([
+      0, 10,
+    ]);
+  });
+
+  it('a leader follows its edge when the plate gets longer', async () => {
+    const anchors = await picks(plate('60 mm'));
+    const sheet = notesSheet(anchors);
+    await recompute(plate('80 mm'));
+    const [report] = (engine as RecomputeEngine).resolveSheet(sheet)['n1' as SheetItemId] ?? [];
+    expect(report?.status).not.toBe('detached');
+    if (report?.geometry?.type !== 'line') throw new Error('not a line');
+    expect(report.geometry.start[0]).toBeCloseTo(40, 6);
+    expect(report.geometry.end[0]).toBeCloseTo(40, 6);
+    // Its fingerprint point moved with it: the text follows (`followAnchors`).
+    expect(report.resolved?.fingerprint?.at[0]).toBeCloseTo(40, 6);
+  });
+
+  it('the hole deleted detaches its leader, centre mark and centre line, and attaches them again when it is back', async () => {
+    const doc = plate('60 mm');
+    const anchors = await picks(doc);
+    const sheet = notesSheet(anchors);
+    await recompute({ ...doc, features: doc.features.slice(0, 1), timelineMarker: 1 });
+    const gone = (engine as RecomputeEngine).resolveSheet(sheet);
+    for (const id of ['n2', 'top-c1', 'top-c2', 'c3']) {
+      expect(gone[id as SheetItemId], id).toEqual([{ status: 'detached', message: DRAWN_ON }]);
+    }
+    // The plate's own edge stays.
+    expect(gone['n1' as SheetItemId]?.[0]?.status).toBe('ok');
+    await recompute(doc);
+    const back = (engine as RecomputeEngine).resolveSheet(sheet);
+    expect(back['top-c1' as SheetItemId]?.[0]).toMatchObject({
+      status: 'ok',
+      resolved: anchors.rim,
+      geometry: { type: 'circle', radius: 4 },
+    });
+    expect(back['c3' as SheetItemId]?.[0]).toMatchObject({
+      status: 'ok',
+      geometry: { type: 'axis' },
+    });
+    expect(back['n2' as SheetItemId]?.[0]?.status).toBe('ok');
+  });
+
+  it('a suppressed hole detaches them in their own words', async () => {
+    const doc = plate('60 mm');
+    const anchors = await picks(doc);
+    const sheet = notesSheet(anchors);
+    await recompute({
+      ...doc,
+      features: doc.features.map((f) => (f.id === 'Hole' ? { ...f, suppressed: true } : f)),
+    });
+    const out = (engine as RecomputeEngine).resolveSheet(sheet);
+    expect(out['n2' as SheetItemId]?.[0]?.message).toBe(
+      'Hole, the feature this was drawn on, is suppressed. Unsuppress it to show the note again.',
+    );
+    expect(out['c3' as SheetItemId]?.[0]?.message).toMatch(/show the centre line again\.$/);
+    expect(out['top-c1' as SheetItemId]?.[0]?.message).toMatch(/show the centre mark again\.$/);
+  });
+
+  it("a flat face has no axis, and a centre line's axis needs a cylinder or a cone", async () => {
+    const anchors = await picks(plate('60 mm'));
+    const flat = faceOf(body, 'plane');
+    const sheet: Sheet = {
+      ...sheetWith([]),
+      items: [
+        {
+          kind: 'centreLine',
+          id: 'c1' as SheetItemId,
+          view: 'front' as SheetViewId,
+          anchors: [{ ref: flat }],
+        },
+        {
+          kind: 'centreLine',
+          id: 'c2' as SheetItemId,
+          view: 'front' as SheetViewId,
+          anchors: [{ ref: anchors.edge }, { ref: edgeAt(body, [-30, -20, 5]) }],
+        },
+      ],
+    };
+    const out = (engine as RecomputeEngine).resolveSheet(sheet);
+    expect(out['c1' as SheetItemId]?.[0]).toMatchObject({
+      status: 'ok',
+      message: 'The face is not a cylinder or a cone: it has no axis.',
+    });
+    expect(out['c2' as SheetItemId]?.map((r) => r.geometry?.type)).toEqual(['line', 'line']);
+  });
+});

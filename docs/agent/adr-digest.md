@@ -4471,6 +4471,22 @@ at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (ax
 PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
 through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
 geometry with no near match.
+**S4 notes (package 1, no UI):** items `leader` (`view`, one `anchor`, `at` in view mm, `text`), `sticky` (`at`,
+`size` in sheet mm, `text`, `color` from `SHEET_STICKY_COLORS`, absent yellow; `print` only `true`), `centreMark` and
+`centreLine` (`view`, `anchors`) in `core/src/sheet-schema.ts`, their rules in `sheetItemProblems` (leader: any one
+anchor; centre mark: one whole edge or a cylinder's face; centre line: two whole edges or outlines, or one face);
+`sheets/src/anchored.ts` (what every anchored item shares, out of `dimensions.ts`) and `sheets/src/notes.ts`
+(`layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`, `sheetItemStatus`, `sheetItemShown`,
+`sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`). Rules a change must keep: **`sheetItemAnchors(item)` is the one
+place that says which items have anchors** (the kernel resolves them, `remintSheets` rewrites them through
+`mapSheetItemAnchors`, layout reads reports by that index); every anchored item gets S3's resolve and its
+deleted/suppressed rule, the message in its own words (`lostFeature(ref, features, kind)`); **a whole face stands
+for what the kind takes** (`faceAs`: circle for dimension and centre mark, `axis` geometry for a centre line, the
+centroid point for a leader); **a sticky note without `print` never reaches an export** (`output: 'export'`, the
+default of `sheetsToPdf`/`sheetToSvg`; `layoutSheet` defaults to `screen`, which marks it "On screen only"); a view's
+`centreLines: false` hides its centre marks and lines; centre lines are dash-dot **built as segments** with a long
+dash at each end; a lost or invalid centre mark or line draws nothing (the browser row says why), a lost leader its
+text alone at `at`; **nothing is generated for a view by itself** (no automatic centre marks).
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,

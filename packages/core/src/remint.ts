@@ -13,7 +13,7 @@
 import { nextFeatureName } from './features';
 import type { BodyId, FeatureId } from './ids';
 import type { Annotation, ExtrudoDocument, Feature, FeatureInputs, GeomRef } from './schema';
-import type { Sheet } from './sheet-schema';
+import { mapSheetItemAnchors, type Sheet } from './sheet-schema';
 
 /** The characters of one token in a stored reference's ID (`timeline.ts`'s separators' complement). */
 const TOKEN = /[A-Za-z0-9_.~-]+/g;
@@ -90,7 +90,8 @@ export function remintAnnotations(
 
 /**
  * Sheets that came with reminted features (ADR-0143): a view's `bodies`
- * (`<feature>:<n>`) and a dimension's anchor references name the new IDs,
+ * (`<feature>:<n>`) and every item's anchor references (`sheetItemAnchors`)
+ * name the new IDs,
  * like `remintFeatures`' references.
  */
 export function remintSheets(
@@ -105,16 +106,9 @@ export function remintSheets(
       view.bodies ? { ...view, bodies: view.bodies.map((b) => rename(b) as BodyId) } : view,
     ),
     items: sheet.items.map((item) =>
-      item.kind === 'dimension'
-        ? {
-            ...item,
-            anchors: item.anchors.map((anchor) =>
-              'ref' in anchor
-                ? { ...anchor, ref: { ...anchor.ref, id: rename(anchor.ref.id) } }
-                : anchor,
-            ),
-          }
-        : item,
+      mapSheetItemAnchors(item, (anchor) =>
+        'ref' in anchor ? { ...anchor, ref: { ...anchor.ref, id: rename(anchor.ref.id) } } : anchor,
+      ),
     ),
   }));
 }
