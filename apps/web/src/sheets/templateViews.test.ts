@@ -15,7 +15,7 @@ import {
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { type SheetViewLines, sheetToSvg } from '@extrudo/sheets';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { wallBracket } from '../project/templates';
 import { sheetViewLines, sheetViewWants } from './viewLines';
 
@@ -58,7 +58,14 @@ const SHEET: Sheet = {
 
 describe('the wall bracket template on a sheet', () => {
   it('draws its four standard views as the golden', { timeout: 120_000 }, async () => {
+    // The template's IDs fixed: its edges' names, and so the order and direction of the
+    // curves, follow its feature IDs, which are new on every call.
+    let n = 0;
+    const ids = vi
+      .spyOn(crypto, 'randomUUID')
+      .mockImplementation(() => `00000000-0000-4000-8000-${(++n).toString(16).padStart(12, '0')}`);
     const doc = wallBracket();
+    ids.mockRestore();
     const kernel = new Kernel(await loadOcct());
     try {
       const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
@@ -71,16 +78,7 @@ describe('the wall bracket template on a sheet', () => {
         if ('error' in drawn) throw new Error(drawn.error);
         expect(drawn.geometry.exact).toBe(true);
         expect(drawn.geometry.curves.length).toBeGreaterThan(0);
-        // The template's feature IDs are new each time, and the curves' order follows their
-        // names: sort them by what they draw, so the golden compares geometry only.
-        const lines = sheetViewLines(drawn.geometry);
-        const key = (c: (typeof lines.curves)[number]) => `${c.kind}${JSON.stringify(c.contours)}`;
-        views.set(want.request.id as SheetViewId, {
-          ...lines,
-          curves: [...lines.curves].sort((a, b) =>
-            key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0,
-          ),
-        });
+        views.set(want.request.id as SheetViewId, sheetViewLines(drawn.geometry));
       }
       engine.clear();
       // The front view: the L's profile, 40 mm across and 60 up at 1:2 (from the origin).

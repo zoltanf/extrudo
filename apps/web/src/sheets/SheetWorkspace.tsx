@@ -635,7 +635,8 @@ function SheetViewsNotice({
     const timer = setTimeout(() => setShown(true), WAITING_AFTER_MS - lasted + 1);
     return () => clearTimeout(timer);
   }, [since]);
-  const running = progress !== undefined && shown;
+  // A run Draw started shows at once: the cancelled notice turns into it without a gap.
+  const running = progress !== undefined && (shown || progress.asked);
   if (!running && !cancelled) return null;
   return (
     <div

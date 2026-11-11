@@ -309,8 +309,11 @@ test('the views are drawn one at a time, and Cancel stops them between views', a
   await page.waitForTimeout(1000);
   await expect(notice).toHaveAttribute('data-sheet-views-progress', 'cancelled');
   await notice.getByRole('button', { name: 'Draw the views' }).click();
-  await expect(notice).toHaveCount(0, { timeout: 90_000 });
-  await expect(stale).toHaveCount(0);
+  // The cancelled notice turns into the running one, with no moment of neither.
+  await expect(notice).toHaveAttribute('data-sheet-views-progress', 'running');
+  // Done when no view is dimmed any more (the knob's exact views take a while on CI).
+  await expect(stale).toHaveCount(0, { timeout: 90_000 });
+  await expect(notice).toHaveCount(0);
   for (const id of ['v-front', 'v-right', 'v-top', 'v-iso']) {
     expect((await lines(page, id)).drawn.length).toBeGreaterThan(0);
   }

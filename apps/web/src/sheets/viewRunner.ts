@@ -54,6 +54,8 @@ export interface SheetViewsProgress {
   total: number;
   /** When the run started (`Date.now()`): the notice shows after a moment. */
   since: number;
+  /** Started by Draw after a cancel: the notice stays up, with no wait in between. */
+  asked: boolean;
 }
 
 export interface SheetViewsState {
@@ -98,6 +100,8 @@ export class SheetViewRunner {
   #running = false;
   #again = false;
   #cancelling = false;
+  /** `retry` asked for the next run. */
+  #asked = false;
   #progress: SheetViewsProgress | undefined;
   /** The wanted work of the last run, and of the last cancelled one. */
   #ran: string | undefined;
@@ -136,8 +140,13 @@ export class SheetViewRunner {
   retry(): void {
     this.#cancelled = undefined;
     this.#ran = undefined;
-    this.#publish();
-    this.#schedule();
+    this.#asked = true;
+    // The run publishes its progress at once; publishing before it would show neither the
+    // cancelled notice nor the running one for a moment.
+    if (!this.#schedule()) {
+      this.#asked = false;
+      this.#publish();
+    }
   }
 
   /**
@@ -296,17 +305,19 @@ export class SheetViewRunner {
       .join(';');
   }
 
-  #schedule(): void {
+  /** Starts a run when there is work; whether it did (or one is under way). */
+  #schedule(): boolean {
     if (this.#running) {
       this.#again = true;
-      return;
+      return true;
     }
     const current = this.#kernel.bodyVersions();
     const work = this.#work(current);
-    if (work === '' || work === this.#ran || work === this.#cancelled) return;
+    if (work === '' || work === this.#ran || work === this.#cancelled) return false;
     this.#cancelled = undefined;
     this.#ran = work;
     void this.#run(current);
+    return true;
   }
 
   async #run(current: Record<BodyId, string>): Promise<void> {
@@ -323,7 +334,8 @@ export class SheetViewRunner {
       ...needs.map((want) => ({ want, quick: false })),
     ];
     this.#running = true;
-    this.#progress = { done: 0, total: needs.length, since: Date.now() };
+    this.#progress = { done: 0, total: needs.length, since: Date.now(), asked: this.#asked };
+    this.#asked = false;
     this.#publish();
     let stopped = false;
     try {
