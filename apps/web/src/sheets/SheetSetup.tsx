@@ -47,6 +47,8 @@ export interface SheetSetupProps {
   onFinish(): void;
   /** Sheet Setup (the tool) puts the focus here. */
   nameField?: RefObject<HTMLInputElement | null>;
+  /** The title block selected on the sheet: its template and fields alone. */
+  titleBlockOnly?: boolean;
 }
 
 const TITLE_CHOICES: { value: SheetTitleChoice; label: string }[] = [
@@ -69,6 +71,7 @@ export function SheetSetup({
   notify,
   onFinish,
   nameField,
+  titleBlockOnly = false,
 }: SheetSetupProps) {
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   const sheets = doc.sheets ?? [];
@@ -125,159 +128,168 @@ export function SheetSetup({
 
   return (
     <section
-      aria-label="Sheet setup"
+      aria-label={titleBlockOnly ? 'Title block' : 'Sheet setup'}
       className="pointer-events-auto flex shrink-0 flex-col gap-3 rounded-dialog border border-line p-3 shadow-raised backdrop-blur-[6px]"
       style={{ background: 'color-mix(in srgb, var(--x-raised) 92%, transparent)' }}
     >
       <div className="flex items-center gap-2">
         <ToolIcon name="sheet-setup" category="file" size={18} />
-        <h2 className="min-w-0 flex-1 truncate text-base font-semibold">Sheet setup</h2>
+        <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
+          {titleBlockOnly ? 'Title block' : 'Sheet setup'}
+        </h2>
         <span className="text-sm whitespace-nowrap text-muted">
           sheet {index + 1} of {sheets.length}
         </span>
       </div>
       <div className="grid grid-cols-[64px_minmax(0,1fr)] items-start gap-x-2 gap-y-1.5">
-        <Row label="Name">
-          <CommitField
-            key={`${sheet.id}:name`}
-            label="Sheet name"
-            value={sheet.name}
-            inputRef={nameField}
-            maxLength={100}
-            onCommit={(name) => sheetNameProblem(sheets, sheet.id, name) ?? rename(name)}
-          />
-        </Row>
-        <Row label="Paper">
-          <Select
-            aria-label="Paper"
-            className="h-7"
-            value={custom ? 'custom' : (sheet.size as string)}
-            onChange={(event) => {
-              const next = event.target.value;
-              if (next === 'custom') {
-                apply({ size: [round(paper.width), round(paper.height)] }, 'Sheet size');
-              } else apply({ size: next as Sheet['size'] }, 'Sheet size');
-            }}
-          >
-            {PAPER_CHOICES.map((choice) => (
-              <option key={choice.value} value={choice.value}>
-                {choice.label}
-              </option>
-            ))}
-            <option value="custom">Custom size</option>
-          </Select>
-        </Row>
-        {custom && (
+        {!titleBlockOnly && (
           <>
-            <Row label="Width">
+            <Row label="Name">
+              <CommitField
+                key={`${sheet.id}:name`}
+                label="Sheet name"
+                value={sheet.name}
+                inputRef={nameField}
+                maxLength={100}
+                onCommit={(name) => sheetNameProblem(sheets, sheet.id, name) ?? rename(name)}
+              />
+            </Row>
+            <Row label="Paper">
+              <Select
+                aria-label="Paper"
+                className="h-7"
+                value={custom ? 'custom' : (sheet.size as string)}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  if (next === 'custom') {
+                    apply({ size: [round(paper.width), round(paper.height)] }, 'Sheet size');
+                  } else apply({ size: next as Sheet['size'] }, 'Sheet size');
+                }}
+              >
+                {PAPER_CHOICES.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+                <option value="custom">Custom size</option>
+              </Select>
+            </Row>
+            {custom && (
+              <>
+                <Row label="Width">
+                  <ExpressionInput
+                    key={`${sheet.id}:w:${sides[0]}`}
+                    label="Width"
+                    value={`${round(sides[0] ?? 0)} mm`}
+                    evaluate={side}
+                    format={plain}
+                    onCommit={(e) => {
+                      const w = value(e, side);
+                      if (w !== undefined) apply({ size: [w, sides[1] ?? w] }, 'Sheet size');
+                    }}
+                  />
+                </Row>
+                <Row label="Height">
+                  <ExpressionInput
+                    key={`${sheet.id}:h:${sides[1]}`}
+                    label="Height"
+                    value={`${round(sides[1] ?? 0)} mm`}
+                    evaluate={side}
+                    format={plain}
+                    onCommit={(e) => {
+                      const h = value(e, side);
+                      if (h !== undefined) apply({ size: [sides[0] ?? h, h] }, 'Sheet size');
+                    }}
+                  />
+                </Row>
+              </>
+            )}
+            <Row label="Orientation">
+              <Segmented<Sheet['orientation']>
+                label="Orientation"
+                value={sheet.orientation}
+                options={[
+                  { value: 'landscape', label: 'Landscape' },
+                  { value: 'portrait', label: 'Portrait' },
+                ]}
+                onChange={(orientation) => apply({ orientation }, 'Sheet orientation')}
+              />
+            </Row>
+            <Row label="Border">
+              <div className="flex flex-col">
+                <Switch
+                  checked={sheet.border !== undefined}
+                  onChange={(on) => apply({ border: on ? {} : null }, 'Sheet border')}
+                >
+                  Border
+                </Switch>
+                <Switch
+                  checked={sheet.border?.zones === true}
+                  disabled={sheet.border === undefined}
+                  onChange={(on) =>
+                    apply(
+                      { border: on ? { zones: true } : {} },
+                      on ? 'Zone border' : 'Sheet border',
+                    )
+                  }
+                >
+                  Zones
+                </Switch>
+              </div>
+            </Row>
+            <Row label="Scale">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1">
+                <ExpressionInput
+                  key={`${sheet.id}:sa:${sheet.scale[0]}`}
+                  label="Scale: model"
+                  value={String(sheet.scale[0])}
+                  evaluate={positive}
+                  format={plain}
+                  onCommit={(e) => {
+                    const a = value(e, positive);
+                    if (a !== undefined) apply({ scale: [a, sheet.scale[1]] }, 'Sheet scale');
+                  }}
+                />
+                <span className="text-muted">:</span>
+                <ExpressionInput
+                  key={`${sheet.id}:sb:${sheet.scale[1]}`}
+                  label="Scale: sheet"
+                  value={String(sheet.scale[1])}
+                  evaluate={positive}
+                  format={plain}
+                  onCommit={(e) => {
+                    const b = value(e, positive);
+                    if (b !== undefined) apply({ scale: [sheet.scale[0], b] }, 'Sheet scale');
+                  }}
+                />
+              </div>
+            </Row>
+            <Row label="Decimals">
               <ExpressionInput
-                key={`${sheet.id}:w:${sides[0]}`}
-                label="Width"
-                value={`${round(sides[0] ?? 0)} mm`}
-                evaluate={side}
-                format={plain}
+                key={`${sheet.id}:d:${sheet.decimals}`}
+                label="Decimals"
+                value={String(sheet.decimals)}
+                evaluate={decimals}
+                format={(r) => String(r.value)}
                 onCommit={(e) => {
-                  const w = value(e, side);
-                  if (w !== undefined) apply({ size: [w, sides[1] ?? w] }, 'Sheet size');
+                  const d = value(e, decimals);
+                  if (d !== undefined) apply({ decimals: d }, 'Sheet decimals');
                 }}
               />
             </Row>
-            <Row label="Height">
-              <ExpressionInput
-                key={`${sheet.id}:h:${sides[1]}`}
-                label="Height"
-                value={`${round(sides[1] ?? 0)} mm`}
-                evaluate={side}
-                format={plain}
-                onCommit={(e) => {
-                  const h = value(e, side);
-                  if (h !== undefined) apply({ size: [sides[0] ?? h, h] }, 'Sheet size');
-                }}
+            <Row label="Projection">
+              <Segmented<Sheet['projection']>
+                label="Projection"
+                value={sheet.projection}
+                options={[
+                  { value: 'first', label: 'First angle' },
+                  { value: 'third', label: 'Third angle' },
+                ]}
+                onChange={(projection) => apply({ projection }, 'Sheet projection')}
               />
             </Row>
           </>
         )}
-        <Row label="Orientation">
-          <Segmented<Sheet['orientation']>
-            label="Orientation"
-            value={sheet.orientation}
-            options={[
-              { value: 'landscape', label: 'Landscape' },
-              { value: 'portrait', label: 'Portrait' },
-            ]}
-            onChange={(orientation) => apply({ orientation }, 'Sheet orientation')}
-          />
-        </Row>
-        <Row label="Border">
-          <div className="flex flex-col">
-            <Switch
-              checked={sheet.border !== undefined}
-              onChange={(on) => apply({ border: on ? {} : null }, 'Sheet border')}
-            >
-              Border
-            </Switch>
-            <Switch
-              checked={sheet.border?.zones === true}
-              disabled={sheet.border === undefined}
-              onChange={(on) =>
-                apply({ border: on ? { zones: true } : {} }, on ? 'Zone border' : 'Sheet border')
-              }
-            >
-              Zones
-            </Switch>
-          </div>
-        </Row>
-        <Row label="Scale">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1">
-            <ExpressionInput
-              key={`${sheet.id}:sa:${sheet.scale[0]}`}
-              label="Scale: model"
-              value={String(sheet.scale[0])}
-              evaluate={positive}
-              format={plain}
-              onCommit={(e) => {
-                const a = value(e, positive);
-                if (a !== undefined) apply({ scale: [a, sheet.scale[1]] }, 'Sheet scale');
-              }}
-            />
-            <span className="text-muted">:</span>
-            <ExpressionInput
-              key={`${sheet.id}:sb:${sheet.scale[1]}`}
-              label="Scale: sheet"
-              value={String(sheet.scale[1])}
-              evaluate={positive}
-              format={plain}
-              onCommit={(e) => {
-                const b = value(e, positive);
-                if (b !== undefined) apply({ scale: [sheet.scale[0], b] }, 'Sheet scale');
-              }}
-            />
-          </div>
-        </Row>
-        <Row label="Decimals">
-          <ExpressionInput
-            key={`${sheet.id}:d:${sheet.decimals}`}
-            label="Decimals"
-            value={String(sheet.decimals)}
-            evaluate={decimals}
-            format={(r) => String(r.value)}
-            onCommit={(e) => {
-              const d = value(e, decimals);
-              if (d !== undefined) apply({ decimals: d }, 'Sheet decimals');
-            }}
-          />
-        </Row>
-        <Row label="Projection">
-          <Segmented<Sheet['projection']>
-            label="Projection"
-            value={sheet.projection}
-            options={[
-              { value: 'first', label: 'First angle' },
-              { value: 'third', label: 'Third angle' },
-            ]}
-            onChange={(projection) => apply({ projection }, 'Sheet projection')}
-          />
-        </Row>
         <Row label="Title block">
           <Select
             aria-label="Title block"

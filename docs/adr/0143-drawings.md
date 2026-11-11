@@ -186,9 +186,10 @@ The spikes' numbers, drawings and readers are in the plan's §13.
 - **Rejected: `HLRBRep_HLRToShape`.** Its edge building after `Hide` takes under a
   millisecond, so it is no faster, and its compounds carry no link to the model edges or
   faces, so dimension anchors would need geometric matching to get a name back.
-- **Rejected: Helvetica with its advance widths** for the selectable text layer: better
-  per-letter selection boxes, but the widths are Adobe's AFM data and need a NOTICE entry;
-  open with the owner. Courier, monospaced, needs no table.
+- **Rejected: Helvetica with its advance widths** for the selectable text layer (the
+  owner, 2026-11-11: Courier stays): better per-letter selection boxes, but the widths are
+  Adobe's AFM data, third-party data that would need a `NOTICE` entry, for a small gain.
+  Courier, monospaced, needs no table.
 - **`hlrPolySpans` (`HLRBRep_PolyAlgo` on the faces' triangulation) is the quick path:**
   2.5 ms for B7's side view and 8 ms for B9's axis view, against 3.4 s and 3.8 s, with each
   piece's source edge, but chords of the mesh with small artefacts. **For S2:** a view is
@@ -535,3 +536,60 @@ set), renders as expected (`pdftoppm`, looked at each page) and gives back every
   text module; one function there (`measureText`) is less to wire than an interface.
 - **The ISO projection symbol in the full title block.** Words ("First angle") can't be
   drawn the wrong way round; the symbol can come with a title-block editor.
+
+## Amendment (S1, the mode), 2026-11-11
+
+Slice S1's app part: the Drawing mode, built on S1a's mode table, S1's document and its
+layout. `EditMode` gains `'sheet'` with the field `activeSheetId`; `MODES` gets its row
+(tabs Home and Drawing, the Drawing tab by default, `SHEET_SLOTS`, Repeat last's sample
+`newSheet`, Finish Drawing). The functions are in `apps/web/src/sheets/mode.ts`; the screen
+is the lazy `sheets/SheetWorkspace.tsx` chunk; UI spec §4a describes what a person sees.
+
+- **Naming:** the UI says "drawing" and "sheet"; code says `sheet`, except the tool
+  `finishDrawing` (the plan's name). The Make tile's tool is `sheets`.
+- **Entering** (Make › Drawing, the browser's Drawings folder, Ctrl+K) ends an open sketch
+  (its edits one undo step), a waiting Create Sketch and a feature dialog. **Every sheet
+  command does the same first** (`leaveSketch`), since New Drawing and the Drawings folder
+  are reachable while sketching: a sheet change is never part of a sketch's undo step.
+- **Undo:** every sheet edit is one command and one undo step with its own label, and
+  Finish Drawing is none (decision 13). Undo in the mode is a plain undo, never
+  `reopenSketch` (which would leave the drawing). An undo, redo or restore that takes the
+  open sheet away opens its neighbour, or ends the mode with the last sheet
+  (`keepSheetOpen`).
+- **The sheet on screen** is `layoutSheet`'s display list as SVG through io's screen
+  helpers, the same list the PDF and SVG writers get. Pan and zoom write the paper
+  element's box to the DOM, with no React render per frame; the 3D view stays mounted and
+  `inert` underneath. While the Sheets tree shows, the model's browser folders stay mounted
+  in a hidden React `Activity`, so their open state survives the visit.
+- **Selection is by display key**, not by item kind: a target is `item:<id>`, `view:<id>`
+  or `title-block` (its fields' keys fold into it); the paper and the border are not
+  targets. A target's box is the union of its drawn items, strokes included; the smallest
+  box under the pointer wins. In the session a target is the selection item
+  `{ kind: 'sheet', id }`. Moves and deletes of several targets are one undo step
+  ("Move on sheet", "Delete from sheet", `selection.ts`); the title block is neither moved
+  nor deleted there. An item tied to a view (S3's dimension) keeps its `at` in the view's
+  own frame, so its move is scaled by the view's scale and flipped in y, and it is not moved
+  again when its view moves with it.
+- **Export:** one dialog (mock-up 4) for Export PDF and Export This Sheet: PDF is one file
+  with a page per chosen sheet, SVG a file per sheet; the format is the preference
+  `export.sheets`. `@extrudo/sheets` loads lazily, never in the entry chunk.
+- **Elsewhere in the shell:** an Edit from the drawing that opens a sketch or a feature
+  dialog ends the drawing first; Repeat last skips the tools that enter or leave the mode or
+  only open a dialog; the web build's Report a Bug attaches a PNG of the sheet, not the
+  hidden 3D view; Import Drawing is called Import SVG/DXF; the load notice counts a dropped
+  sheet item as an item, not a setting.
+- **Plan §3.1** says Home's model-only tools say "Finish the drawing to use …" "as they do
+  in a sketch". That was not true when the mode was built: in a sketch their search entries
+  and keys said so, but a click on their tile did nothing. The drawing shows the message on
+  a click too; a separate change brings sketch mode in line.
+
+**Rejected:**
+
+- **A second shortcut for the sheet tabs.** A browser may keep Ctrl+PageUp/PageDown for its
+  own tabs; the sheet tabs are always clickable, and the UI spec says so.
+- **Unmounting the model's folders in the drawing.** Simpler, but each folder keeps its
+  open state in its own component, so the tree came back with every folder at its default.
+- **Refusing a recompute error's Edit in the drawing.** The click says what the person
+  wants; ending the drawing (no undo step) and opening the dialog does it.
+- **Selection by item kind.** S3 to S5 add dimensions, notes and tables; keys keep the
+  selection layer unchanged for them.

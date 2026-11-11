@@ -1,0 +1,1 @@
+- 2026-11-11 · **Drawings, first slice**: a design gets sheets: Make › Drawing opens the Drawing mode, with sheet tabs, Sheet Setup (paper, orientation, border, scale, projection, title block and its fields), selecting, moving and deleting what is on the sheet, and Export to PDF or SVG; Import Drawing is now called Import SVG/DXF (P6-24 S1, ADR-0143).
