@@ -4,9 +4,11 @@
  * `sketch/mode.ts`, so they run in unit tests and any control (toolbar, browser, sheet
  * tabs, shortcuts) can call them.
  *
- * - **Entering** a sheet ends an open sketch first (its edits become one undo step, as
- *   version restore does) and a waiting Create Sketch; the shell cancels an open feature
- *   dialog when the mode changes (`mode !== 'model'`).
+ * - **Entering** a sheet, and every sheet command (from the browser's Drawings folder or
+ *   Ctrl+K while sketching), ends an open sketch first (its edits become one undo step, as
+ *   version restore does) and a waiting Create Sketch (`leaveSketch`), so a sheet change
+ *   is never part of the sketch's undo step; the shell cancels an open feature dialog when
+ *   the mode changes (`mode !== 'model'`).
  * - **Every sheet edit is its own command and undo step**: there is no transaction, and
  *   **Finish Drawing** only leaves the mode (decision 13). Nothing is asked on the way out.
  * - The sheet opened last is remembered per document store, so Make › Drawing and Open
@@ -47,6 +49,15 @@ export function activeSheet({ store, session }: SheetModeStores): Sheet | undefi
 }
 
 /**
+ * Ends an open sketch (committing its transaction) and a waiting Create Sketch. Every sheet
+ * command calls it before its first dispatch, so its undo step stands on its own.
+ */
+export function leaveSketch(stores: SheetModeStores): void {
+  if (stores.session.getState().mode === 'sketch') finishSketch(stores);
+  cancelCreateSketch(stores);
+}
+
+/**
  * Opens sheet `id` (switching sheets when the drawing is open already). Returns `false`,
  * changing nothing, if the design has no such sheet.
  */
@@ -55,8 +66,7 @@ export function openSheet(stores: SheetModeStores, id: SheetId): boolean {
   if (!sheetsOf(store).some((s) => s.id === id)) return false;
   const current = session.getState();
   if (current.mode === 'sheet' && current.activeSheetId === id) return true;
-  if (current.mode === 'sketch') finishSketch(stores);
-  cancelCreateSketch(stores);
+  leaveSketch(stores);
   session.getState().enterMode('sheet', { activeSheetId: id });
   lastSheet.set(store, id);
   // The remembered help target named the closed context (ADR-0116 §4).
@@ -124,6 +134,7 @@ export function createSheet(
   today = new Date(),
 ): SheetId {
   const { store } = stores;
+  leaveSketch(stores);
   const id = newId<SheetId>();
   const sheet = newSheet(store.getState().doc, id, today, options);
   store.getState().dispatch({ ...addSheet({ sheet }), label: 'New drawing' });
@@ -134,6 +145,7 @@ export function createSheet(
 /** New Sheet: an empty sheet with the mode's defaults after the open one, which it opens. */
 export function addNewSheet(stores: SheetModeStores, today = new Date()): SheetId {
   const { store, session } = stores;
+  leaveSketch(stores);
   const id = newId<SheetId>();
   const sheets = sheetsOf(store);
   const at = sheets.findIndex((s) => s.id === session.getState().activeSheetId);
@@ -150,6 +162,7 @@ export function duplicateSheet(stores: SheetModeStores, id: SheetId): SheetId | 
   const at = sheets.findIndex((s) => s.id === id);
   const source = sheets[at];
   if (!source) return undefined;
+  leaveSketch(stores);
   const sheet = copySheet(source, copyName(sheets, source.name), {
     sheet: newId<SheetId>(),
     view: () => newId<SheetViewId>(),
@@ -168,6 +181,7 @@ export function deleteSheet(stores: SheetModeStores, id: SheetId): void {
   const { store } = stores;
   const previous = sheetsOf(store);
   if (!previous.some((s) => s.id === id)) return;
+  leaveSketch(stores);
   store.getState().dispatch({ ...removeSheet({ id }), label: 'Delete sheet' });
   keepSheetOpen(stores, previous);
 }
@@ -185,6 +199,7 @@ export function renameSheet(
   if (problem) return problem;
   const trimmed = name.trim();
   if (trimmed === sheet.name) return undefined;
+  leaveSketch(stores);
   return run(store, { ...updateSheet({ id, changes: { name: trimmed } }), label: 'Rename sheet' });
 }
 
@@ -195,6 +210,7 @@ export function moveSheetTo(stores: SheetModeStores, id: SheetId, index: number)
   if (from < 0) return;
   const to = Math.min(Math.max(Math.round(index), 0), sheets.length - 1);
   if (to === from) return;
+  leaveSketch(stores);
   stores.store.getState().dispatch({ ...moveSheet({ id, index: to }), label: 'Move sheet' });
 }
 
@@ -213,10 +229,11 @@ export function stepSheet(stores: SheetModeStores, delta: 1 | -1): void {
  * ("Sheet size"). Returns a refusal's message, or `undefined` when done.
  */
 export function changeSheet(
-  { store }: SheetModeStores,
+  stores: SheetModeStores,
   id: SheetId,
   changes: SheetChanges,
   label: string,
 ): string | undefined {
-  return run(store, { ...updateSheet({ id, changes }), label });
+  leaveSketch(stores);
+  return run(stores.store, { ...updateSheet({ id, changes }), label });
 }
