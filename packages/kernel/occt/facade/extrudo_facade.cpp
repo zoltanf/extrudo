@@ -129,7 +129,6 @@
 #include <HLRBRep_Data.hxx>
 #include <HLRBRep_EdgeData.hxx>
 #include <HLRBRep_FaceIterator.hxx>
-#include <HLRBRep_HLRToShape.hxx>
 #include <HLRBRep_PolyAlgo.hxx>
 #include <HLRBRep_ShapeBounds.hxx>
 #include <HLRTopoBRep_Data.hxx>
@@ -2326,46 +2325,6 @@ public:
     } catch (...) {
       hlrInts_.clear();
       hlrNumbers_.clear();
-      failFromException("Hidden-line removal failed");
-      return -1;
-    }
-  }
-
-  /**
-   * S0's comparison (P6-24): OCCT's own HLRBRep_HLRToShape after the same
-   * exact run as hlrSpans, building its visible and hidden compounds (sharp,
-   * smooth, outline). Returns the number of edges it built, or -1. Nothing
-   * is staged: it exists to be timed against hlrSpans.
-   */
-  int hlrToShapeCount(int shape, double dx, double dy, double dz) {
-    beginOp();
-    const TopoDS_Shape* s = find(shape);
-    if (s == nullptr) {
-      fail("Unknown shape.");
-      return -1;
-    }
-    try {
-      const gp_Vec view(dx, dy, dz);
-      if (view.Magnitude() <= Precision::Confusion()) {
-        fail("The view direction has no length.");
-        return -1;
-      }
-      HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(view)));
-      occ::handle<HLRBRep_Algo> algo = new HLRBRep_Algo();
-      algo->Add(*s, 0);
-      algo->Projector(projector);
-      algo->Update();
-      algo->Hide();
-      HLRBRep_HLRToShape out(algo);
-      const TopoDS_Shape parts[] = {out.VCompound(),        out.Rg1LineVCompound(), out.OutLineVCompound(),
-                                    out.HCompound(),        out.Rg1LineHCompound(), out.OutLineHCompound()};
-      int n = 0;
-      for (const TopoDS_Shape& part : parts) {
-        if (part.IsNull()) continue;
-        for (TopExp_Explorer x(part, TopAbs_EDGE); x.More(); x.Next()) ++n;
-      }
-      return n;
-    } catch (...) {
       failFromException("Hidden-line removal failed");
       return -1;
     }

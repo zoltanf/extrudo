@@ -6,8 +6,8 @@
 // raises the heap top by 16 MB blocks). Gated, as heap-bound.test.ts is:
 //   HLR_BENCH=1 pnpm vitest run packages/kernel/src/hlr-bench
 // It prints the table as a soft failure (the numbers are the point).
-// HLR_ONLY=B7,B9 limits it to some cases; HLR_METHODS=1 adds hlrSpans,
-// hlrPolySpans and hlrToShapeCount per view.
+// HLR_ONLY=B7,B9 limits it to some cases; HLR_METHODS=1 adds hlrSpans and
+// hlrPolySpans per view.
 import type { BodyId, ExtrudoDocument } from '@extrudo/core';
 import { loadDocument } from '@extrudo/core';
 import { DEFAULT_FONT } from '@extrudo/fonts';
@@ -183,7 +183,7 @@ describe.runIf(ENV.HLR_BENCH)('hidden-line removal cost', () => {
           );
         }
         // HLR_METHODS=1: per view, the spans walk (exact), the polygonal run on the
-        // display-like mesh made first, and OCCT's HLRToShape after the exact run.
+        // display-like mesh made first.
         if (ENV.HLR_METHODS) {
           const t = performance.now();
           kernel.mesh(all, { linearDeflection: 0.02, angularDeflection: (15 * Math.PI) / 180 });
@@ -196,11 +196,10 @@ describe.runIf(ENV.HLR_BENCH)('hidden-line removal cost', () => {
             };
             const [te, ne] = time(() => kernel.hlrSpans(all, d).length);
             const [tp, np] = time(() => kernel.hlrPolySpans(all, d, 0.02).length);
-            const [ts, ns] = time(() => kernel.hlrToShapeCount(all, d));
-            return `${dir} ${te.toFixed(0)}/${tp.toFixed(1)}/${ts.toFixed(0)} (${ne}/${np}/${ns})`;
+            return `${dir} ${te.toFixed(0)}/${tp.toFixed(1)} (${ne}/${np})`;
           });
           rows.push(
-            `  ${name} spans/poly/toShape ms (records/pieces/edges), mesh ${meshed.toFixed(0)} ms: ${cells.join(', ')}`,
+            `  ${name} spans/poly ms (records/pieces), mesh ${meshed.toFixed(0)} ms: ${cells.join(', ')}`,
           );
         }
         kernel.release(...solids, all, ...shapes);

@@ -1,6 +1,6 @@
 // Hidden-line spans (P6-24 S0, ADR-0143's amendment) against shapes whose
 // views are known: a box from above and from a corner, a cylinder from the
-// side and along its axis, and the polygonal run and HLRToShape on the box.
+// side and along its axis, and the polygonal run on the box.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type HlrEdge, Kernel, type ShapeHandle, type Vec3 } from './kernel';
 import { loadOcct } from './occt/load';
@@ -161,7 +161,7 @@ describe('hlrSpans', () => {
   });
 });
 
-describe('hlrPolySpans and hlrToShapeCount', () => {
+describe('hlrPolySpans', () => {
   it('sees the box from above the same way, in straight pieces that keep their edge', () => {
     // Pieces of the uprights project to points: leave them out.
     const pieces = kernel
@@ -174,9 +174,5 @@ describe('hlrPolySpans and hlrToShapeCount', () => {
     const hidden = pieces.filter((p) => !p.visible && p.edge !== undefined);
     for (const p of hidden)
       expect(zOf(p.edge as number).every((z) => Math.abs(z) < 1e-9)).toBe(true);
-  });
-
-  it('builds as many edges in HLRToShape as there are spans', () => {
-    expect(kernel.hlrToShapeCount(box, [0, 0, 1])).toBe(8);
   });
 });

@@ -1918,17 +1918,6 @@ export class Kernel {
     return out;
   }
 
-  /**
-   * S0's comparison only (ADR-0143's S0 amendment): OCCT's HLRBRep_HLRToShape
-   * after the same exact run as `hlrSpans`, returning how many edges it built.
-   */
-  hlrToShapeCount(shape: ShapeHandle, direction: Vec3): number {
-    this.#solid(shape, 'A drawing view');
-    const n = this.#facade.hlrToShapeCount(shape, ...direction);
-    if (n < 0) throw new KernelError(this.#facade.lastError() || 'Unknown shape.');
-    return n;
-  }
-
   count(shape: ShapeHandle, kind: SubShapeKind): number {
     // A mesh body is one face and no edges or vertices (ADR-0066 §3).
     if (this.isMesh(shape)) return kind === 'face' ? 1 : 0;
