@@ -219,3 +219,15 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Export](./export.md) — STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 - [Render Picture](./render.md) — Render a presentable picture of the design.
+- [Drawing](./sheets.md) — Sheets of the design to print or send: open the drawing, or start one.
+
+## Drawing
+
+### Sheet
+
+- [New Sheet](./newSheet.md) — Add an empty sheet after this one.
+- [Sheet Setup](./sheetSetup.md) — The sheet’s name, paper, border, title block, scale and projection.
+
+### Output
+
+- [Export PDF](./exportSheets.md) — Download the drawing’s sheets as one PDF, a page per sheet.

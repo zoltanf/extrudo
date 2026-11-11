@@ -144,6 +144,11 @@ export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
   },
   { key: 'browser.assemblyHint', reason: "A dismissal: the browser's assembly hint was closed." },
   {
+    key: 'sheet.drawnBy',
+    reason:
+      'Offered in place, never written by itself: the last "Drawn by" typed in Sheet Setup (ADR-0143).',
+  },
+  {
     key: 'newDesignUnits',
     reason: 'Edited in place: the unit select on the New design card (ADR-0113 §1).',
   },

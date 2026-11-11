@@ -10,7 +10,9 @@
  * from the sheets.
  */
 import {
+  type LengthUnit,
   type Sheet,
+  type SheetAnchors,
   type SheetItem,
   type SheetScale,
   type SheetView,
@@ -28,6 +30,7 @@ import {
   type Point,
   transformContour,
 } from '@extrudo/io';
+import { layoutSheetDimension } from './dimensions';
 import { fitLine, LINE_SPACING, type SheetFont, textRun, textWidth, wrapText } from './text';
 import {
   CELL_PAD,
@@ -86,6 +89,13 @@ export interface SheetContext {
   sheets?: readonly Sheet[];
   /** Each view's lines by view ID, once computed; a view not here draws as a placeholder. */
   views?: ReadonlyMap<SheetViewId, SheetViewLines>;
+  /**
+   * The dimensions' anchors (`KernelApi.resolveSheet`, kept across a lost
+   * anchor with `keepLastAnchors`); a dimension not here is drawn detached.
+   */
+  anchors?: SheetAnchors;
+  /** The design's length unit, which dimensions are written in; absent: mm. */
+  units?: LengthUnit;
 }
 
 /**
@@ -144,7 +154,7 @@ export function layoutSheet(sheet: Sheet, context: SheetContext = {}): DisplayLi
   if (sheet.titleBlock) items.push(...titleBlock(sheet, context, width, height));
   for (const view of sheet.views)
     items.push(...viewItems(sheet, view, context.views?.get(view.id)));
-  for (const item of sheet.items) items.push(...sheetItem(item));
+  for (const item of sheet.items) items.push(...sheetItem(sheet, item, context));
   return { width, height, items };
 }
 
@@ -333,8 +343,12 @@ function viewItems(
 
 // Items -------------------------------------------------------------------------
 
-function sheetItem(item: SheetItem): DisplayItem[] {
+function sheetItem(sheet: Sheet, item: SheetItem, context: SheetContext): DisplayItem[] {
   switch (item.kind) {
+    case 'dimension':
+      return layoutSheetDimension(sheet, item, context.anchors, {
+        ...(context.units && { units: context.units }),
+      });
     case 'text': {
       const size = item.size ?? SHEET_TEXT_SIZE;
       const key = `item:${item.id}`;

@@ -17,7 +17,7 @@ import { applyCommand, type Command } from './commands';
 import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
 import { type HistoryEvent, type HistoryOptions, UndoHistory } from './history';
-import type { AnnotationId, BodyId, ComponentId, FeatureId, JointId } from './ids';
+import type { AnnotationId, BodyId, ComponentId, FeatureId, JointId, SheetId } from './ids';
 import type { ImportReport } from './import';
 import type { MeshToSolidReport } from './mesh-to-solid';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
@@ -257,19 +257,22 @@ export interface SelectionItem {
 export type SelectMode = 'replace' | 'add' | 'toggle';
 
 /**
- * The shell's edit modes (ADR-0143's S1a amendment): the model, or an open sketch. What each
+ * The shell's edit modes (ADR-0143's S1a amendment): the model, an open sketch, or the
+ * drawing's sheets (`sheet`, ADR-0143's S1 mode amendment). What each
  * shows (tabs, Finish tile, keymap and marking-menu mode) is the web app's `MODES` table
  * (`apps/web/src/shell/modes.ts`); a mode is entered and left with `enterMode`/`exitMode`.
  */
-export type EditMode = 'model' | 'sketch';
+export type EditMode = 'model' | 'sketch' | 'sheet';
 
 /** The session fields a mode other than the model owns; cleared on every mode change. */
-type ModeFields = Pick<SessionState, 'activeSketchId'>;
+type ModeFields = Pick<SessionState, 'activeSketchId' | 'activeSheetId'>;
 
 export interface SessionState {
   mode: EditMode;
   /** The sketch being edited while `mode` is `sketch`. */
   activeSketchId: FeatureId | undefined;
+  /** The sheet shown while `mode` is `sheet` (P6-24, ADR-0143). */
+  activeSheetId: SheetId | undefined;
   /** Command-registry ID of the active tool, if any. */
   activeTool: string | undefined;
   selection: SelectionItem[];
@@ -291,7 +294,8 @@ export interface SessionState {
   /** The only component the view draws and picks while set (ADR-0081 §6). Session state. */
   isolatedComponent: ComponentId | undefined;
   /**
-   * Enters a mode other than the model with its own fields (`activeSketchId` for a sketch).
+   * Enters a mode other than the model with its own fields (`activeSketchId` for a sketch,
+   * `activeSheetId` for the drawing).
    * Every mode change clears the tool, the selection, the slice side and the other modes'
    * fields, in one store update.
    */
@@ -317,6 +321,7 @@ export function createSessionStore(): SessionStore {
   return createStore<SessionState>()((set, get) => ({
     mode: 'model',
     activeSketchId: undefined,
+    activeSheetId: undefined,
     activeTool: undefined,
     selection: [],
     hover: undefined,
@@ -366,6 +371,7 @@ function modeReset(): Pick<SessionState, 'activeTool' | 'selection' | 'sketchSli
   ModeFields {
   return {
     activeSketchId: undefined,
+    activeSheetId: undefined,
     activeTool: undefined,
     selection: [],
     sketchSliceFlip: undefined,

@@ -3,6 +3,16 @@
  * lists and written as PDF and SVG. No DOM; runs in Node. The text comes from
  * `@extrudo/sketch/text`: load `SHEET_FONTS` there (`loadFont`) first.
  */
+
+export {
+  layoutSheetDimension,
+  measureSheetDimension,
+  SHEET_DIMENSION,
+  type SheetDimensionMeasure,
+  type SheetDimensionOptions,
+  type SheetDimensionState,
+  sheetDimensionText,
+} from './dimensions';
 export {
   formatSheetScale,
   layoutSheet,

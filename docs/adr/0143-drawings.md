@@ -289,6 +289,66 @@ Package 1 of S2: the kernel turns a sheet view into 2D lines; no UI. Files:
   (every sheet edit sends one); isometric sides that follow the projection angle (in first
   angle, `iso-above-right` would look from below and the left).
 
+## Amendment (S3, dimensions: document, anchors, layout), 2026-11-11
+
+Package 1 of S3: dimensions without UI. Files: `packages/core/src/sheet-schema.ts`
+(`SheetDimensionItemSchema`, `SheetAnchorSchema`, `dimensionProblems`), `packages/core/src/sheet-anchors.ts`
+(the report types, `sheetSilhouetteSide`, `keepLastAnchors`), `remintSheets`,
+`packages/kernel/src/sheets/anchors.ts`, `RecomputeEngine.resolveSheet`, `KernelApi.resolveSheet`,
+`Recomputer.resolveSheet`, `packages/sheets/src/dimensions.ts`, a `state` field on io's display items.
+No facade change.
+
+- **The item** follows plan §5.1: `view`, `type` (`linear`, `radius`, `diameter`, `angle`), `direction`
+  (linear only), `anchors` (one or two), `at`, `decimals`, `before`, `after`, `reference`.
+  **`at` is in the view's own mm** (model size, y up), like a free anchor, so a dimension moves and
+  scales with its view and needs no rewrite when the view is moved.
+- **Anchors** are one of three shapes told apart by their keys: `{ ref, at? }` (a vertex; an edge whole
+  or its `start`, `end`, `middle`, `centre`; a cylinder's face whole), `{ ref, silhouette: 1 | -1 }` (a
+  cylinder's or cone's outline in the dimension's view; `1` is on the side of `axis × direction`, the
+  face's axis with its canonical sign) and `{ free }`. Refs name a vertex, edge or face, **carry their
+  fingerprint** (required in the schema, stricter than an annotation's) and are never `index:` refs.
+- **What fits a type** (`dimensionProblems`, applied by `sheetProblems`): linear takes one whole edge or
+  outline or two points or lines; radius one circle; diameter one circle or two outlines; angle two
+  lines. Whether a whole edge is a line or a circle is the model's to say at resolve time.
+- **`resolveSheet(sheet)`** resolves every anchor against all bodies at the marker as the annotation
+  pass does (`#references`; rolled back → `detached`; exact name `ok`; related name or fingerprint
+  `moved`; nothing → `detached`) and returns, per dimension and anchor, `{ status, geometry?, resolved?,
+  message? }`. Geometry: a `point`; a `line`'s ends; a `circle`'s centre, axis, x direction and radius (a
+  cylinder face's centre on the axis, level with the face's middle); a `curve`'s ends; a `silhouette`
+  (the named side's line from `faceSilhouettes`, the longest piece, and the opposite one). Plain data
+  only, no shape made. Anything that throws leaves that anchor `detached`. Evaluates nothing, cached
+  nowhere.
+- **Measuring** (`@extrudo/sheets`, so app and CLI agree): **linear and angle in the view's plane at
+  model size, radius and diameter on the circle itself**. A whole circular edge in a linear dimension
+  stands for its centre; point to line is square to the line; two lines must be parallel (else
+  `invalid`); an unset direction is horizontal when the text is above or below the two points, vertical
+  beside them, else aligned. Text: the item's decimals or the sheet's, the design's unit without the
+  unit, `R`/`Ø` prefixes, `°`, `before`/`after`, brackets for a reference.
+- **Layout**: lines 0.18 mm, filled 3 × 1 mm arrowheads (outside on stubs when there is no room), 1 mm
+  gap and 2 mm overshoot on extension lines, 3.5 mm text above the line along it (reading from below or
+  the right); radius and diameter on a leader with a shelf; angles as an arc with level text outside
+  it. Items are keyed `item:<id>` and carry `state` (`moved`, `detached`, `invalid`) when not `ok`; the
+  writers ignore it, so the export never gets a screen colour.
+- **Following the model**: the text's place is `at` plus the mean move of the ref anchors' fingerprint
+  points (stored → now) in the view, as an annotation's point follows its geometry.
+- **Lost anchors, as proposed**: nothing derived is stored. A `detached` dimension draws from the
+  geometry the caller kept in memory (`keepLastAnchors(previous, next)`), still marked detached; with
+  none (a file just opened) it is its text alone at `at`, `?` for the value, no extension lines.
+- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, commands, remint);
+  `kernel/src/sheets/anchors.test.ts` (a box, a cylinder, B2 following `height`, a drain hole deleted,
+  rolled back and back again; the pocket case below); `sheets/src/dimensions.test.ts` (values,
+  positions, text, states, a golden SVG); `sheets/src/dimensions.kernel.test.ts` (every type measured to
+  known sizes on a part the kernel builds; `SHEETS_OUT=<dir>` writes a sample PDF, checked with
+  `pdftoppm`).
+- **Found:** the naming service's fingerprint fallback re-finds a close edge after its feature is
+  deleted: deleting B2's pocket makes a dimension on the pocket floor's edge `moved` onto the box's
+  bottom edge (74 → 80), not `detached`. Annotations and features behave the same; it is kept, and
+  shown as a warning (plan §4.6).
+- **Rejected**: `at` in sheet mm (moving a view would leave its dimensions behind); storing the last
+  measured value or position for a detached dimension (derived data in the document); resolving only
+  among the view's bodies (projected views would need the app's body rules in the kernel; annotations
+  resolve among all bodies); screen colours or dashes in the display list for a detached dimension.
+
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
 Built with no behaviour change, before any drawing code.

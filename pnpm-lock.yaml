@@ -281,6 +281,9 @@ importers:
       '@extrudo/script':
         specifier: workspace:*
         version: link:../../packages/script
+      '@extrudo/sheets':
+        specifier: workspace:*
+        version: link:../../packages/sheets
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../../packages/sketch
@@ -537,6 +540,10 @@ importers:
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/sketch:
     dependencies:

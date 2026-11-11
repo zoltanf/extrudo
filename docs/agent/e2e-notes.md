@@ -2080,6 +2080,33 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (visible on the active row). Read the preference with
   `localStorage.getItem('extrudo.keymap.overrides')`.
 
+### `e2e/sheets.spec.ts`
+
+- **The Drawing mode** (P6-24 S1, ADR-0143). Make › `pickTool(page, 'Drawing')` opens the
+  dialog "New drawing" (summary `[data-new-sheets-summary]`, button "Create Drawing"). In the
+  mode the toolbar tabs are Home and Drawing, the timeline's region is gone and the bottom row
+  is the region "Sheets": the list "Sheet tabs" with a `[data-sheet-tab]` (sheet ID) per tab,
+  `aria-current="page"` on the open tab's button, the button "New sheet",
+  `output[aria-label="Status"]` ("Editing drawing · sheet 1 of 1 · A3 landscape · 1:1 · mm").
+- **The sheet** is the region "Sheet" (`exact: true`: "Sheet setup" and "Sheets" exist too),
+  `[data-sheet-canvas]`, with `data-paper` ("420x297", mm across × down) and `data-zoom`
+  ("54%", written directly on every pan and zoom: read it with a polling assertion). Each
+  drawn item is a `path[data-key]` (`paper`, `border`, `title-block`, `title-block:<field>`,
+  `item:<id>`, `view:<id>`); the text layer `[data-sheet-text] text[data-key]` holds the
+  strings. **Trap:** a title-block cell's label ("TITLE") and its value share the key; the
+  value is the last. Text appears only after the sheet fonts load (the paper is drawn bare
+  before), so wait for a string before reading geometry.
+- **Sheet Setup** is the region "Sheet setup": textboxes by label ("Sheet name", "Title",
+  "Drawn by", …) commit on Enter or blur; the combobox "Paper" takes `selectOption('A4')`;
+  the radio groups "Orientation" and "Projection"; the switches "Border" and "Zones"; number
+  fields ("Scale: model", "Scale: sheet", "Decimals", a custom size's "Width"/"Height") are
+  `ExpressionInput`s.
+- Finish Drawing lists the sheet under the browser's Drawings folder (`[data-sheet-row]`,
+  text "1 · AssemblyA4": the name, then the size); double-click reopens it. The undo after
+  Finish takes back the last sheet edit (Finish is no step); undoing New drawing ends the mode.
+- The 3D view stays mounted (inert) under the sheet. Ctrl+PageUp/PageDown reach the page in
+  Playwright (the browser's own tab keys are not in its way there).
+
 ### `e2e/shell-feature.spec.ts`
 
 - **Shell e2e** (`e2e/shell-feature.spec.ts`, P3-03; not `shell.spec.ts`, the
