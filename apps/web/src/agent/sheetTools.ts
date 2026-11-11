@@ -40,12 +40,14 @@ import {
   SHEET_STANDARD_VIEWS,
   type Sheet,
   type SheetAnchors,
+  type SheetId,
   type SheetItem,
   type SheetItemId,
   type SheetParts,
   type SheetScale,
   type SheetStandardView,
   type SheetView,
+  type SheetViewId,
   sheetPaperSize,
   sheetViewFrame,
 } from '@extrudo/core';
@@ -375,7 +377,8 @@ export const SHEET_HANDLERS: { [T in SheetToolName]: Handler<T> } = {
       const live = liveBodies(h);
       if (!live) return failure(NOT_COMPUTED);
       const { planSheetStart } = await import('../sheets/standardViews');
-      const plan = await planSheetStart(kernel, doc, [...live] as BodyId[], 'standard', {
+      const now = h.store.getState().doc;
+      const plan = await planSheetStart(kernel, now, [...live] as BodyId[], 'standard', {
         size,
         orientation,
         titleBlock,
@@ -399,7 +402,7 @@ export const SHEET_HANDLERS: { [T in SheetToolName]: Handler<T> } = {
       };
     }
     const sheet = scratch(h).addSheet(name, {
-      id: newId<SheetItemId>(),
+      id: newId<SheetId>(),
       size,
       orientation,
       projection,
@@ -447,7 +450,7 @@ export const SHEET_HANDLERS: { [T in SheetToolName]: Handler<T> } = {
         );
       const parent = viewOf(sheet, input.parent, 'parent');
       view = handle.view(parent.id)?.project(input.side, input.at, {
-        id: newId<SheetItemId>(),
+        id: newId<SheetViewId>(),
         ...(input.name && { name: input.name }),
       }).view;
     } else {
@@ -458,7 +461,7 @@ export const SHEET_HANDLERS: { [T in SheetToolName]: Handler<T> } = {
         (typeof from === 'string' ? from.charAt(0).toUpperCase() + from.slice(1) : 'View');
       const bodies = bodyIds(h, input.bodies);
       view = handle.addView(freeName(sheet, named, input.name !== undefined), {
-        id: newId<SheetItemId>(),
+        id: newId<SheetViewId>(),
         at: input.at,
         from: from as SheetViewFromInput,
         ...(input.scale && { scale: scaleOf(input.scale) }),
