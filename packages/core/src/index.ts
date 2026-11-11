@@ -89,6 +89,8 @@ export * from './rib';
 export * from './scale';
 export * from './schema';
 export * from './script';
+export * from './sheet-schema';
+export * from './sheets';
 export * from './shell';
 export * from './sketch/commands';
 export * from './sketch/curves';
