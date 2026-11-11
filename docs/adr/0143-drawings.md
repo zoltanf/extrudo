@@ -593,3 +593,92 @@ is the lazy `sheets/SheetWorkspace.tsx` chunk; UI spec §4a describes what a per
   wants; ending the drawing (no undo step) and opening the dialog does it.
 - **Selection by item kind.** S3 to S5 add dimensions, notes and tables; keys keep the
   selection layer unchanged for them.
+
+## Amendment (S2, the view tools), 2026-11-11
+
+Package 2 of S2, part 1: the views drawn from the model in the app, Base View, the view card
+and an export that draws the same lines. Files: `apps/web/src/sheets/viewLines.ts` (the
+adapter and the requests), `viewRunner.ts` (one run at a time), `views.ts` (Looking from,
+placing, the card's commands), `SheetViewCard.tsx`, `SheetWorkspace.tsx`, `SheetCanvas.tsx`
+(placing, notices), `exportSheets.ts`; `SheetViewLines.bounds` and `.state` in
+`@extrudo/sheets`; `Recomputer.bodyVersions()`; `shownBodies` exported from `@extrudo/kernel`.
+UI spec §4a describes what a person sees.
+
+- **Where `at` sits**: a view's `at` is **where the world origin lands on the sheet**, as
+  the kernel's view coordinates and S3's dimension `at` already assume, not the middle of
+  its lines. Views projected from one another then share a sheet coordinate exactly (a view
+  above keeps its parent's `right`, so one `at.x` lines both up), a dimension never needs
+  rewriting when its view moves, and a model change that grows the part never moves the
+  view. Placing puts the middle of the quick lines (computed before the click, `peek`) under
+  the pointer and stores the origin that gives, so the view does not jump when its exact
+  lines arrive. A new scale moves `at` so the middle of the lines stays put (`rescaledAt`),
+  in the same command.
+- **Requests** (`sheetViewWants`): the view's frame from `sheetViewFrame` and **always an
+  explicit body list**: its base view's `bodies`, or every shown body at the marker
+  (`shownBodies`), so hiding a body asks again and the app knows what each result is for.
+  The key is direction, up and bodies; never scale, position or style.
+- **The runner** (one per kernel, `sheetViewRunner`; its cache of 64 views outlives a visit
+  to the drawing, memory only): on each `want` it shows, per view, its exact lines when they
+  are the model's now (`linesAreCurrent`: every drawn body's version equals
+  `Recomputer.bodyVersions()`, a body skipped as missing is still missing; a mesh body's
+  version does not count), else the newest lines it has marked `state: 'stale'` (quick
+  lines of the model now, exact lines of an older model, the view's last lines under its old
+  direction), else nothing (layout's frame and the screen's "Drawing the view…"). Then one
+  run: quick requests for the views with nothing current, then exact ones, in the sheet's
+  order, `quiet` (the workspace shows its own notice). A `want` during a run waits for it;
+  the run stops early only when none of its later views is wanted (another sheet). It does
+  not run again for the same remaining work (an error, or results newer than the model store
+  while a recompute finishes, would loop); a model change, a view change or **Draw** does.
+- **Cancel** (`cancelSheetViews`) stops before the next view; the views keep what they show
+  and the runner stays stopped until the model or the views change. A run stopped by
+  someone else's cancel (the export's) is run again. No document change: this is not
+  ADR-0111's undoing Cancel, since no edit is behind a view's computation.
+- **The notice** (`SheetViewsNotice`) appears 300 ms into a run like other kernel waits
+  (ADR-0105's `WAITING_AFTER_MS`), at the top middle of the sheet (the model's own notice
+  keeps the top left), with "View n of N", a bar over the exact views and Cancel; after a
+  cancel it offers Draw. **While the model is computed** (`status` idle or computing) the
+  runner only updates what the views show (`want(wants, hold)`): the kernel has no model yet
+  ("The model is still being computed."), or is about to replace it.
+- **On screen only**: dimmed stale lines (the paths' `state`, opacity 0.35), "Drawing the
+  view…", and plan §4.6's notes under a view ("Box is gone. Choose bodies or delete the
+  view.", "Mesh bodies can't be drawn yet.", plus "No shown bodies to draw."). A view whose
+  bodies are gone keeps the frame of its last lines in the session (`bounds` with no
+  curves); after a reopening it is the 60 × 40 placeholder. The writers ignore `state`, and
+  the notes are not in the display list.
+- **Export** first computes every view of the chosen sheets exactly through the same runner
+  (`exact`: cached exact lines reused, the rest computed one at a time with the dialog's
+  progress); closing the dialog cancels it and writes nothing. A view that can't be drawn is
+  its frame. So a file never holds a quick placeholder.
+- **Base View** (`V`, category `create`, Drawing › Views; the marking menu's wedge that held
+  Sheet Setup) is the session's `activeTool` `baseView` (`SHEET_TOOLS`): the right column
+  shows Looking from, Scale and Style; the placing frame is in the canvas overlay, its
+  transform written per pointer move; a click places ("Base view", one undo step) and
+  selects the view; Esc ends the tool. Not yet: carrying on as Projected View (part 2).
+- **The card** (mock-up 1) for one selected view: name, Looking from (six standard, four
+  isometrics from the front's frame named by the faces they show, the model's current view
+  from the viewport camera, each named view from its camera), Scale (sheet's, standard,
+  custom with two `ExpressionInput`s), Style (visible; visible and hidden: the shaded styles
+  are not offered), switches Tangent edges and View label, bodies under All shown (the last
+  one can't be unticked; a chosen body that is gone is listed as gone). A view still named
+  after its direction takes the new direction's name. A projected view shows its parent and
+  its label only. Each change is one `updateSheetView` with its own label.
+- **Speed**: `layoutSheet` keeps each view's items per lines object and the keys it depends
+  on (position, scale, style, switches, label), places the label from `bounds` instead of
+  flattening, and `targetBoxes` keeps each item's box in a `WeakMap`; the canvas memoises
+  each path by its item. Measured in Node on the Arch ARM VM, four views of B7 (536 curves):
+  layout plus boxes 6.1 ms with no reuse, 0.08 ms after a text moved; B5 (255 curves) 1.15
+  and 0.19 ms.
+- **Dimensions** a file already holds are drawn detached (their text with "?"): the
+  workspace passes no anchors until S3's tool.
+- **Tests**: `viewLines.test.ts` (pieces to contours, lines, requests, current or stale,
+  notices, the runner's order, stale lines, cancel and export with a fake kernel);
+  `templateViews.test.ts` (the wall bracket template's four standard views through the
+  kernel, the adapter, layout and the SVG writer, golden
+  `apps/web/src/sheets/golden/wall-bracket-views.svg`; the other templates are the kernel's
+  B2, B4 and B5 goldens); `e2e/sheet-views.spec.ts`.
+- **Rejected**: `at` as the middle of the lines (a model change would move the view, aligned
+  views would line up only while their extents agree, and dimension `at`s are origin-based);
+  requests without `bodies` (the app could not tell which bodies a result is for); the
+  kernel wait notice with a Cancel (ADR-0111 keeps Cancel off kernel waits; this one changes
+  no document); the notes in the display list (they would be exported); dimming by colour in
+  the list (the display list carries no screen colour).

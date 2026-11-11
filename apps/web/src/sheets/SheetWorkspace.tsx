@@ -127,7 +127,9 @@ export default function SheetWorkspace({
     () => (sheet ? sheetViewWants(doc, sheet, bodyIds) : []),
     [doc, sheet, bodyIds],
   );
-  useEffect(() => runner?.want(wants), [runner, wants]);
+  // While the model is computed the views wait (the kernel has nothing, or is replacing it).
+  const computing = useStore(model, (st) => st.status === 'idle' || st.status === 'computing');
+  useEffect(() => runner?.want(wants, computing), [runner, wants, computing]);
   // Leaving the drawing: the run stops before the next view (its results stay cached).
   useEffect(() => () => runner?.want([]), [runner]);
   const views = useSyncExternalStore<SheetViewsState>(
@@ -450,7 +452,8 @@ function SelectionCard({
 
 /**
  * The views being drawn (plan §4.2): shown after a moment like other kernel waits
- * (ADR-0105), with how far the run is and Cancel, which stops it before the next view.
+ * (ADR-0105), at the top middle of the sheet (the model's notice keeps the top left), with
+ * how far the run is and Cancel, which stops it before the next view.
  * After a cancel it says the views are out of date and offers to draw them.
  *
  * Test hooks: `[data-sheet-views-progress]` (`running` or `cancelled`), the buttons
@@ -491,8 +494,9 @@ function SheetViewsNotice({
       role="status"
       aria-live="polite"
       data-sheet-views-progress={running ? 'running' : 'cancelled'}
-      className="pointer-events-none absolute top-3 z-10 flex items-center gap-2.5 rounded-control border border-line bg-panel px-3 py-2 shadow-raised"
-      style={{ left: left + 12 }}
+      className="pointer-events-none absolute top-3 z-10 flex -translate-x-1/2 items-center gap-2.5 rounded-control border border-line bg-panel px-3 py-2 shadow-raised"
+      // At the top middle of the sheet's room: the model's own notice is at the top left.
+      style={{ left: `calc((100% - ${COLUMN}px) / 2 + ${left}px / 2)` }}
     >
       <ProgressCube />
       <div className="flex flex-col leading-tight">

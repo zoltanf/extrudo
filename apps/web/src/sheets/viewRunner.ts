@@ -114,11 +114,15 @@ export class SheetViewRunner {
 
   get = (): SheetViewsState => this.#state;
 
-  /** The views to keep drawn (the open sheet's), from `sheetViewWants`. */
-  want(wants: readonly SheetViewWant[]): void {
+  /**
+   * The views to keep drawn (the open sheet's), from `sheetViewWants`. With `hold` (the
+   * model is being computed) what they show is updated but nothing runs until the next
+   * `want` without it: the kernel has no model to draw yet, or is about to replace it.
+   */
+  want(wants: readonly SheetViewWant[], hold = false): void {
     this.#wants = wants;
     this.#publish();
-    this.#schedule();
+    if (!hold) this.#schedule();
   }
 
   /** Stops the run before its next view; the views keep what they show. */
