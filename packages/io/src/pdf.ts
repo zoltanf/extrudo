@@ -80,9 +80,7 @@ export function writePdf(pages: readonly PdfPage[], options: PdfOptions = {}): U
   objects[2] = [
     `<< /Type /Pages /Kids [${pages.map((_, i) => pageRef(i)).join(' ')}] /Count ${pages.length} >>`,
   ];
-  objects[3] = [
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
-  ];
+  objects[3] = ['<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>'];
   objects[4] = [
     `<< /Producer (Extrudo)${options.title ? ` /Title ${textString(options.title)}` : ''} >>`,
   ];
