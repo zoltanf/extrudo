@@ -44,7 +44,11 @@ export interface SheetAnchorReport {
   geometry?: SheetAnchorGeometry;
   /** What the reference resolved to now, with its fingerprint now ("keep closest match"). */
   resolved?: GeomRef;
-  /** Why a resolved anchor has no geometry ("The edge has no centre."). */
+  /**
+   * Why a resolved anchor has no geometry ("The edge has no centre."), or why
+   * one is detached when its feature is deleted or suppressed ("The feature
+   * this was measured on is deleted.").
+   */
   message?: string;
 }
 
@@ -99,6 +103,7 @@ export function keepLastAnchors(
         status: 'detached',
         geometry: last.geometry,
         ...(last.resolved && { resolved: last.resolved }),
+        ...(report.message && { message: report.message }),
       };
     });
   }
