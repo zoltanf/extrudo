@@ -1050,8 +1050,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   'Report a bug')` opens the `dialog` "Report a bug" (also from About's footer button and the
   home screen's app menu). Fields by label: "Title", "What happened?", "Steps to reproduce",
   "Include the timeline" (a checkbox, absent on the home screen). The screenshot is
-  `img` "Screenshot" (the viewport snapshot; Remove, then "No screenshot" and the button "Take
-  screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
+  `img` "Screenshot" (the viewport snapshot; in the drawing the sheet's own PNG, A3 landscape
+  `1600x1131` by `naturalWidth`/`naturalHeight`, read with a typed `evaluate` callback since
+  e2e/ has no DOM types; Remove, then "No screenshot" and the button "Take screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
   into "Copied" for 1.6 s; "Open GitHub draft" opens a popup on the prefilled issue URL
   (github.com answered locally with `context.route`). Trap: grant `clipboard-read` and
   `clipboard-write`; the PNG is not read back, only the text copy and the popup URL.
@@ -2107,6 +2108,28 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Finish takes back the last sheet edit (Finish is no step); undoing New drawing ends the mode.
 - The 3D view stays mounted (inert) under the sheet. Ctrl+PageUp/PageDown reach the page in
   Playwright (the browser's own tab keys are not in its way there).
+- The model's browser folders stay mounted but hidden (React `Activity`) in the mode: a folder
+  opened before ("Document settings", closed by default) is `aria-expanded="true"` again
+  after Finish Drawing; while the drawing is open it is hidden, not gone.
+- **Export drawing** (part B): the Export PDF tile and the tab menu's "Export This Sheet" open
+  the dialog "Export drawing": a checkbox per sheet named "n · name", the radio group
+  "Format" (radios "PDF", "SVG", `aria-checked`), the textbox "File name" (no extension),
+  `[data-sheet-export-summary]` ("2 pages · A3 landscape, A4 landscape", "1 SVG file · A4
+  landscape", "Choose at least one sheet."), the button "Export" (disabled with no sheet).
+  A PDF has a `/MediaBox` per page (A3 landscape `[0 0 1190.551 841.89]`, A4 landscape
+  `[0 0 841.89 595.276]`); an SVG starts `width="297mm" height="210mm" viewBox="0 0 297 210"`.
+  The format is the preference `export.sheets`; the spec checks it survives a reopening.
+- **Selecting** uses a fixture written with `writeArchive` (sheet `s1`: text `t1` "A note" at
+  [40, 40], view `v1` "Front" at [200, 150] drawn as its 60 × 40 mm placeholder centred on
+  `at`) and imported with home's "Import…". Sheet mm → screen: the `[data-sheet-paper]` box
+  spans the paper (420 × 297 for A3). The region "Sheet" carries `data-hover` and
+  `data-selected` (targets joined by spaces: `item:t1 view:v1`, `title-block`); each frame is
+  `[data-sheet-frame="<target>"]` with `data-state` `hover`/`selected`, and its `rect`'s `x`
+  (mm, the box's left minus 1.2) shows a move; frames exist only while hovered or selected,
+  so select again after an undo of Delete. The right column is the region "Selection" (its
+  name, e.g. `Text “A note”`), or the region "Title block" (template and fields) when the
+  title block alone is selected. Ctrl+click toggles; drag on empty paper is a box select;
+  arrows nudge 1 mm (Shift 10 mm); Delete removes; each is one undo step.
 
 ### `e2e/shell-feature.spec.ts`
 
