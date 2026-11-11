@@ -1714,8 +1714,9 @@ end to end, faster than in established desktop CAD.
     *2026-11-10:* `writePdf` done and checked in three readers; HLR timed (plan §13);
     `hlrSpans` built and checked against known views and drawings; open until the CI build
     with its last two fixes passes (plan §13.4).
-  - [ ] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
-    behaviour change; every existing test passes untouched.
+  - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
+    behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
+    `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).
   - [ ] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
     text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF.
   - [ ] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;

@@ -107,6 +107,7 @@ export {
   createSessionStore,
   type DocumentState,
   type DocumentStore,
+  type EditMode,
   type FeatureStatus,
   type GeneratedFeatureStatus,
   type JointReport,

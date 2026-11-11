@@ -15,6 +15,7 @@
 import {
   type BodyId,
   bodyDisplay,
+  type EditMode,
   type Feature,
   type FeatureId,
   isConstructionType,
@@ -58,7 +59,7 @@ import type { AppCommand } from './commands';
 import type { GroupActions } from './groupActions';
 
 export interface ContextInput {
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   /** The session's selection, after the right-click selected what was under the pointer. */
   selection: readonly SelectionItem[];
   /** The commands offered now (`buildCommands`). */

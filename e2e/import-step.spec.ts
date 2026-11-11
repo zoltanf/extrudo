@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { exportModel } from './benchmark-helpers';
 import { fileAction, kernelReady, openProject, selectTab } from './helpers';
@@ -99,6 +99,54 @@ test('a STEP file becomes one body per solid, and undo takes it away', async ({ 
   await page.keyboard.press('Control+Shift+z');
   await expect(chip(page, 'Import1')).toBeVisible();
   await expect.poll(async () => (await bodies(page)).length).toBe(2);
+});
+
+test('a solid the file hides comes in as a hidden body', async ({ page }) => {
+  await openProject(page);
+  await kernelReady(page);
+  // B3's file with its second solid (the back rest) listed in an INVISIBILITY
+  // entity, the way a converted file hides a shape (ADR-0066's amendment of
+  // 2026-11-10).
+  const text = await readFile(STEP_FILE, 'latin1');
+  const solids = [...text.matchAll(/#(\d+) = MANIFOLD_SOLID_BREP/g)].map((m) => m[1]);
+  expect(solids).toHaveLength(2);
+  const end = text.lastIndexOf('ENDSEC;');
+  const hiding = `${text.slice(0, end)}#9100 = INVISIBILITY((#${solids[1]}));\n${text.slice(end)}`;
+  const panel = await importFile(page, {
+    name: 'b3-hidden.step',
+    mimeType: 'model/step',
+    buffer: Buffer.from(hiding, 'latin1'),
+  });
+  await expect(panel).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await panel.getByRole('button', { name: /^OK/ }).click();
+  await expect(chip(page, 'Import1')).toBeVisible();
+
+  // Both solids are bodies, and only the one the file shows is drawn.
+  const row = (name: string) =>
+    page.locator('[data-body]').filter({ has: page.getByRole('button', { name, exact: true }) });
+  await expect(row('Stand rest')).toHaveAttribute('data-body-display', 'hidden', {
+    timeout: 30_000,
+  });
+  await expect(row('Stand base')).toHaveAttribute('data-body-display', 'shown');
+  expect((await bodies(page)).map((b) => b.name)).toEqual(['Stand base']);
+
+  // Its eye shows it, and it stays shown through a recompute of the import.
+  await page.getByRole('button', { name: 'Show Stand rest', exact: true }).click();
+  await expect
+    .poll(async () => (await bodies(page)).map((b) => b.name))
+    .toEqual(['Stand base', 'Stand rest']);
+  await chip(page, 'Import1').dblclick();
+  const edit = dialog(page, 'Edit Import1 dialog');
+  await edit.getByRole('combobox', { name: 'Up' }).selectOption('y');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await edit.getByRole('button', { name: /^OK/ }).click();
+  await expect
+    .poll(async () => sizes(page), { timeout: 30_000 })
+    .toEqual([
+      [60, 10, 80],
+      [60, 60, 31.8],
+    ]);
+  await expect(row('Stand rest')).toHaveAttribute('data-body-display', 'shown');
 });
 
 test('Up y turns the file a quarter turn about X', async ({ page }) => {

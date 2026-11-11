@@ -14,6 +14,7 @@ import { eventKeys, shortcutLabel } from '../commands/shortcuts';
 import { Button, TextInput } from '../design-system';
 import type { Preferences } from '../platform';
 import type { AppCommand } from '../shell/commands';
+import { EDIT_MODES, MODES } from '../shell/modes';
 
 export interface KeyboardPageProps {
   preferences: Preferences;
@@ -30,13 +31,12 @@ const SHELL_COMMANDS: readonly { id: string; label: string }[] = [
   { id: 'help', label: 'Help' },
 ];
 
-const FILTERS = [
+type Filter = 'all' | KeymapMode | 'changed';
+const FILTERS: readonly (readonly [Filter, string])[] = [
   ['all', 'All'],
-  ['model', 'Model'],
-  ['sketch', 'Sketch'],
+  ...EDIT_MODES.map((mode) => [mode, MODES[mode].label] as const),
   ['changed', 'Changed'],
-] as const;
-type Filter = (typeof FILTERS)[number][0];
+];
 
 interface Row extends KeymapEntry {
   group: string;
@@ -45,7 +45,7 @@ interface Row extends KeymapEntry {
 /** Every command either mode offers, once, with the modes it is offered in. */
 function rowsOf(commands: Readonly<Record<KeymapMode, readonly AppCommand[]>>): Row[] {
   const rows = new Map<string, Row & { modes: Set<KeymapMode> }>();
-  for (const mode of ['model', 'sketch'] as const) {
+  for (const mode of EDIT_MODES) {
     for (const command of commands[mode]) {
       const found = rows.get(command.id);
       if (found) found.modes.add(mode);
@@ -62,7 +62,7 @@ function rowsOf(commands: Readonly<Record<KeymapMode, readonly AppCommand[]>>): 
   }
   for (const { id, label } of SHELL_COMMANDS) {
     if (!rows.has(id)) {
-      rows.set(id, { id, label, group: 'General', keys: [], modes: new Set(['model', 'sketch']) });
+      rows.set(id, { id, label, group: 'General', keys: [], modes: new Set(EDIT_MODES) });
     }
   }
   return [...rows.values()];
@@ -244,7 +244,7 @@ export function KeyboardPage({ preferences, commands, record }: KeyboardPageProp
   const needle = query.trim().toLowerCase();
   const shown = rows.filter((row) => {
     if (filter === 'changed' && !(row.id in overrides)) return false;
-    if ((filter === 'model' || filter === 'sketch') && !row.modes.has(filter)) return false;
+    if (filter !== 'all' && filter !== 'changed' && !row.modes.has(filter)) return false;
     if (!needle) return true;
     return (
       row.label.toLowerCase().includes(needle) ||

@@ -1576,7 +1576,19 @@ after the `up` turn moves all of a file's bodies so their joint box (STEP:
 bottom on z = 0. Keep **absent = `file`** (stored designs never move; making
 absent mean `centre` needs a format bump), the dialog's default `centre`, one
 move for all bodies, and the mesh pieces ordered before the move (the body IDs
-don't change with the position). **P4-12**:
+don't change with the position). **Its amendment of 2026-11-10** (a STEP file's
+hidden solids): the facade's `readStepHidden(text)` (`Kernel.readStepHidden`,
+booleans) says per solid, in `readStep`'s order, whether an `INVISIBILITY` lists
+the solid itself, a styled item of it or a layer it is on; the lists are scanned
+from the text (`stepInvisibleIds`: OCCT drops a solid listed directly, which is
+what cadmpeg writes) and resolved through OCCT's model and transfer process. The
+import calls it only when the text has `INVISIBILITY(` and reports
+`ImportReport.hidden` (body IDs); `followBodyNames` (`importedHidden`) stores
+`visible: false`. Keep: **every solid stays a body** (never drop one for being
+hidden: stored designs would lose bodies and IDs would shift), the plain reader
+(the same solids as `readStep`) and the count guard, a file that hides every
+solid hides none, and the eye set **only when the body is first named**.
+**P4-12**:
 a file that names a colour reports an `ImportReport` (`colors` per body ID,
 found through each body's first face name; `ModelState.imports`), and
 `followBodyNames` takes it into `BodyMeta.color` **only when it first names the
@@ -2815,8 +2827,10 @@ tile was hovered; then User Guide, Tutorial, **Online Tutorials** (the `docsTuto
 label everywhere), Examples, Tool Reference); the **strip** `[data-update-strip]`
 (`data-update-word`: "Update ready: <v>" / "Checking…" / "Up to date" / nothing, from
 `UpdateState.waiting` and the new `UpdateState.check` the desktop's `desktopUpdates`
-sets; a dot colour plus the word, never colour alone), the version, **Check now**
-(desktop only, stays open) and **GitHub**. Rail controls change preferences through
+sets; a dot colour plus the word, never colour alone), the version, **Restart** /
+**Reload** (`updates.action`; only while `waiting`, first in the group, accent; closes the
+panel and runs `applyUpdate`, the toast's save-then-apply path, so a failed save applies
+nothing), **Check now** (desktop only, stays open) and **GitHub**. Rail controls change preferences through
 `display.set`, `onThemeChange` and the marking toggle and leave the panel open; an item
 closes it and keeps the focus where it went (`onCloseAutoFocus`); Escape returns it to
 the Menu button. On open the panel itself takes the focus (no tooltip opens); arrows
@@ -4379,7 +4393,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S0 spikes done, nothing else built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, nothing else built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4397,7 +4411,15 @@ new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kern
 **dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
 writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
 (no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
-hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S0 (plan §13):** HLR cost
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S1a (modes, done, no
+behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
+`MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
+`markingSlots`, `repeatSample`, `finish`), read by `visibleTabs`/`defaultTab` (`tools.ts`), the Finish tile (`Toolbar.tsx`),
+`viewMenu.tsx`, `MarkingMenuEditor.tsx`, `settings/KeyboardPage.tsx` and AppShell's marking listing (`EDIT_MODES`,
+`perMode`); the session's `enterMode(mode, fields)`/`exitMode()` are the only way in and out (`enterSketch`/`exitSketch`
+call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
+`enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
+`mode === 'sketch'` stays about sketching. **S0 (plan §13):** HLR cost
 follows overlapping curved edges, not size (B7's side views about 3.4 s each, B9 along its axis 3.8 s, a 209-face
 assembly 0.25 s for six views), and one view is one uninterruptible call: views compute one at a time with progress,
 cancel acts between views, the per-direction cache is required. Views come from **`Kernel.hlrSpans`** (our own walk of

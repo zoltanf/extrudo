@@ -272,20 +272,26 @@ export function importFileOf(feature: Pick<Feature, 'type' | 'inputs'>): Attachm
 }
 
 /**
- * What the kernel reports about a STEP import whose file has colours or part
- * names (P4-12, ADR-0034's amendments): the colour of each body whose solid
- * has one (its own, its part's or its assembly instance's), how many faces
- * carry a colour of their own (never taken as a body's), and the name of each
- * body whose solid has one (its own label, its part's or its assembly
- * instance's). The app's `ModelState.imports` holds these; `followBodyNames`
- * gives a body its colour and name once, when it first names it, so nothing in
- * the document is written by the kernel.
+ * What the kernel reports about a STEP import whose file has colours, part
+ * names or hidden solids (P4-12, ADR-0034's amendments; ADR-0066's amendment
+ * of 2026-11-10): the colour of each body whose solid has one (its own, its
+ * part's or its assembly instance's), how many faces carry a colour of their
+ * own (never taken as a body's), the name of each body whose solid has one
+ * (its own label, its part's or its assembly instance's), and the bodies
+ * whose solid the file hides. The app's `ModelState.imports` holds these;
+ * `followBodyNames` gives a body its colour and name and hides it once, when
+ * it first names it, so nothing in the document is written by the kernel.
  */
 export interface ImportReport {
   kind: 'import';
   colors: Record<BodyId, string>;
   /** A file's part names as body names; empty when the file names none. */
   names: Record<BodyId, string>;
+  /**
+   * The bodies whose solid the file hides (an `INVISIBILITY` entity lists
+   * it); empty when the file hides none, or every one of its solids.
+   */
+  hidden: BodyId[];
   coloredFaces: number;
 }
 

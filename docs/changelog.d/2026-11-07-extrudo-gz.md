@@ -1,0 +1,1 @@
+- 2026-11-07 · **Opening files**: an `.extrudo.gz` (how a design comes from a GitHub issue) opens directly through Import…, the desktop Open… and the command line, with no need to unpack it first; on the desktop it opens as a copy.

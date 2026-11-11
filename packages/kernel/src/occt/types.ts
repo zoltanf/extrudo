@@ -266,6 +266,7 @@ export interface FacadeBinding {
   meshRefusalDebug(): number;
   readStepColors(text: string): number;
   readStepNames(text: string): number;
+  readStepHidden(text: string): number;
   clearExport(): void;
   exportPositionsPtr(): number;
   exportPositionsSize(): number;

@@ -1,8 +1,8 @@
 # ADR-0143: Drawings: 2D sheets made from the model
 
 - **Status:** Accepted, 2026-11-10 (the owner: the 14 decisions of the plan's §12, all as
-  proposed). S0 (spikes) done, see the amendment at the end; nothing else is built. Each
-  slice lands with an amendment here.
+  proposed). S1a (modes) and S0 (spikes) are done, see the amendments at the end; nothing
+  else is built. Each slice lands with an amendment here.
 - **Task:** P6-24 (`docs/03-roadmap.md`); FR-DR-01 to FR-DR-08.
 - **Specification and mock-ups:** `docs/plans/drawings-2026-11-10.md` and the five
   `docs/plans/drawings-mock-*.html` pages beside it. This ADR records what was decided and
@@ -167,6 +167,43 @@ The plan's §10 has what each is done by. S0 and S1a can run side by side.
   text per row is enough for the first release and does not close that door.
 - **Third angle, printed sticky notes and hidden lines off as defaults.** Each stays a
   setting.
+
+## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
+
+Built with no behaviour change, before any drawing code.
+
+- **The type.** `EditMode` (`packages/core/src/stores.ts`, exported from `@extrudo/core`) is
+  `'model' | 'sketch'` and is the only place the union is spelled out. `SessionState.mode`,
+  the shell's props and contexts (`Toolbar`, `buildCommands`, `menuModel`, `contextEntries`,
+  `useViewMenu`, the view's `ViewMenuRequest`, the tutorial's facts, `toolOrTabSelector`)
+  take it; `KeymapMode` and `MarkingMode` are aliases of it, so the keymap's and the marking
+  menu's modes are the edit modes themselves.
+- **The table.** `MODES` in `apps/web/src/shell/modes.ts` has one row per mode: `label`
+  (its name in Settings › Keyboard's filter and the marking-menu editor's tabs), `tabs`
+  (the toolbar tabs shown, drawn in `TABS` order), `defaultTab`, `markingSlots` (the
+  wedges before the `marking.slots` overrides), `repeatSample` (what Customize Marking
+  Menu lists as "Repeat last") and `finish` (the Finish tile's tool and the tab it follows;
+  the model has none). `EDIT_MODES` lists the modes in Settings' order and `perMode` builds
+  one value per mode. `visibleTabs` and `defaultTab` (`tools.ts`), the Finish tile
+  (`Toolbar.tsx`), the ring (`viewMenu.tsx`), the editor's tabs (`MarkingMenuEditor.tsx`),
+  the Keyboard page's filters and rows, and `AppShell`'s marking-menu listing read it.
+- **Entering and leaving.** The session store has `enterMode(mode, fields)` and
+  `exitMode()`: one store update that sets the mode and its own fields and clears the
+  tool, the selection, the slice side and every mode's fields. `enterSketch`/`exitSketch`
+  are `enterMode('sketch', { activeSketchId })` and `exitMode()`, so `sketch/mode.ts`
+  goes through them unchanged.
+- **AppShell.** Two checks that meant "not the model" became `mode !== 'model'`: an open
+  feature or joint dialog is cancelled, and a pose is put back, when another mode is
+  entered. The other mode checks stay: they are about what sketching or the model does
+  (sketch tools and panels, the sketch's transaction, model-only tools refusing outside
+  the model, model picking, per-mode Esc and Delete), not about which chrome is shown.
+
+**Rule for adding a mode:** add it to `EditMode` and give it a `MODES` row (its tabs and
+tools in `TABS`/`TOOLS`, its marking wedges, its Finish tool); give it fields of its own
+in `ModeFields` and enter it only through `enterMode`/`exitMode`; then add branches only
+for what the mode does, never for which tabs, Finish tile, keymap or marking-menu mode it
+shows. A check written `mode !== 'model'` already covers the new mode; one written
+`mode === 'sketch'` does not and must stay about sketching.
 
 ## Amendment (S0), 2026-11-10: what HLR costs, the spans method, our PDF writer
 
