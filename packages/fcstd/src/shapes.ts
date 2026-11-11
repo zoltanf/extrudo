@@ -10,7 +10,6 @@
 import type { Design } from '@extrudo/api';
 import { type AttachmentId, addAttachment, importInputs, newId } from '@extrudo/core';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES, sha256Hex } from '@extrudo/storage';
-import { FcstdFormatError } from './errors';
 import type { FinalShape } from './final-shapes';
 import type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
 import { type FcDocument, storedShapeText } from './model';
@@ -176,15 +175,12 @@ function textOf(
 ): { text: string } | { reason: LeftOutReason; detail?: string } {
   if (shape.format === 'mesh') return { reason: 'mesh' };
   if (shape.entry === undefined) return { reason: 'empty' };
-  let bytes: Uint8Array | undefined;
-  try {
-    bytes = doc.entries.get(shape.entry);
-  } catch (error) {
-    if (!(error instanceof FcstdFormatError)) throw error;
-    return { reason: 'unreadable', detail: error.message };
-  }
-  if (!bytes) return { reason: 'unreadable', detail: 'its stored shape is missing from the file' };
-  if (bytes.length === 0) return { reason: 'empty' };
+  // The sizes are the archive's own: nothing is inflated until the text is read.
+  const size = doc.entries.size(shape.entry);
+  if (size === undefined)
+    return { reason: 'unreadable', detail: 'its stored shape is missing from the file' };
+  if (size === 0) return { reason: 'empty' };
+  if (shape.entry.endsWith('.bin')) return { reason: 'binary' };
   const before = doc.problems.length;
   const text = storedShapeText(doc, shape.source);
   const said = doc.problems.splice(before);

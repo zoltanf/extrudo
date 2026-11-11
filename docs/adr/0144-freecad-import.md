@@ -323,3 +323,103 @@ The format as read is in `packages/fcstd/FORMAT.md`.
   for objects outside bodies; the study took it from FreeCAD's own counts. The
   reader looks for a solid record in the B-rep text's shape table
   (`brepHasSolid`), one forward scan, no parsing; it selects the same objects.
+
+## Amendment (S3, 2026-11-11): the shapes-only import
+
+Home › Import, the home screen's Import card and Import Model take an
+`.FCStd` file (any case), in the browser and the desktop app, and make a new
+design named after the file: each final shape (decision 7) is an `import`
+feature on a STEP attachment, its bodies named by the shape's label, hidden
+when FreeCAD hides it, coloured and made transparent as `GuiDocument.xml`
+says. No sketches, features or history yet.
+
+### The import kernel, enforced
+
+`KernelApi.storedShapeToStep(text, chain, options?)`
+(`packages/kernel/src/stored-shape.ts`) reads the B-rep text (`readBrep`'s
+checks), places it by the chain (outermost first), writes STEP with our
+writer, reads that STEP back and returns the STEP with the measures of both
+(solids, volume, area, tight box), every shape released before it returns or
+throws. A shape with no solid comes back with no STEP, not an error. The STEP
+header's time stamp is fixed, so the same shape always gives the same bytes
+and copies share one attachment.
+
+Decision 5 is enforced in code: the service refuses the call with a
+`KernelError` unless it was started with `KernelServiceOptions.importKernel`.
+Only `serveKernel({ importKernel: true })` in
+`apps/web/src/project/importKernelWorker.ts` sets it; the project's kernel
+worker, the kernel's own and the debug worker never do. A test shows a normal
+kernel refuses.
+
+**Where the kernel worker starts:** inside the import's own module worker
+(`fcstdWorker.ts`), as a nested worker (`importKernel.ts`). The app already
+runs OpenSCAD's compiler as a nested worker under the same COOP/COEP and CSP
+(`worker-src 'self'`), and the e2e spec runs under that policy. A nested
+worker means the page's one `terminate()` (when the import ends, however it
+ends) also ends the kernel, and a restart is a `terminate()` and a new
+worker in the import's worker, with no relay through the page.
+
+### The check, and its tolerance
+
+Nothing is trusted because it converted. A shape comes in only when the STEP
+read back has the same number of solids as the shape as read, its volume is
+within **1e-3** relative and every corner of its tight box within **1e-4 of
+the diagonal + 1e-6 mm**. On the library the largest volume drift through
+STEP is 1.25e-4 (one shape above 1e-4, five above 1e-5, six above 1e-6 of
+291; the 99th percentile 3.1e-5), as S1 measured. The tolerance is eight
+times the largest drift: room for files we haven't seen, and still far below
+a lost or added piece. Three library shapes fail it: one whose volume through
+STEP differs by 160 %, and two that lose their solid through STEP (as S1 found
+for two stored solids).
+
+### Failures, restarts, budgets, limits
+
+- A conversion that throws, traps, comes back from a dead worker or runs
+  over its time leaves that shape out, and the kernel is thrown away and a
+  fresh one started before the next shape; a late answer from the old one is
+  never used. At most **3 restarts**; after that every remaining shape is
+  left out. A result that came back but fails the check costs no restart.
+- **Budgets:** **60 s per shape** and **10 minutes per import**; the app's
+  worker is stopped at 11 minutes. On the library (a shared, loaded machine)
+  the slowest shape took 7.8 s and the slowest file 22 s.
+- **Limits:** a file over 100 MB is refused before it is read; ADR-0066's
+  25 MB per attachment and 100 MB per design (a shape that would pass either
+  is left out); identical STEP bytes share one attachment (SHA-256 naming).
+- **Left out, each with a line:** meshes (S12), empty shapes, FreeCAD's
+  binary form, an entry that can't be read, no solid, a failed check, over
+  25 MB, over 100 MB in the design, a kernel failure, a shape's or the
+  import's time, too many restarts. The report also lists the reader's
+  problems and link arrays (one copy each).
+- A file with no final shape opens as an empty design, with a notice.
+
+### Names and colours
+
+`Design.setBody(body, { name, color, opacity, visible })` is new in
+`@extrudo/api`: the API had no way to set a body's metadata (the f3d
+importer dispatched `updateBody` itself). A compound's bodies are
+`<feature>:0`, `<feature>:1` … named "Label", "Label 2" …. The STEP carries
+neither name nor colour (the metadata does), so copies share a file.
+FreeCAD's default shape colour (204, 204, 204), which 207 of the library's
+383 final shapes carry, is treated as no colour: those bodies take Extrudo's
+default. Transparency becomes opacity, at least 0.1.
+
+### In a design, and the CLI
+
+Import Model in an open design hands an `.FCStd` file to the same import as
+an `.f3d`: it opens as a new design (no `import` features in the current
+design). The CLI reads `.extrudo` files only, so a FreeCAD file there needs
+the attachments plumbed through its file source: left for a later slice.
+
+### The library (60 files, `corpus-shapes.test.ts`)
+
+| | |
+|---|---|
+| Final shapes | 383 |
+| Came in | 291, with 763 solids (the study counted 766: the three missing are the three that failed the check) |
+| Left out | 85 meshes, 4 empty bodies, 3 failed checks; no kernel failure, no restart |
+| Volume against FreeCAD's own | 291 compared: 14 differ by more than 1e-6, 2 by more than 1e-4, the largest 2.2e-4 |
+| Box against FreeCAD's own | for the 289 not turned by a container, ours lies inside FreeCAD's (at most 4.7e-8 of the diagonal outside); FreeCAD's `BoundBox` is looser than our tight box by over 1e-2 of the diagonal for 17 |
+| Moved containers | 6 shapes; FreeCAD's numbers are in the container's frame, so these check the chain's transform (the 4 not turned agree; 2 are turned, volume only) |
+| Links | 13, all where FreeCAD has them (a link's own shape carries its placement, an independent check) |
+| Time per file | median 0.12 s, 95th percentile 5.8 s, slowest 22 s |
+| STEP | largest attachment 5.8 MB, largest design 13.2 MB |

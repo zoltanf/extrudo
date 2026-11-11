@@ -4113,7 +4113,9 @@ committed; the packaged path is `resources/cadmpeg/cadmpeg[.exe]` with its `LICE
 `package*` script and the desktop workflow's package jobs fetch before building, and the workflow
 fails unless the packaged binary prints the pinned version; updating cadmpeg is the release
 checklist's step (version and the five hashes, nothing else); the formats are named by extension only
-(`.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product.
+(`.sldprt .ipt .iam .catpart .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product. **FreeCAD's
+`.fcstd` left the route on 2026-11-11** (ADR-0115's amendment): ADR-0144's own importer reads it; never add it back to
+`CAD_CONVERT_EXTENSIONS`.
 Main looks the binary up in this order: the preference `cadmpeg.path` → `process.resourcesPath/cadmpeg/`
 → the dev checkout's `apps/desktop/vendor/cadmpeg/` → `PATH`. A conversion runs without a shell in
 `<temp>/extrudo-cadmpeg/<uuid>/` (mode 0700, removed afterwards), 120 s timeout, stdout/stderr capped
@@ -4531,3 +4533,28 @@ import's kernel does) and gives `undefined` plus a problem for empty, missing, b
 and link cycles (`MAX_LINK_HOPS` 32) with a problem, and must keep the library's count (383 objects, the same per
 file as the investigation's; change the rule only with the corpus run's new numbers). Everything left out goes to
 `FcDocument.problems`. `corpus.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_CENSUS` optional).
+
+**ADR-0144, S3 (shapes-only import):** `packages/kernel/src/stored-shape.ts` `storedShapeToStep(text, chain,
+options?)` (on `KernelApi`, `worker-api.ts`, `browser.ts`) reads, places (outermost first), writes STEP and reads it back
+in one call, releasing every shape, and returns both measures; no solid gives `step: ''`; the STEP header's time stamp is
+fixed (same shape → same bytes → one attachment). **It refuses with a `KernelError` unless the service was started with
+`KernelServiceOptions.importKernel`**, set only by `serveKernel({ importKernel: true })` in
+`apps/web/src/project/importKernelWorker.ts`: never set it in the project's kernel worker (`kernelWorker.ts`,
+`spawnProjectKernel`), the kernel's own or the debug worker; `stored-shape.test.ts` proves a normal kernel refuses.
+`packages/fcstd`: `import-kernel.ts` (`ImportKernel`: `storedShapeToStep`, `restart`; extend it, never import the kernel
+outside tests), `shapes.ts` `importShapes` (one `import` feature per final shape in document order, `Import <label>`,
+bodies `<feature>:<n>` named "Label", "Label 2" … through **`Design.setBody`** (new API method: name, colour, opacity,
+visibility), FreeCAD's default `#cccccc` taken as no colour, transparency → opacity ≥ 0.1), `import.ts` `importFcstd(bytes,
+name, options)` → `{ design, files, report }` (`FcstdImportReport`: `shapes`, `leftOut` with a `LeftOutReason`,
+`finalShapes`, `problems`, `linkArrays`, `restarts`; plain data, the app words it). **Rules:** a shape comes in only when
+the STEP read back has the stored shape's solids, volume within `VOLUME_TOLERANCE` (1e-3) and box within
+`BOX_TOLERANCE` (1e-4 of the diagonal + 1e-6 mm) — change them only with the library's new drift numbers; a call that
+throws or times out (`SHAPE_TIMEOUT_MS` 60 s, within `IMPORT_TIMEOUT_MS` 10 min) leaves its shape out and **restarts the
+kernel before the next shape** (at most `MAX_RESTARTS` 3, then the rest are left out); nothing a failed kernel returned is
+used; ADR-0066's 25 MB / 100 MB limits; attachments named by SHA-256 (copies share); no name or colour in the STEP (the
+body metadata carries them). App: `fcstdImport.ts` (client, 11 min), `fcstdWorker.ts` (reader and mapper), whose kernel
+is a **nested worker** (`importKernel.ts`), so terminating the import's worker ends it; `actions.ts`
+`importFcstdFile`/`saveFcstdImport`/`fcstdNotices`, `FCSTD_ACCEPT`, `isFcstd`, `MAX_FCSTD_BYTES` (100 MB before reading);
+STEP bytes are written before the document. Import Model hands an `.FCStd` to the same new-design import as an `.f3d`.
+`corpus-shapes.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_GT` and `FCSTD_GT_PREFIX` optional; numbers
+in the amendment).

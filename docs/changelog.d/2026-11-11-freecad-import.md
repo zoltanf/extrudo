@@ -1,0 +1,1 @@
+- 2026-11-11 · **FreeCAD files open in Extrudo**: Home › Import takes a `.FCStd` file, in the browser and the desktop app, and makes a new design of its finished shapes, one body each with the file's names, colours and hidden shapes; a notice says what came across (shapes only for now: no sketches or history yet, meshes left out; ADR-0144's S3 amendment).
