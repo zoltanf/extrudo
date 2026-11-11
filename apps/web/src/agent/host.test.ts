@@ -20,6 +20,10 @@ function host(designId: string): AgentHost {
     redo: () => {},
     save: async () => {},
     exportModel: async () => new Uint8Array(),
+    sheetKernel: () => undefined,
+    sheetFields: async () => ({}),
+    finishDrawing: () => {},
+    sheetPng: async () => null,
   };
 }
 
