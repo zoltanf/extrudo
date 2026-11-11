@@ -170,7 +170,9 @@ export function NewSheetsDialog({
                 <svg
                   viewBox="0 0 84 56"
                   aria-hidden="true"
-                  className="h-auto w-full rounded-[3px] bg-white"
+                  className="h-auto w-full rounded-[3px]"
+                  // Paper is white in both themes (the theme has no white token).
+                  style={{ background: '#ffffff' }}
                 >
                   <path
                     d={choice.picture}
