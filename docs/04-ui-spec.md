@@ -110,7 +110,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   Export Sketch. A sketch selects SKETCH whichever tab was selected, and
   finishing it brings the model's tabs back with SOLID selected. Home's
   model-only tools (Import, Canvas, Customizer) say "Finish the sketch to use
-  …" in a sketch.
+  …" in a sketch: in search, by their keys, and as a message when their tile is
+  clicked, as the drawing's "Finish the drawing to use …" does.
 - **Toolbars fit the window** (ADR-0079 §3): when the selected tab's groups
   are wider than the window, the group with the most visible tiles moves its
   last tile to the front of its ▾ menu, one at a time (equally full: the
