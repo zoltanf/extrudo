@@ -112,6 +112,10 @@
 #include <BRepTools_History.hxx>
 #include <BRepTools_ReShape.hxx>
 #include <BRepTools_ShapeSet.hxx>
+#include <BRep_CurveRepresentation.hxx>
+#include <BRep_PointRepresentation.hxx>
+#include <BRep_TEdge.hxx>
+#include <BRep_TVertex.hxx>
 #include <BRepLib.hxx>
 #include <BRepLib_MakeEdge.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
@@ -255,6 +259,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -2769,14 +2774,24 @@ public:
       }
       std::istringstream in(text);
       BRep_Builder builder;
-      BRepTools_ShapeSet set(builder);
+      CheckedShapeSet set(builder);
       set.Read(in);
       if (in.fail() || set.NbShapes() <= 0) {
         return fail("B-rep import failed: the text couldn't be read.");
       }
+      // The root reference, checked as CheckedShapeSet checks a sub-shape's.
+      const std::streampos root = in.tellg();
+      if (!CheckedShapeSet::reference(in, set.NbShapes(), set.NbShapes())) {
+        return fail("B-rep import failed: the text has no shape.");
+      }
+      in.clear();
+      in.seekg(root);
       TopoDS_Shape shape;
       set.Read(shape, in);
       if (shape.IsNull()) return fail("B-rep import failed: the text has no shape.");
+      if (!completeGeometry(shape)) {
+        return fail("B-rep import failed: the text refers to a curve or surface it doesn't have.");
+      }
       return store(shape);
     } catch (...) {
       return failFromException("B-rep import failed");
@@ -6220,11 +6235,22 @@ private:
     Handle(ShapeBuild_ReShape) reshape = new ShapeBuild_ReShape();
     BRep_Builder builder;
     TopTools_MapOfShape seen;
+    NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> rebuiltFaces;
     for (TopExp_Explorer it(direct, TopAbs_FACE); it.More(); it.Next()) {
       const TopoDS_Shape face = it.Current().Oriented(TopAbs_FORWARD);
       if (!seen.Add(face) || !reversedWire(face)) continue;
-      TopoDS_Shape rebuilt = face.EmptyCopied();
-      for (TopoDS_Iterator w(face, false, false); w.More(); w.Next()) {
+      // The explorer's face carries every location above it (a placed
+      // solid's, even an identity one). The new face is built on the bare
+      // face, whose wires are relative to it, and given that location back
+      // afterwards: BRep_Builder::Add moves a child by the inverse of its
+      // parent's location, which put the wires somewhere else.
+      const TopoDS_Shape bare = face.Located(TopLoc_Location());
+      if (const TopoDS_Shape* done = rebuiltFaces.Seek(bare)) {
+        reshape->Replace(face, done->Located(face.Location()));
+        continue;
+      }
+      TopoDS_Shape rebuilt = bare.EmptyCopied();
+      for (TopoDS_Iterator w(bare, false, false); w.More(); w.Next()) {
         const TopoDS_Shape& wire = w.Value();
         if (wire.Orientation() != TopAbs_REVERSED) {
           builder.Add(rebuilt, wire);
@@ -6238,9 +6264,124 @@ private:
         forward.Closed(wire.Closed());
         builder.Add(rebuilt, forward);
       }
-      reshape->Replace(face, rebuilt);
+      rebuiltFaces.Bind(bare, rebuilt);
+      reshape->Replace(face, rebuilt.Located(face.Location()));
     }
     return reshape->Apply(direct);
+  }
+
+  /**
+   * OCCT's B-rep shape table, read with each shape's sub-shape list checked
+   * before OCCT reads it (P6-25 S1, ADR-0144's amendment). OCCT reads the list
+   * up to its "*" and looks each "+N L" up without a range check, so a list
+   * cut short reads on forever (the stream has failed and the token never
+   * changes) and an index past the shapes read so far reads outside the
+   * table. Here the flags and the list are read ahead and the stream put back:
+   * every index must name a shape already read, every token fit OCCT's
+   * 255-byte buffer, and the list end in "*". The declared count comes from
+   * the "TShapes n" line, peeked the same way after the geometry tables.
+   */
+  class CheckedShapeSet : public BRepTools_ShapeSet {
+   public:
+    explicit CheckedShapeSet(const BRep_Builder& builder) : BRepTools_ShapeSet(builder) {}
+
+    void ReadGeometry(Standard_IStream& in, const Message_ProgressRange& progress) override {
+      BRepTools_ShapeSet::ReadGeometry(in, progress);
+      const std::streampos at = in.tellg();
+      std::string word;
+      long long count = -1;
+      if (!(in >> word) || word != "TShapes" || !(in >> count) || count < 1 || count > INT_MAX) {
+        throw Standard_Failure("bad shape table");
+      }
+      declared_ = static_cast<int>(count);
+      in.clear();
+      in.seekg(at);
+    }
+
+    void ReadGeometry(const TopAbs_ShapeEnum type, Standard_IStream& in, TopoDS_Shape& shape) override {
+      BRepTools_ShapeSet::ReadGeometry(type, in, shape);
+      const std::streampos at = in.tellg();
+      std::string flags;
+      if (!(in >> flags) || flags.size() > 200) throw Standard_Failure("bad shape flags");
+      for (;;) {
+        const std::streampos next = in.tellg();
+        std::string word;
+        if (!(in >> word) || word.size() > 200) throw Standard_Failure("bad sub-shape list");
+        if (word[0] == '*') break;
+        in.clear();
+        in.seekg(next);
+        if (!reference(in, declared_, NbShapes())) throw Standard_Failure("bad sub-shape");
+      }
+      in.clear();
+      in.seekg(at);
+    }
+
+    /**
+     * Reads one "+N L" (or -, i, e) and whether OCCT's lookup of it stays in
+     * the table: of `declared` shapes, `read` are in it, and N counts from the
+     * end of the declared ones.
+     */
+    static bool reference(std::istream& in, int declared, int read) {
+      std::string word;
+      long long location = 0;
+      if (!(in >> word) || word.size() < 2 || word.size() > 200 || std::strchr("+-ie", word[0]) == nullptr) {
+        return false;
+      }
+      char* end = nullptr;
+      const long long index = std::strtoll(word.c_str() + 1, &end, 10);
+      if (end == nullptr || *end != '\0') return false;
+      const long long position = static_cast<long long>(declared) - index + 1;
+      return position >= 1 && position <= read && static_cast<bool>(in >> location);
+    }
+
+   private:
+    int declared_ = 0;
+  };
+
+  /**
+   * Whether every curve, pcurve and surface `shape` refers to is there: OCCT's
+   * reader skips or keeps as a null handle a reference of 0 or past its table,
+   * which the first check or mesh of the shape dereferences (a WASM trap). A
+   * face with only a triangulation may have no surface.
+   */
+  static bool completeGeometry(const TopoDS_Shape& shape) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> all;
+    TopExp::MapShapes(shape, all);
+    for (int i = 1; i <= all.Extent(); ++i) {
+      const TopoDS_Shape& s = all(i);
+      if (s.ShapeType() == TopAbs_EDGE) {
+        const TopoDS_Edge& edge = TopoDS::Edge(s);
+        const Handle(BRep_TEdge) tedge = Handle(BRep_TEdge)::DownCast(edge.TShape());
+        if (tedge.IsNull()) return false;
+        bool curve = false;
+        for (const Handle(BRep_CurveRepresentation)& r : tedge->Curves()) {
+          if (r.IsNull()) return false;
+          if (r->IsCurve3D() && r->Curve3D().IsNull()) return false;
+          if (r->IsCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return false;
+          if (r->IsCurveOnClosedSurface() && r->PCurve2().IsNull()) return false;
+          curve = curve || r->IsCurve3D();
+        }
+        // OCCT's reader leaves a missing curve off the edge; the kernel's
+        // code expects every edge but a degenerate one to have a 3D curve.
+        if (!curve && !BRep_Tool::Degenerated(edge)) return false;
+      } else if (s.ShapeType() == TopAbs_VERTEX) {
+        const Handle(BRep_TVertex) tvertex = Handle(BRep_TVertex)::DownCast(s.TShape());
+        if (tvertex.IsNull()) return false;
+        for (const Handle(BRep_PointRepresentation)& r : tvertex->Points()) {
+          if (r.IsNull()) return false;
+          if (r->IsPointOnCurve() && r->Curve().IsNull()) return false;
+          if (r->IsPointOnCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return false;
+          if (r->IsPointOnSurface() && r->Surface().IsNull()) return false;
+        }
+      } else if (s.ShapeType() == TopAbs_FACE) {
+        TopLoc_Location location;
+        const TopoDS_Face& face = TopoDS::Face(s);
+        if (BRep_Tool::Surface(face, location).IsNull() && BRep_Tool::Triangulation(face, location).IsNull()) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   /** Whether stageStepColor() gave any staged part a colour. */

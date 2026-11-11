@@ -182,6 +182,41 @@ export interface MeshToSolidResult {
   report: MeshToSolidReport;
 }
 
+/**
+ * The most B-rep text `readBrep` takes, in UTF-8 bytes (P6-25 S1, ADR-0144's
+ * amendment): 32 MB, seven times the largest stored shape of the FreeCAD
+ * library it was measured on (4.4 MB).
+ */
+export const MAX_BREP_BYTES = 32 * 1024 * 1024;
+
+/**
+ * What a linear scan finds wrong with B-rep text before OCCT reads it (P6-25
+ * S1, ADR-0144's amendment), or `undefined`. OCCT's reader runs a table's
+ * loop as many times as its header says, on a failed stream too (minutes for
+ * a count of 10^9), copies a token into a 255-byte buffer without a bound, and
+ * takes NaN and infinite numbers as they come. Every table entry takes at
+ * least two characters, so a count above half the text can't be true. Only
+ * the text from the format line on is scanned.
+ */
+function brepTextProblem(text: string): string | undefined {
+  const body = text.slice(Math.max(0, text.indexOf('CASCADE Topology V')));
+  const header =
+    /^[ \t]*(Locations|Curve2ds|Curves|Polygon3D|PolygonOnTriangulations|Polygon2D|Surfaces|Triangulations|TShapes)[ \t]+(\S*)/gm;
+  for (const [, table, count] of body.matchAll(header)) {
+    if (!/^\d{1,10}$/.test(count ?? '') || Number(count) > body.length / 2) {
+      return `the ${table} table's count (${(count ?? '').slice(0, 20)}) can't be right.`;
+    }
+  }
+  if (/\S{200}/.test(body)) return 'the text has a word over 200 characters long.';
+  if (/(?<![\w.])[-+]?(?:nan|inf(?:inity)?)(?![\w.])/i.test(body)) {
+    return 'the text has a number that is not finite.';
+  }
+  for (const [exponent] of body.matchAll(/(?<=\d\.?[eE][+]?)\d{3,}/g)) {
+    if (Number(exponent) > 308) return 'the text has a number that is not finite.';
+  }
+  return undefined;
+}
+
 /** ADR-0097 §3: faceted refuses more faces than this, prismatic more surfaces than this. */
 export const FACETED_FACE_CAP = 2000;
 export const PRISMATIC_SURFACE_CAP = 500;
@@ -2116,15 +2151,27 @@ export class Kernel {
    * lists them in. Release it when done.
    */
   readBrep(text: string): ShapeHandle {
+    // Refused before the text is copied into the WASM heap. A character is at
+    // most three UTF-8 bytes, so the exact count is only needed near the limit.
+    if (
+      text.length > MAX_BREP_BYTES ||
+      (text.length * 3 > MAX_BREP_BYTES && new TextEncoder().encode(text).length > MAX_BREP_BYTES)
+    ) {
+      const mb = (n: number) => Math.round(n / (1024 * 1024));
+      throw new KernelError(
+        `B-rep import failed: the shape is too large (over ${mb(MAX_BREP_BYTES)} MB of text).`,
+      );
+    }
     // An unbounded line's range is ±2e100, and some writers print it in full:
     // a hundred digits. OCCT's number reader in this build never returns from
     // one, so a number with a long integer part goes in as the same number in
     // its short form. Only at a number's start: digits after a decimal point
     // (0.00000000000000000061) are no integer part and are left alone.
-    const short = text.replace(
-      /(?<![\d.eE+-])-?\d{18,}(?:\.\d*)?(?:[eE][+-]?\d+)?/g,
-      (number) => String(Number(number)),
+    const short = text.replace(/(?<![\d.eE+-])-?\d{18,}(?:\.\d*)?(?:[eE][+-]?\d+)?/g, (number) =>
+      String(Number(number)),
     );
+    const problem = brepTextProblem(short);
+    if (problem) throw new KernelError(`B-rep import failed: ${problem}`);
     return this.#check(this.#facade.readBrep(short));
   }
 
