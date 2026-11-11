@@ -4401,7 +4401,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S0, S1a, S1, S2 and S3 done**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S0, S1a, S1, S2, S3, S4 and S5 done**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4594,7 +4594,53 @@ and an outline's side is read back with one probe `resolveSheet`, never guessed 
 `layoutSheetDimension` of the real item with its resolved anchors; placing, every card change and picking again are each
 one undo step; "Show the unit" and arrows inside/outside are not offered until the schema has fields. e2e:
 `e2e/sheet-dimensions.spec.ts` (B2 with stored refs: if the naming changes, stored dimensions stop resolving and it
-fails; the wall bracket template for the tool).
+fails; the wall bracket template for the tool). **S4 notes in the app (package 2):** `usePickTool.ts` (`usePickTool`,
+`PickToolSpec`, `pickOf`, `PickKernel`), `noteTools.ts` (`noteAccepts`, `noteWhole`, `noteItem`, `noteStep`, `noteRepick`,
+`repickAccepts`, `repickWhole`), `faceHit.ts`, `SheetTextEditor.tsx`, `SheetNoteCard.tsx`, `snap.ts` (`snapMove`,
+`snapPoint`, `dimensionRows`, `ROW_STEP`), `RepickHandles.itemRepick`, `exportSheets.withEveryStickyNote`,
+`controls.CommitArea`, `selection/pick.faceAlong`; tools `sheetText` (`T`), `sheetLeader` (`N`), `sheetSticky`,
+`sheetCentreMark`, `sheetCentreLine`. Rules a change must keep: **every tool that anchors an item picks through
+`usePickTool` with its own spec** (S5's balloon too), never a copy of the hook; **a candidate whose resolved anchors make
+it `invalid` or `detached` is not placed**; only what the kind's rule takes is hovered; a face is picked by a ray along
+the view's direction into the display meshes, among the view's drawn bodies, its ref by name from the kernel; **a typed
+item is added only when its text is finished and not blank** (one undo step), and the same keys hold for every text kind
+and the cards' Text (Enter finishes, Shift+Enter a new line, Esc leaves it); the press that ends typing starts nothing;
+a lost note's reason is the kernel's when it gives one (this replaces "notes keep their own words"); the export's Sticky
+notes switch writes a copy with every note printed, never a document change; **snapping is how the pointer is read, never
+stored**: box edges and middles and dimension rows `ROW_STEP` (10 mm) apart, within the pick tolerance, guides on screen
+only, off with Snap; arrow keys never snap. e2e: `e2e/sheet-notes.spec.ts`. **S5 list tools in the app (package 2):**
+`sheetParts.ts` (`useSheetParts`, `partsAskKey`, `mergeParts`, `exportPartsOf`, `sheetFieldContext`,
+`useSheetFieldContext`, `sheetDensity`), `listTools.ts` (`partsListItem`, `withColumnShown`, `withRowText`,
+`balloonAccepts`, `balloonItem`, `balloonListOf`, `newTable`, `tableCellAt`, `withCell`, `withRowAdded` and kin),
+`SheetListCard.tsx` (`ListToolPanel`, `PartsListCard`, `BalloonCard`, `TableCard`), `controls.FieldInsert` and
+`sheetFieldChoices`, `print/material.chosenDensity`, `@extrudo/sheets`' `sheetTableGrid`; tools `sheetPartsList`,
+`sheetBalloon` (`B`), `sheetTable`; the browser's Tables folder; `SheetCanvas.onOpen` gets the sheet point. Rules a
+change must keep: **a parts list's rows are asked of the kernel (`Recomputer.sheetParts`) the way anchors are** (quiet,
+when the lists, their views or the model change, never while the model computes, older answers dropped) **and never
+stored**; the export asks again (`exportPartsOf`) and fills the fields as of now (today's date, the newest version read
+again, Print Info's density), never from what the screen kept; a parts list's `at` is sheet mm though it names a view
+(moves are never scaled by the view); what is typed over a row goes under the row's first body and going back to the
+model's removes it under every body of the row; a balloon picks through `usePickTool` with its own spec, only on a body
+its view's list shows, numbered by **the first list of that view in the sheet's order**; a cell may be committed empty
+(other typed items may not); `{version}` is `V<n>` of the newest saved version. e2e: `e2e/sheet-lists.spec.ts`. **S6 the API, the script and the CLI
+(package 1):** `packages/api/src/sheets.ts` (`d.addSheet`/`sheets`/`sheet`, `SheetHandle`, `SheetViewHandle`,
+`SheetItemHandle`, `sheetAnchorOf`; IDs `sh`/`sv`/`si`), `emit/sheets.ts` (`sheetStatements`), `sheet-docs.ts`
+(`docs/api/sheets.md`, generated), the kernel's `sheets/lines.ts` (`sheetViewWants`, `sheetViewWant`, `baseViewOf`,
+`pieceContour`, `sheetViewLines`, `ViewLines`: moved from the app's `viewLines.ts`, which re-exports them) and
+`sheets/now.ts` (`sheetModelNow`, `SheetModelKernel`, `exportAnchorsOf`, `exportPartsOf`, `isAnchored`, `EXPORT_UNMEASURED`,
+`EXPORT_UNLISTED`: moved from the app's `sheetAnchors.ts` and `sheetParts.ts`, which re-export them), `@extrudo/sheets`' `export.ts` (`sheetFiles`, `sheetFileContext`, `withEveryStickyNote`,
+`chosenSheets`), the CLI's `DesignJob.exportSheets`/`checkSheets`, `ComputeResult.sheets`, `sheet-fixture.ts` and
+`fixtures/sheets/plate.extrudo`, `scripts/check-sheet-pdf.mjs` (CI). Rules a change must keep: **every API sheet call is
+one core command** (one undo step), and an anchor's ref is stored with its fingerprint or refused (the API never invents
+one); the API writes no date or author by itself and places standard views on a paper grid (it has no kernel); **scripts
+refuse `addSheet`, `sheet`, `sheets`**; Export as Script writes sheets for a whole design only, every setup field the API
+would not default (title-block fields always), views and items in stored order; **a sheet's outputs outside the app go
+through `sheetModelNow` then `sheetFiles`**, never a copy of the app's export: the kernel half asks the model (exact views,
+anchors and parts lists now, never kept), the sheets half is pure and kernel-free (`ViewLines` matches `SheetViewLines`
+structurally; neither package imports the other); the CLI's `{date}` defaults to the design's `meta.modified` day,
+`{version}` to the newest version in the file, Mass to none (`--date`, `--version-name`, `--density` change them), so a
+file and its flags always write the same bytes; `check --sheets` fails on a detached anchor only. The fixture is built
+through the API with fingerprints from a real recompute (`UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets`).
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

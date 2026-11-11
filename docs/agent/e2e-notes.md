@@ -2240,6 +2240,55 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `/FlateDecode` streams first. `SHEET_SHOTS=<dir>` makes the spec save light and dark
   screenshots for a person to look at.
 
+### `e2e/sheet-notes.spec.ts`
+
+- **The notes tools** (P6-24 S4, ADR-0143's S4 notes tools amendment), on the wall bracket template with New
+  drawing's Standard views (A3, 1:1; view IDs from `[data-sheet-view-row]` by name). The top view's box gives the
+  model's x 0..40 and y −40..40 (`tAt`): the holes' rims at (25 + 2.6, ±20), the foot's long edges at y ±40.
+- Tiles `#toolbar-groups [data-label="Centre Mark" | "Centreline" | "Text" | "Leader Note" | "Sticky Note"]`, keys
+  `t` and `n`. Panels are the regions "<Tool> tool" with `[data-note-step]` (what to do next; "Reading the pick…"
+  while the kernel answers). Hover markers are the Dimension tool's (`[data-dimension-hover]`), plus
+  `[data-face-hover]` for a face under the pointer (Leader Note); a following leader is `[data-dimension-preview]`.
+- Typing: the field is `[data-sheet-editor="text" | "leader" | "sticky"]` (focused when it opens): type, Shift+Enter
+  for a new line, Enter to finish (the field goes). Wait for the field to go before the next click. A double-click on
+  a text's glyphs (`[data-sheet-text] text[data-key="item:<id>"]`) opens the field again.
+- Items: rows `[data-sheet-item-row]` under the folder button "Notes" (and "Dimensions"); find a new item by diffing
+  the row IDs. A centre line is one horizontal path of zero height: check `path[data-key]` counts, not visibility.
+  One undo step per item: Ctrl+Z takes the row away, Ctrl+Y brings it back.
+- Cards: regions "Text" (`exact`), "Leader note", "Sticky note" (switch "Print"), "Centre mark", "Centre line"; the
+  view card's switch "Centre lines". The export dialog's switch "Sticky notes"; its summary ends "· 1 sticky note left
+  out" while a note is on screen only. "On screen only" is a text run on the sheet (screen only).
+- Snap: the floating bar's button "Snap" (pressed by default). A drag shows `[data-sheet-guides]`; specs that measure
+  an exact drag (`sheets.spec.ts`' selection test, `sheet-views.spec.ts`' Projected View test) switch it off first.
+- A lost leader: the status text is the kernel's ("The feature this was drawn on is deleted."); its handle is
+  `[data-repick-handle="0"]`, dragged like a dimension's onto an edge.
+
+### `e2e/sheet-lists.spec.ts`
+
+- **The list tools** (P6-24 S5, ADR-0143's S5 list tools amendment) on the base frame built in the spec (as
+  `parts.kernel.test.ts` builds it: `Top` 600 × 400 × 18 on `Leg1`, `Leg2` 50 × 50 × `legs`, boxes centred on x and
+  y; bodies `Top:0`, `Leg1:0`, `Leg2:0`), written with `writeArchive` and opened with Home's "Import…" file chooser,
+  then Make › Drawing › Create Drawing (Standard views, A3, 1:10). The front view's box is the model's x −300..300 and
+  z 0..718 (`fAt`): the legs' outer edges at x ±275, Leg 1's inner edge at −225, the top's face at z 718. Sheet Setup's
+  "Decimals" set to 0 first (whole mm, as the reference's sheet).
+- Tiles `#toolbar-groups [data-label="Parts List" | "Table"]`, key `b` (Balloon). Panels "Parts List tool",
+  "Balloon tool", "Table tool" with `[data-note-step]`. Parts List: the view under the pointer is framed
+  `[data-parts-view]`; the list follows the pointer by its top-left corner. Balloon hovers like a leader
+  (`[data-dimension-hover]`), follows as `[data-dimension-preview]`.
+- Items: rows `[data-sheet-item-row]` under the folders "Notes" (balloons: "Balloon 2 Front") and "Tables" ("Parts
+  list Front", "Table 3 × 2"). A list's cells, a balloon's number and a table's cells are its text runs
+  `[data-sheet-text] text[data-key="item:<id>"]` (`textsOf`): headers in capitals ("SIZE (MM)"), sizes "600 × 400 ×
+  18". A text with a trailing space keeps it in its run.
+- Cards: regions "Parts list" (checkboxes by column name, textboxes "Name, row n" / "Material, row n" with the model's
+  name as placeholder, button "Model's name, row n"), "Balloon", "Table" (buttons "Add row", …), "Text" (`exact`)
+  with the combobox "Insert field" (`selectOption('{sheet}')`). A cell is typed with
+  `[data-sheet-editor="cell"]` after a double-click inside it (sheet mm: the table's `at` + (5, 3.5) is row 1,
+  column 1).
+- Parameters in the drawing: Home › Parameters, `parameterExpression`, then `selectParameter` and the textbox "Name of
+  legs" to rename; the views, the list's sizes and `{= legs}` follow within the poll's 60 s.
+- Leg2 deleted (Finish Drawing, the chip's menu, the sheet's row double-clicked): its balloon's row is `detached` and
+  its paths `data-state="detached"`; `[data-repick-handle="0"]` dragged onto Leg 1's inner edge makes it "2" again.
+
 ### `e2e/shell-feature.spec.ts`
 
 - **Shell e2e** (`e2e/shell-feature.spec.ts`, P3-03; not `shell.spec.ts`, the

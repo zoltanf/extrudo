@@ -22,7 +22,11 @@
  * Dimension tool, S3) hears every pointer move and click in sheet mm with the pick tolerance
  * (`pointer`) and draws what it shows in the `overlay`, sheet mm; nothing is selected
  * meanwhile. **Notices** (a view being drawn, a body gone) are written under their target's
- * frame, on screen only.
+ * frame, on screen only. **A double-click** on a target (no tool) opens it (`onOpen`: a text
+ * typed in place, S4); the field is the `editor`, laid on the paper in mm. **Snapping** (S4,
+ * `snap`): a dragged selection snaps to the other targets' edges and middles and a dimension
+ * to rows 10 mm apart (`snap.ts`), with dashed guides (`[data-sheet-guides]`) written in the
+ * DOM while dragging; a tool's own guides come in `guides`.
  *
  * Test hooks: the region "Sheet" (`data-sheet-canvas`, `data-sheet` the sheet ID,
  * `data-paper` "420x297", `data-zoom` "62%", `data-hover` and `data-selected` the targets),
@@ -68,6 +72,7 @@ import {
   zoomSheetAt,
   zoomText,
 } from './sheetView';
+import { guidePath, type SnapRow, snapMove, snapTargets } from './snap';
 import { sheetSnapshot } from './snapshot';
 import { placedAt } from './views';
 
@@ -157,6 +162,23 @@ export interface SheetCanvasProps {
   overlay?: ReactNode;
   /** What the screen says under a target (a view being drawn, a body gone). */
   notices?: ReadonlyMap<SheetTarget, string>;
+  /**
+   * HTML laid on the paper (the text being typed): positioned in mm through the paper's
+   * `--sheet-mm` (px per mm, written with the zoom).
+   */
+  editor?: ReactNode;
+  /**
+   * A double-click on a target with no tool running, at sheet `point` mm (plan §4.2: edit a
+   * text in place; a table's cell under the point, S5).
+   */
+  onOpen?: (target: SheetTarget, point: [number, number]) => void;
+  /**
+   * Snapping a dragged selection (S4, plan §4.2), with the dimensions' rows; absent when the
+   * floating bar's Snap is off.
+   */
+  snap?: { rows: ReadonlyMap<SheetTarget, SnapRow> };
+  /** Guides to show while a tool places something (snapped), sheet mm. */
+  guides?: string;
 }
 
 const NONE: readonly SheetTarget[] = [];
@@ -188,6 +210,10 @@ export function SheetCanvas({
   pointer,
   overlay: extra,
   notices,
+  editor,
+  onOpen,
+  snap,
+  guides,
 }: SheetCanvasProps) {
   const host = useRef<HTMLElement>(null);
   const sheet = useRef<HTMLDivElement>(null);
@@ -209,6 +235,7 @@ export function SheetCanvas({
     hovered,
     placing,
     pointer,
+    snap,
   });
   latest.current = {
     paper,
@@ -221,6 +248,7 @@ export function SheetCanvas({
     hovered,
     placing,
     pointer,
+    snap,
   };
   const ghost = useRef<SVGGElement>(null);
   /** Moves the placing frame so the middle of its lines is under the sheet point. */
@@ -232,8 +260,16 @@ export function SheetCanvas({
     ghost.current.setAttribute('transform', `translate(${x} ${y})`);
     ghost.current.style.display = '';
   };
-  const events = useRef({ onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies });
-  events.current = { onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies };
+  const events = useRef({
+    onHover,
+    onSelect,
+    onMove,
+    movesOf,
+    onTargetMenu,
+    onDropBodies,
+    onOpen,
+  });
+  events.current = { onHover, onSelect, onMove, movesOf, onTargetMenu, onDropBodies, onOpen };
   const svg = useRef<SVGSVGElement>(null);
   const overlay = useRef<SVGSVGElement>(null);
   const band = useRef<SVGRectElement>(null);
@@ -246,6 +282,30 @@ export function SheetCanvas({
   const movesFor = (targets: SheetTarget[], dx: number, dy: number, free: boolean): SheetMoves =>
     events.current.movesOf?.(targets, dx, dy, free) ??
     new Map(targets.map((t) => [t, [dx, dy] as const]));
+  const guide = useRef<SVGPathElement>(null);
+  /** A drag of the selection by (`dx`, `dy`) mm, snapped when Snap is on; draws its guides. */
+  const snapped = (moving: SheetTarget[], dx: number, dy: number) => {
+    const on = latest.current.snap;
+    if (!on) return { dx, dy, guides: [] };
+    const set = new Set(moving);
+    const b = latest.current.boxes;
+    const own = moving.length === 1 ? on.rows.get(moving[0] as SheetTarget) : undefined;
+    const rows = [...on.rows].filter(([t]) => !set.has(t)).map(([, r]) => r);
+    return snapMove(
+      moving.flatMap((t) => b.get(t) ?? []),
+      snapTargets(b, set),
+      dx,
+      dy,
+      tolerance(),
+      own,
+      rows,
+    );
+  };
+  const showGuides = (d: string) => {
+    if (!guide.current) return;
+    guide.current.setAttribute('d', d);
+    guide.current.style.display = d ? '' : 'none';
+  };
   /** Shifts the drawn paths of the moved targets (and their frames), or back with none. */
   const shift = (moves: SheetMoves) => {
     for (const root of [svg.current, overlay.current]) {
@@ -275,6 +335,7 @@ export function SheetCanvas({
       el.style.top = `${next.y}px`;
       el.style.width = `${p.width * next.scale}px`;
       el.style.height = `${p.height * next.scale}px`;
+      el.style.setProperty('--sheet-mm', `${next.scale}px`);
     }
     const text = zoomText(next);
     if (host.current) host.current.dataset.zoom = text;
@@ -429,7 +490,9 @@ export function SheetCanvas({
         if (pick && d.moved) {
           const [x, y] = at(event.clientX, event.clientY);
           if (pick.moving.length > 0) {
-            shift(movesFor(pick.moving, x - pick.from[0], y - pick.from[1], event.altKey));
+            const s = snapped(pick.moving, x - pick.from[0], y - pick.from[1]);
+            shift(movesFor(pick.moving, s.dx, s.dy, event.altKey));
+            showGuides(guidePath(s.guides));
           } else if (band.current) {
             band.current.setAttribute('x', String(Math.min(x, pick.from[0])));
             band.current.setAttribute('y', String(Math.min(y, pick.from[1])));
@@ -496,8 +559,8 @@ export function SheetCanvas({
             }
             return;
           }
-          const dx = x - pick.from[0];
-          const dy = y - pick.from[1];
+          const { dx, dy } = snapped(pick.moving, x - pick.from[0], y - pick.from[1]);
+          showGuides('');
           shifted.current = movesFor(pick.moving, dx, dy, event.altKey);
           if (events.current.onMove?.(pick.moving, dx, dy, event.altKey) !== true) {
             shift(NO_MOVES);
@@ -523,6 +586,7 @@ export function SheetCanvas({
         );
       }}
       onPointerCancel={() => {
+        showGuides('');
         const pick = drag.current?.select;
         if (pick?.moving.length) shift(NO_MOVES);
         if (band.current) band.current.style.display = 'none';
@@ -546,6 +610,14 @@ export function SheetCanvas({
         if (!Array.isArray(ids)) return;
         const bodies = ids.filter((id): id is string => typeof id === 'string');
         if (bodies.length > 0) drop(bodies, at(event.clientX, event.clientY));
+      }}
+      onDoubleClick={(event) => {
+        const open = events.current.onOpen;
+        if (!open || latest.current.placing || latest.current.pointer || latest.current.tool)
+          return;
+        const [x, y] = at(event.clientX, event.clientY);
+        const target = hitTarget(latest.current.boxes, x, y, Math.max(0.8, 5 / view.current.scale));
+        if (target) open(target, [x, y]);
       }}
       onPointerLeave={() => {
         latest.current.pointer?.onLeave?.();
@@ -611,6 +683,17 @@ export function SheetCanvas({
             })}
           {placing && <PlacingFrame ref={ghost} placing={placing} />}
           {extra}
+          <path
+            ref={guide}
+            data-sheet-guides=""
+            d={guides ?? ''}
+            style={{ display: guides ? '' : 'none' }}
+            fill="none"
+            stroke="var(--x-accent)"
+            strokeWidth={1}
+            strokeDasharray="6 4"
+            vectorEffect="non-scaling-stroke"
+          />
           <rect
             ref={band}
             data-sheet-band=""
@@ -622,6 +705,7 @@ export function SheetCanvas({
             vectorEffect="non-scaling-stroke"
           />
         </svg>
+        {editor}
       </div>
     </section>
   );

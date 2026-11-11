@@ -64,7 +64,12 @@ import {
   pluginFileOf,
   type ReferenceIssue,
   type ScriptRunStatus,
+  type Sheet,
+  type SheetId,
+  type SheetItem,
+  type SheetItemId,
   setSketchGeometry,
+  sheetItemAnchors,
   TOLERANCE_PARAMETER,
   updateSketchDimension,
   usedFonts,
@@ -82,14 +87,33 @@ import type {
   RecomputeResult,
   Resolution,
 } from '@extrudo/kernel';
-import { meshBodies, meshBytes, modelFileName, RESOLUTIONS, stepBody } from '@extrudo/kernel';
+import {
+  exportAnchorsOf,
+  exportPartsOf,
+  isAnchored,
+  meshBodies,
+  meshBytes,
+  modelFileName,
+  RESOLUTIONS,
+  safeFileName,
+  sheetModelNow,
+  stepBody,
+} from '@extrudo/kernel';
 import { KernelService, loadOcct } from '@extrudo/kernel/node';
+import {
+  formatSheetScale,
+  SHEET_FONTS,
+  sheetFiles,
+  sheetItemStatus,
+  sheetPartBodies,
+} from '@extrudo/sheets';
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
 import {
   type SketchSettleChange,
   SketchSettleError,
   settleSketches,
 } from '@extrudo/sketch/inference';
+import { hasFont, loadFont } from '@extrudo/sketch/text';
 import { attachmentNotices, readArchive, type StoredVersion, writeArchive } from '@extrudo/storage';
 
 /** The version the CLI writes into file headers and `info` (the package's own). */
@@ -208,6 +232,8 @@ export interface ComputeResult {
   joints: JointReportSummary[];
   /** The design's annotations in number order, with their status (ADR-0126 §8). */
   annotations: AnnotationSummary[];
+  /** The design's sheets in page order, with their detached anchors (P6-24 S6). */
+  sheets: SheetReport[];
   /** How many features have an error, and how many a warning. */
   errors: number;
   warnings: number;
@@ -215,6 +241,55 @@ export interface ComputeResult {
   ms: number;
   /** Features the engine evaluated (cache misses); a cold compute evaluates all. */
   evaluated: number;
+}
+
+/** An item of a sheet that isn't drawn as it was placed (P6-24 S6). */
+export interface SheetItemProblem {
+  id: SheetItemId;
+  kind: SheetItem['kind'];
+  /** `detached`: an anchor is lost; `moved`: found again elsewhere; `invalid`: the geometry can't give it. */
+  state: 'moved' | 'detached' | 'invalid';
+  message?: string;
+}
+
+/** One sheet as `info` lists it and `check --sheets` checks it (P6-24 S6). */
+export interface SheetReport {
+  id: SheetId;
+  name: string;
+  /** "A3", or "300 × 200 mm" for a custom paper. */
+  size: string;
+  orientation: Sheet['orientation'];
+  /** The sheet's scale, "1:2". */
+  scale: string;
+  views: number;
+  items: number;
+  /** The anchors on the model that are detached now (a free point never is). */
+  detached: number;
+  /** The items not drawn as placed, in the sheet's order. */
+  problems: SheetItemProblem[];
+}
+
+/** What `exportSheets` writes (P6-24 S6). */
+export interface SheetExportOptions {
+  format: 'pdf' | 'svg';
+  /** The sheets, by name or ID; absent: every sheet. */
+  sheets?: readonly string[];
+  /** What `{date}` writes, `YYYY-MM-DD`; absent: the day the design was last changed (`meta.modified`). */
+  date?: string;
+  /** What `{version}` writes; absent: the newest version saved in the file ("V3"), else left as typed. */
+  version?: string;
+  /** The density for a parts list's Mass, g/cm³; absent: no Mass. */
+  density?: number;
+  /** Every sticky note, those on screen only too. */
+  stickies?: boolean;
+}
+
+/** One file of a sheet export: a PDF of every chosen sheet, or one sheet's SVG. */
+export interface SheetFile {
+  name: string;
+  bytes: Uint8Array;
+  /** The sheets in it, by name. */
+  sheets: string[];
 }
 
 /** What `status` (and `check`) reads out of a recompute. */
@@ -457,6 +532,7 @@ export class DesignJob {
       components: this.components,
       joints: jointReports(this.doc, result),
       annotations: annotationReports(this.doc, result),
+      sheets: await this.#sheetReports(service),
       errors: features.filter((f) => f.status === 'error').length,
       warnings: features.filter((f) => f.status === 'warning').length,
       ms: result.stats.ms,
@@ -710,6 +786,116 @@ export class DesignJob {
     const liveShapes = this.#service ? (await this.#service.dispose()).liveShapes : 0;
     this.#service = undefined;
     return { liveShapes };
+  }
+
+  /**
+   * Every sheet with what is wrong with its items (P6-24 S6, `extrudo check
+   * --sheets`): recomputes, then resolves each sheet's anchors at the marker.
+   */
+  async checkSheets(): Promise<SheetReport[]> {
+    const service = await this.#kernel();
+    await this.#recompute();
+    return this.#sheetReports(service);
+  }
+
+  /**
+   * The design's sheets as a PDF (one page each) or one SVG each (P6-24 S6),
+   * through the same path the app's export takes: the views drawn exactly from
+   * the bodies at the marker, the anchors resolved and the parts lists read
+   * now (`sheetModelNow`), then `@extrudo/sheets`' `sheetFiles`. A lost
+   * dimension is written as its text with "?". Nothing personal is written
+   * that the design doesn't hold; `{date}`, `{version}` and Mass come from
+   * `options` or the file (see `SheetExportOptions`), so the same file and
+   * options write the same bytes.
+   */
+  async exportSheets(options: SheetExportOptions): Promise<SheetFile[]> {
+    const all = this.doc.sheets ?? [];
+    if (all.length === 0) throw new HeadlessError('This design has no sheets.');
+    const ids = options.sheets?.map((name) => this.#sheetOf(name).id);
+    const chosen = ids ? all.filter((s) => ids.includes(s.id)) : all;
+    const service = await this.#kernel();
+    await this.#recompute();
+    await loadSheetFonts();
+    const model = await sheetModelNow(service, this.doc, chosen, this.#liveBodies);
+    const version = options.version ?? newestVersionLabel(this.#versions);
+    const files = sheetFiles(this.doc, model, {
+      format: options.format,
+      sheets: chosen.map((s) => s.id),
+      date: options.date ?? this.doc.meta.modified.slice(0, 10),
+      ...(version !== undefined && { version }),
+      ...(options.density !== undefined && { density: options.density }),
+      ...(options.stickies && { stickies: true }),
+    });
+    const one = chosen.length === 1 && all.length > 1 ? chosen[0] : undefined;
+    const base = one ? `${this.doc.name} - ${one.name}` : this.doc.name;
+    if (files.format === 'pdf') {
+      return [
+        { name: safeFileName(base, '.pdf'), bytes: files.pdf, sheets: chosen.map((s) => s.name) },
+      ];
+    }
+    const encoder = new TextEncoder();
+    return files.sheets.map((sheet, i) => ({
+      name:
+        chosen.length === 1
+          ? safeFileName(base, '.svg')
+          : safeFileName(`${this.doc.name} - ${sheet.name}`, '.svg'),
+      bytes: encoder.encode(files.svgs[i] ?? ''),
+      sheets: [sheet.name],
+    }));
+  }
+
+  /** A sheet by name (case-insensitive) or ID; a `ParameterError` when the design has none such. */
+  #sheetOf(wanted: string): Sheet {
+    const all = this.doc.sheets ?? [];
+    const lower = wanted.toLowerCase();
+    const found = all.find((s) => s.id === wanted || s.name.toLowerCase() === lower);
+    if (!found) {
+      throw new ParameterError(
+        `There is no sheet "${wanted}" in this design. It has: ${list(all.map((s) => s.name))}.`,
+      );
+    }
+    return found;
+  }
+
+  /** Each sheet's report against the last recompute: anchors and parts lists read now. */
+  async #sheetReports(service: KernelService): Promise<SheetReport[]> {
+    const sheets = this.doc.sheets ?? [];
+    if (sheets.length === 0) return [];
+    await loadSheetFonts();
+    const anchors = await exportAnchorsOf(service, sheets);
+    const parts = sheetPartBodies(this.doc, await exportPartsOf(service, sheets));
+    const units = this.doc.settings.units;
+    return sheets.map((sheet) => {
+      let detached = 0;
+      const problems: SheetItemProblem[] = [];
+      for (const item of sheet.items) {
+        if (isAnchored(item)) {
+          sheetItemAnchors(item).forEach((anchor, i) => {
+            if ('free' in anchor) return;
+            if ((anchors[item.id]?.[i]?.status ?? 'detached') === 'detached') detached++;
+          });
+        }
+        const status = sheetItemStatus(sheet, item, anchors, { units, parts });
+        if (status.state === 'ok') continue;
+        problems.push({
+          id: item.id,
+          kind: item.kind,
+          state: status.state,
+          ...(status.message && { message: status.message }),
+        });
+      }
+      return {
+        id: sheet.id,
+        name: sheet.name,
+        size: sheetSizeLabel(sheet.size),
+        orientation: sheet.orientation,
+        scale: formatSheetScale(sheet.scale),
+        views: sheet.views.length,
+        items: sheet.items.length,
+        detached,
+        problems,
+      };
+    });
   }
 
   // ----------------------------------------------------------------- internal
@@ -1029,6 +1215,28 @@ function annotationReports(
       ...(annotation.done && { done: true as const }),
       ...(annotation.hidden && { hidden: true as const }),
     }));
+}
+
+/** The bundled faces sheets are set in (Inter Regular and Bold), loaded once per process. */
+async function loadSheetFonts(): Promise<void> {
+  for (const id of SHEET_FONTS) {
+    if (hasFont(id)) continue;
+    const font = BUNDLED_FONTS.find((f) => f.id === id);
+    if (!font) throw new HeadlessError(`The sheet font ${id} isn't bundled.`);
+    loadFont(id, await readFile(bundledFont(font.file)));
+  }
+}
+
+/** The newest saved version's name, as the app writes it for `{version}` ("V3"). */
+function newestVersionLabel(versions: readonly StoredVersion[]): string | undefined {
+  if (versions.length === 0) return undefined;
+  return `V${Math.max(...versions.map((v) => v.summary.number))}`;
+}
+
+/** A paper as `info` says it: "A3", "Letter", or "300 × 200 mm". */
+function sheetSizeLabel(size: Sheet['size']): string {
+  if (typeof size !== 'string') return `${size[0]} × ${size[1]} mm`;
+  return /^A\d$/.test(size) ? size : size.charAt(0).toUpperCase() + size.slice(1);
 }
 
 /** One joint limit or expression value, through the document's evaluation. */

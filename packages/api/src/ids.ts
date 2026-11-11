@@ -5,7 +5,7 @@
  * script runs again on every recompute (P5-02), and features whose IDs changed
  * would lose their references each time. So a design counts instead, per kind:
  * `f1`, `f2`… for features, `p1`… for parameters, `s1`… for sketch entities,
- * and so on (see `PREFIX`). The counters start past every ID a loaded
+ * `sh1`, `sv1`, `si1` for sheets, their views and items, and so on (see `PREFIX`). The counters start past every ID a loaded
  * document already has, so a new one never collides with a stored feature's.
  *
  * `options.ids` replaces the whole factory (a UUID generator, a recorded run).
@@ -24,7 +24,10 @@ export type IdKind =
   | 'configuration'
   | 'component'
   | 'joint'
-  | 'annotation';
+  | 'annotation'
+  | 'sheet'
+  | 'sheetView'
+  | 'sheetItem';
 
 const PREFIX: Readonly<Record<IdKind, string>> = {
   document: 'doc',
@@ -38,12 +41,15 @@ const PREFIX: Readonly<Record<IdKind, string>> = {
   component: 'cmp',
   joint: 'jnt',
   annotation: 'n',
+  sheet: 'sh',
+  sheetView: 'sv',
+  sheetItem: 'si',
 };
 
 /** The document keys `storedIds` reads: the IDs an API factory must skip past. */
 type StoredIdDocument = Pick<
   ExtrudoDocument,
-  'features' | 'parameters' | 'groups' | 'components' | 'joints' | 'annotations'
+  'features' | 'parameters' | 'groups' | 'components' | 'joints' | 'annotations' | 'sheets'
 >;
 
 /** Hands out the design's IDs. One call per new entity, in creation order. */
@@ -89,7 +95,7 @@ export class CounterIds {
   };
 }
 
-/** Every ID a document stores: features, parameters, groups, components, joints and annotations. */
+/** Every ID a document stores: features, parameters, groups, components, joints, annotations and sheets (their views and items too). */
 export function storedIds(doc: StoredIdDocument): string[] {
   const ids: string[] = [];
   for (const parameter of doc.parameters) ids.push(parameter.id);
@@ -106,6 +112,11 @@ export function storedIds(doc: StoredIdDocument): string[] {
   for (const component of doc.components ?? []) ids.push(component.id);
   for (const joint of doc.joints ?? []) ids.push(joint.id);
   for (const annotation of doc.annotations ?? []) ids.push(annotation.id);
+  for (const sheet of doc.sheets ?? []) {
+    ids.push(sheet.id);
+    for (const view of sheet.views) ids.push(view.id);
+    for (const item of sheet.items) ids.push(item.id);
+  }
   return ids;
 }
 

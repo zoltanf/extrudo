@@ -23,20 +23,22 @@ import {
   type Sheet,
   type SheetAnchors,
   type SheetId,
-  type SheetItem,
   type SheetItemId,
-  sheetItemAnchors,
   sheetViewFrame,
 } from '@extrudo/core';
+import { isAnchored, type SheetAnchorsKernel } from '@extrudo/kernel';
 import { useEffect, useRef, useState } from 'react';
 import { createStore } from 'zustand/vanilla';
 
 const NONE: ReadonlySet<SheetItemId> = new Set();
 
-/** What resolving needs of the kernel: `Recomputer.resolveSheet`. */
-export interface SheetAnchorsKernel {
-  resolveSheet(sheet: Sheet, options?: { quiet?: boolean }): Promise<SheetAnchors | undefined>;
-}
+// The export's half moved to the kernel (S6), where the CLI's export shares it.
+export {
+  EXPORT_UNMEASURED,
+  exportAnchorsOf,
+  isAnchored,
+  type SheetAnchorsKernel,
+} from '@extrudo/kernel';
 
 /** How an item is doing, as the browser row and the status bar say it. */
 export interface SheetItemRow {
@@ -61,11 +63,6 @@ export const sheetItemsStore = createStore<SheetItemsState>()(() => ({
   rows: new Map(),
   kept: new Map(),
 }));
-
-/** Whether an item has anchors the kernel resolves (a dimension, a leader, a centre mark or line). */
-export function isAnchored(item: SheetItem): boolean {
-  return sheetItemAnchors(item).length > 0 && 'view' in item;
-}
 
 /**
  * The sheet as layout draws it while anchors are awaited: without the anchored items the
@@ -97,30 +94,6 @@ export function detachedDimensions(sheet: Sheet, anchors: SheetAnchors | undefin
     if (lost) n++;
   }
   return n;
-}
-
-/** Why an export stops when the kernel can't measure a sheet's items (the dialog says it). */
-export const EXPORT_UNMEASURED =
-  "its dimensions couldn't be measured from the model. Try again once the model is computed.";
-
-/**
- * The anchors to export `sheets` with: only what the kernel says now, never geometry the
- * screen kept, so a lost dimension is written as its text with "?" and nothing of the model
- * as it was. Sheets without anchored items aren't asked about. Throws `EXPORT_UNMEASURED`
- * when the kernel can't answer for one: a file is never written from what the screen had.
- */
-export async function exportAnchorsOf(
-  kernel: SheetAnchorsKernel,
-  sheets: readonly Sheet[],
-): Promise<SheetAnchors> {
-  const out: SheetAnchors = {};
-  for (const sheet of sheets) {
-    if (!sheet.items.some(isAnchored)) continue;
-    const fresh = await kernel.resolveSheet(sheet, { quiet: true });
-    if (!fresh) throw new Error(EXPORT_UNMEASURED);
-    Object.assign(out, fresh);
-  }
-  return out;
 }
 
 export interface SheetAnchorsResult {

@@ -40,6 +40,7 @@ import {
   sheetPartBodies,
   sheetPartsCells,
   sheetPartsRows,
+  sheetTableGrid,
 } from './parts';
 import { SHEET_FONT, textWidth } from './text';
 
@@ -328,6 +329,16 @@ describe('table layout', () => {
       30 + 3 * row + (n - 1) * size * 1.6,
     ]);
     expect(out.every((i) => i.key === 'item:k1')).toBe(true);
+  });
+
+  it("gives the cells' places as drawn, a wrapped row taller (the app's typing in place)", () => {
+    const grid = sheetTableGrid(table);
+    const { row, text: size } = SHEET_TABLE;
+    const n = runs(layoutSheetTable(table)).filter((t) => t.at[0] > 50).length - 1;
+    expect(grid.lefts).toEqual([20, 50]);
+    expect(grid.widths).toEqual([30, 60]);
+    expect(grid.heights).toEqual([row, row + (n - 1) * size * 1.6, row]);
+    expect(grid.tops).toEqual([30, 30 + row, 30 + 2 * row + (n - 1) * size * 1.6]);
   });
 });
 

@@ -252,7 +252,8 @@ export function moveCommands(
     // A centre mark or line has no place of its own: it sits on its geometry.
     if (!sheet || !item || !('at' in item)) continue;
     const [x, y] = item.at;
-    const view = sheetItemView(item);
+    // A parts list names its view but sits on the sheet (its `at` is sheet mm, S5).
+    const view = item.kind === 'partsList' ? undefined : sheetItemView(item);
     if (view === undefined) {
       out.push(updateSheetItem({ id, changes: { at: [round(x + dx), round(y + dy)] } }));
     } else if (!deltas.has(view)) {
@@ -344,6 +345,29 @@ export function targetName(sheet: Sheet | undefined, target: SheetTarget): strin
   }
   const item = sheet?.items.find((i) => i.id === target.slice(5));
   if (!item) return 'Item';
-  if (item.kind === 'text') return `Text “${item.text.split('\n')[0]?.slice(0, 40)}”`;
-  return item.kind === 'dimension' ? 'Dimension' : 'Item';
+  const first = 'text' in item ? item.text.split('\n')[0]?.slice(0, 40) : undefined;
+  switch (item.kind) {
+    case 'text':
+      return `Text “${first}”`;
+    case 'leader':
+      return `Leader note “${first}”`;
+    case 'sticky':
+      return `Sticky note “${first}”`;
+    case 'dimension':
+      return 'Dimension';
+    case 'centreMark':
+      return 'Centre mark';
+    case 'centreLine':
+      return 'Centre line';
+    case 'partsList': {
+      const view = sheet?.views.find((v) => v.id === item.view)?.name ?? 'no view';
+      return `Parts list of ${view}`;
+    }
+    case 'balloon':
+      return 'Balloon';
+    case 'table':
+      return 'Table';
+    default:
+      return 'Item';
+  }
 }

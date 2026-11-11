@@ -17,6 +17,7 @@ import {
   docPages,
   generate,
   generatedOnDisk,
+  sheetPages,
   skillPages,
   writeGenerated,
 } from '../packages/api/src/generate.ts';
@@ -35,7 +36,7 @@ const GENERATED = 'packages/api/src/generated/features.ts';
 if (process.argv.includes('--check')) {
   const stale = [];
   if (generate() !== generatedOnDisk()) stale.push(GENERATED);
-  for (const [path, text] of [...docPages(), ...skillPages()]) {
+  for (const [path, text] of [...docPages(), ...skillPages(), ...sheetPages()]) {
     if (docOnDisk(path) !== text) stale.push(path);
   }
   if (toolsOnDisk() !== toolsPage()) stale.push(TOOLS_PAGE_PATH);
@@ -48,6 +49,6 @@ if (process.argv.includes('--check')) {
   const written = writeGenerated();
   writeFileSync(TOOLS_PAGE_PATH, toolsPage());
   console.log(
-    `Wrote ${GENERATED}, ${written.length - 2} pages under docs/api/features/ and the skill's references.`,
+    `Wrote ${GENERATED}, ${written.length - 3} pages under docs/api/features/, docs/api/sheets.md and the skill's references.`,
   );
 }

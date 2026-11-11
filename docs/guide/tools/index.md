@@ -231,6 +231,20 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Dimensions
 
 - [Dimension](./sheetDimension.md) — A length, distance, radius, diameter or angle measured from the model: pick, then click where the number goes.
+- [Centre Mark](./sheetCentreMark.md) — A cross on the centre of a circle: click a circle, or a cylinder seen from the side.
+- [Centreline](./sheetCentreLine.md) — A dash-dot line midway between two parallel edges, or along the axis of a cylinder or cone.
+
+### Notes
+
+- [Text](./sheetText.md) — Text on the sheet: click where it starts and type. Enter finishes, Shift+Enter starts a new line.
+- [Leader Note](./sheetLeader.md) — A note with an arrow to the model: pick an edge, a point or a face, click where the text goes, then type.
+- [Balloon](./sheetBalloon.md) — A numbered circle pointing at a part, numbered by the view’s parts list: pick the part, then click where it goes.
+- [Sticky Note](./sheetSticky.md) — A coloured note for yourself: on screen only until its Print switch is on.
+
+### Tables
+
+- [Parts List](./sheetPartsList.md) — A table of a view’s bodies, equal ones in one row with a quantity: click the view, then where the list goes.
+- [Table](./sheetTable.md) — A free table: click where it goes, then double-click a cell to type in it.
 
 ### Sheet
 

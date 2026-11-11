@@ -1,17 +1,21 @@
 /**
  * Export drawing (P6-24, mock-up 4, plan §4.5), with what exists in slice S1: the sheets as
  * checkboxes, PDF (one file, a page per chosen sheet) or SVG (one file per sheet), the file
- * name and a summary line. The format is remembered (`export.sheets`). PNG, DXF, the line
- * colour and the sticky-note and shaded-view switches come with the slices that need them.
+ * name, the Sticky notes switch (S4) and a summary line. The format and the switch are
+ * remembered (`export.sheets`). PNG, DXF, the line colour and the shaded-view switch come
+ * with the slices that need them.
  *
  * Before a file is written the chosen sheets' views are drawn exactly from the model (S2),
  * one at a time: the summary says how far ("Drawing the views · 2 of 4"), and Cancel stops
  * it before the next view (nothing is written). The chosen sheets' anchors are resolved as
  * the dialog opens, and the summary says how many dimensions are detached and that they are
- * written as "?" (S3).
+ * written as "?" (S3). With Sticky notes off (the default) only the notes switched to Print
+ * are written and the summary counts those left out ("· 1 sticky note left out",
+ * `sheetStickiesLeftOut`); on, every one is written (`withEveryStickyNote`).
  *
  * Test hooks: the dialog "Export drawing", a checkbox per sheet named "n · name", the radio
- * group "Format" ("PDF", "SVG"), the textbox "File name", `[data-sheet-export-summary]`, the
+ * group "Format" ("PDF", "SVG"), the textbox "File name", the switch "Sticky notes",
+ * `[data-sheet-export-summary]`, the
  * buttons "Cancel" and "Export".
  */
 import type { BodyId, ExtrudoDocument, SheetId } from '@extrudo/core';
@@ -20,7 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, DialogClose, TextInput } from '../design-system';
 import type { FileAccess } from '../platform/files';
 import type { Preferences } from '../platform/preferences';
-import { Segmented } from './controls';
+import { Segmented, Switch } from './controls';
 import { sizeLabel } from './defaults';
 import {
   defaultExportName,
@@ -30,6 +34,7 @@ import {
   sheetExportPlan,
 } from './exportSheets';
 import { detachedDimensions, type SheetAnchorsKernel } from './sheetAnchors';
+import type { SheetFieldExtras, SheetPartsKernel } from './sheetParts';
 import type { SheetViewsKernel } from './viewRunner';
 
 /** What opened the dialog: every sheet (Export PDF), or the sheets given (Export This Sheet). */
@@ -46,7 +51,10 @@ export interface SheetExportDialogProps {
     kernel: SheetViewsKernel;
     bodies(): readonly BodyId[];
     anchors?: SheetAnchorsKernel;
+    parts?: SheetPartsKernel;
   };
+  /** What the fields and Mass need besides the document (S5), read when the export starts. */
+  fields?: () => Promise<SheetFieldExtras>;
   preferences: Preferences;
   notify(tone: 'info' | 'error', text: string): void;
   onClose(): void;
@@ -71,6 +79,7 @@ export function SheetExportDialog({
   notify,
   onClose,
   views,
+  fields,
 }: SheetExportDialogProps) {
   const sheets = doc.sheets ?? [];
   const [chosen, setChosen] = useState<ReadonlySet<SheetId>>(new Set());
@@ -78,14 +87,16 @@ export function SheetExportDialog({
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [drawing, setDrawing] = useState<{ done: number; total: number }>();
+  const [stickies, setStickies] = useState(false);
   // Each opening starts from what it was asked for, and the remembered format.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on opening only.
   useEffect(() => {
     if (!request) return;
     setChosen(new Set(request.ids ?? sheets.map((s) => s.id)));
     setName(defaultExportName(doc, request.ids));
-    const stored = preferences.get<{ format?: string }>(SHEET_EXPORT_KEY, {});
+    const stored = preferences.get<{ format?: string; stickies?: boolean }>(SHEET_EXPORT_KEY, {});
     setFormat(stored.format === 'svg' ? 'svg' : 'pdf');
+    setStickies(stored.stickies === true);
   }, [request]);
   const plan = useMemo(
     () => sheetExportPlan(doc, chosen, format, name.trim() || doc.name),
@@ -111,9 +122,29 @@ export function SheetExportDialog({
       live = false;
     };
   }, [request, resolver, doc, chosen]);
+  // How many sticky notes the export leaves out (on screen only, the switch off).
+  const [leftOut, setLeftOut] = useState(0);
+  useEffect(() => {
+    let live = true;
+    if (stickies || plan.sheets.length === 0) {
+      setLeftOut(0);
+      return;
+    }
+    void import('@extrudo/sheets').then((m) => {
+      if (live) setLeftOut(m.sheetStickiesLeftOut(plan.sheets));
+    });
+    return () => {
+      live = false;
+    };
+  }, [stickies, plan.sheets]);
+  const notes = [
+    detached > 0 &&
+      `${detached} ${detached === 1 ? 'dimension' : 'dimensions'} detached, written as ?`,
+    leftOut > 0 && `${leftOut} ${leftOut === 1 ? 'sticky note' : 'sticky notes'} left out`,
+  ].filter((n): n is string => typeof n === 'string');
   const summary =
-    detached > 0 && plan.sheets.length > 0
-      ? `${plan.summary} · ${detached} ${detached === 1 ? 'dimension' : 'dimensions'} detached, written as ?`
+    notes.length > 0 && plan.sheets.length > 0
+      ? [plan.summary, ...notes].join(' · ')
       : plan.summary;
   const toggle = (id: SheetId, on: boolean) => {
     const next = new Set(chosen);
@@ -141,19 +172,24 @@ export function SheetExportDialog({
           event.preventDefault();
           if (plan.sheets.length === 0 || busy) return;
           setBusy(true);
-          preferences.set(SHEET_EXPORT_KEY, { format });
-          exportSheets(
-            doc,
-            files,
-            plan,
-            format,
-            views && {
-              kernel: views.kernel,
-              bodies: views.bodies(),
-              ...(views.anchors && { anchors: views.anchors }),
-              onProgress: (done, total) => setDrawing(total > 0 ? { done, total } : undefined),
-            },
-          )
+          preferences.set(SHEET_EXPORT_KEY, { format, stickies });
+          (fields ? fields() : Promise.resolve({}))
+            .then((extras) =>
+              exportSheets(
+                doc,
+                files,
+                plan,
+                format,
+                views && {
+                  kernel: views.kernel,
+                  bodies: views.bodies(),
+                  ...(views.anchors && { anchors: views.anchors }),
+                  ...(views.parts && { parts: views.parts }),
+                  onProgress: (done, total) => setDrawing(total > 0 ? { done, total } : undefined),
+                },
+                { stickies, fields: extras },
+              ),
+            )
             .then(() => onClose())
             .catch((error: unknown) => {
               if (isSheetViewsCancelled(error)) return;
@@ -227,6 +263,16 @@ export function SheetExportDialog({
                   onChange={(event) => setName(event.target.value)}
                 />
                 <span className="font-mono text-sm text-muted">.{format}</span>
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Switch checked={stickies} onChange={setStickies}>
+                Sticky notes
+              </Switch>
+              <span className="text-sm text-muted">
+                {stickies
+                  ? 'Every sticky note goes in, those on screen only too.'
+                  : 'Only the sticky notes switched to Print go in.'}
               </span>
             </div>
           </div>

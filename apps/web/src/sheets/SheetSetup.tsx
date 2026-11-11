@@ -26,11 +26,11 @@ import {
   sheetPaperSize,
 } from '@extrudo/core';
 import { sheetTitleFields } from '@extrudo/sheets';
-import { type RefObject, useMemo } from 'react';
+import { type RefObject, useMemo, useRef } from 'react';
 import { Button, Select, ToolIcon } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { Preferences } from '../platform/preferences';
-import { CommitField, Row, Segmented, Switch } from './controls';
+import { CommitField, FieldInsert, Row, Segmented, Switch, sheetFieldChoices } from './controls';
 import { isoDate, PAPER_CHOICES, type SheetTitleChoice, sheetNameProblem } from './defaults';
 
 /** The preference that remembers the last "Drawn by" typed, to offer it (never to write it). */
@@ -117,6 +117,8 @@ export function SheetSetup({
   const template = sheet.titleBlock?.template;
   const fields = sheet.titleBlock?.fields ?? {};
   const remembered = preferences.get<string>(DRAWN_BY_KEY, '');
+  // The title field left last, and where its caret was: "Insert field" writes there (S5).
+  const lastField = useRef<{ field: string; label: string; at: number }>(undefined);
   const setField = (field: string, label: string, text: string) => {
     if (!sheet.titleBlock) return;
     const next = { ...sheet.titleBlock.fields };
@@ -325,6 +327,27 @@ export function SheetSetup({
       {template && (
         // The typed fields, label above: Title first and across, the others two by two.
         <div className="grid grid-cols-2 gap-x-2 gap-y-1.5" data-sheet-title-fields="">
+          <div className="col-span-2 flex flex-col gap-0.5">
+            <FieldInsert
+              choices={sheetFieldChoices(doc)}
+              onInsert={(token) => {
+                const titles = titleFields(template);
+                const last = lastField.current;
+                const target = titles.find((t) => t.field === last?.field) ?? titles[0];
+                if (!target) return;
+                const text = fields[target.field] ?? '';
+                const at = Math.min(
+                  last?.field === target.field ? last.at : text.length,
+                  text.length,
+                );
+                lastField.current = { ...target, at: at + token.length };
+                setField(target.field, target.label, text.slice(0, at) + token + text.slice(at));
+              }}
+            />
+            <span className="text-xs text-muted">
+              Into the field you were in last, at its caret; filled in on the sheet.
+            </span>
+          </div>
           {titleFields(template).map(({ field, label }) => (
             <div
               key={field}
@@ -336,6 +359,9 @@ export function SheetSetup({
                 label={label}
                 value={fields[field] ?? ''}
                 maxLength={2000}
+                onCaret={(at) => {
+                  lastField.current = { field, label, at };
+                }}
                 onCommit={(text) => {
                   setField(field, label, text);
                   return undefined;

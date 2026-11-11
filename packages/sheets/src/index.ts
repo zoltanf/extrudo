@@ -15,6 +15,15 @@ export {
   sheetDimensionText,
 } from './dimensions';
 export {
+  chosenSheets,
+  type SheetFileOptions,
+  type SheetFiles,
+  type SheetModel,
+  sheetFileContext,
+  sheetFiles,
+  withEveryStickyNote,
+} from './export';
+export {
   formatSheetScale,
   layoutSheet,
   SHEET_LINE,
@@ -57,12 +66,14 @@ export {
   type SheetPartsBodies,
   type SheetPartsOptions,
   type SheetPartsRowData,
+  type SheetTableGrid,
   sheetBalloonStatus,
   sheetNameStem,
   sheetPartBodies,
   sheetPartsCells,
   sheetPartsHeader,
   sheetPartsRows,
+  sheetTableGrid,
 } from './parts';
 export {
   LINE_SPACING,

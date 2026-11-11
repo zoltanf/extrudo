@@ -79,6 +79,8 @@ const ALLOWED = {
     // The script runner, injected into the kernel for a design with a script
     // (P5-02, ADR-0070 §2): the kernel may not import it itself.
     '@extrudo/script',
+    // Drawing sheets, laid out and written as PDF or SVG (P6-24 S6, ADR-0143).
+    '@extrudo/sheets',
     '@extrudo/openscad',
     '@extrudo/sketch',
     '@extrudo/storage',

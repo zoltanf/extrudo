@@ -1014,3 +1014,291 @@ kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached d
   through the same edge); a separate kernel call for an end or a side (one `resolveSheet` of a
   probe answers both); "Show the unit" and arrows inside or outside on the panel and card (no field;
   left for a later schema change, above).
+
+## Amendment (S4, the notes tools), 2026-11-11
+
+Package 2 of S4: the notes in the app, which completes S4 (mock-up 1 rebuilt by hand in
+`e2e/sheet-notes.spec.ts`). Files: `apps/web/src/sheets/usePickTool.ts` (the shared pick tool
+and `pickOf`), `noteTools.ts` (the notes' specs), `faceHit.ts`, `SheetTextEditor.tsx`,
+`SheetNoteCard.tsx`, `snap.ts`; changes in `SheetWorkspace.tsx`, `SheetCanvas.tsx` (`editor`,
+`onOpen`, `snap`, `guides`, `--sheet-mm`), `RepickHandles.tsx` (any anchored item),
+`SheetsTree.tsx` (the Notes folder), `SheetViewCard.tsx` (Centre lines), `SheetExportDialog.tsx`
+and `exportSheets.ts` (Sticky notes), `selection.ts` (`targetName`), `controls.tsx`
+(`CommitArea`); `faceAlong` in `selection/pick.ts`; five tools and icons in `shell/tools.ts`.
+No schema change, no kernel change.
+
+- **Five tools** in the Drawing tab, as plan §4.1 places them: Dimensions › Centre Mark
+  (`sheetCentreMark`, icon `centre-mark`) and Centreline (`sheetCentreLine`, `centreline`),
+  category `sketch`; Notes › Text (`sheetText`, `T`, `sheet-text`), Leader Note
+  (`sheetLeader`, `N`, `leader-note`) and Sticky Note (`sheetSticky`, `sticky-note`),
+  category `inspect`. T is Trim's key in a sketch and N Annotate's on the model; neither is
+  offered in the drawing, and no key shared by every mode is taken. Leader Note took the
+  marking menu's Fit wedge (F6 and the floating bar's Fit stay). Each is in `SHEET_TOOLS`
+  and stays on until Esc.
+- **One pick tool, a spec per tool** (`usePickTool`, `PickToolSpec`): the Dimension tool's
+  hover, pick, candidate and preview, generalised; a spec says what it `accepts`, whether
+  an outline is taken as its face `whole`, how many picks it takes, what item they make and
+  whether it is placed by a click (dimension, leader note) or at once (centre mark and
+  line). The Dimension tool is that tool with its own spec (`dimensionSpec`); S5's balloon
+  is meant to be another. **The candidate is checked**: an item whose resolved anchors
+  `sheetItemStatus` calls `invalid` or `detached` is not placed and the tool says why (the
+  document's rule takes the shape, the model says whether it fits: a cone for a centre
+  mark, an axis seen end-on). Only shapes the kind's rule can take are hovered
+  (`noteAccepts`): a centre mark a circle or an outline, a centre line a straight edge and
+  then a parallel one in the same view, or an outline (its axis).
+- **A leader note on a face** (plan §4.5's "edge, vertex, or face"): a hidden-line view has no
+  face regions, so the face under the pointer is the first a ray along the view's direction
+  meets in the bodies' display meshes (`faceHit`, through the viewport's picking index
+  `faceAlong`), among the bodies the view's exact, current lines are drawn from; its name is
+  the mesh's `faceIds`, and the ref comes from the kernel by that name like any pick. An edge
+  or vertex within the tolerance wins over the face. The hover is a dot at the pointer.
+- **Typing in place** (`SheetTextEditor`): a text, a leader note and a sticky note are typed
+  where they are drawn: a textarea laid on the paper in mm (the canvas writes `--sheet-mm`,
+  px per mm, with the zoom), Inter at the item's size, its first baseline on the drawn
+  text's (from the display list's first run; for a new leader, the placeholder's). **Keys,
+  the same for the three kinds and for the cards' Text field (`CommitArea`)**: Enter
+  finishes, Shift+Enter starts a new line, Esc leaves it. A new item is added only when its
+  text is finished and not blank (one undo step: "Text", "Leader note", "Sticky note"), so
+  a placed leader waits for its text in memory; an edit is one `updateSheetItem` ("Edit
+  text"), none when unchanged. A click elsewhere finishes, and the press that ends the typing
+  starts nothing (the workspace notes whether the press began while typing). A double-click
+  on a target (no tool running) types a text, leader note or sticky note again.
+- **Cards** (plan §4.3), the fields the items have: text (Text, Letter height, Wrap width),
+  leader note (its view, what it points at, Text), sticky note (Text, Colour, Width, Height,
+  Print), centre mark and line (their view, hidden when the view's Centre lines is off);
+  each change one step, numbers `ExpressionInput`s storing the evaluated mm, Delete. A lost
+  or moved anchored note says why and offers its handles.
+- **Lost and moved notes**: `RepickHandles` takes any anchored item; what a drag may land on
+  and what it changes are the kind's (`repickAccepts`, `repickWhole`, `itemRepick`: a
+  dimension by `repickChanges`, a note by `noteRepick`). **A lost note's reason is the
+  kernel's when it gives one** ("The feature this was drawn on is deleted."), else the
+  layout's own words, in the browser row, the status text and the card; a moved one says it
+  moved to matching geometry. This supersedes the S3 note that notes keep their own words.
+- **Browser**: one **Notes** folder per sheet (plan §3.1 names "notes" beside dimensions)
+  with its texts, leader notes, sticky notes, centre marks and centre lines in the sheet's
+  order: the first line in quotes and the kind, the view, "moved" or "lost" with the reason
+  as the tooltip.
+- **Export**: the dialog's **Sticky notes** switch (mock-up 4; off by default, remembered
+  with the format in `export.sheets`). Off, the document decides: only notes switched to
+  Print are written, and the summary adds "· n sticky notes left out"
+  (`sheetStickiesLeftOut`, loaded lazily with `@extrudo/sheets`). On, every note is written,
+  through a copy of the sheet with each note's `print` set (`withEveryStickyNote`); nothing is
+  stored. The floating bar's **Show sticky notes** hides them on screen only.
+- **The view's Centre lines switch** (base and projected views) sets `centreLines: false`,
+  which hides that view's centre marks and lines (`sheetItemShown`); nothing is generated.
+- **Snapping** (`snap.ts`, plan §4.2): a dragged selection snaps, each axis on its own, to
+  the nearest left, middle or right (top, middle, bottom) of another target's box within the
+  pick tolerance (5 px), and **a dimension to rows**: its text's line (`y` of a level text,
+  `x` of an upright one; its dimension line is parallel at a fixed distance) to another
+  dimension's of the same direction plus a whole number of 10 mm steps (`ROW_STEP`). A
+  placed text or note corner, and a dimension or leader following the pointer, snap the
+  same way. Dashed guides (`[data-sheet-guides]`, 6 4 px like a sketch's) are written to
+  the DOM while dragging; the floating bar's **Snap** (on by default, session only) turns it
+  off; arrow-key nudges never snap.
+- **Not offered, no field**: a leader note's or sticky note's letter height (both 3.5 mm);
+  a text's or leader's font, weight or alignment; a sticky note's rotation (mock-up 1 draws
+  one turned); a leader with more than one arrow or a bent leader line; a centre line's
+  overshoot or dash lengths; the snap step. Each would be a schema change.
+- **Tests**: `noteTools.test.ts` (what each tool takes and makes, the panel's words, picking
+  again, the export's copy), `snap.test.ts` (edges, middles, rows, points);
+  `e2e/sheet-notes.spec.ts` (Standard views of the wall bracket, two dimensions, a centre mark,
+  a centre line, a leader on a hole and one on a face, a text and a sticky note, each one
+  undo step; typing in place and a double-click edit; the Centre lines switch; the sticky
+  note left out of the PDF, then printed; a snapped drag; the holes deleted, the leader lost
+  with the kernel's reason and dragged onto an edge, undo twice). `SHEET_SHOTS=<dir>` saves
+  pictures and the PDF.
+- **Rejected**: a second hook per tool copying the Dimension tool's (the task asked for one
+  way of picking, and S5's balloons need the same); faces picked from the view's outlines
+  only (a face seen flat has none; a leader to a face's middle needs the face itself);
+  adding a leader note before its text (the schema refuses blank text, and an undo step with
+  a placeholder would be one more to undo); a fixed time after typing in which clicks are
+  ignored (it swallowed a real pick made soon after); snapping in the document's commands
+  (the commands store what the person did; snapping is how the pointer is read).
+
+## Amendment (S5, the list tools), 2026-11-11
+
+Package 2 of S5: the lists in the app, which completes S5 and the first release's scope (S1 to
+S5; the reference's base-frame sheet rebuilt by hand in `e2e/sheet-lists.spec.ts`). Files:
+`apps/web/src/sheets/sheetParts.ts` (rows and fields for the screen and the export),
+`listTools.ts` (the tools' and cards' pure parts), `SheetListCard.tsx` (the panel and three
+cards); changes in `SheetWorkspace.tsx`, `SheetCanvas.tsx` (`onOpen` gets the sheet point),
+`SheetTextEditor.tsx` (a `cell` kind), `SheetsTree.tsx` (balloons in Notes, a Tables folder),
+`SheetNoteCard.tsx` (its frame exported; Insert field on the Text and Leader note cards),
+`SheetSetup.tsx` (Insert field for the title block), `controls.tsx` (`FieldInsert`,
+`sheetFieldChoices`, `CommitArea`'s `fields`, `CommitField`'s `onCaret`), `selection.ts`,
+`noteTools.ts` and `RepickHandles.tsx` (balloons), `exportSheets.ts` and
+`SheetExportDialog.tsx`, `AppShell.tsx`; `print/material.chosenDensity` (shared with Print
+Info); `@extrudo/sheets`' `sheetTableGrid`; three tools and icons in `shell/tools.ts`. No
+schema change, no kernel change.
+
+- **Three tools**, as plan §4.1 places them: Notes › **Balloon** (`sheetBalloon`, `B`, icon
+  `balloon`, category `inspect`; B was no command's key) and a new **Tables** group with
+  **Parts List** (`sheetPartsList`, `parts-list`) and **Table** (`sheetTable`, `sheet-table`),
+  category `insert`. Each is in `SHEET_TOOLS` and stays on until Esc.
+- **Rows reach the layout** (`useSheetParts`): the open sheet's parts lists are asked of the
+  kernel (`Recomputer.sheetParts`, quiet) as anchors are: when what the answer depends on
+  changes (`partsAskKey`: each list's view, the views' directions and bodies; a typed row, a
+  moved list or a placed text asks nothing) and after every finished recompute, never while
+  the model computes, older answers dropped, a failed answer keeping the last. The answer is
+  joined with the document's names (`sheetPartBodies`) and passed as `context.parts`; nothing
+  of it is stored. **Fields and Mass** (`sheetFieldContext`): `date` is today as
+  `YYYY-MM-DD` (the title block's `isoDate`), `version` the newest saved version as the
+  Versions dialog names it (`V3`; read on entering the drawing and whenever that dialog
+  closes), `evaluate` the design's parameters, `density` the filament Print Info uses
+  (`print.material`, its expression evaluated as Print Info does, `sheetDensity`). **The
+  export** reads the rows again (`exportPartsOf`, which stops the export when the kernel can't
+  say) and the version and density again (`fields`, from the shell), never what the screen
+  kept.
+- **Parts List**: a click on a view chooses it (a view selected when the tool starts is taken
+  at once; the view under the pointer is framed), its bodies are asked of the kernel for a
+  candidate list, then the list follows the pointer by its top-left corner (snapped like a
+  text's corner) and a click places it (one step, "Parts list"); the tool's answer is merged
+  so the list is drawn with its rows at once. The first Esc drops the view.
+- **Balloon**: one more `usePickTool` spec (rule kept: no second pick tool), placed by a click
+  like a leader note, hovering only a body that its view's parts list shows (any body of the
+  view while the list's bodies are not known yet), faces included (`faceHit`). **Which list:
+  the first parts list of the picked view in the sheet's order**; the panel says it per view
+  ("Front has 2 parts lists: balloons take the first one placed …") and says what to do when
+  the sheet has none ("place one with Parts List first"). The preview is
+  `layoutSheetBalloon` on the real sheet, so it shows its number. A lost balloon is picked
+  again like a leader note (`itemRepick`: any geometry, its anchor replaced); its browser row
+  reads "Balloon ?" and "lost".
+- **Table**: a click places two columns of 25 and 45 mm and three empty rows ("Table"). **A
+  double-click on a cell** opens the shared `SheetTextEditor` (kind `cell`) on the cell, at
+  its column's width less the padding, with the same keys; a cell may be committed empty
+  (other typed items may not), one step "Edit cell". The cell under the point comes from
+  `sheetTableGrid`, the layout's own row heights.
+- **Cards** (each change one `updateSheetItem`): a **parts list** its view (a choice), its
+  columns as checkboxes (always written in the default order, the key dropped when all six
+  are shown, never none), per row the Name and Material typed over it. What is typed goes
+  under the row's **first body**; going back to the model's (empty text, or the round arrow
+  beside Name) removes it **under every body of the row**, since a typed value under any of
+  them counts; the card says how many balloons Delete takes along. A **balloon** its number,
+  its list (a choice when the sheet has more than one), its view and why it is lost or moved.
+  A **table** its size, rows and columns added or removed at the end (never the last one),
+  each width an `ExpressionInput` (1 to 1000 mm).
+- **Text fields** in the app: layout already fills them; typing in place and the cards show
+  what was typed. **Insert field** (a native select: the six fields, then each user parameter
+  as `{= name}`) on the Text and Leader note cards writes at the caret where the field was
+  left (the end when it never was), and in Sheet Setup into the title field left last (the
+  Title when none), each one step. A parameter rename rewriting `{= …}` is checked end to end.
+- **Browser**: balloons join the Notes folder ("Balloon 2 Front", lost: red, "lost");
+  parts lists and tables get a **Tables** folder after it ("Parts list Front", "Table 3 × 2"),
+  as the Drawing tab groups them (plan §3.1 names "parts list" only).
+- **Moving**: a parts list names a view but its `at` is sheet mm, so a drag or a nudge moves
+  it by sheet mm (`moveCommands`), never scaled and flipped like a balloon's view-frame `at`,
+  and it does not follow its view.
+- **Not offered, no field**: a parts list's title, its column order or widths, sorting, a
+  balloon's shape or size, a table's header row, cell alignment or merged cells, a Tab key
+  that moves to the next cell. Each would be a schema change or a decision of its own.
+- **Tests**: `listTools.test.ts` (what each tool makes, columns, typed rows, the balloon's
+  list and picks, a table's cells and edits, the fields offered, moves), `sheetParts.test.ts`
+  (when the kernel is asked again, merging, the export's question, fields and density),
+  `parts.test.ts` (`sheetTableGrid`); `e2e/sheet-lists.spec.ts` (the base frame: views, a
+  parts list with the legs as one row, Qty 2, their sizes; balloons 1, 2, 2; a typed
+  material and name; a hidden column; a free table typed in place; `{= legs}` following a
+  change and a rename; Insert field; a leg deleted and its balloon picked again; undo of each
+  step; the PDF's text). `SHEET_SHOTS=<dir>` saves pictures and the PDF.
+- **Rejected**: storing the rows the screen had for the export (derived data; the export
+  asks again); a second pick hook for balloons (S4's rule); balloons numbered by the selected
+  list (a selection the person can't see while picking; the card chooses another list); a
+  cell edit through the Table card only (the plan asks for typing in place); `{version}` as
+  the version's description (empty for many versions; `V3` is the name the app shows);
+  asking the kernel for rows on every sheet change (a typed text would ask again).
+
+## Amendment (S6, the API, the script and the CLI), 2026-11-11
+
+Package 1 of S6 (plan §9's first two bullets, §10's "done when" for the CLI). No schema
+change, no kernel facade change, no new dependency (one new workspace edge: `@extrudo/cli`
+→ `@extrudo/sheets`).
+
+- **`@extrudo/api`** (`packages/api/src/sheets.ts`): `d.addSheet(name, options)`,
+  `d.sheets()`, `d.sheet(name | id)`; `SheetHandle` (`update` for Sheet Setup with fields
+  merged over the stored ones, an empty text clearing one; `rename`, `move`, `remove`,
+  `views`, `view`, `items`, `item`, `addView` for a base view from a standard name or a
+  direction, `addText`, `addSticky`, `addTable`), `SheetViewHandle` (`update`, `remove`,
+  `project`, `addDimension`, `addLeader`, `addCentreMark`, `addCentreLine`, `addPartsList`,
+  `addBalloon`) and `SheetItemHandle` (`update` with stored fields, `null` clearing;
+  `remove`). Each call is **one of core's sheet commands**, so one undo step and a document
+  the loader takes; a bad call is an `ApiError` and changes nothing. IDs from the counter:
+  `sh`, `sv`, `si` (`storedIds` skips past a loaded design's). Defaults follow New Sheet:
+  A3 landscape, 1:1, first angle, one decimal, a border, the Simple title block with the
+  design's name as `title` and its units; **no date and no author** are written by
+  themselves (the API reads no clock unless given one). `start: 'standard'` is New Drawing's
+  Standard views in the **same `addSheet` step** (Front, and Top, the side and Isometric
+  projected from it, named as the app names projected views); the API has no kernel, so
+  they go on a grid of the paper (or `at: { front, top, side, iso }`), not fitted to the
+  model as the app's dialog does. Projected names come from the projected frame matched
+  against `SHEET_STANDARD_VIEWS`.
+- **Anchors** take the forms the API already names geometry with: a face, edge or vertex
+  reference (the whole thing), `{ ref, at }`, `{ ref, silhouette }`, `[x, y]` or
+  `{ free }`. They are stored as `{ ref: { kind, id, fingerprint } }`. **A reference
+  without a fingerprint is refused** with a message that says where one comes from: the
+  document requires it (S3), and the API cannot compute one. `{ ref, fingerprint }` gives
+  one beside a handle's reference. Parts list rows are given as `[{ body, name?,
+  material? }]` and stored by body ID.
+- **Scripts refuse** `addSheet`, `sheet` and `sheets` by name (`REFUSED_METHODS`, "A
+  script can only add features: design.addSheet() would add a sheet."), as they refuse
+  annotations; the three handle classes are listed as unreachable in the bridge's test.
+- **Export as Script** (`packages/api/src/emit/sheets.ts`) writes a whole design's sheets
+  after its annotations: one `design.addSheet` per sheet with every setup field the API
+  would not give by itself (the title block's fields always, since the API's default
+  fields are the new design's), the views in stored order (a projected one held back until
+  its parent is written; always with its name), and the items in stored order (parts lists
+  first only when a balloon comes before its list, which the app never stores); anchors
+  as `{ ref, fingerprint, at? | silhouette? }`, bodies as `design.ref('body', …)`. A run
+  of the timeline writes no sheets. `fingerprintExpr` and `numbers` moved to
+  `emit/refs.ts` (shared). The printer now hugs a trailing object after a single array
+  argument (`addPartsList([300, 20], {`), as Biome does.
+- **One place for a sheet's outputs outside the app**, in two halves, each in the package
+  that owns what it needs: **`@extrudo/kernel`'s `sheetModelNow(kernel, doc, sheets,
+  bodies, onProgress?)`** (`kernel/src/sheets/now.ts`) draws every view exactly, resolves
+  every anchor and reads every parts list now (`exportAnchorsOf`, `exportPartsOf`; a kernel
+  that can't answer throws `EXPORT_UNMEASURED` / `EXPORT_UNLISTED`); its `kernel` is the
+  structural `SheetModelKernel`, which both `KernelService` (the CLI) and the app's
+  `Recomputer` (the desktop agent tools, next package) satisfy. **`@extrudo/sheets`'
+  `sheetFiles(doc, model, options)`** (`sheets/src/export.ts`, pure, no kernel) fills the
+  layout context as the app's export does (`sheetFileContext`: units, views, anchors,
+  `sheetPartBodies`, `evaluate`, and `date`, `version`, `density` only when given) and
+  writes one PDF or one SVG per sheet; `withEveryStickyNote` and `chosenSheets` beside it.
+  `sheetModelNow`'s views use `sheetViewWants` and `sheetViewLines`, **moved unchanged from
+  `apps/web/src/sheets/viewLines.ts` to `kernel/src/sheets/lines.ts`** (with `baseViewOf`,
+  `sheetViewWant`, `pieceContour`; the app module re-exports them), and `exportAnchorsOf`,
+  `isAnchored`, `EXPORT_UNMEASURED` moved unchanged from `sheetAnchors.ts`, and
+  `exportPartsOf`, `EXPORT_UNLISTED` from S5's `sheetParts.ts` (both re-export them). The kernel's lines type is `ViewLines`, structurally the `SheetViewLines` layout
+  takes, so neither package imports the other. Rejected: one function in `@extrudo/sheets`
+  calling the kernel (it would make the kernel a run-time dependency of the layout package,
+  which ADR-0143 §7 keeps kernel-free); a CLI-only copy of the app's export (a second copy
+  for the agent tools would follow).
+- **CLI** (`packages/cli`): `info` lists sheets after annotations ("Plate  A3 landscape ·
+  1:1 · 4 views · 9 items · 1 detached anchor"; `--json` `sheets` with `problems`);
+  `export --format pdf|svg` writes them (`DesignJob.exportSheets`): a PDF of the chosen
+  sheets, or one SVG each; `--sheet <name|id>` (repeatable) chooses, page order kept;
+  without `--out` beside the design (`<design>.pdf`, `<design> - <sheet>.pdf` for one sheet
+  of several, `<design> - <sheet>.svg`), with `--out` that file, or that folder for several
+  SVGs. `check --sheets` (`DesignJob.checkSheets`) exits 2 when an anchor is detached,
+  naming each item and the kernel's reason (`sheetItemStatus`); moved and invalid items
+  are listed and don't fail. Sheet flags with a model format, and model flags with a sheet
+  format, are usage errors.
+- **What the document can't know** (the owner's rule: repeatable, nothing personal):
+  `{date}` writes `--date` (`YYYY-MM-DD` or `today`), **by default the day the design was
+  last changed** (`meta.modified`), so the same file and flags write the same bytes;
+  `{version}` writes `--version-name`, by default **the newest version saved in the file**
+  (`V<n>`, as the app's `versionLabel`), else it stays as typed; a parts list's Mass needs
+  `--density` (g/cm³), else it is empty (the filament is an app preference); `--stickies`
+  writes on-screen sticky notes too (default: only those switched to Print). No author or
+  other personal field is ever filled.
+- **CI**: the unit job's step "A drawing exported by the CLI" runs `check --sheets` and
+  `export --format pdf` on `fixtures/sheets/plate.extrudo` and checks the PDF's pages and
+  text (`scripts/check-sheet-pdf.mjs`, Node's zlib, no PDF library). The fixture is built by
+  `packages/cli/src/sheet-fixture.ts` through the API with fingerprints from a real
+  recompute; `UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets` writes it again.
+- **Docs**: `docs/api/README.md` § Sheets (compile-checked), `docs/api/sheets.md`
+  **generated** by `pnpm api:generate` from the document schema's `.describe()` texts
+  (`packages/api/src/sheet-docs.ts`), `docs/cli.md`.
+- **Tests**: `api/src/sheets.test.ts` (each call, its stored shape and its undo; refusals
+  change nothing), the emitter's round trip of a design with every view and item kind
+  (`emit.test.ts`), the script's refusals, `cli/src/sheets.test.ts` (the fixture, `info`,
+  PDF pages and text, the same bytes twice, `--date`/`--stickies`/`--sheet`, SVG per
+  sheet, `check --sheets` passing and failing on a suppressed feature, a detached
+  diameter written as `Ø?`).

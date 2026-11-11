@@ -236,6 +236,70 @@ const notes = d.annotations(); // in number order
 by `emitScript` whose last notes were deleted); it never lowers the counter. A
 script can't add or read annotations (`design.annotate` is refused there).
 
+## Sheets
+
+A **sheet** is a page of a drawing (P6-24, ADR-0143): views of the model and the
+items placed on them, the way the app's Drawing mode makes them. Every call is
+one command, so one undo step; IDs come from the counter (`sh1` for a sheet,
+`sv1` for a view, `si1` for an item). Nothing derived is stored: a view says what
+to draw, never its lines; a dimension what it measures, never its value; a parts
+list only what was typed over its rows. The app, `extrudo export --format pdf`
+and `extrudo info` work those out each time.
+
+```ts
+import { Design, type GeomFingerprint } from '@extrudo/api';
+
+const d = Design.create({ name: 'Plate' });
+const plate = d.box({ length: '60 mm', width: '40 mm', height: '10 mm' });
+// A3 landscape at 1:1, first angle, a border and the Simple title block, unless asked.
+const sheet = d.addSheet('Plate', {
+  size: 'A4',
+  start: 'standard', // Front, and Top, the side and Isometric projected from it
+  fields: { title: 'Plate', date: '{date}' },
+});
+const front = sheet.view('Front');
+
+// The kernel's reference to the edge carries its fingerprint; here it is written out.
+const fingerprint: GeomFingerprint = { type: 'line', at: [30, 0, 10], dir: [1, 0, 0], size: 60 };
+const edge = { ...plate.edge([plate.faceName('cap:end'), plate.faceName('side:front')]), fingerprint };
+front?.addDimension('linear', [{ ref: edge, at: 'start' }, { ref: edge, at: 'end' }], [30, 18]);
+front?.addLeader(edge, [10, 30], 'Break the edge {= 1 mm}');
+const list = front?.addPartsList([140, 20], { rows: [{ body: plate, material: 'PETG' }] });
+sheet.addText('All edges 0.5 mm unless noted', [20, 180]);
+sheet.addSticky('Ask about the finish', [150, 150]); // on screen only, unless print: true
+sheet.addTable([20, 200], [['Rev', 'What'], ['A', 'First drawing']]);
+
+const back = sheet.addView('Back', { at: [60, 250], from: 'back', scale: [1, 2] });
+back.project('right', [140, 250]);
+sheet.update({ fields: { drawnBy: 'A. N. Other' } }); // merged over the fields there
+list?.update({ columns: ['item', 'qty', 'name', 'material'] });
+d.state.undo(); // takes back the columns, one call at a time
+```
+
+- **Anchors** (what a dimension, leader note, centre mark or line, or balloon
+  points at) are given as the API names geometry: a face, edge or vertex
+  reference, `{ ref, at: 'start' | 'end' | 'middle' | 'centre' }` for one point of
+  an edge, `{ ref, silhouette: 1 | -1 }` for a cylinder's outline in the view,
+  or `[x, y]` for a free point in the view's own mm. The document keeps every
+  anchor with its **fingerprint**, so the reference must carry one, or come as
+  `{ ref, fingerprint }`: the API has no kernel to find the geometry (the app,
+  the kernel's `RecomputeEngine.reference` in Node and Export as Script all give one).
+- **Places**: a view's `at`, a text's, a sticky note's, a table's and a parts
+  list's are sheet mm from the top-left corner, Y down; an item tied to a view
+  is placed in the view's own mm (model size, x right, y up from the view's
+  origin), so it moves and scales with the view.
+- **Standard views** (`start: 'standard'`) go on a grid of the paper; the API
+  does not measure the model to fit them (the app's New Drawing does). Give
+  `at: { front, top, side, iso }` to place them yourself.
+- `d.sheets()`, `d.sheet(name)`, `sheet.views()`, `sheet.view(name)`,
+  `sheet.items()` read; each handle has `update`, `remove` (a view takes the
+  views projected from it and their items along; a parts list its balloons)
+  and `sheet.move(index)` reorders pages.
+- [The sheet reference](./sheets.md) lists every stored field (generated from
+  the document schema). A script can't add or read sheets (`design.addSheet`,
+  `design.sheet` and `design.sheets` are refused there, as annotations are);
+  `emitScript` writes a design's sheets for a whole design.
+
 ## Stability
 
 `API_VERSION` is `1`. The feature methods follow the document's feature inputs,

@@ -877,8 +877,7 @@ export const TOOLS = {
     category: 'export',
     hint: 'Render a presentable picture of the design.',
   },
-  // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch. The
-  // tools of later slices (notes, tables) are not listed until they exist.
+  // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch.
   sheets: {
     id: 'sheets',
     label: 'Drawing',
@@ -906,6 +905,64 @@ export const TOOLS = {
     icon: 'sheet-dimension',
     category: 'sketch',
     hint: 'A length, distance, radius, diameter or angle measured from the model: pick, then click where the number goes.',
+  },
+  // The notes tools (P6-24 S4): they run on the sheet until Esc, like Dimension.
+  sheetCentreMark: {
+    id: 'sheetCentreMark',
+    label: 'Centre Mark',
+    icon: 'centre-mark',
+    category: 'sketch',
+    hint: 'A cross on the centre of a circle: click a circle, or a cylinder seen from the side.',
+  },
+  sheetCentreLine: {
+    id: 'sheetCentreLine',
+    label: 'Centreline',
+    icon: 'centreline',
+    category: 'sketch',
+    hint: 'A dash-dot line midway between two parallel edges, or along the axis of a cylinder or cone.',
+  },
+  sheetText: {
+    id: 'sheetText',
+    label: 'Text',
+    icon: 'sheet-text',
+    category: 'inspect',
+    hint: 'Text on the sheet: click where it starts and type. Enter finishes, Shift+Enter starts a new line.',
+  },
+  sheetLeader: {
+    id: 'sheetLeader',
+    label: 'Leader Note',
+    icon: 'leader-note',
+    category: 'inspect',
+    hint: 'A note with an arrow to the model: pick an edge, a point or a face, click where the text goes, then type.',
+  },
+  // The list tools (P6-24 S5): Balloon with the notes, Parts List and Table in Tables.
+  sheetBalloon: {
+    id: 'sheetBalloon',
+    label: 'Balloon',
+    icon: 'balloon',
+    category: 'inspect',
+    hint: 'A numbered circle pointing at a part, numbered by the view’s parts list: pick the part, then click where it goes.',
+  },
+  sheetPartsList: {
+    id: 'sheetPartsList',
+    label: 'Parts List',
+    icon: 'parts-list',
+    category: 'insert',
+    hint: 'A table of a view’s bodies, equal ones in one row with a quantity: click the view, then where the list goes.',
+  },
+  sheetTable: {
+    id: 'sheetTable',
+    label: 'Table',
+    icon: 'sheet-table',
+    category: 'insert',
+    hint: 'A free table: click where it goes, then double-click a cell to type in it.',
+  },
+  sheetSticky: {
+    id: 'sheetSticky',
+    label: 'Sticky Note',
+    icon: 'sticky-note',
+    category: 'inspect',
+    hint: 'A coloured note for yourself: on screen only until its Print switch is on.',
   },
   newSheet: {
     id: 'newSheet',
@@ -1214,14 +1271,15 @@ export const TABS: Tab[] = [
     ],
   },
   // The drawing's own tab (P6-24, ADR-0143), shown in place of every tab but Home while a
-  // sheet is open; Finish Drawing sits after its groups. Notes and Tables join it with their
-  // slices.
+  // sheet is open; Finish Drawing sits after its groups.
   {
     id: 'sheet',
     label: 'Drawing',
     groups: [
       { label: 'Views', tools: ['baseView', 'projectedView'] },
-      { label: 'Dimensions', tools: ['sheetDimension'] },
+      { label: 'Dimensions', tools: ['sheetDimension', 'sheetCentreMark', 'sheetCentreLine'] },
+      { label: 'Notes', tools: ['sheetText', 'sheetLeader', 'sheetBalloon', 'sheetSticky'] },
+      { label: 'Tables', tools: ['sheetPartsList', 'sheetTable'] },
       { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
       { label: 'Output', tools: ['exportSheets'] },
     ],

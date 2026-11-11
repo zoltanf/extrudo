@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { documentFeatures, type FeatureDefinition, z } from '@extrudo/core';
 import { exampleCall, methodName, PREAMBLE, SKETCH_TYPE } from './example-calls';
 import { featurePage, featuresIndex, skillApiPage } from './pages';
+import { sheetPages } from './sheet-docs';
 
 /** The repository root, four levels up from `packages/api/src`. */
 const ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
@@ -36,6 +37,7 @@ export const DOCS_DIR = join(ROOT, 'docs/api/features');
  */
 export const RESERVED_NAMES: readonly string[] = [
   'add',
+  'addSheet',
   'annotate',
   'annotation',
   'annotationCounter',
@@ -55,6 +57,8 @@ export const RESERVED_NAMES: readonly string[] = [
   'removeParameter',
   'rename',
   'setParameter',
+  'sheet',
+  'sheets',
   'state',
   'suppress',
   'toFile',
@@ -268,7 +272,9 @@ export function writeGenerated(): string[] {
     mkdirSync(dirname(join(ROOT, path)), { recursive: true });
     writeFileSync(join(ROOT, path), page);
   }
-  return [GENERATED_PATH, ...pages.keys(), ...skill.keys()];
+  const sheets = sheetPages();
+  for (const [path, page] of sheets) writeFileSync(join(ROOT, path), page);
+  return [GENERATED_PATH, ...pages.keys(), ...skill.keys(), ...sheets.keys()];
 }
 
 /** One feature's inputs, with the descriptions the doc comments need. */
@@ -478,3 +484,5 @@ function format(text: string): string {
   }
   return result.stdout;
 }
+
+export { sheetPages } from './sheet-docs';

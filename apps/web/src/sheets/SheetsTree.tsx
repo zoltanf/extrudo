@@ -5,17 +5,19 @@
  *   when empty, like Sketches; a row per sheet, double-click or Enter opens it, F2
  *   renames, its menu has Open, Rename, Duplicate, Export and Delete.
  * - **Sheets** (in the drawing, before Bodies): a folder per sheet, the open one marked
- *   "editing", with its views, a Dimensions folder (S3) and its title block; a click on a
+ *   "editing", with its views, a Dimensions folder (S3), a Notes folder (S4: texts, leader
+ *   notes, balloons, sticky notes, centre marks and lines), a Tables folder (S5: parts lists
+ *   and free tables) and its title block; a click on a
  *   sheet opens it. A dimension's row reads its text and its view ("74 · Front"); on the
  *   open sheet a moved one has a warning ("moved") and a lost one is red ("lost its edge"),
  *   the reason in its tooltip (`sheetItemsStore`, what the workspace found).
  *
  * Test hooks: the folders "Drawings" and "Sheets", each sheet's row `data-sheet-row` (the
- * sheet ID), a view's `data-sheet-view-row`, the folder "Dimensions", a dimension's
+ * sheet ID), a view's `data-sheet-view-row`, the folders "Dimensions", "Notes" and "Tables", an item's
  * `data-sheet-item-row` (the item ID) with `data-state` (`ok`, `moved`, `detached`,
  * `invalid`), the title block's `data-sheet-title-row`.
  */
-import type { Sheet, SheetDimensionItem, SheetId } from '@extrudo/core';
+import type { Sheet, SheetDimensionItem, SheetId, SheetItem } from '@extrudo/core';
 import { Copy, FileDown, FolderOpen, TextCursorInput, Trash2, TriangleAlert } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
 import { useStore } from 'zustand';
@@ -235,6 +237,16 @@ export function SheetsTree({
             isSelected={(target) => isSelected(sheet, target)}
             onSelect={(target) => actions.select?.(sheet.id, target)}
           />
+          <NoteRows
+            sheet={sheet}
+            isSelected={(target) => isSelected(sheet, target)}
+            onSelect={(target) => actions.select?.(sheet.id, target)}
+          />
+          <TableRows
+            sheet={sheet}
+            isSelected={(target) => isSelected(sheet, target)}
+            onSelect={(target) => actions.select?.(sheet.id, target)}
+          />
           {sheet.titleBlock && (
             <Leaf data-sheet-title-row={sheet.id} active={isSelected(sheet, 'title-block')}>
               <button
@@ -312,6 +324,172 @@ function DimensionRows({
                 className={`ml-auto shrink-0 ${state === 'moved' ? 'text-warning' : ''}`}
               />
             )}
+          </Leaf>
+        );
+      })}
+    </Folder>
+  );
+}
+
+/** The items the Notes folder lists (S4): texts, leader notes, sticky notes, centre marks and lines. */
+const NOTE_KINDS: ReadonlySet<SheetItem['kind']> = new Set([
+  'text',
+  'leader',
+  'balloon',
+  'sticky',
+  'centreMark',
+  'centreLine',
+]);
+
+/** A note's row: what it is, and what it reads (its first line; a balloon's number). */
+function noteLabel(
+  item: SheetItem,
+  row: SheetItemRow | undefined,
+): { kind: string; text?: string } {
+  const first = 'text' in item ? item.text.split('\n')[0]?.trim() : undefined;
+  switch (item.kind) {
+    case 'text':
+      return { kind: 'Text', ...(first && { text: first }) };
+    case 'leader':
+      return { kind: 'Leader note', ...(first && { text: first }) };
+    case 'sticky':
+      return {
+        kind: item.print ? 'Sticky note' : 'Sticky note · on screen only',
+        ...(first && { text: first }),
+      };
+    case 'centreMark':
+      return { kind: 'Centre mark' };
+    case 'centreLine':
+      return { kind: 'Centre line' };
+    case 'balloon':
+      return { kind: `Balloon ${row?.text ?? '?'}` };
+    default:
+      return { kind: 'Item' };
+  }
+}
+
+/** What a note's row says after its kind when it is not ok. */
+const NOTE_STATE: Partial<Record<SheetItemRow['state'], string>> = {
+  moved: 'moved',
+  detached: 'lost',
+  invalid: "can't be drawn",
+};
+
+/**
+ * A sheet's Notes folder (S4, plan §3.1): one row per text, leader note, sticky note, centre
+ * mark and centre line, in the sheet's order; a click selects it on its sheet. A leader
+ * note, centre mark or line on the open sheet says when it is moved or lost (its tooltip why).
+ */
+function NoteRows({
+  sheet,
+  isSelected,
+  onSelect,
+}: {
+  sheet: Sheet;
+  isSelected(target: string): boolean;
+  onSelect(target: string): void;
+}) {
+  const open = useStore(sheetItemsStore, (s) => (s.sheet === sheet.id ? s.rows : undefined));
+  const notes = sheet.items.filter((i) => NOTE_KINDS.has(i.kind));
+  if (notes.length === 0) return null;
+  return (
+    <Folder
+      nested
+      label="Notes"
+      icon={<ToolIcon name="leader-note" category="inspect" size={16} />}
+      count={notes.length}
+    >
+      {notes.map((item) => {
+        const row = open?.get(item.id);
+        const state = row?.state ?? 'ok';
+        const view =
+          'view' in item
+            ? (sheet.views.find((v) => v.id === item.view)?.name ?? 'No view')
+            : undefined;
+        const { kind, text } = noteLabel(item, row);
+        const note = NOTE_STATE[state];
+        const warn = state !== 'ok';
+        const after = [view, note].filter(Boolean).join(' · ');
+        return (
+          <Leaf
+            key={item.id}
+            data-sheet-item-row={item.id}
+            data-state={state}
+            active={isSelected(`item:${item.id}`)}
+            className={state === 'detached' || state === 'invalid' ? 'text-error' : ''}
+          >
+            <button
+              type="button"
+              title={row?.message ?? text}
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+              onClick={() => onSelect(`item:${item.id}`)}
+            >
+              <span className="shrink-0">{text ? `“${text}”` : kind}</span>
+              <span className={`min-w-0 truncate ${warn ? '' : 'text-muted'}`}>
+                {text ? [kind, after].filter(Boolean).join(' · ') : after}
+              </span>
+            </button>
+            {warn && (
+              <TriangleAlert
+                size={14}
+                strokeWidth={1.75}
+                aria-label={row?.message ?? note}
+                className={`ml-auto shrink-0 ${state === 'moved' ? 'text-warning' : ''}`}
+              />
+            )}
+          </Leaf>
+        );
+      })}
+    </Folder>
+  );
+}
+
+/**
+ * A sheet's Tables folder (S5; plan §3.1 names "parts list" beside the notes, the Drawing
+ * tab groups them as Tables): one row per parts list ("Parts list · Front") and per free
+ * table ("Table · 3 × 2"), in the sheet's order; a click selects it on its sheet.
+ */
+function TableRows({
+  sheet,
+  isSelected,
+  onSelect,
+}: {
+  sheet: Sheet;
+  isSelected(target: string): boolean;
+  onSelect(target: string): void;
+}) {
+  const tables = sheet.items.filter((i) => i.kind === 'partsList' || i.kind === 'table');
+  if (tables.length === 0) return null;
+  return (
+    <Folder
+      nested
+      label="Tables"
+      icon={<ToolIcon name="parts-list" category="insert" size={16} />}
+      count={tables.length}
+    >
+      {tables.map((item) => {
+        const kind = item.kind === 'partsList' ? 'Parts list' : 'Table';
+        const after =
+          item.kind === 'partsList'
+            ? (sheet.views.find((v) => v.id === item.view)?.name ?? 'No view')
+            : item.kind === 'table'
+              ? `${item.rows.length} × ${item.columns.length}`
+              : '';
+        return (
+          <Leaf
+            key={item.id}
+            data-sheet-item-row={item.id}
+            data-state="ok"
+            active={isSelected(`item:${item.id}`)}
+          >
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+              onClick={() => onSelect(`item:${item.id}`)}
+            >
+              <span className="shrink-0">{kind}</span>
+              <span className="min-w-0 truncate text-muted">{after}</span>
+            </button>
           </Leaf>
         );
       })}

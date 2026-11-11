@@ -32,7 +32,7 @@ import {
   type SheetDimensionItem,
   type Vec2,
 } from '@extrudo/core';
-import { displayPaint, displayPathData } from '@extrudo/io';
+import { type DisplayItem, displayPaint, displayPathData } from '@extrudo/io';
 import { Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { Button, ToolIcon } from '../design-system';
@@ -41,7 +41,7 @@ import { CommitField, Row, Segmented, Switch } from './controls';
 import type { DimensionChoices, SheetPickable } from './dimensionTool';
 import { nextStep } from './dimensionTool';
 import type { SheetItemRow } from './sheetAnchors';
-import type { DimensionToolState } from './useDimensionTool';
+import type { PickToolState } from './usePickTool';
 
 const CARD =
   'pointer-events-auto flex shrink-0 flex-col gap-3 rounded-dialog border border-line p-3 shadow-raised backdrop-blur-[6px]';
@@ -50,7 +50,7 @@ const CARD_STYLE = { background: 'color-mix(in srgb, var(--x-raised) 92%, transp
 /** The paper's preview colour (mock-up 3): the dimension following the pointer. */
 export const PAPER_PREVIEW = '#2f86f0';
 /** The paper's accent for what is picked (the brand's orange; the paper is white in both themes). */
-const PAPER_ACCENT = '#e08a1e';
+export const PAPER_ACCENT = '#e08a1e';
 
 const DIRECTIONS: { value: SheetDimensionDirection | 'auto'; label: string; name?: string }[] = [
   { value: 'auto', label: 'Auto' },
@@ -187,7 +187,7 @@ export function DimensionPanel({
 }: {
   doc: ExtrudoDocument;
   sheet: Sheet;
-  tool: DimensionToolState;
+  tool: PickToolState;
   /** The views whose exact lines are not in yet: nothing on them can be picked. */
   waiting: readonly string[];
   /** Some dimension on the sheet is lost. */
@@ -346,12 +346,33 @@ function Diamond({ at, solid }: { at: Vec2; solid?: boolean }) {
   );
 }
 
-/** What the Dimension tool draws over the sheet, sheet mm. */
+/** Display items in the paper's preview colour (an item following the pointer), sheet mm. */
+export function PreviewItems({ items }: { items: readonly DisplayItem[] }) {
+  return (
+    <g pointerEvents="none">
+      {items.map((item, i) => {
+        const paint = displayPaint(item);
+        return (
+          <path
+            // biome-ignore lint/suspicious/noArrayIndexKey: the layout's order.
+            key={i}
+            d={displayPathData(item.type === 'text' ? item.outline : item.contours)}
+            {...paint}
+            {...(paint.fill && paint.fill !== 'none' && { fill: PAPER_PREVIEW })}
+            {...(paint.stroke && { stroke: PAPER_PREVIEW })}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
+/** What a pick tool (Dimension, Leader Note, Centre Mark, Centreline) draws over the sheet, sheet mm. */
 export function DimensionOverlay({
   tool,
   points,
 }: {
-  tool: DimensionToolState;
+  tool: PickToolState;
   /** The picked vertices, sheet mm. */
   points: readonly Vec2[];
 }) {
@@ -388,21 +409,22 @@ export function DimensionOverlay({
         <Diamond key={`${p[0]},${p[1]}`} at={p} solid />
       ))}
       {hoverEnd && <Diamond at={hoverEnd} />}
+      {hover?.pickable.kind === 'face' && hover.at && (
+        <circle
+          data-face-hover={hover.pickable.key}
+          cx={hover.at[0]}
+          cy={hover.at[1]}
+          r={1.2}
+          fill={PAPER_ACCENT}
+          fillOpacity={0.55}
+          stroke="#ffffff"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+      )}
       {preview && (
         <g data-dimension-preview="" data-text={preview.text}>
-          {preview.items.map((item, i) => {
-            const paint = displayPaint(item);
-            return (
-              <path
-                // biome-ignore lint/suspicious/noArrayIndexKey: the layout's order.
-                key={i}
-                d={displayPathData(item.type === 'text' ? item.outline : item.contours)}
-                {...paint}
-                {...(paint.fill && paint.fill !== 'none' && { fill: PAPER_PREVIEW })}
-                {...(paint.stroke && { stroke: PAPER_PREVIEW })}
-              />
-            );
-          })}
+          <PreviewItems items={preview.items} />
         </g>
       )}
       {preview && pointer && (

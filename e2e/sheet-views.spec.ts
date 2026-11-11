@@ -355,6 +355,8 @@ test('Projected View by pointer, lined up; moves keep the line (Alt frees it); t
       .toBe(true);
   await settled(front);
   const f = (await lines(page, front)).box;
+  // Snap off (S4): the drags below move exactly as far as the pointer.
+  await page.getByRole('button', { name: 'Snap', exact: true }).click();
 
   /** Moves to a sheet point, checks what the panel says comes next, clicks; returns the new view. */
   const project = async (x: number, y: number, next: string) => {

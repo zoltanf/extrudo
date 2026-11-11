@@ -112,10 +112,13 @@ function print(node: Expr, indent: number, col = indent * 2, trailing = 0): stri
       }
       // A trailing object hugs when the arguments before it are simple and fit
       // on the first line (Biome's last-argument expansion); an earlier object
-      // or array makes Biome break every argument instead.
+      // makes Biome break every argument instead, and so does an array unless
+      // it is the one argument before the object (`addPartsList([300, 20], {`).
       if (last.t === 'obj') {
         const earlier = args.slice(0, -1);
-        const simple = earlier.every((arg) => arg.t !== 'obj' && arg.t !== 'arr');
+        const simple =
+          earlier.every((arg) => arg.t !== 'obj' && arg.t !== 'arr') ||
+          (earlier.length === 1 && earlier[0]?.t === 'arr');
         const head = earlier.map((arg) => flatOf(arg));
         if (simple && head.every((arg) => arg !== undefined)) {
           const before = head.join(', ');

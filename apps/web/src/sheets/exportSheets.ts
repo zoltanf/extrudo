@@ -18,6 +18,12 @@ import { safeFileName } from '../platform/files';
 import { ensureUiFonts } from '../sketch/fonts';
 import { sizeLabel } from './defaults';
 import { exportAnchorsOf, type SheetAnchorsKernel } from './sheetAnchors';
+import {
+  exportPartsOf,
+  type SheetFieldExtras,
+  type SheetPartsKernel,
+  sheetFieldContext,
+} from './sheetParts';
 import type { SheetViewsKernel } from './viewRunner';
 
 /**
@@ -29,10 +35,35 @@ export interface SheetExportViews {
   bodies: readonly BodyId[];
   /** The anchors call: dimensions and notes are resolved before the file is written (S3). */
   anchors?: SheetAnchorsKernel;
+  /** The parts lists' call: their rows are read from the model again before writing (S5). */
+  parts?: SheetPartsKernel;
   onProgress?: (done: number, total: number) => void;
 }
 
 export type SheetExportFormat = 'pdf' | 'svg';
+
+/** The export dialog's switches besides the format. */
+export interface SheetExportOptions {
+  /**
+   * Every sticky note goes into the file, those on screen only as well (S4). Off: only the
+   * notes whose Print switch is on, as the document says.
+   */
+  stickies?: boolean;
+  /**
+   * What the fields and Mass need besides the document (S5): the newest version's name and
+   * the filament's density, read when the export starts. `{date}` is today's.
+   */
+  fields?: SheetFieldExtras;
+}
+
+/** The sheet as an export with every sticky note writes it (a copy: nothing is stored). */
+export function withEveryStickyNote(sheet: Sheet): Sheet {
+  if (!sheet.items.some((i) => i.kind === 'sticky' && !i.print)) return sheet;
+  return {
+    ...sheet,
+    items: sheet.items.map((i) => (i.kind === 'sticky' && !i.print ? { ...i, print: true } : i)),
+  };
+}
 
 /** The preference that remembers the export dialog's format. */
 export const SHEET_EXPORT_KEY = 'export.sheets';
@@ -86,6 +117,9 @@ export function sheetExportPlan(
  * the model first (S2: an export never holds the quick placeholder); a view that can't be
  * drawn is its frame, and the items' anchors are resolved again, nothing kept (S3: a lost
  * dimension is its text with "?"; the export fails when the kernel can't measure them).
+ * The parts lists' rows are read again too (S5), and the fields are filled as of now
+ * (`options.fields`: the newest version, the filament's density).
+ * With `options.stickies` every sticky note is written, else only those switched to print.
  * Rejects with `isSheetViewsCancelled` when that is cancelled. Returns the file names.
  */
 export async function exportSheets(
@@ -94,8 +128,10 @@ export async function exportSheets(
   plan: SheetExportPlan,
   format: SheetExportFormat,
   views?: SheetExportViews,
+  options: SheetExportOptions = {},
 ): Promise<string[]> {
   if (plan.sheets.length === 0) throw new Error('Choose at least one sheet to export.');
+  const chosen = options.stickies ? plan.sheets.map(withEveryStickyNote) : plan.sheets;
   const all = doc.sheets ?? [];
   const sheets = await import('@extrudo/sheets');
   await ensureUiFonts(sheets.SHEET_FONTS);
@@ -110,18 +146,22 @@ export async function exportSheets(
   const anchors: SheetAnchors | undefined = views?.anchors
     ? await exportAnchorsOf(views.anchors, plan.sheets)
     : undefined;
+  // The parts lists' rows from the model now, and the fields filled as of now (S5).
+  const parts = views?.parts ? await exportPartsOf(views.parts, plan.sheets) : undefined;
   const context = {
     name: doc.name,
     sheets: all,
     units: doc.settings.units,
     ...(lines && { views: lines }),
     ...(anchors && { anchors }),
+    ...(parts && { parts: sheets.sheetPartBodies(doc, parts) }),
+    ...sheetFieldContext(doc, options.fields),
   };
   if (format === 'pdf') {
-    const bytes = sheets.sheetsToPdf(plan.sheets, context);
+    const bytes = sheets.sheetsToPdf(chosen, context);
     files.download(new Blob([bytes as BlobPart], { type: 'application/pdf' }), plan.files[0] ?? '');
   } else {
-    plan.sheets.forEach((sheet, i) => {
+    chosen.forEach((sheet, i) => {
       const svg = sheets.sheetToSvg(sheet, context);
       files.download(new Blob([svg], { type: 'image/svg+xml' }), plan.files[i] ?? '');
     });
