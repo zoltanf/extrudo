@@ -233,11 +233,16 @@ function splineKnots(g: Extract<FcGeometry, { kind: 'bspline' }>): number[] | st
   if (m.reduce((a, b) => a + b, 0) !== n + p + 1) return 'bspline-knots';
   const k0 = g.knots[0] as number;
   const span = (g.knots.at(-1) as number) - k0;
+  if (!Number.isFinite(span)) return 'bspline-knots';
   const out: number[] = [];
-  g.knots.forEach((k, i) => {
-    const t = i === 0 ? 0 : i === g.knots.length - 1 ? 1 : (k - k0) / span;
+  let last = -1;
+  for (let i = 0; i < g.knots.length; i++) {
+    const t = i === 0 ? 0 : i === g.knots.length - 1 ? 1 : ((g.knots[i] as number) - k0) / span;
+    // Knots far apart in size can land on each other once scaled to 0–1.
+    if (!(t > last && t <= 1)) return 'bspline-knots';
+    last = t;
     for (let r = 0; r < (m[i] as number); r++) out.push(t);
-  });
+  }
   return out;
 }
 

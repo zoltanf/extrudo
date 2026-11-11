@@ -22,7 +22,14 @@ import {
   type SketchMapResult,
   typeName,
 } from './sketch-map';
-import { NO_PLANE, type PlaneKind, placeSketch, sketchFrame } from './sketch-place';
+import {
+  BAD_FRAME,
+  frameIsSound,
+  NO_PLANE,
+  type PlaneKind,
+  placeSketch,
+  sketchFrame,
+} from './sketch-place';
 
 /** A constraint whose value FreeCAD computes from an expression (for S10). */
 export interface ExpressionBinding {
@@ -189,6 +196,7 @@ export function addSketch(
     outcome: tally(object, names, types, undefined, base, all),
   });
   if (decoded.overLimit) return refuse(`it has ${decoded.overLimit}`, 'limit');
+  if (!frameIsSound(frame.global)) return refuse(BAD_FRAME, 'geometry');
   let placement: ReturnType<typeof placeSketch>;
   try {
     placement = placeSketch(design, frame.global, options.name ?? object.label);

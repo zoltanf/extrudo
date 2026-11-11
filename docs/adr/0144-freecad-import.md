@@ -343,6 +343,9 @@ Written fresh; the prototype was a reference for the rules only.
   it (moved likewise), as the f3d importer does. A frame tilted off every
   origin axis gets no plane and the sketch is not imported, with the reason:
   never a guessed plane. In the library that is the 2 tangent-plane sketches.
+  A frame that is not a finite position and a unit rotation (container
+  placements that add up past the largest number, a rotation of all zeros) is
+  refused before a plane is looked for.
   **Containers with a placement of their own** are applied, not kept: Extrudo
   components carry no transform yet (ADR-0081), so the world frame is the
   only one that puts the geometry where the author saw it. 101 of the 221

@@ -162,6 +162,20 @@ const madePlanes = new WeakMap<Design, Map<string, GeomRef>>();
 export const NO_PLANE =
   'its plane is tilted off every origin axis, and Extrudo has no plane for it';
 
+/** Why a sketch whose frame is not a rigid one has no plane. */
+export const BAD_FRAME = 'its placement is not a position and a rotation Extrudo can use';
+
+/**
+ * Whether a frame is a finite position and a rotation that keeps lengths.
+ * A file's numbers can break one: container placements that add up past the
+ * largest number, a rotation of all zeros.
+ */
+export function frameIsSound(global: FcPlacement): boolean {
+  return (
+    global.position.every(Number.isFinite) && Math.abs(Math.hypot(...global.rotation) - 1) <= 1e-6
+  );
+}
+
 /**
  * Picks the Extrudo plane for a frame (world coordinates): an origin plane
  * when the normal is along one's (either way; mirrored when against it),
@@ -169,13 +183,14 @@ export const NO_PLANE =
  * is square to an origin axis, a plane turned about that axis from the
  * origin plane through it, moved likewise. Planes are made through `d` and
  * shared by sketches of the same design. `undefined`: no plane fits
- * ({@link NO_PLANE}).
+ * ({@link NO_PLANE}), or the frame is not sound ({@link frameIsSound}).
  */
 export function placeSketch(
   d: Design,
   global: FcPlacement,
   name: string,
 ): SketchPlacement | undefined {
+  if (!frameIsSound(global)) return undefined;
   const q = global.rotation;
   const O = global.position;
   const X = rotate(q, [1, 0, 0]);

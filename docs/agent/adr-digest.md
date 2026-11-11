@@ -4574,7 +4574,7 @@ whole, one empty slot per constraint); the construction flag is the `SketchGeome
 one, else the legacy `<Construction>`. `sketch-place.ts`: the frame is the stored `Placement` times the geo-group
 containers' (same list as `final-shapes.ts`), world coordinates; the plane is an origin plane (mirrored when the normal
 is against it), offset along its normal, or a `planeAtAngle` about an origin axis (and offset), planes shared per
-design; anything else is **no plane** (`NO_PLANE`), never a guess. `sketch-map.ts` `mapSketch`: imported geometry
+design; anything else is **no plane** (`NO_PLANE`), never a guess; a frame that is not a finite position and a unit rotation is refused first (`frameIsSound`, `BAD_FRAME`). `sketch-map.ts` `mapSketch`: imported geometry
 never moves (decision 8, f3d's rule): a constraint goes in only when the drawn geometry satisfies it, then the solver
 vets (redundant/conflicting out one per component and round, latest first; moving: the suspects on what moved tried
 alone, the one without which it moves least goes; `MAX_CANDIDATES` 1,000, `MAX_VET_ROUNDS` 64, 256 trial solves);

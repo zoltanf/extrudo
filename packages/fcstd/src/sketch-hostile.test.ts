@@ -16,6 +16,7 @@ import {
 } from './sketch-decode';
 import { bspline, constraint, line, T } from './sketch-fixtures';
 import { MAX_CANDIDATES } from './sketch-map';
+import { frameIsSound, placeSketch } from './sketch-place';
 import { type AddSketchResult, addSketch, sketchObjects } from './sketches';
 
 let planegcs: PlanegcsModule;
@@ -158,6 +159,49 @@ describe('hostile sketch records', () => {
     expect(result.imported).toBe(true);
     expect(result.outcome.geometryLeftOut).toEqual({ unreadable: 3, 'bspline-knots': 1 });
     expect(ms).toBeLessThan(2000);
+  });
+
+  it('refuses a B-spline whose knots span no finite range or fall together once scaled', () => {
+    const poles = (n: number) =>
+      Array.from({ length: n }, (_, i) => [i, i % 2] as [number, number]);
+    const endless = bspline(
+      poles(3),
+      [
+        [-1.7e308, 3],
+        [1.7e308, 3],
+      ],
+      2,
+    );
+    // 1 and 2 are the same number beside 1e300, so both land on 0.5.
+    const together = bspline(
+      poles(5),
+      [
+        [-1e300, 3],
+        [1, 1],
+        [2, 1],
+        [1e300, 3],
+      ],
+      2,
+    );
+    const { result } = run(file([endless, together], []));
+    expect(result.imported).toBe(true);
+    expect(result.outcome.geometryLeftOut).toEqual({ 'bspline-knots': 2 });
+  });
+
+  it('gives no plane to a frame that is not a finite position and a real rotation', () => {
+    const d = Design.create();
+    const frames = [
+      { position: [Number.POSITIVE_INFINITY, 0, 0], rotation: [0, 0, 0, 1] },
+      { position: [0, Number.NaN, 0], rotation: [0, 0, 0, 1] },
+      { position: [0, 0, 0], rotation: [0, 0, 0, 0] },
+      { position: [0, 0, 0], rotation: [Number.NaN, 0, 0, 1] },
+    ] as const;
+    for (const frame of frames) {
+      expect(frameIsSound(frame)).toBe(false);
+      expect(placeSketch(d, frame, 'Sketch')).toBeUndefined();
+    }
+    expect(frameIsSound({ position: [1, 2, 3], rotation: [0, 0, 0, 1] })).toBe(true);
+    expect(d.doc.features).toEqual([]);
   });
 
   it(`refuses a sketch over ${MAX_SKETCH_CONSTRAINTS} constraints, in bounded time`, () => {

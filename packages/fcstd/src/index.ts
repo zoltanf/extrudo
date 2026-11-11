@@ -82,7 +82,9 @@ export {
   typeName,
 } from './sketch-map';
 export {
+  BAD_FRAME,
   compose,
+  frameIsSound,
   NO_PLANE,
   type PlaneKind,
   placeSketch,
