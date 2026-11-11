@@ -179,7 +179,12 @@ While the app runs it hosts an MCP server (ADR-0087) that AI agents such as
 Claude Code and Claude Desktop use to read and change the open design: the
 timeline and each feature's status, parameters, bodies and their volumes, a
 screenshot, and changes through the document API, each one undo step named
-`Agent: …`. The top bar shows **Agent connected** while one is.
+`Agent: …`; and the drawing's sheets: `list_sheets`, `add_sheet` (the standard
+views fitted to the model), `add_view`, `add_dimension` (it answers the value
+it measures), `add_note`, and `export_sheet` (a PDF, or a PNG of a sheet for the
+agent to look at). The sheet tools leave the drawing open or closed as it is; a
+`screenshot` finishes an open drawing first. The top bar shows **Agent
+connected** while one is.
 
 The server listens on `http://127.0.0.1:7474/mcp` (this computer only) and
 needs the install's token (`userData/mcp-token`, made on first start). Settings ›

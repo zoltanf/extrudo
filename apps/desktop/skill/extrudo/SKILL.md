@@ -138,6 +138,54 @@ nozzle"). Tick a note off with `edit_annotation` `done: true` once the person
 agrees it is dealt with. **Never delete a person's note unasked**
 (`remove_annotation`).
 
+## Drawings (sheets)
+
+A drawing is a set of 2D **sheets** made from the model: views of the bodies,
+dimensions measured from them, notes, a title block. Nothing on a sheet is a
+copy: a view draws the model as it is now, a dimension measures it each time.
+Make a sheet when the person asks for a drawing, a PDF to print or send, or
+when you want to **check sizes** from a second angle.
+
+1. `add_sheet` with the default `start: "standard"` puts the Front view and the
+   Top, side and Isometric views on the sheet, fitted and scaled as the app's
+   New drawing does. It answers the sheet as `list_sheets` does.
+2. `list_sheets` gives each view's `at` (where the model's origin is on the
+   sheet, mm from the paper's top-left, y down) and its `right` and `up`, the
+   world directions of the view's x and y: the front view's `right` is
+   `[1, 0, 0]` and its `up` `[0, 0, 1]`, so a world point `(x, y, z)` is at
+   view mm `(x, z)`. `add_dimension`'s and a leader note's `at` are view mm.
+3. `add_dimension` names geometry as features do: a face by its name, an edge
+   by `{ "edgeBetween": [face, face] }` (or `{ "edge": "e[…]" }`), a vertex; add
+   `at: "start" | "end" | "middle" | "centre"` for one point of an edge.
+   `linear` takes two points or one straight edge, `radius`/`diameter` one
+   circular edge, `angle` two straight edges. A name that is in none of the
+   view's bodies, or anchors that measure nothing, are refused and nothing
+   changes. **It answers the measured `value`** (model mm, degrees for an
+   angle) and the `text` as printed: compare it with what the model should be.
+   Put the text off the part (below a front view: a negative y).
+4. `add_view` adds a base view (`from: "top"`, or `{ direction, up }`) or one
+   projected from another (`parent`, `side`), which stays lined up with it.
+   `add_note` adds a text on the sheet, or with `view` and `anchor` a leader
+   note pointing at the model.
+5. Look before you hand it over: `export_sheet` with `format: "png"` answers a
+   picture of the sheet, every view drawn exactly. Check that views and texts
+   don't overlap and nothing runs off the paper; read sizes from the values,
+   not the picture. `format: "pdf"` writes the file and answers its path.
+
+An item's `state` in `list_sheets`: `ok`; `moved` (its geometry was found
+again by its fingerprint after a change: check it); **`detached`** (the face or
+edge it is on is gone, say a feature was deleted or suppressed; `message`
+says why, and the export writes its value as `?`: tell the person, don't
+guess; undo the change, or the person picks the geometry again in the app);
+`invalid` (the geometry no longer makes this dimension). Title block fields
+in braces (`{date}`, `{version}`, `{= width}`) are filled when the sheet is
+drawn. **Never type a person's name or other personal details** into a title
+block unless they ask.
+
+The sheet tools work whether or not the drawing is open in the app, and don't
+open or close it; `screenshot` (a picture of the model) finishes an open
+drawing first. Each change is one undo step.
+
 ## Files
 
 `save` saves now (the app also saves on its own). `export` writes STL, 3MF or
@@ -147,7 +195,7 @@ STEP of the shown bodies and answers the file's path.
 
 - Changes are refused while the person has a sketch or a feature dialog open
   in the app: ask them to finish it.
-- `screenshot` at most once a second, `export` once every 2 s.
+- `screenshot` at most once a second, `export` and `export_sheet` once every 2 s.
 
 ## More
 
