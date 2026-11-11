@@ -9,9 +9,12 @@
  *   yet (a file just opened, an undo that brings one back) is left out of the layout until
  *   the answer comes, so nothing is drawn detached merely because the kernel has not
  *   answered (`drawnItems`). Without a kernel every item is drawn, detached.
- * - **Shared with the shell**: the browser's Dimensions rows, the status bar and the export
- *   read what the workspace found (`sheetItemsStore`): each item's text, state and why,
- *   and the anchors kept per sheet, so the export draws what the screen does.
+ * - **Shared with the shell**: the browser's Dimensions rows and the status bar read what the
+ *   workspace found (`sheetItemsStore`): each item's text, state and why, and the anchors
+ *   drawn per sheet (a sheet opened again starts from them).
+ * - **The export never keeps geometry** (`exportAnchorsOf`): it asks the kernel again and
+ *   writes only what the model says now, so a lost dimension is "?" on paper, never the last
+ *   value the screen kept.
  *
  * Pure parts and the store only: no `@extrudo/sheets` here (it stays in the lazy chunks).
  */
@@ -48,7 +51,7 @@ export interface SheetItemsState {
   /** The sheet the rows are for: the open one. */
   sheet: SheetId | undefined;
   rows: ReadonlyMap<SheetItemId, SheetItemRow>;
-  /** The anchors drawn on each sheet visited this session (kept geometry included). */
+  /** The anchors drawn on each sheet visited this session (kept geometry included): screen only. */
   kept: ReadonlyMap<SheetId, SheetAnchors>;
 }
 
@@ -96,13 +99,28 @@ export function detachedDimensions(sheet: Sheet, anchors: SheetAnchors | undefin
   return n;
 }
 
+/** Why an export stops when the kernel can't measure a sheet's items (the dialog says it). */
+export const EXPORT_UNMEASURED =
+  "its dimensions couldn't be measured from the model. Try again once the model is computed.";
+
 /**
- * The anchors to export a sheet with: fresh ones, keeping the geometry the screen kept for a
- * lost one; what the screen drew when the kernel can't say (`fresh` undefined).
+ * The anchors to export `sheets` with: only what the kernel says now, never geometry the
+ * screen kept, so a lost dimension is written as its text with "?" and nothing of the model
+ * as it was. Sheets without anchored items aren't asked about. Throws `EXPORT_UNMEASURED`
+ * when the kernel can't answer for one: a file is never written from what the screen had.
  */
-export function exportAnchors(sheet: SheetId, fresh: SheetAnchors | undefined): SheetAnchors {
-  const kept = sheetItemsStore.getState().kept.get(sheet);
-  return fresh ? keepLastAnchors(kept, fresh) : (kept ?? {});
+export async function exportAnchorsOf(
+  kernel: SheetAnchorsKernel,
+  sheets: readonly Sheet[],
+): Promise<SheetAnchors> {
+  const out: SheetAnchors = {};
+  for (const sheet of sheets) {
+    if (!sheet.items.some(isAnchored)) continue;
+    const fresh = await kernel.resolveSheet(sheet, { quiet: true });
+    if (!fresh) throw new Error(EXPORT_UNMEASURED);
+    Object.assign(out, fresh);
+  }
+  return out;
 }
 
 export interface SheetAnchorsResult {

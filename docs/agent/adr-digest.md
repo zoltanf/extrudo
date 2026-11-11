@@ -4561,8 +4561,9 @@ kernel, `AtMarker.failed` and `lostFeature`'s `failed`. Rules a change must keep
 (`resolveSheet`, `quiet`) on a new sheet object and after every finished recompute, never while the model computes, the
 newest request winning, and kept with `keepLastAnchors`; **an anchored item the kernel has not been asked about is left out
 of the layout** (never drawn detached while it answers; without a kernel, or after a failed first answer, all are drawn);
-nothing of it is stored (memory only, `sheetItemsStore.kept` per sheet for the export); **the export resolves before it
-writes, keeps what the screen kept, and passes the design's `units`**; detached is the paper's red (`PAPER_ERROR`) with dashed
+nothing of it is stored (memory only; `sheetItemsStore.kept` per sheet is for the screen); **the export resolves again
+before it writes and keeps no geometry** (`exportAnchorsOf`: a lost dimension is "?" on paper, never the screen's last
+value; the export fails when the kernel can't answer) **and passes the design's `units`**; detached is the paper's red (`PAPER_ERROR`) with dashed
 lines and invalid red, on screen only (the writers ignore `state`); a detached dimension's message is the kernel's when it
 gives one (`measureSheetDimension`), notes keep their own words; **an anchor on a feature whose status was an error in the
 last recompute is detached** ("…, has an error. Fix it to show the dimension again."), after deleted and suppressed, before
