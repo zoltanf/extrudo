@@ -77,6 +77,16 @@ function where(sheets: readonly Sheet[], path: readonly PropertyKey[]): string {
   return field ? `${parts.join(', ')}: ${field}` : parts.join(', ');
 }
 
+/** Drops the balloons whose parts list `sheet` no longer has (it was deleted with them). */
+function dropOrphanBalloons(sheet: Sheet): void {
+  const lists = new Set<string>(
+    sheet.items.filter((item) => item.kind === 'partsList').map((item) => item.id),
+  );
+  if (sheet.items.some((item) => item.kind === 'balloon' && !lists.has(item.list))) {
+    sheet.items = sheet.items.filter((item) => item.kind !== 'balloon' || lists.has(item.list));
+  }
+}
+
 /** Refuses the change unless the sheets it leaves are valid; drops `sheets` when empty. */
 function settle(draft: DocumentDraft): void {
   const sheets = (draft.sheets ?? []) as Sheet[];
@@ -211,7 +221,8 @@ export const updateSheetView = defineCommand<{ id: SheetViewId; changes: SheetVi
 
 /**
  * Deletes a view, the views projected from it (directly or not) and the
- * items that belong to any of them, in one undo step.
+ * items that belong to any of them (and the balloons of a parts list that
+ * goes with them), in one undo step.
  */
 export const removeSheetView = defineCommand<{ id: SheetViewId }>(
   'sheet.view.remove',
@@ -224,6 +235,7 @@ export const removeSheetView = defineCommand<{ id: SheetViewId }>(
       const view = sheetItemView(item);
       return view === undefined || !gone.has(view);
     });
+    dropOrphanBalloons(sheet);
     settle(draft);
   },
 );
@@ -260,13 +272,14 @@ const deleteSheetItems = defineCommand<{ ids: readonly SheetItemId[] }>(
     for (const sheet of (draft.sheets ?? []) as Sheet[]) {
       if (sheet.items.some((item) => gone.has(item.id))) {
         sheet.items = sheet.items.filter((item) => !gone.has(item.id));
+        dropOrphanBalloons(sheet);
       }
     }
     settle(draft);
   },
 );
 
-/** Deletes items from any of the sheets. One undo step. */
+/** Deletes items from any of the sheets, and the balloons of a parts list deleted. One undo step. */
 export const removeSheetItems: CommandFactory<{ ids: readonly SheetItemId[] }> = Object.assign(
   (payload: { ids: readonly SheetItemId[] }) => ({
     ...deleteSheetItems(payload),

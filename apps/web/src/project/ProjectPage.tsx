@@ -28,7 +28,9 @@ import {
   describeError,
   exportProject,
   importF3dFile,
+  importFcstdFile,
   importProject,
+  isFcstd,
   loadProject,
   takeOpenNotices,
 } from './actions';
@@ -182,8 +184,9 @@ function ProjectEditor({
           .then((summary) => summary && navigate(projectHref(summary.id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
+      // A FreeCAD file picked in Import Model opens as a new design too (ADR-0144 decision 9).
       importF3d: (picked) => {
-        importF3dFile(platform, picked)
+        (isFcstd(picked.name) ? importFcstdFile : importF3dFile)(platform, picked)
           .then((id) => id && navigate(projectHref(id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },

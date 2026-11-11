@@ -74,7 +74,10 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   joint: ['J'],
   // Section Analysis (P3-09): there is no usual key for it.
   section: ['Shift+S'],
-  // The drawing (P6-24, ADR-0143): Export PDF, and the sheet tabs as a browser's tabs.
+  // The drawing (P6-24, ADR-0143): its view tools, Export PDF, and the sheet tabs as a
+  // browser's tabs. V is no other command's key; P is Project, offered in a sketch only.
+  baseView: ['V'],
+  projectedView: ['P'],
   exportSheets: ['Mod+E'],
   nextSheet: ['Mod+PageDown'],
   previousSheet: ['Mod+PageUp'],

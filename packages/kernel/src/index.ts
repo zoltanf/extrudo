@@ -258,6 +258,7 @@ export {
   type SheetViewResult,
   SheetViewsCancelledError,
   type SkippedBody,
+  shownBodies,
   shownCurves,
   type ViewBounds,
   type ViewCurve,
@@ -265,4 +266,10 @@ export {
   type ViewGeometry,
   type ViewPiece,
 } from './sheets';
+export type {
+  ShapePlacement,
+  StoredShapeMeasure,
+  StoredShapeOptions,
+  StoredShapeStep,
+} from './stored-shape';
 export { TEST_PART, type TestPart } from './test-part';

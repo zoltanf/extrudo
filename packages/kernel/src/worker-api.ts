@@ -43,6 +43,7 @@ export function workerApi(service: KernelService): KernelApi {
       );
     },
     exportStep: (bodies) => service.exportStep(bodies),
+    storedShapeToStep: (text, chain, options) => service.storedShapeToStep(text, chain, options),
     exportScad: (options) => service.exportScad(options),
     inspect: (targets) => service.inspect(targets),
     interference: (bodies) => service.interference(bodies),
@@ -53,6 +54,7 @@ export function workerApi(service: KernelService): KernelApi {
     sheetViews: (requests, onView) => service.sheetViews(requests, onView),
     cancelSheetViews: () => service.cancelSheetViews(),
     resolveSheet: (sheet) => service.resolveSheet(sheet),
+    sheetParts: (sheet) => service.sheetParts(sheet),
     debugTestPart: async () => {
       const part = await service.debugTestPart();
       return Comlink.transfer(part, meshBuffers(part.mesh));

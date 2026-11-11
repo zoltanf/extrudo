@@ -17,5 +17,6 @@ export {
   type SheetViewRequest,
   type SheetViewResult,
   SheetViewsCancelledError,
+  sheetListBodies,
   shownBodies,
 } from './views';

@@ -307,6 +307,190 @@ export const SheetDimensionItemSchema = z.strictObject({
 export type SheetDimensionItem = z.infer<typeof SheetDimensionItemSchema>;
 
 /**
+ * A note with an arrow to the model (P6-24 S4, ADR-0143's S4 amendment): its
+ * text at `at`, a leader line from there to what `anchor` names, ending in
+ * an arrowhead on an edge or a point and in a dot on a face.
+ */
+export const SheetLeaderItemSchema = z.strictObject({
+  kind: z.literal('leader').describe('A leader note.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view whose geometry it points at, on the same sheet.'),
+  anchor: SheetAnchorSchema.describe(
+    'What the arrow points at: a vertex, an edge or one of its points, a face (a dot), an outline, or a free point.',
+  ),
+  at: SheetPointSchema.describe(
+    "Where the leader line ends and its text starts, in the view's own mm (model size, x right, y up); it follows the anchor when it moves.",
+  ),
+  text: z
+    .string()
+    .max(SHEET_TEXT_MAX)
+    .regex(/\S/, 'is blank')
+    .describe('Plain text, up to 2000 characters; may contain newlines.'),
+});
+export type SheetLeaderItem = z.infer<typeof SheetLeaderItemSchema>;
+
+/** A sticky note's colours; absent is the first, yellow. */
+export const SHEET_STICKY_COLORS = ['yellow', 'orange', 'pink', 'blue', 'green'] as const;
+export type SheetStickyColor = (typeof SHEET_STICKY_COLORS)[number];
+
+/** The smallest and largest side a sticky note may have, mm. */
+export const SHEET_STICKY_MIN = 5;
+export const SHEET_STICKY_MAX = 1000;
+
+const stickySide = z.number().min(SHEET_STICKY_MIN).max(SHEET_STICKY_MAX);
+
+/**
+ * A coloured note on the sheet (P6-24 S4): not tied to a view, on screen
+ * only until `print` is set (ADR-0143 §8).
+ */
+export const SheetStickyItemSchema = z.strictObject({
+  kind: z.literal('sticky').describe('A sticky note.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  at: SheetPointSchema.describe(
+    "The note's top-left corner, mm from the sheet's top-left, Y down.",
+  ),
+  size: z
+    .tuple([stickySide, stickySide])
+    .describe("The note's width and height, mm, 5 to 1000 each."),
+  text: z
+    .string()
+    .max(SHEET_TEXT_MAX)
+    .regex(/\S/, 'is blank')
+    .describe('Plain text, up to 2000 characters; may contain newlines. Wraps inside the note.'),
+  color: z
+    .enum(SHEET_STICKY_COLORS)
+    .optional()
+    .describe('yellow, orange, pink, blue or green; absent: yellow.'),
+  print: z
+    .literal(true)
+    .optional()
+    .describe('Printed and exported (only as true); absent: on screen only.'),
+});
+export type SheetStickyItem = z.infer<typeof SheetStickyItemSchema>;
+
+/** A centre mark: a cross on a circle's centre (P6-24 S4). */
+export const SheetCentreMarkItemSchema = z.strictObject({
+  kind: z.literal('centreMark').describe('A centre mark.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view it is drawn in, on the same sheet.'),
+  anchors: z
+    .array(SheetAnchorSchema)
+    .min(1)
+    .max(2)
+    .describe("The circle: one whole circular edge or a cylinder's face."),
+});
+export type SheetCentreMarkItem = z.infer<typeof SheetCentreMarkItemSchema>;
+
+/** A centre line: dash-dot, midway between two parallel lines or along an axis (P6-24 S4). */
+export const SheetCentreLineItemSchema = z.strictObject({
+  kind: z.literal('centreLine').describe('A centre line.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view it is drawn in, on the same sheet.'),
+  anchors: z
+    .array(SheetAnchorSchema)
+    .min(1)
+    .max(2)
+    .describe(
+      "Two parallel lines (whole edges or outlines: it runs midway), or a cylinder's or cone's face (along its axis).",
+    ),
+});
+export type SheetCentreLineItem = z.infer<typeof SheetCentreLineItemSchema>;
+
+/** A parts list's columns, in their default order (plan §4.5). */
+export const SHEET_PARTS_COLUMNS = ['item', 'qty', 'name', 'material', 'size', 'mass'] as const;
+export type SheetPartsColumn = (typeof SHEET_PARTS_COLUMNS)[number];
+
+/** The longest name or material typed over a parts list's row. */
+export const SHEET_PARTS_TEXT_MAX = 200;
+
+/** What was typed over one row of a parts list: its name, its material. */
+export const SheetPartsRowSchema = z.strictObject({
+  name: z
+    .string()
+    .max(SHEET_PARTS_TEXT_MAX)
+    .optional()
+    .describe("The row's name instead of the body's, up to 200 characters."),
+  material: z
+    .string()
+    .max(SHEET_PARTS_TEXT_MAX)
+    .optional()
+    .describe('The material, free text, up to 200 characters; absent: empty.'),
+});
+export type SheetPartsRow = z.infer<typeof SheetPartsRowSchema>;
+
+/**
+ * A parts list (P6-24 S5, ADR-0143's S5 amendment): a table filled from the
+ * bodies of a view each time it is drawn, identical bodies merged into one
+ * row with a quantity. Only what a person typed over a row is stored.
+ */
+export const SheetPartsListItemSchema = z.strictObject({
+  kind: z.literal('partsList').describe('A parts list.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view whose bodies it lists, on the same sheet.'),
+  at: SheetPointSchema.describe(
+    "The table's top-left corner, mm from the sheet's top-left, Y down.",
+  ),
+  columns: z
+    .array(z.enum(SHEET_PARTS_COLUMNS))
+    .min(1)
+    .optional()
+    .describe(
+      'The columns shown, in this order, each once: item, qty, name, material, size, mass; absent: all six.',
+    ),
+  rows: z
+    .record(BodyIdSchema, SheetPartsRowSchema)
+    .optional()
+    .describe(
+      "What was typed over a row, by the ID of the row's first body; a body the list no longer shows is ignored.",
+    ),
+});
+export type SheetPartsListItem = z.infer<typeof SheetPartsListItemSchema>;
+
+/**
+ * A balloon (P6-24 S5): a numbered circle with a leader to a body, its
+ * number that body's item in a parts list of the same sheet.
+ */
+export const SheetBalloonItemSchema = z.strictObject({
+  kind: z.literal('balloon').describe('A balloon.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  view: SheetViewIdSchema.describe('The view whose geometry it points at, on the same sheet.'),
+  anchor: SheetAnchorSchema.describe(
+    'What the leader points at, on the body it numbers: a vertex, an edge or one of its points, a face (a dot), or an outline.',
+  ),
+  at: SheetPointSchema.describe(
+    "The circle's centre, in the view's own mm (model size, x right, y up); it follows the anchor when it moves.",
+  ),
+  list: SheetItemIdSchema.describe('The parts list it takes its number from, on the same sheet.'),
+});
+export type SheetBalloonItem = z.infer<typeof SheetBalloonItemSchema>;
+
+/** The most columns and rows a free table has. */
+export const SHEET_TABLE_COLUMNS_MAX = 50;
+export const SHEET_TABLE_ROWS_MAX = 500;
+
+/** A free table (P6-24 S5): column widths and rows of cell texts, on the sheet. */
+export const SheetTableItemSchema = z.strictObject({
+  kind: z.literal('table').describe('A free table.'),
+  id: SheetItemIdSchema.describe('A UUID, for life; unique in the design.'),
+  at: SheetPointSchema.describe(
+    "The table's top-left corner, mm from the sheet's top-left, Y down.",
+  ),
+  columns: z
+    .array(z.number().min(1).max(1000))
+    .min(1)
+    .max(SHEET_TABLE_COLUMNS_MAX)
+    .describe("Each column's width, mm, 1 to 1000; 1 to 50 columns."),
+  rows: z
+    .array(z.array(z.string().max(SHEET_TEXT_MAX)))
+    .min(1)
+    .max(SHEET_TABLE_ROWS_MAX)
+    .describe(
+      "The rows, top to bottom, each one cell text per column (plain, may be empty, may contain newlines); a row's height fits its text.",
+    ),
+});
+export type SheetTableItem = z.infer<typeof SheetTableItemSchema>;
+
+/**
  * Every item kind this version knows. A later slice adds a kind by adding its
  * schema here; a file with a kind this version doesn't know loses that item
  * on load and says so (`parseLeniently`), never failing the design.
@@ -314,6 +498,13 @@ export type SheetDimensionItem = z.infer<typeof SheetDimensionItemSchema>;
 export const SheetItemSchema = z.discriminatedUnion('kind', [
   SheetTextItemSchema,
   SheetDimensionItemSchema,
+  SheetLeaderItemSchema,
+  SheetStickyItemSchema,
+  SheetCentreMarkItemSchema,
+  SheetCentreLineItemSchema,
+  SheetPartsListItemSchema,
+  SheetBalloonItemSchema,
+  SheetTableItemSchema,
 ]);
 export type SheetItem = z.infer<typeof SheetItemSchema>;
 export type SheetItemKind = SheetItem['kind'];
@@ -338,7 +529,9 @@ export const SheetSchema = z.strictObject({
   views: z.array(SheetViewSchema).describe('The views, drawn in order.'),
   items: z
     .array(SheetItemSchema)
-    .describe('Texts and dimensions (later notes and lists), drawn in order after the views.'),
+    .describe(
+      'Texts, dimensions, notes, centre marks and lines, parts lists, balloons and tables, drawn in order after the views.',
+    ),
 });
 export type Sheet = z.infer<typeof SheetSchema>;
 
@@ -361,6 +554,50 @@ export function sheetPaperSize(sheet: Pick<Sheet, 'size' | 'orientation'>): {
  */
 export function sheetItemView(item: SheetItem): SheetViewId | undefined {
   return 'view' in item ? (item.view as SheetViewId) : undefined;
+}
+
+/** The item kinds tied to the model by anchors (ADR-0143's S3, S4 and S5 amendments). */
+export type SheetAnchoredItem = Extract<
+  SheetItem,
+  { kind: 'dimension' | 'leader' | 'centreMark' | 'centreLine' | 'balloon' }
+>;
+
+/**
+ * An item's anchors in their order, empty for an item with none (a text, a
+ * sticky note, a parts list, a table). The one place that says which items have anchors: the
+ * kernel resolves these, remint rewrites them, layout reads their reports
+ * by this index.
+ */
+export function sheetItemAnchors(item: SheetItem): readonly SheetAnchor[] {
+  switch (item.kind) {
+    case 'dimension':
+    case 'centreMark':
+    case 'centreLine':
+      return item.anchors;
+    case 'leader':
+    case 'balloon':
+      return [item.anchor];
+    default:
+      return [];
+  }
+}
+
+/** `item` with each anchor mapped through `f`, in `sheetItemAnchors`' order; the same item when it has none. */
+export function mapSheetItemAnchors<T extends SheetItem>(
+  item: T,
+  f: (anchor: SheetAnchor) => SheetAnchor,
+): T {
+  switch (item.kind) {
+    case 'dimension':
+    case 'centreMark':
+    case 'centreLine':
+      return { ...item, anchors: item.anchors.map(f) };
+    case 'leader':
+    case 'balloon':
+      return { ...item, anchor: f(item.anchor) };
+    default:
+      return item;
+  }
 }
 
 /** The views projected from `id`, directly or through other projected views, on `sheet`. */
@@ -393,8 +630,8 @@ const fold = (name: string) => name.toLowerCase();
  * their sheet (case-insensitively); a projected view's parent a view of the
  * same sheet, not itself, with no cycle; scale and style only on a base view;
  * a base view's two directions not zero and not parallel; a body named once
- * per view; a dimension's view a view of its sheet and its anchors fitting
- * its type (`dimensionProblems`). A body a view names that the design doesn't
+ * per view; an item's view a view of its sheet and its anchors fitting
+ * its kind (`sheetItemProblems`); a balloon's list a parts list of its sheet. A body a view names that the design doesn't
  * have is not a problem (it is skipped when the view is drawn), nor is an
  * anchor whose geometry is gone (it is drawn detached), so deleting a body or
  * a feature never touches a sheet.
@@ -480,15 +717,26 @@ export function sheetProblems(sheets: readonly Sheet[]): SheetProblem[] {
     });
     sheet.items.forEach((item, i) => {
       once(itemIds, item.id, [s, 'items', i, 'id'], `is ${item.id}, which another item has`);
-      if (item.kind !== 'dimension') return;
       const at = [s, 'items', i];
-      if (!views.has(item.view)) {
+      const view = sheetItemView(item);
+      if (view !== undefined && !views.has(view)) {
         problems.push({
           path: [...at, 'view'],
-          message: `is ${item.view}, which is not a view of this sheet`,
+          message: `is ${view}, which is not a view of this sheet`,
         });
       }
-      for (const { path, message } of dimensionProblems(item)) {
+      if (item.kind === 'balloon') {
+        const list = sheet.items.find((it) => it.id === item.list);
+        if (list?.kind !== 'partsList') {
+          problems.push({
+            path: [...at, 'list'],
+            message: list
+              ? `is ${item.list}, which is not a parts list`
+              : `is ${item.list}, which is not a parts list of this sheet`,
+          });
+        }
+      }
+      for (const { path, message } of sheetItemProblems(item)) {
         problems.push({ path: [...at, ...path], message });
       }
     });
@@ -510,6 +758,92 @@ function anchorRole(anchor: SheetAnchor): 'point' | 'line' | 'circle' | 'edge' |
   return at === undefined ? 'edge' : 'point';
 }
 
+/** Anchors that name nothing an item can take: a vertex's or face's point, an outline of an edge. */
+function shapeProblems(anchors: readonly SheetAnchor[], path: string): SheetProblem[] {
+  const problems: SheetProblem[] = [];
+  anchors.forEach((anchor, a) => {
+    if (anchorRole(anchor) !== undefined) return;
+    const on = anchor as SheetRefAnchor | SheetSilhouetteAnchor;
+    const message =
+      'silhouette' in on
+        ? `is an outline of ${an(on.ref.kind)}: only a face has outlines`
+        : `takes the ${on.at} of ${an(on.ref.kind)}: only an edge has one`;
+    problems.push({ path: path === 'anchor' ? [path] : [path, a], message });
+  });
+  return problems;
+}
+
+/**
+ * Whether an item's anchors fit its kind (ADR-0143's S3 and S4 amendments):
+ * a dimension's its type (`dimensionProblems`); a leader's any one anchor;
+ * a centre mark's one circle (a whole edge, told a circle when it resolves,
+ * or a cylinder's face); a centre line's two lines (whole edges or outlines)
+ * or one cylinder's or cone's face (its axis); a balloon's one anchor on
+ * geometry (never a free point: it numbers a body). A parts list names each
+ * column once; a free table's rows have one cell per column. Texts and
+ * sticky notes have no rules here.
+ */
+export function sheetItemProblems(item: SheetItem): SheetProblem[] {
+  switch (item.kind) {
+    case 'dimension':
+      return dimensionProblems(item);
+    case 'leader':
+      return shapeProblems([item.anchor], 'anchor');
+    case 'balloon':
+      if ('free' in item.anchor) {
+        return [{ path: ['anchor'], message: 'is a free point: a balloon points at a body' }];
+      }
+      return shapeProblems([item.anchor], 'anchor');
+    case 'partsList': {
+      const seen = new Set<string>();
+      const problems: SheetProblem[] = [];
+      for (const [c, column] of (item.columns ?? []).entries()) {
+        if (seen.has(column)) {
+          problems.push({ path: ['columns', c], message: `names the ${column} column twice` });
+        }
+        seen.add(column);
+      }
+      return problems;
+    }
+    case 'table': {
+      const n = item.columns.length;
+      const problems: SheetProblem[] = [];
+      for (const [r, row] of item.rows.entries()) {
+        if (row.length !== n) {
+          problems.push({
+            path: ['rows', r],
+            message: `has ${row.length} ${row.length === 1 ? 'cell' : 'cells'}, but the table has ${n} ${n === 1 ? 'column' : 'columns'}`,
+          });
+        }
+      }
+      return problems;
+    }
+    case 'centreMark':
+    case 'centreLine': {
+      const problems = shapeProblems(item.anchors, 'anchors');
+      if (problems.length > 0) return problems;
+      const roles = item.anchors.map(anchorRole);
+      const mark = item.kind === 'centreMark';
+      const fits = mark
+        ? roles.length === 1 && (roles[0] === 'edge' || roles[0] === 'circle')
+        : roles.length === 1
+          ? roles[0] === 'circle'
+          : roles.every((r) => r === 'line' || r === 'edge');
+      if (fits) return [];
+      return [
+        {
+          path: ['anchors'],
+          message: mark
+            ? "don't fit a centre mark: it takes one whole edge or a cylinder's face"
+            : "don't fit a centre line: it takes two whole edges or outlines, or a cylinder's or cone's face",
+        },
+      ];
+    }
+    default:
+      return [];
+  }
+}
+
 /**
  * Whether a dimension's anchors fit its type (ADR-0143's S3 amendment). Each
  * anchor is a point (a vertex, an edge's `at` point, a free point), a line
@@ -526,18 +860,9 @@ function anchorRole(anchor: SheetAnchor): 'point' | 'line' | 'circle' | 'edge' |
  * whole edge is a line or a circle is the geometry's to tell, when it resolves.
  */
 export function dimensionProblems(item: SheetDimensionItem): SheetProblem[] {
-  const problems: SheetProblem[] = [];
-  const roles = item.anchors.map(anchorRole);
-  roles.forEach((role, a) => {
-    if (role !== undefined) return;
-    const anchor = item.anchors[a] as SheetRefAnchor | SheetSilhouetteAnchor;
-    const message =
-      'silhouette' in anchor
-        ? `is an outline of ${an(anchor.ref.kind)}: only a face has outlines`
-        : `takes the ${anchor.at} of ${an(anchor.ref.kind)}: only an edge has one`;
-    problems.push({ path: ['anchors', a], message });
-  });
+  const problems = shapeProblems(item.anchors, 'anchors');
   if (problems.length > 0) return problems;
+  const roles = item.anchors.map(anchorRole);
   const n = roles.length;
   const lineLike = (r: (typeof roles)[number]) => r === 'line' || r === 'edge';
   const circleLike = (r: (typeof roles)[number]) => r === 'circle' || r === 'edge';

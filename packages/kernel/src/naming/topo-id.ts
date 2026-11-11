@@ -115,8 +115,8 @@ function matchingBracket(text: string, open: number): number {
   return -1;
 }
 
-/** Splits at `|` outside parentheses and brackets. */
-function splitTopLevel(text: string): string[] {
+/** Splits at `separator` outside parentheses and brackets. */
+function splitTopLevel(text: string, separator = '|'): string[] {
   const parts: string[] = [];
   let depth = 0;
   let start = 0;
@@ -124,13 +124,42 @@ function splitTopLevel(text: string): string[] {
     const c = text[i];
     if (c === '(' || c === '[') depth++;
     else if (c === ')' || c === ']') depth--;
-    else if (c === '|' && depth === 0) {
+    else if (c === separator && depth === 0) {
       parts.push(text.slice(start, i));
       start = i + 1;
     }
   }
   parts.push(text.slice(start));
   return parts;
+}
+
+/**
+ * The features a name says made its faces: the `feature` of every created
+ * face name in it, those nested in a source (`(…)`) too, in order of first
+ * appearance. Read from the grammar alone, so a feature the document no
+ * longer has is still found (the sheet anchors' deleted-feature rule,
+ * ADR-0143's S3 amendment). A source that is not a name (`(sketch/curve)`)
+ * names none.
+ */
+export function featuresOfName(name: string): string[] {
+  const found = new Set<string>();
+  const visit = (text: string) => {
+    const compound = parseCompound(text);
+    if (compound) {
+      for (const face of compound.faces) visit(face);
+      return;
+    }
+    // op ":" feature ":" role (":" source)?; a role may have colons of its own.
+    const parts = splitTopLevel(parseFace(text).stem, ':');
+    const feature = parts[1];
+    if (parts.length < 3 || feature === undefined || !TOKEN.test(feature)) return;
+    found.add(feature);
+    for (const part of parts.slice(2)) {
+      if (part.startsWith('(') && part.endsWith(')')) visit(part.slice(1, -1));
+    }
+  };
+  visit(name);
+  return [...found];
 }
 
 /**

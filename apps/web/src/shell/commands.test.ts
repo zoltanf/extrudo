@@ -4,7 +4,7 @@ import { DEFAULT_KEYMAP } from '../commands/keymap';
 import { searchCommands } from '../commands/search';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
-import { buildCommands, type CommandContext, commandShortcuts } from './commands';
+import { buildCommands, type CommandContext, commandShortcuts, modelOnlyReason } from './commands';
 import { clearHelpTarget, setHelpTarget } from './helpTarget';
 import { menuModel, NATIVE_MENU_OWN } from './menuModel';
 import { lastHoveredTool, setHoveredTool } from './Toolbar';
@@ -323,6 +323,23 @@ describe('buildCommands', () => {
     expect(inSketch?.unavailable).toBe('Finish the sketch to use Customizer.');
     inSketch?.run();
     expect(ctx.notify).toHaveBeenCalledWith('info', 'Finish the sketch to use Customizer.');
+  });
+
+  it('gives a model-only tile its reason in a sketch and the drawing, none in the model', () => {
+    expect(modelOnlyReason('sketch', 'importBody')).toBe(
+      'Finish the sketch to use Import STEP, mesh, OpenSCAD or .f3d.',
+    );
+    expect(modelOnlyReason('sketch', 'canvas')).toBe('Finish the sketch to use Canvas.');
+    expect(modelOnlyReason('sheet', 'customizer')).toBe('Finish the drawing to use Customizer.');
+    expect(modelOnlyReason('model', 'canvas')).toBeUndefined();
+    // Other Home tools run in a sketch.
+    expect(modelOnlyReason('sketch', 'parameters')).toBeUndefined();
+  });
+
+  it('gives no reason, and does not throw, for an ID that is not a tool (a plugin feature)', () => {
+    for (const mode of ['model', 'sketch', 'sheet'] as const) {
+      expect(modelOnlyReason(mode, 'plugin:nameplate')).toBeUndefined();
+    }
   });
 
   it('starts tools through the context', () => {

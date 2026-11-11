@@ -49,8 +49,11 @@ file on the clipboard.
 These are in the Home tab's **Import** group.
 
 - **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import…**
-  card does the same, and takes `.f3d` and the model files below too: a model file becomes a
-  new design with the Import Model dialog open. A design downloaded from a GitHub issue is
+  card does the same, and takes `.f3d`, FreeCAD `.FCStd` and the model files below too: a model
+  file becomes a new design with the Import Model dialog open. A FreeCAD file becomes a new
+  design of its finished shapes, one body each with the file's names, colours and hidden
+  shapes, without history for now; a notice says what came across and what didn't (meshes
+  don't yet). A design downloaded from a GitHub issue is
   often an `.extrudo.gz`: import it as it is, no need to unpack it first.
 - **Import Model** brings in a STEP file, an STL, 3MF or OBJ mesh, or an OpenSCAD `.scad`
   file, as bodies in the current design. A STEP file keeps its exact surfaces. A mesh becomes a
@@ -80,7 +83,7 @@ STEP is the common language between CAD tools. If your part lives in another pro
 from there as STEP — **AP214** or **AP242** both work — and open it with **Import Model**, or
 drop it on the home screen's **Import…** card. Extrudo reads the exact surfaces, not a mesh of
 triangles, so the part is a real solid you can keep working on. The [desktop app](./desktop.md)
-also imports `.sldprt`, `.ipt`, `.iam`, `.catpart`, `.fcstd`, `.sat`, `.smt`, `.smb`, `.sab`,
+also imports `.sldprt`, `.ipt`, `.iam`, `.catpart`, `.sat`, `.smt`, `.smb`, `.sab`,
 `.igs`, `.iges` and `.pvz` files directly, by converting them to STEP first.
 
 What comes across:

@@ -26,12 +26,17 @@ import {
   type SheetChanges,
   type SheetId,
   type SheetItemId,
+  type SheetScale,
+  type SheetView,
   type SheetViewId,
   updateSheet,
 } from '@extrudo/core';
 import { clearHelpTarget } from '../shell/helpTarget';
 import { cancelCreateSketch, finishSketch, type SketchModeStores } from '../sketch/mode';
 import { copyName, copySheet, type NewSheetOptions, newSheet, sheetNameProblem } from './defaults';
+
+/** The tools that run on the sheet (the session's `activeTool`) until they finish or Esc. */
+export const SHEET_TOOLS: ReadonlySet<string> = new Set(['baseView', 'projectedView']);
 
 /** The stores the drawing mode works on: the sketch mode's (it may have to finish a sketch). */
 export type SheetModeStores = SketchModeStores;
@@ -125,18 +130,24 @@ function run(store: DocumentStore, command: Command): string | undefined {
 }
 
 /**
- * New drawing (mock-up 2): an empty sheet with the dialog's choices, as one undo step
- * "New drawing", then opens it. Returns its ID.
+ * New drawing (mock-up 2): a sheet with the dialog's choices and what it starts with (its
+ * scale and views: `standardViews.ts`), as one undo step "New drawing", then opens it.
+ * Returns its ID.
  */
 export function createSheet(
   stores: SheetModeStores,
   options: NewSheetOptions,
   today = new Date(),
+  content: { scale?: SheetScale; views?: SheetView[] } = {},
 ): SheetId {
   const { store } = stores;
   leaveSketch(stores);
   const id = newId<SheetId>();
-  const sheet = newSheet(store.getState().doc, id, today, options);
+  const sheet: Sheet = {
+    ...newSheet(store.getState().doc, id, today, options),
+    ...(content.scale && { scale: content.scale }),
+    ...(content.views && { views: content.views }),
+  };
   store.getState().dispatch({ ...addSheet({ sheet }), label: 'New drawing' });
   openSheet(stores, id);
   return id;

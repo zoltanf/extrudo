@@ -799,7 +799,7 @@ export const TOOLS = {
     short: 'Import Model',
     icon: 'insert-svg',
     category: 'insert',
-    hint: 'Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d file opens as a new design.',
+    hint: 'Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d or FreeCAD file opens as a new design.',
   },
   canvas: {
     id: 'canvas',
@@ -878,13 +878,27 @@ export const TOOLS = {
     hint: 'Render a presentable picture of the design.',
   },
   // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch. The
-  // tools of later slices (views, dimensions, notes, tables) are not listed until they exist.
+  // tools of later slices (dimensions, notes, tables) are not listed until they exist.
   sheets: {
     id: 'sheets',
     label: 'Drawing',
     icon: 'sheets',
     category: 'export',
     hint: 'Sheets of the design to print or send: open the drawing, or start one.',
+  },
+  baseView: {
+    id: 'baseView',
+    label: 'Base View',
+    icon: 'base-view',
+    category: 'create',
+    hint: 'A view of the model from a direction you choose: the frame follows the pointer, a click places it.',
+  },
+  projectedView: {
+    id: 'projectedView',
+    label: 'Projected View',
+    icon: 'projected-view',
+    category: 'create',
+    hint: 'Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.',
   },
   newSheet: {
     id: 'newSheet',
@@ -1193,12 +1207,13 @@ export const TABS: Tab[] = [
     ],
   },
   // The drawing's own tab (P6-24, ADR-0143), shown in place of every tab but Home while a
-  // sheet is open; Finish Drawing sits after its groups. Views, Dimensions, Notes and Tables
-  // join it with their slices.
+  // sheet is open; Finish Drawing sits after its groups. Dimensions, Notes and Tables join
+  // it with their slices.
   {
     id: 'sheet',
     label: 'Drawing',
     groups: [
+      { label: 'Views', tools: ['baseView', 'projectedView'] },
       { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
       { label: 'Output', tools: ['exportSheets'] },
     ],

@@ -1,6 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import { Design } from '@extrudo/api';
-import { type BodyId, createDocument } from '@extrudo/core';
+import { type AttachmentId, addAttachment, type BodyId, createDocument } from '@extrudo/core';
 import type { BodyPlan, BodyStep, ImportResult } from '@extrudo/f3d';
 import { memoryProjectStore, sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -10,10 +10,15 @@ import { memoryPreferences, type Platform } from '../platform';
 import {
   CHECKING_TEXT,
   createBlankProject,
+  FCSTD_READING_TEXT,
+  fcstdNotices,
   importAnyFile,
   importF3dFile,
+  importFcstdFile,
   importNotices,
+  isFcstd,
   MAX_F3D_BYTES,
+  MAX_FCSTD_BYTES,
   NEW_DESIGN_UNITS_KEY,
   newDesignUnits,
   openExternalFile,
@@ -380,5 +385,128 @@ describe('importNotices: the bodies', () => {
       "2 of the file's bodies are missing: the timeline didn't make them, and their shapes can't be read from the file yet.",
     );
     expect(notices.some((n) => n.includes('match'))).toBe(false);
+  });
+});
+
+describe('importFcstdFile (ADR-0144 decision 9)', () => {
+  const platformFor = (projects: ReturnType<typeof memoryProjectStore>) =>
+    ({ projects, storage: { requestPersistence: async () => true } }) as unknown as Platform;
+
+  it('tells a FreeCAD file by its extension, in any case', () => {
+    expect(isFcstd('Bracket.FCStd')).toBe(true);
+    expect(isFcstd('bracket.fcstd')).toBe(true);
+    expect(isFcstd('bracket.FCSTD')).toBe(true);
+    expect(isFcstd('bracket.fcstd.zip')).toBe(false);
+  });
+
+  it('refuses a file over 100 MB before reading it', async () => {
+    let read = false;
+    const file = {
+      name: 'huge.FCStd',
+      size: MAX_FCSTD_BYTES + 1,
+      arrayBuffer: () => {
+        read = true;
+        return Promise.resolve(new ArrayBuffer(0));
+      },
+    } as unknown as File;
+    await expect(importFcstdFile(platformFor(memoryProjectStore()), file)).rejects.toThrow(
+      /FreeCAD file is too large to import/,
+    );
+    expect(read).toBe(false);
+  });
+
+  it('saves the STEP files, then the design named after the file, with the report for its page', async () => {
+    const projects = memoryProjectStore();
+    const toasts: string[] = [];
+    const stop = appNotifications.subscribe((s) => {
+      for (const t of s.toasts ?? []) if (!toasts.includes(t.text)) toasts.push(t.text);
+    });
+    const step = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;\n');
+    const sha256 = sha256Hex(step);
+    let named = '';
+    const id = await importFcstdFile(
+      platformFor(projects),
+      new File([new Uint8Array([1])], 'Bracket.FCStd'),
+      async (_bytes, name, options) => {
+        named = name;
+        const design = Design.create({ name, id: options.id as never });
+        design.state.dispatch(
+          addAttachment({
+            id: 'att-1' as AttachmentId,
+            attachment: {
+              name: 'Plate',
+              fileName: 'Plate.step',
+              mediaType: 'model/step',
+              sha256,
+              size: step.length,
+            },
+          }),
+        );
+        return {
+          design,
+          files: new Map([['att-1' as never, step]]),
+          report: {
+            shapes: [
+              { object: 'Body', name: 'Plate', feature: 'f1', solids: 1, drift: 0, stepBytes: 30 },
+            ],
+            leftOut: [{ object: 'Mesh', name: 'Scan', reason: 'mesh' }],
+            finalShapes: 2,
+            problems: [],
+            linkArrays: [],
+            restarts: 0,
+          },
+        };
+      },
+    );
+    stop();
+    expect(named).toBe('Bracket');
+    expect(toasts).toContain(FCSTD_READING_TEXT);
+    const doc = await projects.load(id as never);
+    expect(doc.name).toBe('Bracket');
+    expect(await projects.readAttachment?.(id as never, sha256)).toEqual(step);
+    expect(takeOpenNotices(id as never)).toEqual([
+      'Imported from the FreeCAD file: 1 of 2 shapes, as bodies without history.',
+      "Not imported: Scan (a mesh, which Extrudo doesn't import from FreeCAD files yet).",
+    ]);
+  });
+});
+
+describe('fcstdNotices', () => {
+  const base = { shapes: [], leftOut: [], finalShapes: 0, problems: [], linkArrays: [] };
+  const shape = (name: string) => ({
+    object: name,
+    name,
+    feature: 'f',
+    solids: 1,
+    drift: 0,
+    stepBytes: 1,
+  });
+
+  it('says when a file has no shapes at all', () => {
+    expect(fcstdNotices(base)).toEqual([
+      'The FreeCAD file has no shapes to import, so the design is empty.',
+    ]);
+  });
+
+  it('groups what was left out by why, and names link arrays and unread parts', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 5,
+      shapes: [shape('A')],
+      leftOut: [
+        { object: 'm1', name: 'Scan', reason: 'mesh' },
+        { object: 'm2', name: 'Scan 2', reason: 'mesh' },
+        { object: 'c', name: 'Fillet', reason: 'check', detail: 'the volume differs by 2 %' },
+        { object: 'k', name: 'Broken', reason: 'kernel', detail: 'refused' },
+      ],
+      linkArrays: ['Bolts'],
+      problems: ['x: bad'],
+    });
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 1 of 5 shapes, as bodies without history.',
+      "Not imported: Scan; Scan 2 (a mesh, which Extrudo doesn't import from FreeCAD files yet); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
+      'Of each link array only one copy came in: Bolts.',
+      '1 thing in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…',
+    ]);
   });
 });

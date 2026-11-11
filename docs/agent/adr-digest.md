@@ -4113,7 +4113,9 @@ committed; the packaged path is `resources/cadmpeg/cadmpeg[.exe]` with its `LICE
 `package*` script and the desktop workflow's package jobs fetch before building, and the workflow
 fails unless the packaged binary prints the pinned version; updating cadmpeg is the release
 checklist's step (version and the five hashes, nothing else); the formats are named by extension only
-(`.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product.
+(`.sldprt .ipt .iam .catpart .sat .smt .smb .sab .igs .iges .pvz`), never by vendor or product. **FreeCAD's
+`.fcstd` left the route on 2026-11-11** (ADR-0115's amendment): ADR-0144's own importer reads it; never add it back to
+`CAD_CONVERT_EXTENSIONS`.
 Main looks the binary up in this order: the preference `cadmpeg.path` → `process.resourcesPath/cadmpeg/`
 → the dev checkout's `apps/desktop/vendor/cadmpeg/` → `PATH`. A conversion runs without a shell in
 `<temp>/extrudo-cadmpeg/<uuid>/` (mode 0700, removed afterwards), 120 s timeout, stdout/stderr capped
@@ -4399,7 +4401,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views and the first view tools built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4457,7 +4459,10 @@ packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path
 `context.anchors` and `context.units`). Rules a change must keep: **no value is stored** (a dimension's text is measured
 each time; `at` and free anchors are view mm, so they move and scale with the view); **every anchor ref has a fingerprint
 and is never `index:`**; an anchor resolves through `#references` like an annotation (rolled back or not found:
-`detached`; related name or fingerprint: `moved`), **a lost anchor never throws, never fails a recompute and never
+`detached`; related name or fingerprint: `moved`) **except that an anchor naming a deleted or suppressed feature is
+`detached` with a `message` before any related-name or fingerprint search** (`lostFeature`, the features read from the
+name by `featuresOfName`; the owner, 2026-11-11: a missing number beats a wrong one; annotations still take the closest
+match), **a lost anchor never throws, never fails a recompute and never
 refuses a delete**; a resolved anchor whose geometry can't give what is asked (a line's centre, a flat face's radius)
 is `ok`/`moved` with a `message` and no `geometry`, which layout draws as `invalid`; **linear and angle values are
 measured in the view's plane, radius and diameter on the circle itself**; the text follows the anchors by the mean
@@ -4465,8 +4470,42 @@ move of their fingerprint points; display items carry `state` (`moved`, `detache
 a screen colour**; a detached dimension draws from the geometry the caller kept (`keepLastAnchors`), else its text alone
 at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (axis with canonical sign × view direction).
 `@extrudo/sheets` has the kernel as a devDependency only (`dimensions.kernel.test.ts`; `SHEETS_OUT=<dir>` writes a sample
-PDF). The naming service's fingerprint can re-find a near edge after its feature is deleted (B2's pocket floor →
-the box's bottom edge, `moved`); tests that need `detached` anchor to geometry with no near match.
+PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
+through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
+geometry with no near match.
+**S4 notes (package 1, no UI):** items `leader` (`view`, one `anchor`, `at` in view mm, `text`), `sticky` (`at`,
+`size` in sheet mm, `text`, `color` from `SHEET_STICKY_COLORS`, absent yellow; `print` only `true`), `centreMark` and
+`centreLine` (`view`, `anchors`) in `core/src/sheet-schema.ts`, their rules in `sheetItemProblems` (leader: any one
+anchor; centre mark: one whole edge or a cylinder's face; centre line: two whole edges or outlines, or one face);
+`sheets/src/anchored.ts` (what every anchored item shares, out of `dimensions.ts`) and `sheets/src/notes.ts`
+(`layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`, `sheetItemStatus`, `sheetItemShown`,
+`sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`). Rules a change must keep: **`sheetItemAnchors(item)` is the one
+place that says which items have anchors** (the kernel resolves them, `remintSheets` rewrites them through
+`mapSheetItemAnchors`, layout reads reports by that index); every anchored item gets S3's resolve and its
+deleted/suppressed rule, the message in its own words (`lostFeature(ref, features, kind)`); **a whole face stands
+for what the kind takes** (`faceAs`: circle for dimension and centre mark, `axis` geometry for a centre line, the
+centroid point for a leader); **a sticky note without `print` never reaches an export** (`output: 'export'`, the
+default of `sheetsToPdf`/`sheetToSvg`; `layoutSheet` defaults to `screen`, which marks it "On screen only"); a view's
+`centreLines: false` hides its centre marks and lines; centre lines are dash-dot **built as segments** with a long
+dash at each end; a lost or invalid centre mark or line draws nothing (the browser row says why), a lost leader its
+text alone at `at`; **nothing is generated for a view by itself** (no automatic centre marks).
+**S5 lists (package 1, no UI):** items `partsList` (`view`, `at` sheet mm, `columns` from `SHEET_PARTS_COLUMNS` shown in
+the order listed, `rows` = only what was typed over a row, by body ID: `name`, `material` free text), `balloon` (`view`,
+one `anchor` never `free`, `at` view mm, `list` = a parts list of the same sheet) and `table` (`at`, column widths,
+`rows` with one cell per column) in `core/src/sheet-schema.ts`; `core/src/sheet-fields.ts` (`fillSheetFields`,
+`mapSheetFieldTexts`, `renameSheetFieldReferences`); `KernelApi.sheetParts` (`RecomputeEngine.sheetParts`,
+`sheetListBodies` in `kernel/src/sheets/views.ts`: per list its view's bodies, base view's `bodies` as listed else shown
+bodies in timeline order, with volume and tight box from `Kernel.properties`, Print Info's) and `sheets/src/parts.ts`
+(`sheetPartBodies`, `sheetPartsRows`, `sheetPartsCells`, `sheetBalloonStatus`, `layoutSheetPartsList`,
+`layoutSheetTable`, `layoutSheetBalloon`). Rules a change must keep: **a parts list's rows, quantities, sizes, masses
+and a balloon's number are computed each time, never stored**; rows merge on equal volume and box (sides sorted) **and**
+the same component name or name stem (`sheetNameStem`), typed values never split a row; a balloon's number comes from
+`SheetAnchorReport.body` (set by `resolveSheetAnchor`, kept by `keepLastAnchors`); **deleting a parts list (or its view)
+deletes its balloons** in the same step; mass needs `context.density` (an app preference, never in the document);
+**`mapSheetFieldTexts` is the one place that says which texts take fields** (text items, leader notes, table cells,
+typed title-block fields): layout fills them through it and `rewriteReferences` renames `{= …}` through it; a field
+without a value, an unknown one and a failing expression stay as typed; `{date}`/`{version}`/`{= …}` values come
+through the layout context (`date`, `version`, `evaluate`); parts list cells are one fitted line, table cells wrap.
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
@@ -4514,7 +4553,27 @@ view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` 
 (`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
 that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
 `MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside
-`newSheet`. e2e: `e2e/sheets.spec.ts`.
+`newSheet`. e2e: `e2e/sheets.spec.ts`. **S2 the view tools (package 2):** `apps/web/src/sheets/viewLines.ts`
+(`sheetViewWants`, `sheetViewWant`, `sheetViewLines`, `pieceContour`, `linesAreCurrent`, `sheetViewNotice`),
+`viewRunner.ts` (`SheetViewRunner`, `sheetViewRunner(kernel)`: `want`, `cancel`, `retry`, `peek`, `exact`), `views.ts`
+(`LOOKING_FROM`, `lookingFromChoices`, `placedAt`, `rescaledAt`, `placeBaseView`, `changeSheetView`), `SheetViewCard.tsx`;
+`SheetViewLines.bounds`/`.state` in `@extrudo/sheets`; `Recomputer.bodyVersions()`. Rules a change must keep: **a view's `at`
+is where the world origin lands on the sheet** (aligned views share a coordinate; placing stores the origin that puts the
+quick lines' middle under the pointer; a new scale moves `at` to keep that middle); a request always names its bodies
+(base view's or every shown body) and its key is direction, up and bodies only; **lines are current only when every drawn
+body's version equals `bodyVersions()`**, otherwise shown with `state: 'stale'` (dimmed on screen, ignored by the writers);
+one run at a time, quick first for views with nothing current, exact after, `quiet` with the workspace's own notice (300 ms,
+Cancel between views, Draw after a cancel); the runner never re-runs the same remaining work by itself; **an export computes
+every view exactly first** (`exact`) and never writes quick lines; notices under views are on screen only, never in the
+display list; layout's per-view items and the selection's per-item boxes must stay keyed by object identity (a new lines
+object per result, the same one while unchanged). **Part 2:** `useProjectedView.ts`, `standardViews.ts` (lazy),
+`views.ts` (`projectedSide`, `projectedAt`, `projectedName`, `placeProjectedView`, `rescaleSheetView`, `fitScale`),
+`selection.ts` (`viewDeltas`). Rules: **a projected view beside its parent stores the parent's `at.y`, one above or below its
+`at.x`, exactly** (in the document, not only on screen); a drag keeps that line unless Alt or the parent moves too, and a
+moved or rescaled view carries the views projected from it in the same undo step; **layout of new views (Standard views, a
+dropped body, Projected View's place) uses exact bounds**, never the quick ones (stray pieces); Standard views are one base
+view and three projected from it; the view label is centred under the lines' bounds; template goldens fix the template's
+IDs (edge names, and so the curves' order and direction, follow them). e2e: `e2e/sheet-views.spec.ts`.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
@@ -4564,6 +4623,41 @@ import's kernel does) and gives `undefined` plus a problem for empty, missing, b
 and link cycles (`MAX_LINK_HOPS` 32) with a problem, and must keep the library's count (383 objects, the same per
 file as the investigation's; change the rule only with the corpus run's new numbers). Everything left out goes to
 `FcDocument.problems`. `corpus.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_CENSUS` optional).
+
+**ADR-0144, S3 (shapes-only import):** `packages/kernel/src/stored-shape.ts` `storedShapeToStep(text, chain,
+options?)` (on `KernelApi`, `worker-api.ts`, `browser.ts`) reads, places (outermost first), writes STEP and reads it back
+in one call, releasing every shape, and returns both measures; no solid gives `step: ''`; the STEP header's time stamp is
+fixed (same shape → same bytes → one attachment). **It refuses with a `KernelError` unless the service was started with
+`KernelServiceOptions.importKernel`**, set in the app only by `kernelWorker.ts` when its worker's name is
+`IMPORT_KERNEL_WORKER_NAME` (`kernelNames.ts`), a name only `importKernel.ts` spawns with: never give that name in
+`spawnProjectKernel` (`extrudo-kernel`), never set the option in the kernel's own or the debug worker, and don't add a
+second kernel entry for the import (a second copy of the kernel JS breaks ADR-0100 §5's app-JS budget);
+`stored-shape.test.ts` proves a normal kernel refuses, `importKernel.test.ts` that only the import uses the name.
+`packages/fcstd`: `import-kernel.ts` (`ImportKernel`: `storedShapeToStep`, `restart`; extend it, never import the kernel
+outside tests), `shapes.ts` `importShapes` (one `import` feature per final shape in document order, `Import <label>`,
+bodies `<feature>:<n>` named "Label", "Label 2" … through **`Design.setBody`** (new API method: name, colour, opacity,
+visibility), FreeCAD's default `#cccccc` taken as no colour, transparency → opacity ≥ 0.1), `import.ts` `importFcstd(bytes,
+name, options)` → `{ design, files, report }` (`FcstdImportReport`: `shapes`, `leftOut` with a `LeftOutReason`,
+`finalShapes`, `problems`, `linkArrays`, `restarts`; plain data, the app words it). **Rules:** a shape comes in only when
+the STEP read back has the stored shape's solids, volume within `VOLUME_TOLERANCE` (1e-3) and box within
+`BOX_TOLERANCE` (1e-4 of the diagonal + 1e-6 mm) — change them only with the library's new drift numbers; a call that
+throws or times out (`SHAPE_TIMEOUT_MS` 60 s, within `IMPORT_TIMEOUT_MS` 10 min) leaves its shape out and **restarts the
+kernel before the next shape** (at most `MAX_RESTARTS` 3, then the rest are left out); nothing a failed kernel returned is
+used, and **a reply is used only when `saneReply` passes** (string `step`, integer solids 0…`MAX_SOLIDS_PER_SHAPE`,
+finite measures; else `kernel` / "the kernel's answer makes no sense" and a restart) — the read-back check runs in the
+same import kernel, so it catches wrong conversions, not a hostile kernel: the isolation (throwaway instance in its own
+worker, only STEP and numbers out, the project's kernel reading that STEP like any user STEP) is what protects the
+project; ADR-0066's 25 MB / 100 MB limits **applied as each shape passes** (its STEP text dropped once encoded; the bytes
+held never pass the design limit by more than one shape); labels only through `cleanName` (control characters, white
+space, 120 characters, fallback the internal name) and file names through `stepFileName` (the export's
+`safeFileName` rule); details and the worker's error `clip`ped to 300; the reader's problem wording only through
+`binaryFormProblem` / `linkArrayProblem`, never a copied sentence or a regex; attachments named by SHA-256 (copies share); no name or colour in the STEP (the
+body metadata carries them). App: `fcstdImport.ts` (client, 11 min), `fcstdWorker.ts` (reader and mapper), whose kernel
+is a **nested worker** (`importKernel.ts`), so terminating the import's worker ends it; `actions.ts`
+`importFcstdFile`/`saveFcstdImport`/`fcstdNotices`, `FCSTD_ACCEPT`, `isFcstd`, `MAX_FCSTD_BYTES` (100 MB before reading);
+STEP bytes are written before the document. Import Model hands an `.FCStd` to the same new-design import as an `.f3d`.
+`corpus-shapes.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_GT` and `FCSTD_GT_PREFIX` optional; numbers
+in the amendment).
 
 **ADR-0144, S4 (sketches):** `packages/fcstd` now depends on `@extrudo/api`, core and sketch (types only from
 sketch's main entry; `tangentReversed` from `@extrudo/sketch/inference`). `sketch-decode.ts` `decodeSketch` reads a

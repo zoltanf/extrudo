@@ -1,44 +1,115 @@
 /**
- * A sheet's anchors at the marker (P6-24 S3, ADR-0143's S3 amendment): each
- * dimension anchor's reference resolves through the naming service the way
+ * A sheet's anchors at the marker (P6-24 S3 and S4, ADR-0143's S3 and S4
+ * amendments): each item anchor's reference (`sheetItemAnchors`: dimensions,
+ * leader notes, centre marks and lines) resolves through the naming service the way
  * an annotation's does (exact name `ok`; related name or fingerprint
  * `moved`; else `detached`), and gives back the 3D geometry it stands for: a
- * point, a line's ends, a circle's centre, axis and radius, or a cylinder's
- * or cone's outline for the view's direction. A lost anchor is never an
- * error. Only plain data comes out of the kernel here; no shape is made.
+ * point, a line's ends, a circle's centre, axis and radius, a cylinder's
+ * or cone's outline for the view's direction, or its axis. A whole face
+ * stands for what the item takes of it (`faceAs`). Unlike an annotation, an anchor
+ * on geometry of a feature that is deleted or suppressed is `detached` before
+ * any search (`lostFeature`): a closest match there would be another edge,
+ * and a missing number is safer on a drawing than a wrong one. A lost anchor
+ * is never an error. Only plain data comes out of the kernel here; no shape
+ * is made.
  */
 import {
+  type Feature,
+  type GeomRef,
+  type SheetAnchoredItem,
   type SheetAnchorGeometry,
   type SheetAnchorReport,
   type SheetRefAnchor,
   type SheetSegment3,
   type SheetSilhouetteAnchor,
   type SheetViewFrame,
+  scriptOfGenerated,
   sheetSilhouetteSide,
 } from '@extrudo/core';
 import { add, dot, length, perpendicular, scale, sub, unit } from '../features/vec';
 import { KernelError, type Vec3 } from '../kernel';
 import { fingerprintOf } from '../naming/fingerprint';
+import { featuresOfName } from '../naming/topo-id';
 import type { EvalContext } from '../recompute/types';
 
 /** What resolving an anchor needs of an evaluator's context. */
 export type SheetAnchorContext = Pick<EvalContext, 'kernel' | 'resolve' | 'describe' | 'names'>;
 
+/** What an item is called in a detached anchor's message, and what it does to the geometry. */
+const LOST_WORDS: Record<SheetAnchoredItem['kind'], { thing: string; verb: string }> = {
+  dimension: { thing: 'dimension', verb: 'measured' },
+  leader: { thing: 'note', verb: 'drawn' },
+  centreMark: { thing: 'centre mark', verb: 'drawn' },
+  centreLine: { thing: 'centre line', verb: 'drawn' },
+  balloon: { thing: 'balloon', verb: 'drawn' },
+};
+
+/**
+ * An anchor's report when a feature its reference names (`featuresOfName`;
+ * a script's generated feature counts as the script) is no longer in
+ * `features`, or is suppressed: `detached`, with why, in words for the
+ * item's `kind`. A deleted one outranks a suppressed one. `undefined` when
+ * every one is there and active: then the anchor is looked for as usual
+ * (exact name, related name, fingerprint).
+ */
+export function lostFeature(
+  ref: GeomRef,
+  features: readonly Pick<Feature, 'id' | 'name' | 'suppressed'>[],
+  kind: SheetAnchoredItem['kind'] = 'dimension',
+): SheetAnchorReport | undefined {
+  const byId = new Map<string, Pick<Feature, 'name' | 'suppressed'>>(
+    features.map((f) => [f.id, f]),
+  );
+  const ids = new Set(byId.keys());
+  const { thing, verb } = LOST_WORDS[kind];
+  let suppressed: string | undefined;
+  for (const token of featuresOfName(ref.id)) {
+    const feature = byId.get(scriptOfGenerated(token, ids) ?? token);
+    if (!feature) {
+      return { status: 'detached', message: `The feature this was ${verb} on is deleted.` };
+    }
+    if (feature.suppressed) suppressed ??= feature.name;
+  }
+  if (suppressed === undefined) return undefined;
+  return {
+    status: 'detached',
+    message: `${suppressed}, the feature this was ${verb} on, is suppressed. Unsuppress it to show the ${thing} again.`,
+  };
+}
+
+/**
+ * What a whole face (no `at`, no outline) stands for in an item: a circle
+ * for a dimension and a centre mark (a cylinder's), the axis for a centre
+ * line (a cylinder's or cone's), a point on it for a leader note and a
+ * balloon (where the dot goes).
+ */
+export type SheetFaceUse = 'circle' | 'axis' | 'point';
+
+export function faceAs(kind: SheetAnchoredItem['kind']): SheetFaceUse {
+  return kind === 'centreLine'
+    ? 'axis'
+    : kind === 'leader' || kind === 'balloon'
+      ? 'point'
+      : 'circle';
+}
+
 /** A reason the geometry can't give what the anchor asks; the anchor is not lost. */
 class NoGeometry extends Error {}
 
 /**
- * One anchor on geometry. `frame` is the dimension's view (an outline needs
- * its direction); `undefined` when the view is gone or broken.
+ * One anchor on geometry. `frame` is the item's view (an outline needs its
+ * direction); `undefined` when the view is gone or broken. `face` is what a
+ * whole face stands for (`faceAs`).
  */
 export function resolveSheetAnchor(
   ctx: SheetAnchorContext,
   anchor: SheetRefAnchor | SheetSilhouetteAnchor,
   frame: SheetViewFrame | undefined,
+  face: SheetFaceUse = 'circle',
 ): SheetAnchorReport {
   let hit: ReturnType<SheetAnchorContext['resolve']>;
   try {
-    hit = ctx.resolve(anchor.ref, { label: 'the dimensioned geometry' });
+    hit = ctx.resolve(anchor.ref, { label: 'the geometry on the sheet' });
   } catch (error) {
     if (error instanceof KernelError) return { status: 'detached' };
     throw error;
@@ -51,9 +122,10 @@ export function resolveSheetAnchor(
       id: hit.id,
       fingerprint: fingerprintOf(description, ctx.names(hit.body), hit.kind, hit.index),
     },
+    body: hit.body,
   };
   try {
-    report.geometry = geometryOf(ctx, anchor, hit, frame);
+    report.geometry = geometryOf(ctx, anchor, hit, frame, face);
   } catch (error) {
     if (!(error instanceof NoGeometry || error instanceof KernelError)) throw error;
     report.message = error.message;
@@ -68,6 +140,7 @@ function geometryOf(
   anchor: SheetRefAnchor | SheetSilhouetteAnchor,
   hit: Hit,
   frame: SheetViewFrame | undefined,
+  face: SheetFaceUse,
 ): SheetAnchorGeometry {
   const description = ctx.describe(hit.shape);
   switch (hit.kind) {
@@ -78,10 +151,14 @@ function geometryOf(
     }
     case 'edge':
       return edgeGeometry(ctx, hit, 'at' in anchor ? anchor.at : undefined);
-    case 'face':
-      return 'silhouette' in anchor
-        ? outline(ctx, hit, anchor.silhouette, frame)
-        : faceCircle(ctx, hit);
+    case 'face': {
+      if ('silhouette' in anchor) return outline(ctx, hit, anchor.silhouette, frame);
+      if (face === 'axis') return faceAxis(ctx, hit);
+      if (face === 'circle') return faceCircle(ctx, hit);
+      const centroid = description.faces[hit.index]?.centroid;
+      if (!centroid) throw new NoGeometry('The face is gone.');
+      return { type: 'point', point: [...centroid] };
+    }
   }
 }
 
@@ -130,6 +207,34 @@ function faceCircle(ctx: SheetAnchorContext, hit: Hit): SheetAnchorGeometry {
   const middle = ctx.describe(hit.shape).faces[hit.index]?.centroid ?? origin;
   const centre = add(origin, scale(axis, dot(sub(middle, origin), axis)));
   return { type: 'circle', centre, axis, xDirection: perpendicular(axis), radius };
+}
+
+/**
+ * A cylinder's or cone's axis as far as the face covers it: its bounding
+ * edges' points (a circle's sampled ones too) taken along the axis, lowest
+ * to highest.
+ */
+function faceAxis(ctx: SheetAnchorContext, hit: Hit): SheetAnchorGeometry {
+  const surface = ctx.kernel.surfaceGeometry(hit.shape, hit.index);
+  const { origin, direction } = surface;
+  if ((surface.type !== 'cylinder' && surface.type !== 'cone') || !origin || !direction) {
+    throw new NoGeometry('The face is not a cylinder or a cone: it has no axis.');
+  }
+  const axis = unit(direction);
+  let lo = Infinity;
+  let hi = -Infinity;
+  ctx.describe(hit.shape).edges.forEach((edge, e) => {
+    if (!edge.faces.includes(hit.index)) return;
+    const g = ctx.kernel.edgeGeometry(hit.shape, e);
+    if (g.type === 'degenerate') return;
+    for (const p of g.points) {
+      const t = dot(sub(p as Vec3, origin), axis);
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+  });
+  if (!(hi > lo)) throw new NoGeometry('The face has no length along its axis.');
+  return { type: 'axis', start: add(origin, scale(axis, lo)), end: add(origin, scale(axis, hi)) };
 }
 
 /** The outline of a cylinder or cone on `side` (`sheetSilhouetteSide`) seen in `frame`. */

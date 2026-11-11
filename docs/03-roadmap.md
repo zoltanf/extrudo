@@ -1721,8 +1721,10 @@ end to end, faster than in established desktop CAD.
     document, layout and output, and the Drawing mode (ADR-0143's three S1 amendments); a
     text item is drawn, selected, moved, deleted and exported, but no tool in the app places
     one yet.
-  - [ ] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;
-    Base and Projected View; Standard views.
+  - [x] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;
+    Base and Projected View; Standard views. Done 2026-11-11: views drawn from the model
+    in the app (quick, then exact, Cancel), Base View, Projected View, the view card, New
+    drawing's Start with, a dragged body, the view's menu (ADR-0143's S2 amendments).
   - [ ] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states.
   - [ ] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
   - [ ] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
@@ -1745,8 +1747,9 @@ end to end, faster than in established desktop CAD.
     ADR-0034's fourth amendment).*
   - [x] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
     `FORMAT.md` (2026-11-11; ADR-0144's S2 amendment).
-  - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
-    the app flow and report; the cadmpeg route no longer takes this format.
+  - [x] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
+    the app flow and report; the cadmpeg route no longer takes this format (2026-11-11;
+    ADR-0144's S3 amendment, ADR-0115's amendment of 2026-11-11).
   - [x] S4 Sketches: geometry, constraints, placement (2026-11-11; ADR-0144's S4
     amendment).
   - [ ] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape.

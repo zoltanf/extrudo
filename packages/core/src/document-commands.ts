@@ -35,6 +35,8 @@ import {
   type ViewSection,
   ViewSectionSchema,
 } from './schema';
+import { mapSheetFieldTexts, renameSheetFieldReferences } from './sheet-fields';
+import type { Sheet } from './sheet-schema';
 import { dimensionUnit } from './sketch/dimensions';
 import type { SketchDimension } from './sketch/schema';
 import { referencedFeatures } from './timeline';
@@ -262,6 +264,14 @@ function rewriteReferences(draft: DocumentDraft, oldName: string, newName: strin
       section.center = [rename(cx), rename(cy), rename(cz)];
       section.half = [rename(hx), rename(hy), rename(hz)];
     }
+  }
+  // A sheet text's `{= …}` fields (ADR-0143's S5 amendment).
+  if (draft.sheets) {
+    draft.sheets = draft.sheets.map((sheet) =>
+      mapSheetFieldTexts(sheet as Sheet, (text) =>
+        renameSheetFieldReferences(text, oldName, newName),
+      ),
+    );
   }
 }
 

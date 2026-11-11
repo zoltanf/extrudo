@@ -1,12 +1,13 @@
 /**
  * What the kernel tells about a sheet's anchors (P6-24 S3, ADR-0143's S3
- * amendment): `KernelApi.resolveSheet` resolves each dimension's anchors
+ * and S4 amendments): `KernelApi.resolveSheet` resolves each item's anchors
+ * (`sheetItemAnchors`: dimensions, leader notes, centre marks and lines)
  * against the bodies at the marker and gives back, per anchor, its state and
  * the 3D geometry it stands for. `@extrudo/sheets` projects that through the
- * view's frame, measures and lays the dimension out, so the app and the CLI
+ * view's frame, measures and lays the item out, so the app and the CLI
  * give the same result. None of it is stored: it is derived.
  */
-import type { SheetItemId } from './ids';
+import type { BodyId, SheetItemId } from './ids';
 import type { GeomRef } from './refs';
 import type { Vec3 } from './sketch/planes';
 
@@ -36,7 +37,12 @@ export type SheetAnchorGeometry =
    * A cylinder's or cone's outline in the dimension's view: the side the
    * anchor names, and the other side when the face has it.
    */
-  | ({ type: 'silhouette'; opposite?: SheetSegment3 } & SheetSegment3);
+  | ({ type: 'silhouette'; opposite?: SheetSegment3 } & SheetSegment3)
+  /**
+   * A cylinder's or cone's axis, for a centre line on its face: the stretch
+   * of the axis the face covers, from its lowest to its highest point along it.
+   */
+  | ({ type: 'axis' } & SheetSegment3);
 
 export interface SheetAnchorReport {
   status: SheetAnchorStatus;
@@ -44,13 +50,20 @@ export interface SheetAnchorReport {
   geometry?: SheetAnchorGeometry;
   /** What the reference resolved to now, with its fingerprint now ("keep closest match"). */
   resolved?: GeomRef;
-  /** Why a resolved anchor has no geometry ("The edge has no centre."). */
+  /** The body that geometry is on (a balloon's number is that body's row). */
+  body?: BodyId;
+  /**
+   * Why a resolved anchor has no geometry ("The edge has no centre."), or why
+   * one is detached when its feature is deleted or suppressed ("The feature
+   * this was measured on is deleted.", "… drawn on …" for a note or a centre
+   * mark or line).
+   */
   message?: string;
 }
 
 /**
- * A sheet's anchors, by dimension ID, one report per anchor in the item's
- * order; a free anchor's is `{ status: 'ok' }`.
+ * A sheet's anchors, by item ID, one report per anchor in `sheetItemAnchors`'
+ * order; a free anchor's is `{ status: 'ok' }`. Items without anchors are absent.
  */
 export type SheetAnchors = Record<SheetItemId, SheetAnchorReport[]>;
 
@@ -79,7 +92,7 @@ export function sheetSilhouetteSide(
 /**
  * The anchors to draw now: `next` (a fresh `resolveSheet`), except that an
  * anchor detached now keeps the geometry it had in `previous`, still marked
- * detached (and what it resolved to then), so a lost dimension stays where
+ * detached (and what it resolved to then), so a lost item stays where
  * it was drawn (ADR-0143's S3 amendment). Reports pair up by their index
  * in the item's anchors. The app holds `previous` in memory; nothing of it is stored,
  * so after reopening a file a detached dimension has no geometry.
@@ -99,8 +112,30 @@ export function keepLastAnchors(
         status: 'detached',
         geometry: last.geometry,
         ...(last.resolved && { resolved: last.resolved }),
+        ...(last.body && { body: last.body }),
+        ...(report.message && { message: report.message }),
       };
     });
   }
   return out;
+}
+
+/** A body's measures for a parts list, the kernel's (as Print Info's): mm³ and world mm. */
+export interface SheetPartMeasure {
+  volume: number;
+  /** The tight box round the body, axis-aligned in world mm. */
+  box: { min: Vec3; max: Vec3 };
+}
+
+/**
+ * What the kernel tells about a sheet's parts lists (P6-24 S5, ADR-0143's
+ * S5 amendment, `KernelApi.sheetParts`): per parts list, the bodies of its
+ * view at the marker in order (the base view's `bodies` as listed, else every
+ * shown body in timeline order; a body the model doesn't have is left out),
+ * and each listed body's volume and box. Derived, never stored.
+ */
+export interface SheetParts {
+  lists: Record<SheetItemId, BodyId[]>;
+  /** A body whose measure failed is absent: its row has no size and no mass. */
+  bodies: Record<BodyId, SheetPartMeasure>;
 }

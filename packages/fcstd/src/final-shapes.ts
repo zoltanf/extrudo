@@ -11,6 +11,7 @@
  */
 import { FcstdFormatError } from './errors';
 import {
+  binaryFormProblem,
   brepHasSolid,
   type FcDocument,
   type FcObject,
@@ -42,6 +43,11 @@ export interface FinalShape {
    * replaces that placement. Empty for a shape at the document's top.
    */
   readonly chain: readonly FcPlacement[];
+}
+
+/** The problem line for a link array, of which only the link itself is placed (the importer lists these apart). */
+export function linkArrayProblem(name: string): string {
+  return `${name}: a link array; only the link itself is placed.`;
 }
 
 /** Objects whose links never consume what they name (containers, drawings, analyses, spreadsheets). */
@@ -206,10 +212,7 @@ export function finalShapes(doc: FcDocument): FinalShape[] {
         const bytes = doc.entries.get(entry);
         if (!bytes)
           doc.problems.push(`${o.name}.Shape: its stored shape ${entry} is missing from the file.`);
-        else if (entry.endsWith('.bin'))
-          doc.problems.push(
-            `${o.name}.Shape: its stored shape is in FreeCAD's binary form, which is not read.`,
-          );
+        else if (entry.endsWith('.bin')) doc.problems.push(binaryFormProblem(`${o.name}.Shape`));
         else if (bytes.length > 0) result = brepHasSolid(new TextDecoder('latin1').decode(bytes));
       } catch (error) {
         if (!(error instanceof FcstdFormatError)) throw error;
@@ -277,8 +280,7 @@ export function finalShapes(doc: FcDocument): FinalShape[] {
     const chain = containers(o);
     const seen = new Set<string>([o.name]);
     const count = o.properties.ElementCount?.value;
-    if (count?.kind === 'integer' && count.value > 0)
-      doc.problems.push(`${o.name}: a link array; only the link itself is placed.`);
+    if (count?.kind === 'integer' && count.value > 0) doc.problems.push(linkArrayProblem(o.name));
     let current = o;
     for (let hop = 0; hop < MAX_LINK_HOPS; hop++) {
       chain.push(linkPlacement(current));

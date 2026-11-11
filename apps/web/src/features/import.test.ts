@@ -308,6 +308,30 @@ describe('Import Model with an .f3d file (ADR-0083 §4)', () => {
   });
 });
 
+describe('Import Model with a FreeCAD file (ADR-0144 decision 9)', () => {
+  it('hands the file to openF3d, in the browser and the desktop app, and converts nothing', async () => {
+    for (const convertCad of [undefined, vi.fn()]) {
+      const file = new File([new Uint8Array([1, 2, 3])], 'Bracket.FCStd');
+      const openF3d = vi.fn();
+      const writeAttachment = vi.fn();
+      const picked = await pickImportFile({
+        files: {
+          pick: async (accept) => (accept.split(',').includes('.fcstd') ? file : undefined),
+        },
+        projects: { writeAttachment } as unknown as ProjectStore,
+        store: { getState: () => ({ doc: emptyDocument() }) } as never,
+        notify: vi.fn(),
+        openF3d,
+        ...(convertCad && { convertCad }),
+      });
+      expect(picked).toBeUndefined();
+      expect(openF3d).toHaveBeenCalledWith(file);
+      expect(writeAttachment).not.toHaveBeenCalled();
+      if (convertCad) expect(convertCad).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('Import Model with another CAD file (P6-19, ADR-0115 §1)', () => {
   const STEP = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;\n');
   const deps = (file: File, over: Record<string, unknown> = {}) => {
@@ -342,6 +366,12 @@ describe('Import Model with another CAD file (P6-19, ADR-0115 §1)', () => {
     expect(IMPORT_REFUSED).toBe(importRefused(false));
     expect(importRefused(false)).toContain('The desktop app also imports .sldprt');
     expect(importRefused(true)).toContain('and other CAD files (.sldprt');
+    // FreeCAD files are read by Extrudo itself now, not converted (ADR-0144).
+    for (const convert of [false, true]) {
+      expect(importAccept(convert).split(',')).toContain('.fcstd');
+      expect(importRefused(convert)).toContain('FreeCAD files (.fcstd)');
+      expect(importRefused(convert).match(/\.fcstd/g)).toHaveLength(1);
+    }
   });
 
   it('converts a .sldprt to STEP and stores the STEP as the attachment', async () => {
