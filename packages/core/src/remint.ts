@@ -11,8 +11,9 @@
  * grammar `timeline.ts` reads dependencies with.
  */
 import { nextFeatureName } from './features';
-import type { FeatureId } from './ids';
+import type { BodyId, FeatureId } from './ids';
 import type { Annotation, ExtrudoDocument, Feature, FeatureInputs, GeomRef } from './schema';
+import type { Sheet } from './sheet-schema';
 
 /** The characters of one token in a stored reference's ID (`timeline.ts`'s separators' complement). */
 const TOKEN = /[A-Za-z0-9_.~-]+/g;
@@ -85,4 +86,23 @@ export function remintAnnotations(
     }
     return annotation;
   });
+}
+
+/**
+ * Sheets that came with reminted features (ADR-0143): a view's `bodies`
+ * (`<feature>:<n>`) name the new IDs, like `remintFeatures`' references.
+ * Nothing else in a sheet names a feature yet; anchors join with S3.
+ */
+export function remintSheets(
+  sheets: readonly Sheet[],
+  features: readonly Pick<Feature, 'id'>[],
+  ids: readonly FeatureId[],
+): Sheet[] {
+  const rename = renamer(features, ids);
+  return sheets.map((sheet) => ({
+    ...sheet,
+    views: sheet.views.map((view) =>
+      view.bodies ? { ...view, bodies: view.bodies.map((b) => rename(b) as BodyId) } : view,
+    ),
+  }));
 }

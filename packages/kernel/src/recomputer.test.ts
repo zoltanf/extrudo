@@ -20,6 +20,8 @@ import {
   meshToSolidInputs,
   originPlaneRef,
   renameFeature,
+  type SheetId,
+  type SheetViewId,
   type SketchData,
   sketchInputs,
 } from '@extrudo/core';
@@ -121,10 +123,12 @@ function setup(
           events.push(
             `command:${request.fileId}:${request.commandId}:${request.doc.features.map((f) => f.id).join(',')}:${request.selection.map((r) => r.id).join(',')}`,
           );
-          // What the command's document carries of the annotations (ADR-0126): nothing.
+          // What the command's document carries of the annotations (ADR-0126) and the
+          // sheets (ADR-0143): nothing.
           if ('annotations' in request.doc || 'annotationCounter' in request.doc) {
             events.push('command-doc:annotations');
           }
+          if ('sheets' in request.doc) events.push('command-doc:sheets');
           return service.runPluginCommand(request);
         },
         reference: async (...args: Parameters<KernelService['reference']>) => {
@@ -563,6 +567,28 @@ describe('Recomputer', () => {
         },
       ],
       annotationCounter: 1,
+      // A sheet whose view shows b: the command's document leaves the sheets out too.
+      sheets: [
+        {
+          id: 'sh1' as SheetId,
+          name: 'Sheet 1',
+          size: 'A4',
+          orientation: 'landscape',
+          scale: [1, 1],
+          projection: 'first',
+          decimals: 1,
+          views: [
+            {
+              id: 'v1' as SheetViewId,
+              name: 'Front',
+              at: [100, 100],
+              from: { kind: 'base', direction: [0, 1, 0], up: [0, 0, 1] },
+              bodies: ['b:0' as BodyId],
+            },
+          ],
+          items: [],
+        },
+      ],
     };
     const { model, events, spawned } = setup(doc);
     await until(() => ready(model));
@@ -587,6 +613,7 @@ describe('Recomputer', () => {
     ]);
     expect(asked).toBe(1);
     expect(events).not.toContain('command-doc:annotations');
+    expect(events).not.toContain('command-doc:sheets');
     // A new kernel has none of it: the next command sends the file again.
     await recomputer?.client.restart();
     await until(() => spawned() >= 2);
