@@ -1735,8 +1735,9 @@ end to end, faster than in established desktop CAD.
   numbers on the private library (`FCSTD_SAMPLES`) in the pull request, and an amendment to
   ADR-0144 with its rules in the digest. *Deps:* the table in ADR-0144; S1 and S2 can run
   side by side.
-  - [ ] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
-    shape whose root carries a location.
+  - [x] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
+    shape whose root carries a location. *Done 2026-11-11 (ADR-0144's S1 amendment,
+    ADR-0034's fourth amendment).*
   - [ ] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
     `FORMAT.md`.
   - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
