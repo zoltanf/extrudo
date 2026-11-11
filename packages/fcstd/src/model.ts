@@ -723,6 +723,15 @@ const BREP_TEXT = /^(?:DBRep_DrawableShape\s*)?\s*CASCADE Topology V\d/;
  * text is only checked for its format line, never parsed: only the import's
  * own kernel reads it (ADR-0144 decision 5).
  */
+/**
+ * The problem line for a stored shape in FreeCAD's binary form (`what` is
+ * `<object>.<property>`). Exported so the importer recognises it by the same
+ * words, never by matching a copy of them.
+ */
+export function binaryFormProblem(what: string): string {
+  return `${what}: its stored shape is in FreeCAD's binary form, which is not read.`;
+}
+
 export function storedShapeText(
   doc: FcDocument,
   object: FcObject | string,
@@ -752,7 +761,7 @@ export function storedShapeText(
   }
   const head = new TextDecoder('latin1').decode(bytes.subarray(0, 128));
   if (entry.endsWith('.bin') || head.includes('Open CASCADE Topology')) {
-    doc.problems.push(`${what}: its stored shape is in FreeCAD's binary form, which is not read.`);
+    doc.problems.push(binaryFormProblem(what));
     return undefined;
   }
   if (!BREP_TEXT.test(head)) {

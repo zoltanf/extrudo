@@ -11,7 +11,6 @@ export const CAD_CONVERT_EXTENSIONS = [
   '.ipt',
   '.iam',
   '.catpart',
-  '.fcstd',
   '.sat',
   '.smt',
   '.smb',

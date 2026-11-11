@@ -1144,6 +1144,20 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   empty design's notice is "Imported from the .f3d file: 0 of 0 timeline features."; a bad
   file's error is the home screen's `alert` toast "Import failed: …".
 
+### `e2e/import-fcstd.spec.ts`
+
+- **The FreeCAD import** (P6-25 S3, ADR-0144): the file is `shapesFile()` from
+  `packages/fcstd/src/shape-fixtures.ts` (authored XML and the kernel's own test shapes; never
+  a sample), fed to the home screen's **Import…** with `chooser.setFiles` as `Shapes.FCStd`.
+  The notices are "Imported from the FreeCAD file: 9 of 11 shapes, as bodies without
+  history." and the "Not imported: Scan (…); Empty body (no shape)." line; body rows are
+  `[data-body]` filtered by the name button (`exact: true`), `data-body-display` "shown" or
+  "hidden" ("Hidden box"); the compound gives "Pair" and "Pair 2". `page.on('worker')` sees
+  `fcstdWorker` (its nested kernel is a `kernelWorker` like the project's, so its URL tells
+  nothing). A file that isn't a zip ends in the
+  `alert` toast "Import failed: This file can't be read as a FreeCAD file: …". The first test
+  allows 60 s for the kernel worker to start under load.
+
 ### `e2e/import-mesh.spec.ts`
 
 - **Import mesh e2e** (`e2e/import-mesh.spec.ts`, P4-06 slices 3 and 4): the

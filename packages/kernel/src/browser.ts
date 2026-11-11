@@ -57,6 +57,7 @@ function connect(worker: Worker): KernelConnection {
     exportMeshes: (bodies, tessellation, onProgress) =>
       api.exportMeshes(bodies, tessellation, onProgress && Comlink.proxy(onProgress)),
     exportStep: (bodies) => api.exportStep(bodies),
+    storedShapeToStep: (text, chain, options) => api.storedShapeToStep(text, chain, options),
     exportScad: (options) => api.exportScad(options),
     inspect: (targets) => api.inspect(targets),
     interference: (bodies) => api.interference(bodies),

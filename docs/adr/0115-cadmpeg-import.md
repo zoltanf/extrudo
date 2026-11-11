@@ -171,3 +171,12 @@ Rejected: refusing a partial conversion (the solids that were read are often
 most of the part); a warning on the import feature for any STEP with surfaces
 (a STEP exported by a CAD program may carry construction surfaces on purpose,
 and only a conversion knows the surfaces stand for pieces of the part).
+
+## Amendment, 2026-11-11: FreeCAD files leave the route
+
+`.fcstd` is no longer in `CAD_CONVERT_EXTENSIONS`: Extrudo reads FreeCAD
+files itself (ADR-0144, P6-25 S3), in the browser and the desktop app, with
+the file's names, colours and visibility, and only the final shapes (cadmpeg
+brought every intermediate shape in as a hidden body). The format lists in
+`importRefused`, the guide and `docs/desktop.md` changed with it. The other
+eleven formats keep the route as it is.

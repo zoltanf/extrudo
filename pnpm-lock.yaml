@@ -269,6 +269,9 @@ importers:
       '@extrudo/f3d':
         specifier: workspace:*
         version: link:../../packages/f3d
+      '@extrudo/fcstd':
+        specifier: workspace:*
+        version: link:../../packages/fcstd
       '@extrudo/fonts':
         specifier: workspace:*
         version: link:../../packages/fonts
@@ -453,9 +456,22 @@ importers:
 
   packages/fcstd:
     dependencies:
+      '@extrudo/api':
+        specifier: workspace:*
+        version: link:../api
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/storage':
+        specifier: workspace:*
+        version: link:../storage
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/fonts: {}
 

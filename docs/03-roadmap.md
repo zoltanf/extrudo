@@ -1747,8 +1747,9 @@ end to end, faster than in established desktop CAD.
     ADR-0034's fourth amendment).*
   - [x] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
     `FORMAT.md` (2026-11-11; ADR-0144's S2 amendment).
-  - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
-    the app flow and report; the cadmpeg route no longer takes this format.
+  - [x] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
+    the app flow and report; the cadmpeg route no longer takes this format (2026-11-11;
+    ADR-0144's S3 amendment, ADR-0115's amendment of 2026-11-11).
   - [ ] S4 Sketches: geometry, constraints, placement.
   - [ ] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape.
   - [ ] S6 Fillet and Chamfer, their edges found by geometry.
