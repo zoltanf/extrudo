@@ -877,6 +877,43 @@ export const TOOLS = {
     category: 'export',
     hint: 'Render a presentable picture of the design.',
   },
+  // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch. The
+  // tools of later slices (views, dimensions, notes, tables) are not listed until they exist.
+  sheets: {
+    id: 'sheets',
+    label: 'Drawing',
+    icon: 'sheets',
+    category: 'export',
+    hint: 'Sheets of the design to print or send: open the drawing, or start one.',
+  },
+  newSheet: {
+    id: 'newSheet',
+    label: 'New Sheet',
+    icon: 'new-sheet',
+    category: 'file',
+    hint: 'Add an empty sheet after this one.',
+  },
+  sheetSetup: {
+    id: 'sheetSetup',
+    label: 'Sheet Setup',
+    icon: 'sheet-setup',
+    category: 'file',
+    hint: 'The sheet’s name, paper, border, title block, scale and projection.',
+  },
+  exportSheets: {
+    id: 'exportSheets',
+    label: 'Export PDF',
+    icon: 'export-pdf',
+    category: 'export',
+    hint: 'Download the drawing’s sheets as one PDF, a page per sheet.',
+  },
+  finishDrawing: {
+    id: 'finishDrawing',
+    label: 'Finish Drawing',
+    icon: 'finish-sketch',
+    category: 'file',
+    hint: 'Back to the model. Every sheet edit is already its own undo step.',
+  },
   // The Home tab's file actions (ADR-0079): commands, run through the page's `FileActions`
   // (`FILE_COMMANDS`), not tools; listed here for their tiles, icons and hints.
   newDesign: {
@@ -980,7 +1017,7 @@ export interface ToolGroup {
   labels?: Partial<Record<ToolId, string>>;
 }
 
-export type TabId = 'home' | 'solid' | 'modify' | 'construct' | 'sketch' | 'print';
+export type TabId = 'home' | 'solid' | 'modify' | 'construct' | 'sketch' | 'sheet' | 'print';
 
 export interface Tab {
   id: TabId;
@@ -1152,14 +1189,25 @@ export const TABS: Tab[] = [
         label: 'Prepare',
         tools: ['placeOnBed', 'measure', 'printInfo', 'tolerance', 'overhang', 'wallThickness'],
       },
-      { label: 'Output', tools: ['export', 'slicer', 'render'] },
+      { label: 'Output', tools: ['export', 'slicer', 'render', 'sheets'] },
+    ],
+  },
+  // The drawing's own tab (P6-24, ADR-0143), shown in place of every tab but Home while a
+  // sheet is open; Finish Drawing sits after its groups. Views, Dimensions, Notes and Tables
+  // join it with their slices.
+  {
+    id: 'sheet',
+    label: 'Drawing',
+    groups: [
+      { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
+      { label: 'Output', tools: ['exportSheets'] },
     ],
   },
 ];
 
 /**
  * The tabs shown in a mode, in order (its `MODES` row): Home, Solid, Modify, Construct and
- * Make in the model; Home and Sketch while a sketch is open.
+ * Make in the model; Home and Sketch while a sketch is open; Home and Drawing in the drawing.
  */
 export function visibleTabs(mode: EditMode): Tab[] {
   const shown = MODES[mode].tabs;

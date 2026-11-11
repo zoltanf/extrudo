@@ -1,0 +1,218 @@
+/**
+ * The drawing in the browser (P6-24, plan §3.1, §3.2).
+ *
+ * - **Drawings** (the model's tree, below Annotations): always shown, "No sheets yet"
+ *   when empty, like Sketches; a row per sheet, double-click or Enter opens it, F2
+ *   renames, its menu has Open, Rename, Duplicate, Export and Delete.
+ * - **Sheets** (in the drawing, before Bodies): a folder per sheet, the open one marked
+ *   "editing", with its views and its title block; a click on a sheet opens it.
+ *
+ * Test hooks: the folders "Drawings" and "Sheets", each sheet's row `data-sheet-row` (the
+ * sheet ID), a view's `data-sheet-view-row`, the title block's `data-sheet-title-row`.
+ */
+import type { Sheet, SheetId } from '@extrudo/core';
+import { Copy, FileDown, FolderOpen, TextCursorInput, Trash2 } from 'lucide-react';
+import { type KeyboardEvent, useState } from 'react';
+import { ContextMenu, MenuItem, MenuSeparator, ToolIcon } from '../design-system';
+import { Folder, Leaf } from '../shell/BrowserPanel';
+import { RenameField } from '../shell/FeatureMenu';
+import { sizeLabel } from './defaults';
+
+export interface SheetRowActions {
+  open(id: SheetId): void;
+  rename(id: SheetId, name: string): string | undefined;
+  duplicate(id: SheetId): void;
+  exportOne(id: SheetId): void;
+  remove(id: SheetId): void;
+  notify(tone: 'info' | 'error', text: string): void;
+}
+
+const sheetIcon = <ToolIcon name="sheets" category="export" size={16} />;
+
+/** The model's Drawings folder. */
+export function SheetsFolder({
+  sheets,
+  actions,
+}: {
+  sheets: readonly Sheet[];
+  actions: SheetRowActions;
+}) {
+  return (
+    <Folder label="Drawings" icon={sheetIcon} count={sheets.length}>
+      {sheets.length === 0 ? (
+        <Leaf muted>No sheets yet</Leaf>
+      ) : (
+        sheets.map((sheet, index) => (
+          <SheetLeaf key={sheet.id} sheet={sheet} index={index} actions={actions} />
+        ))
+      )}
+    </Folder>
+  );
+}
+
+function SheetLeaf({
+  sheet,
+  index,
+  actions,
+}: {
+  sheet: Sheet;
+  index: number;
+  actions: SheetRowActions;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2') setRenaming(true);
+    else if (event.key === 'Enter') actions.open(sheet.id);
+    else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove(sheet.id);
+    else return;
+    // Handled here: not a shortcut for the view as well.
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  return (
+    <ContextMenu
+      label={`${sheet.name} menu`}
+      disabled={renaming}
+      trigger={
+        <Leaf
+          data-sheet-row={sheet.id}
+          onDoubleClick={renaming ? undefined : () => actions.open(sheet.id)}
+        >
+          {renaming ? (
+            <RenameField
+              name={sheet.name}
+              label={`Rename ${sheet.name}`}
+              className="h-6 min-w-0 flex-1 px-1"
+              onCommit={(name) => {
+                const problem = actions.rename(sheet.id, name);
+                if (problem) actions.notify('error', problem);
+                return problem === undefined;
+              }}
+              onDone={() => setRenaming(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              onKeyDown={onKeyDown}
+              className="min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {index + 1} · {sheet.name}
+            </button>
+          )}
+          {!renaming && (
+            <span className="ml-auto pr-1 font-mono text-xs whitespace-nowrap text-muted">
+              {sizeLabel(sheet.size)}
+            </span>
+          )}
+        </Leaf>
+      }
+    >
+      <SheetMenuItems sheet={sheet} actions={actions} onRename={() => setRenaming(true)} open />
+    </ContextMenu>
+  );
+}
+
+function SheetMenuItems({
+  sheet,
+  actions,
+  onRename,
+  open,
+}: {
+  sheet: Sheet;
+  actions: SheetRowActions;
+  onRename(): void;
+  open?: boolean;
+}) {
+  return (
+    <>
+      {open && (
+        <MenuItem icon={<FolderOpen size={14} />} onSelect={() => actions.open(sheet.id)}>
+          Open
+        </MenuItem>
+      )}
+      <MenuItem icon={<TextCursorInput size={14} />} shortcut="F2" onSelect={onRename}>
+        Rename
+      </MenuItem>
+      <MenuItem icon={<Copy size={14} />} onSelect={() => actions.duplicate(sheet.id)}>
+        Duplicate
+      </MenuItem>
+      <MenuItem icon={<FileDown size={14} />} onSelect={() => actions.exportOne(sheet.id)}>
+        Export
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(sheet.id)}>
+        Delete
+      </MenuItem>
+    </>
+  );
+}
+
+/** The drawing's Sheets tree: a folder per sheet with its views and title block. */
+export function SheetsTree({
+  sheets,
+  active,
+  actions,
+}: {
+  sheets: readonly Sheet[];
+  active: SheetId | undefined;
+  actions: SheetRowActions;
+}) {
+  return (
+    <Folder label="Sheets" icon={sheetIcon} count={sheets.length}>
+      {sheets.map((sheet) => (
+        <Folder
+          key={sheet.id}
+          nested
+          label={sheet.name}
+          // The open sheet's dot is the accent's (its tab is, too).
+          icon={
+            <span
+              className={`size-2 rounded-full ${sheet.id === active ? 'bg-accent' : 'bg-muted/60'}`}
+            />
+          }
+          defaultOpen={sheet.id === active}
+          attrs={{
+            'data-sheet-row': sheet.id,
+            'data-sheet-active': sheet.id === active ? '' : undefined,
+          }}
+          onSelect={() => actions.open(sheet.id)}
+          rename={{
+            onCommit: (name) => {
+              const problem = actions.rename(sheet.id, name);
+              if (problem) actions.notify('error', problem);
+              return problem === undefined;
+            },
+          }}
+          menu={
+            <>
+              <MenuItem icon={<Copy size={14} />} onSelect={() => actions.duplicate(sheet.id)}>
+                Duplicate
+              </MenuItem>
+              <MenuItem icon={<FileDown size={14} />} onSelect={() => actions.exportOne(sheet.id)}>
+                Export
+              </MenuItem>
+              <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(sheet.id)}>
+                Delete
+              </MenuItem>
+            </>
+          }
+        >
+          {sheet.views.length === 0 ? (
+            <Leaf muted>No views yet</Leaf>
+          ) : (
+            sheet.views.map((view) => (
+              <Leaf key={view.id} data-sheet-view-row={view.id}>
+                <span className="min-w-0 truncate">{view.name}</span>
+              </Leaf>
+            ))
+          )}
+          {sheet.titleBlock && (
+            <Leaf data-sheet-title-row={sheet.id}>
+              <span className="min-w-0 truncate">Title block</span>
+            </Leaf>
+          )}
+        </Folder>
+      ))}
+    </Folder>
+  );
+}
