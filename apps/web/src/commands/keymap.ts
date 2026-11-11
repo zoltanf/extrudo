@@ -84,6 +84,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // offered in the drawing.
   sheetText: ['T'],
   sheetLeader: ['N'],
+  // Balloon (S5): B is no other command's key.
+  sheetBalloon: ['B'],
   exportSheets: ['Mod+E'],
   nextSheet: ['Mod+PageDown'],
   previousSheet: ['Mod+PageUp'],

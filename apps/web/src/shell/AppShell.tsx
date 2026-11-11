@@ -138,6 +138,7 @@ import {
 } from '../plugins/runCommand';
 import { updatePluginInDesign } from '../plugins/update';
 import { useDesignPluginFiles } from '../plugins/useDesignPluginFiles';
+import { materialStore } from '../print/materialStore';
 import { OverhangPanel } from '../print/OverhangPanel';
 import { PrintInfoPanel } from '../print/PrintInfoPanel';
 import { ThicknessOverlay } from '../print/ThicknessOverlay';
@@ -149,7 +150,7 @@ import { WallThicknessPanel } from '../print/WallThicknessPanel';
 import { type Autosaver, saveEverything } from '../project/autosave';
 import { setRestoreGuard } from '../project/restoreGuard';
 import { VersionsDialog } from '../project/VersionsDialog';
-import type { VersionContext } from '../project/versions';
+import { type VersionContext, versionLabel } from '../project/versions';
 import { createAppRenderer } from '../render/app/appRenderer';
 import { RenderDialog, type RenderRequest } from '../render/RenderDialog';
 import { navigate, projectHref } from '../routes';
@@ -188,6 +189,7 @@ import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/Sheets
 import { SheetTabs } from '../sheets/SheetTabs';
 import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
 import type { SheetAnchorsKernel } from '../sheets/sheetAnchors';
+import { type SheetFieldExtras, type SheetPartsKernel, sheetDensity } from '../sheets/sheetParts';
 import type { DimensionKernel } from '../sheets/useDimensionTool';
 import type { SheetViewsKernel } from '../sheets/viewRunner';
 import type { FontPicker } from '../sketch/addFont';
@@ -401,6 +403,7 @@ export interface AppShellProps {
         | 'cancelSheetViews'
         | 'bodyVersions'
         | 'resolveSheet'
+        | 'sheetParts'
       >
     > &
     Partial<{
@@ -620,6 +623,33 @@ function Shell({
   const [sheetExport, setSheetExport] = useState<SheetExportRequest>();
   const sheetControl = useRef<SheetCanvasControl | undefined>(undefined);
   const sheetNameField = useRef<HTMLInputElement>(null);
+  // What a sheet's `{version}` writes (S5): the newest saved version's name ("V3"), read on
+  // entering the drawing and whenever the Versions dialog closes; the export reads it again.
+  const newestVersion = useCallback(async (): Promise<string | undefined> => {
+    const [newest] = await platform.projects.versions(store.getState().doc.id);
+    return newest ? versionLabel(newest) : undefined;
+  }, [platform.projects, store]);
+  const [sheetVersion, setSheetVersion] = useState<string>();
+  useEffect(() => {
+    if (!sheetMode || versionsOpen) return;
+    let live = true;
+    newestVersion().then(
+      (v) => live && setSheetVersion(v),
+      () => live && setSheetVersion(undefined),
+    );
+    return () => {
+      live = false;
+    };
+  }, [sheetMode, versionsOpen, newestVersion]);
+  /** The export's fields and Mass (S5): the newest version and the filament, as of now. */
+  const sheetFields = useCallback(async (): Promise<SheetFieldExtras> => {
+    const version = await newestVersion().catch(() => undefined);
+    const density = sheetDensity(store.getState().doc, materialStore(platform.preferences).get());
+    return {
+      ...(version !== undefined && { version }),
+      ...(density !== undefined && { density }),
+    };
+  }, [newestVersion, store, platform.preferences]);
   const [sheetMenu, setSheetMenu] = useState<{
     at: { x: number; y: number };
     slots: readonly (MarkingSlot | undefined)[];
@@ -3366,6 +3396,8 @@ function Shell({
                   kernel: kernel as SheetViewsKernel,
                 })}
               {...(kernel?.resolveSheet && { anchorsKernel: kernel as unknown as DimensionKernel })}
+              {...(kernel?.sheetParts && { partsKernel: kernel as SheetPartsKernel })}
+              {...(sheetVersion !== undefined && { version: sheetVersion })}
               onMenu={(at) => {
                 const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
                 if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
@@ -3559,8 +3591,10 @@ function Shell({
               kernel: kernel as SheetViewsKernel,
               bodies: () => Object.keys(model.getState().bodies) as BodyId[],
               ...(kernel.resolveSheet && { anchors: kernel as SheetAnchorsKernel }),
+              ...(kernel.sheetParts && { parts: kernel as SheetPartsKernel }),
             },
           })}
+        fields={sheetFields}
         preferences={platform.preferences}
         notify={notify}
         onClose={() => setSheetExport(undefined)}

@@ -25,6 +25,7 @@ import {
   type SheetItem,
   type SheetItemChanges,
   type SheetItemId,
+  type SheetParts,
   type SheetStickyColor,
   type SheetViewId,
   sheetBaseFrame,
@@ -39,15 +40,23 @@ import type { DisplayItem, DisplayList, DisplayText } from '@extrudo/io';
 import { type BodyMesh, shownBodies } from '@extrudo/kernel';
 import {
   layoutSheet,
+  layoutSheetBalloon,
   layoutSheetLeader,
+  layoutSheetPartsList,
+  layoutSheetTable,
   measureSheetDimension,
   SHEET_FONTS,
   SHEET_NOTE,
   SHEET_STICKY,
+  SHEET_TABLE,
   SHEET_TEXT_SIZE,
+  type SheetPartsBodies,
   type SheetViewLines,
+  sheetBalloonStatus,
   sheetItemStatus,
   sheetMargin,
+  sheetPartBodies,
+  sheetTableGrid,
   sheetViewScale,
 } from '@extrudo/sheets';
 import { Hand, Magnet, Maximize, MousePointer2, StickyNote, Trash2, ZoomIn } from 'lucide-react';
@@ -63,6 +72,7 @@ import {
 import { useStore } from 'zustand';
 import { Button, IconButton, MenuItem, MenuSeparator, PointMenu, ToolIcon } from '../design-system';
 import type { Preferences } from '../platform/preferences';
+import { useMaterialChoice } from '../print/materialStore';
 import { ensureUiFonts, fontsStore } from '../sketch/fonts';
 import { basis } from '../viewport/camera';
 import { ProgressCube } from '../viewport/ModelProgress';
@@ -77,6 +87,18 @@ import {
   toSheet,
 } from './dimensionTool';
 import { faceHit } from './faceHit';
+import {
+  balloonAccepts,
+  balloonItem,
+  balloonListOf,
+  balloonLists,
+  balloonStep,
+  newTable,
+  partsListItem,
+  partsListStep,
+  tableCellAt,
+  withCell,
+} from './listTools';
 import { changeSheet, finishDrawing, renameSheet, type SheetModeStores } from './mode';
 import { NOTE_MOST, type NoteTool, noteAccepts, noteItem, noteStep, noteWhole } from './noteTools';
 import { RepickHandles } from './RepickHandles';
@@ -86,8 +108,16 @@ import {
   DimensionOverlay,
   DimensionPanel,
   dimensionChanges,
+  PAPER_ACCENT,
   PreviewItems,
 } from './SheetDimensionCard';
+import {
+  BalloonCard,
+  type ListToolId,
+  ListToolPanel,
+  PartsListCard,
+  TableCard,
+} from './SheetListCard';
 import {
   CentreCard,
   LeaderCard,
@@ -106,6 +136,7 @@ import {
 } from './SheetViewCard';
 import {
   deleteTargets,
+  hitTarget,
   moveTargets,
   type SheetTarget,
   selectedTargets,
@@ -121,9 +152,15 @@ import {
   sheetItemsStore,
   useSheetAnchors,
 } from './sheetAnchors';
+import {
+  type SheetPartsKernel,
+  sheetDensity,
+  useSheetFieldContext,
+  useSheetParts,
+} from './sheetParts';
 import { dimensionRows, guidePath, rowOf, type SnapRow, snapPoint } from './snap';
 import { type DimensionKernel, useDimensionTool } from './useDimensionTool';
-import { type PickToolSpec, type PickToolState, usePickTool } from './usePickTool';
+import { CANDIDATE, type PickToolSpec, type PickToolState, usePickTool } from './usePickTool';
 import { useProjectedView } from './useProjectedView';
 import { baseViewOf, sheetViewNotice, sheetViewWant, sheetViewWants } from './viewLines';
 import {
@@ -165,6 +202,10 @@ export interface SheetWorkspaceProps {
    * detached and nothing can be picked.
    */
   anchorsKernel?: DimensionKernel;
+  /** The parts lists' call (S5); without it a parts list is its header and balloons show "?". */
+  partsKernel?: SheetPartsKernel;
+  /** The newest saved version's name, which `{version}` writes; absent: left as typed. */
+  version?: string;
 }
 
 const noSubscribe = () => () => {};
@@ -214,7 +255,7 @@ function firstRun(items: readonly DisplayItem[] | undefined, key: string): Displ
 }
 
 /** The undo step of a typed new item. */
-const TYPED_LABEL: Readonly<Record<SheetTextEdit['kind'], string>> = {
+const TYPED_LABEL: Readonly<Record<Exclude<SheetTextEdit['kind'], 'cell'>, string>> = {
   text: 'Text',
   leader: 'Leader note',
   sticky: 'Sticky note',
@@ -228,7 +269,11 @@ const MOVED: Partial<Record<SheetItem['kind'], string>> = {
   leader: 'This note moved to matching geometry.',
   centreMark: 'This centre mark moved to a matching circle.',
   centreLine: 'This centre line moved to matching edges.',
+  balloon: 'This balloon moved to matching geometry.',
 };
+
+/** The list tools by their session tool ID. */
+const LIST_TOOLS: ReadonlySet<string> = new Set(['sheetPartsList', 'sheetBalloon', 'sheetTable']);
 
 export default function SheetWorkspace({
   stores,
@@ -245,6 +290,8 @@ export default function SheetWorkspace({
   model,
   kernel,
   anchorsKernel,
+  partsKernel,
+  version,
 }: SheetWorkspaceProps) {
   const doc = useStore(store, (s) => s.doc);
   const sheets = doc.sheets ?? [];
@@ -275,6 +322,19 @@ export default function SheetWorkspace({
   const recomputed = useStore(model, (st) => st.features);
   const resolved = useSheetAnchors(anchorsKernel, sheet, recomputed, computing);
   const { anchors, asked } = resolved;
+  // The parts lists' bodies (S5), asked for the way anchors are, joined with their names.
+  const partsResult = useSheetParts(partsKernel, sheet, recomputed, computing);
+  const partsBodies = useMemo<SheetPartsBodies | undefined>(
+    () => (partsResult.parts ? sheetPartBodies(doc, partsResult.parts) : undefined),
+    [doc, partsResult.parts],
+  );
+  // What Mass is worked out with: the filament Print Info uses (an app preference).
+  const material = useMaterialChoice(preferences);
+  const density = useMemo(() => sheetDensity(doc, material), [doc, material]);
+  const fieldContext = useSheetFieldContext(doc, {
+    ...(density !== undefined && { density }),
+    ...(version !== undefined && { version }),
+  });
   // Leaving the drawing: the run stops before the next view (its results stay cached).
   useEffect(() => () => runner?.want([]), [runner]);
   const views = useSyncExternalStore<SheetViewsState>(
@@ -296,9 +356,13 @@ export default function SheetWorkspace({
   // (exact, current lines only).
   const dimensionTool = activeTool === 'sheetDimension';
   const noteTool = activeTool ? NOTE_TOOLS[activeTool] : undefined;
+  const listTool =
+    activeTool && LIST_TOOLS.has(activeTool) ? (activeTool as ListToolId) : undefined;
+  const balloonTool = listTool === 'sheetBalloon';
   const repicking =
     !dimensionTool &&
     !noteTool &&
+    !listTool &&
     selectedItem !== undefined &&
     sheetItemView(selectedItem) !== undefined &&
     (itemRow?.state === 'detached' || itemRow?.state === 'moved');
@@ -310,7 +374,7 @@ export default function SheetWorkspace({
     },
     [sheet],
   );
-  const picking = dimensionTool || noteTool !== undefined || repicking;
+  const picking = dimensionTool || noteTool !== undefined || balloonTool || repicking;
   const pickables = useMemo(
     () =>
       sheet && picking
@@ -357,6 +421,8 @@ export default function SheetWorkspace({
     make?: (text: string) => SheetItem;
     /** A new leader note's reports, merged when it is made. */
     reports?: SheetAnchors;
+    /** A table's cell being typed (S5): blank is kept, it writes the table's rows. */
+    cell?: { row: number; column: number };
     /** What is drawn while typing (a new leader's arrow), sheet mm. */
     shows?: DisplayItem[];
   }>();
@@ -393,15 +459,51 @@ export default function SheetWorkspace({
     hitAt: hitEdges,
     spec: NOTE_SPECS.centreLine,
   });
+  // Balloon (S5): a leader note's pick on a view with a parts list; the spec reads the sheet
+  // and the lists' bodies through a ref, so it stays the same object and keeps its picks.
+  const now = useRef({ sheet, parts: partsResult.parts, partsBodies });
+  now.current = { sheet, parts: partsResult.parts, partsBodies };
+  const balloonSpec = useMemo<PickToolSpec>(
+    () => ({
+      accepts: (hit, picks) => {
+        const s = now.current.sheet;
+        return s !== undefined && balloonAccepts(s, now.current.parts, hit, picks);
+      },
+      most: 1,
+      placed: 'click',
+      label: 'Balloon',
+      item: (id, picks, at) => {
+        const s = now.current.sheet;
+        const view = picks[0]?.view;
+        const list = s && view ? balloonListOf(s, view)?.id : undefined;
+        return balloonItem(id, picks, at, list);
+      },
+      preview: (_probe, item, anchors) => {
+        const s = now.current.sheet;
+        if (!s || item.kind !== 'balloon') return { items: [] };
+        const all = { ...s, items: [...s.items, item] };
+        return { items: layoutSheetBalloon(all, item, anchors, now.current.partsBodies) };
+      },
+    }),
+    [],
+  );
+  const balloonPicker = usePickTool({
+    ...toolArgs,
+    active: balloonTool,
+    hitAt: hitWithFaces,
+    spec: balloonSpec,
+  });
   const picker: PickToolState | undefined = dimensionTool
     ? dimensioning
-    : noteTool === 'leader'
-      ? leaderTool
-      : noteTool === 'centreMark'
-        ? centreMarkTool
-        : noteTool === 'centreLine'
-          ? centreLineTool
-          : undefined;
+    : balloonTool
+      ? balloonPicker
+      : noteTool === 'leader'
+        ? leaderTool
+        : noteTool === 'centreMark'
+          ? centreMarkTool
+          : noteTool === 'centreLine'
+            ? centreLineTool
+            : undefined;
   // The Text and Sticky Note tools' choices for the next one, kept for the session.
   const [textSize, setTextSize] = useState<number>();
   const [stickyColor, setStickyColor] = useState<SheetStickyColor>('yellow');
@@ -410,6 +512,53 @@ export default function SheetWorkspace({
   // Snapping (the floating bar's Snap, on by default) and a placing tool's guides.
   const [snapOn, setSnapOn] = useState(true);
   const [placeGuides, setPlaceGuides] = useState('');
+  // Parts List and Table (S5): the view chosen for a new list (with its bodies, once the
+  // kernel says), the view under the pointer before that, and where the pointer is.
+  const [listView, setListView] = useState<{ view: SheetViewId; parts?: SheetParts }>();
+  const [listHover, setListHover] = useState<SheetViewId>();
+  const [listPointer, setListPointer] = useState<Vec2>();
+  const listAsking = useRef(0);
+  const chooseListView = useCallback(
+    (view: SheetViewId) => {
+      setListView({ view });
+      const s = now.current.sheet;
+      if (!partsKernel || !s) return;
+      const n = ++listAsking.current;
+      const probe: Sheet = { ...s, items: [partsListItem(CANDIDATE, view, [0, 0])] };
+      void partsKernel.sheetParts(probe, { quiet: true }).then((parts) => {
+        if (n !== listAsking.current || !parts) return;
+        setListView((was) => (was?.view === view ? { view, parts } : was));
+      });
+    },
+    [partsKernel],
+  );
+  // The tool started or ended, or another sheet: start again, from the selected view if any.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: those are the moments.
+  useEffect(() => {
+    listAsking.current++;
+    setListView(undefined);
+    setListHover(undefined);
+    setListPointer(undefined);
+    const only = selected.length === 1 ? selected[0] : undefined;
+    const view = only?.startsWith('view:') ? (only.slice(5) as SheetViewId) : undefined;
+    if (listTool === 'sheetPartsList' && view && sheet?.views.some((v) => v.id === view)) {
+      chooseListView(view);
+    }
+  }, [listTool, sheet?.id]);
+  // The first Esc drops the chosen view (the shell's Esc, which ends the tool, is not reached).
+  useEffect(() => {
+    if (listTool !== 'sheetPartsList' || !listView) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      listAsking.current++;
+      setListView(undefined);
+      setListPointer(undefined);
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
+  }, [listTool, listView]);
   const pickedPoints = useMemo(() => {
     const out: [number, number][] = [];
     for (const pick of picker?.picks ?? []) {
@@ -530,6 +679,8 @@ export default function SheetWorkspace({
         views: views.lines,
         ...(anchors && { anchors }),
         units: doc.settings.units,
+        ...(partsBodies && { parts: partsBodies }),
+        ...fieldContext,
       });
     } catch {
       // The sheet fonts are still loading: the paper is drawn bare until they are in.
@@ -545,6 +696,8 @@ export default function SheetWorkspace({
     anchors,
     asked,
     showStickies,
+    partsBodies,
+    fieldContext,
   ]);
 
   // What a placed or dragged item snaps to: the targets' boxes and the dimensions' rows.
@@ -563,14 +716,17 @@ export default function SheetWorkspace({
     if (!sheet) return;
     const rows = new Map<SheetItemId, SheetItemRow>();
     const drawn = drawnItems(sheet, asked);
-    const options = { units: doc.settings.units };
+    const options = { units: doc.settings.units, ...(partsBodies && { parts: partsBodies }) };
     for (const item of drawn.items) {
       if (!isAnchored(item)) continue;
       const status = sheetItemStatus(sheet, item, anchors, options);
+      // What it reads: a dimension's value, a balloon's number.
       const text =
         item.kind === 'dimension'
           ? measureSheetDimension(sheet, item, anchors, options).text
-          : undefined;
+          : item.kind === 'balloon'
+            ? sheetBalloonStatus(sheet, item, anchors, partsBodies).number
+            : undefined;
       const moved = status.state === 'moved' && !status.message ? MOVED[item.kind] : undefined;
       // A lost note says the kernel's reason when it has one (a deleted, suppressed or failed
       // feature), as a dimension does (`measureSheetDimension`).
@@ -586,7 +742,7 @@ export default function SheetWorkspace({
       });
     }
     sheetItemsStore.setState({ sheet: sheet.id, rows });
-  }, [sheet, anchors, asked, doc.settings.units]);
+  }, [sheet, anchors, asked, doc.settings.units, partsBodies]);
   useEffect(() => () => sheetItemsStore.setState({ sheet: undefined, rows: new Map() }), []);
 
   // What the screen says under a view: being drawn, a body gone, a mesh body (plan §4.6).
@@ -690,20 +846,36 @@ export default function SheetWorkspace({
   // or writes the edited text (one step, none when unchanged). Blank text makes or changes
   // nothing.
   const commitText = (text: string) => {
-    const now = editing;
+    const typing = editing;
     setEditing(undefined);
-    if (!now || text.trim() === '') return;
-    if (now.make) {
-      const item = now.make(text);
+    if (typing?.cell && typing.edit.id) {
+      // A cell may be left empty (S5): it writes the table's rows, one step.
+      const table = sheet.items.find((i) => i.id === typing.edit.id);
+      if (table?.kind !== 'table') return;
+      const { row, column } = typing.cell;
+      if ((table.rows[row]?.[column] ?? '') === text) return;
       const error = runSheetCommand(stores, {
-        ...addSheetItem({ sheet: sheet.id, item }),
-        label: TYPED_LABEL[now.edit.kind],
+        ...updateSheetItem({
+          id: table.id,
+          changes: { rows: withCell(table, row, column, text) } as SheetItemChanges,
+        }),
+        label: 'Edit cell',
       });
       if (error) notify('error', error);
-      else if (now.reports) resolved.merge(now.reports);
       return;
     }
-    const was = sheet.items.find((i) => i.id === now.edit.id);
+    if (!typing || text.trim() === '') return;
+    if (typing.make) {
+      const item = typing.make(text);
+      const error = runSheetCommand(stores, {
+        ...addSheetItem({ sheet: sheet.id, item }),
+        label: TYPED_LABEL[typing.edit.kind as keyof typeof TYPED_LABEL],
+      });
+      if (error) notify('error', error);
+      else if (typing.reports) resolved.merge(typing.reports);
+      return;
+    }
+    const was = sheet.items.find((i) => i.id === typing.edit.id);
     if (!was || !('text' in was) || was.text === text) return;
     const error = runSheetCommand(stores, {
       ...updateSheetItem({ id: was.id, changes: { text } as SheetItemChanges }),
@@ -754,12 +926,33 @@ export default function SheetWorkspace({
     });
   };
   /** A double-click: a text, a leader note's text or a sticky note is typed where it is. */
-  const openTarget = (target: string) => {
+  const openTarget = (target: string, point: Vec2) => {
     const item = target.startsWith('item:')
       ? sheet.items.find((i) => i.id === target.slice(5))
       : undefined;
     if (!item) return;
     session.getState().select(sheetSelection([target]));
+    if (item.kind === 'table') {
+      // The cell under the double-click, typed where its text is drawn (S5).
+      const grid = sheetTableGrid(item);
+      const cell = tableCellAt(grid, point);
+      if (!cell) return;
+      const { row: h, text: size, padding } = SHEET_TABLE;
+      const left = grid.lefts[cell.column] ?? item.at[0];
+      const top = grid.tops[cell.row] ?? item.at[1];
+      setEditing({
+        edit: {
+          kind: 'cell',
+          id: item.id,
+          baseline: [left + padding, top + h / 2 + size / 2],
+          size,
+          width: Math.max(1, (grid.widths[cell.column] ?? 0) - 2 * padding),
+          text: item.rows[cell.row]?.[cell.column] ?? '',
+        },
+        cell,
+      });
+      return;
+    }
     if (item.kind === 'text' || item.kind === 'leader') {
       const size = item.kind === 'text' ? (item.size ?? SHEET_TEXT_SIZE) : SHEET_NOTE.text;
       const run = firstRun(list?.items, target);
@@ -799,6 +992,62 @@ export default function SheetWorkspace({
     }
   };
   const textTool = activeTool === 'sheetText' || activeTool === 'sheetSticky';
+  // Parts List once its view is chosen, and Table: what follows the pointer is placed by its corner.
+  const listPlacing =
+    listTool === 'sheetTable' || (listTool === 'sheetPartsList' && listView !== undefined);
+  const viewUnder = (p: Vec2, tolerance: number): SheetViewId | undefined => {
+    const views = new Map([...boxes].filter(([t]) => t.startsWith('view:')));
+    return hitTarget(views, p[0], p[1], tolerance)?.slice(5) as SheetViewId | undefined;
+  };
+  /** Parts List's second click: the list at `p` (its top-left), one step; the tool goes on. */
+  const placeList = (p: Vec2) => {
+    if (!listView) return;
+    const id = newId<SheetItemId>();
+    const item = partsListItem(id, listView.view, [round2(p[0]), round2(p[1])]);
+    const error = runSheetCommand(stores, {
+      ...addSheetItem({ sheet: sheet.id, item }),
+      label: 'Parts list',
+    });
+    if (error) notify('error', error);
+    else {
+      // Drawn with its rows at once: the bodies the tool already has.
+      const parts = listView.parts;
+      if (parts) {
+        partsResult.merge({ lists: { [id]: parts.lists[CANDIDATE] ?? [] }, bodies: parts.bodies });
+      }
+      session.getState().select(sheetSelection([`item:${id}`]));
+    }
+    listAsking.current++;
+    setListView(undefined);
+    setListPointer(undefined);
+  };
+  /** Table: a small free table at `p` (its top-left), one step; the tool goes on. */
+  const placeTable = (p: Vec2) => {
+    const id = newId<SheetItemId>();
+    const error = runSheetCommand(stores, {
+      ...addSheetItem({ sheet: sheet.id, item: newTable(id, [round2(p[0]), round2(p[1])]) }),
+      label: 'Table',
+    });
+    if (error) notify('error', error);
+    else session.getState().select(sheetSelection([`item:${id}`]));
+  };
+  // What follows the pointer while placing a list or a table, sheet mm (preview colour).
+  const listPreview = (() => {
+    if (!listPlacing || !listPointer) return undefined;
+    try {
+      if (listTool === 'sheetTable') return layoutSheetTable(newTable(CANDIDATE, listPointer));
+      if (!listView) return undefined;
+      const bodies = listView.parts ? sheetPartBodies(doc, listView.parts)[CANDIDATE] : undefined;
+      return layoutSheetPartsList(partsListItem(CANDIDATE, listView.view, listPointer), bodies, {
+        units: doc.settings.units,
+        decimals: sheet.decimals,
+        ...(density !== undefined && { density }),
+      });
+    } catch {
+      // The sheet fonts are still loading.
+      return undefined;
+    }
+  })();
   /**
    * Where a tool places at `p` with snapping: a text's or note's corner, or a dimension's or
    * leader's text while it follows the pointer (a dimension's row 10 mm from the others').
@@ -806,7 +1055,7 @@ export default function SheetWorkspace({
   const placeAt = (p: Vec2, tolerance: number): [number, number] => {
     const placing = picker
       ? picker.preview !== undefined && picker.pointer !== undefined
-      : textTool;
+      : textTool || listPlacing;
     if (!snapOn || !placing) {
       if (placeGuides) setPlaceGuides('');
       return [p[0], p[1]];
@@ -837,37 +1086,94 @@ export default function SheetWorkspace({
           setPlaceGuides('');
         },
       }
-    : textTool
+    : listTool === 'sheetPartsList' || listTool === 'sheetTable'
       ? {
           onPoint: (p: [number, number], tolerance: number) => {
-            if (!editing) placeAt(p, tolerance);
+            if (listTool === 'sheetPartsList' && !listView) {
+              setListHover(viewUnder(p, tolerance));
+              setListPointer(undefined);
+              return;
+            }
+            setListPointer(placeAt(p, tolerance));
           },
           onClick: (p: [number, number], tolerance: number) => {
-            placeText(placeAt(p, tolerance));
+            if (busyTyping()) return;
+            if (listTool === 'sheetPartsList' && !listView) {
+              const view = viewUnder(p, tolerance);
+              if (view) chooseListView(view);
+              else notify('info', 'Click a view: its bodies become the rows.');
+              return;
+            }
+            const at = placeAt(p, tolerance);
+            if (listTool === 'sheetTable') placeTable(at);
+            else placeList(at);
             setPlaceGuides('');
           },
-          onLeave: () => setPlaceGuides(''),
+          onLeave: () => {
+            setListHover(undefined);
+            setListPointer(undefined);
+            setPlaceGuides('');
+          },
         }
-      : undefined;
-  const overlay = picker ? (
-    <>
-      <DimensionOverlay tool={picker} points={pickedPoints} />
-      {editing?.shows && <PreviewItems items={editing.shows} />}
-    </>
-  ) : repicking && selectedItem && anchorsKernel && sheetItemView(selectedItem) ? (
-    <RepickHandles
-      key={selectedItem.id}
-      sheet={sheet}
-      item={selectedItem}
-      anchors={anchors}
-      hitAt={selectedItem.kind === 'leader' ? hitWithFaces : hitEdges}
-      scale={scaleOf(sheetItemView(selectedItem) as SheetViewId)}
-      control={control}
-      kernel={anchorsKernel}
-      stores={stores}
-      notify={notify}
-    />
-  ) : undefined;
+      : textTool
+        ? {
+            onPoint: (p: [number, number], tolerance: number) => {
+              if (!editing) placeAt(p, tolerance);
+            },
+            onClick: (p: [number, number], tolerance: number) => {
+              placeText(placeAt(p, tolerance));
+              setPlaceGuides('');
+            },
+            onLeave: () => setPlaceGuides(''),
+          }
+        : undefined;
+  const listBox = (() => {
+    const id = listTool === 'sheetPartsList' ? (listView?.view ?? listHover) : undefined;
+    return id ? boxes.get(`view:${id}`) : undefined;
+  })();
+  const overlay =
+    listTool === 'sheetPartsList' || listTool === 'sheetTable' ? (
+      <g pointerEvents="none">
+        {listBox && (
+          <rect
+            data-parts-view={listView?.view ?? listHover}
+            x={listBox.minX - 1}
+            y={listBox.minY - 1}
+            width={listBox.maxX - listBox.minX + 2}
+            height={listBox.maxY - listBox.minY + 2}
+            fill="none"
+            stroke={PAPER_ACCENT}
+            strokeOpacity={listView ? 1 : 0.6}
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
+        {listPreview && <PreviewItems items={listPreview} />}
+      </g>
+    ) : picker ? (
+      <>
+        <DimensionOverlay tool={picker} points={pickedPoints} />
+        {editing?.shows && <PreviewItems items={editing.shows} />}
+      </>
+    ) : repicking && selectedItem && anchorsKernel && sheetItemView(selectedItem) ? (
+      <RepickHandles
+        key={selectedItem.id}
+        sheet={sheet}
+        item={selectedItem}
+        anchors={anchors}
+        hitAt={
+          selectedItem.kind === 'leader' || selectedItem.kind === 'balloon'
+            ? hitWithFaces
+            : hitEdges
+        }
+        scale={scaleOf(sheetItemView(selectedItem) as SheetViewId)}
+        control={control}
+        kernel={anchorsKernel}
+        stores={stores}
+        notify={notify}
+      />
+    ) : undefined;
   const changeItem =
     (id: SheetItemId) =>
     (changes: SheetItemChanges, label: string): string | undefined =>
@@ -1073,6 +1379,20 @@ export default function SheetWorkspace({
             value={dimensionChoices}
             onChange={setDimensionChoices}
           />
+        ) : listTool ? (
+          <ListToolPanel
+            tool={listTool}
+            step={
+              listTool === 'sheetBalloon'
+                ? balloonPicker.busy
+                  ? 'Reading the pick…'
+                  : balloonStep(sheet, balloonPicker.picks)
+                : listTool === 'sheetPartsList'
+                  ? partsListStep(listView && sheet.views.find((v) => v.id === listView.view)?.name)
+                  : 'Click where the table goes (its top-left corner).'
+            }
+            {...(listTool === 'sheetBalloon' && { notes: balloonLists(sheet), waiting })}
+          />
         ) : noteToolId ? (
           <NoteToolPanel
             tool={noteToolId}
@@ -1153,6 +1473,7 @@ export default function SheetWorkspace({
         ) : selectedItem?.kind === 'leader' ? (
           <LeaderCard
             key={selectedItem.id}
+            doc={doc}
             sheet={sheet}
             item={selectedItem}
             row={itemRow}
@@ -1165,6 +1486,35 @@ export default function SheetWorkspace({
             doc={doc}
             item={selectedItem}
             change={changeItem(selectedItem.id)}
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'partsList' ? (
+          <PartsListCard
+            key={selectedItem.id}
+            doc={doc}
+            sheet={sheet}
+            item={selectedItem}
+            bodies={partsBodies?.[selectedItem.id]}
+            density={density}
+            change={changeItem(selectedItem.id)}
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'balloon' ? (
+          <BalloonCard
+            key={selectedItem.id}
+            sheet={sheet}
+            item={selectedItem}
+            row={itemRow}
+            change={changeItem(selectedItem.id)}
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'table' ? (
+          <TableCard
+            key={selectedItem.id}
+            doc={doc}
+            item={selectedItem}
+            change={changeItem(selectedItem.id)}
+            notify={notify}
             onDelete={remove}
           />
         ) : selectedItem?.kind === 'centreMark' || selectedItem?.kind === 'centreLine' ? (

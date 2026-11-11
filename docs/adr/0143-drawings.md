@@ -1115,6 +1115,97 @@ No schema change, no kernel change.
   ignored (it swallowed a real pick made soon after); snapping in the document's commands
   (the commands store what the person did; snapping is how the pointer is read).
 
+## Amendment (S5, the list tools), 2026-11-11
+
+Package 2 of S5: the lists in the app, which completes S5 and the first release's scope (S1 to
+S5; the reference's base-frame sheet rebuilt by hand in `e2e/sheet-lists.spec.ts`). Files:
+`apps/web/src/sheets/sheetParts.ts` (rows and fields for the screen and the export),
+`listTools.ts` (the tools' and cards' pure parts), `SheetListCard.tsx` (the panel and three
+cards); changes in `SheetWorkspace.tsx`, `SheetCanvas.tsx` (`onOpen` gets the sheet point),
+`SheetTextEditor.tsx` (a `cell` kind), `SheetsTree.tsx` (balloons in Notes, a Tables folder),
+`SheetNoteCard.tsx` (its frame exported; Insert field on the Text and Leader note cards),
+`SheetSetup.tsx` (Insert field for the title block), `controls.tsx` (`FieldInsert`,
+`sheetFieldChoices`, `CommitArea`'s `fields`, `CommitField`'s `onCaret`), `selection.ts`,
+`noteTools.ts` and `RepickHandles.tsx` (balloons), `exportSheets.ts` and
+`SheetExportDialog.tsx`, `AppShell.tsx`; `print/material.chosenDensity` (shared with Print
+Info); `@extrudo/sheets`' `sheetTableGrid`; three tools and icons in `shell/tools.ts`. No
+schema change, no kernel change.
+
+- **Three tools**, as plan §4.1 places them: Notes › **Balloon** (`sheetBalloon`, `B`, icon
+  `balloon`, category `inspect`; B was no command's key) and a new **Tables** group with
+  **Parts List** (`sheetPartsList`, `parts-list`) and **Table** (`sheetTable`, `sheet-table`),
+  category `insert`. Each is in `SHEET_TOOLS` and stays on until Esc.
+- **Rows reach the layout** (`useSheetParts`): the open sheet's parts lists are asked of the
+  kernel (`Recomputer.sheetParts`, quiet) as anchors are: when what the answer depends on
+  changes (`partsAskKey`: each list's view, the views' directions and bodies; a typed row, a
+  moved list or a placed text asks nothing) and after every finished recompute, never while
+  the model computes, older answers dropped, a failed answer keeping the last. The answer is
+  joined with the document's names (`sheetPartBodies`) and passed as `context.parts`; nothing
+  of it is stored. **Fields and Mass** (`sheetFieldContext`): `date` is today as
+  `YYYY-MM-DD` (the title block's `isoDate`), `version` the newest saved version as the
+  Versions dialog names it (`V3`; read on entering the drawing and whenever that dialog
+  closes), `evaluate` the design's parameters, `density` the filament Print Info uses
+  (`print.material`, its expression evaluated as Print Info does, `sheetDensity`). **The
+  export** reads the rows again (`exportPartsOf`, which stops the export when the kernel can't
+  say) and the version and density again (`fields`, from the shell), never what the screen
+  kept.
+- **Parts List**: a click on a view chooses it (a view selected when the tool starts is taken
+  at once; the view under the pointer is framed), its bodies are asked of the kernel for a
+  candidate list, then the list follows the pointer by its top-left corner (snapped like a
+  text's corner) and a click places it (one step, "Parts list"); the tool's answer is merged
+  so the list is drawn with its rows at once. The first Esc drops the view.
+- **Balloon**: one more `usePickTool` spec (rule kept: no second pick tool), placed by a click
+  like a leader note, hovering only a body that its view's parts list shows (any body of the
+  view while the list's bodies are not known yet), faces included (`faceHit`). **Which list:
+  the first parts list of the picked view in the sheet's order**; the panel says it per view
+  ("Front has 2 parts lists: balloons take the first one placed …") and says what to do when
+  the sheet has none ("place one with Parts List first"). The preview is
+  `layoutSheetBalloon` on the real sheet, so it shows its number. A lost balloon is picked
+  again like a leader note (`itemRepick`: any geometry, its anchor replaced); its browser row
+  reads "Balloon ?" and "lost".
+- **Table**: a click places two columns of 25 and 45 mm and three empty rows ("Table"). **A
+  double-click on a cell** opens the shared `SheetTextEditor` (kind `cell`) on the cell, at
+  its column's width less the padding, with the same keys; a cell may be committed empty
+  (other typed items may not), one step "Edit cell". The cell under the point comes from
+  `sheetTableGrid`, the layout's own row heights.
+- **Cards** (each change one `updateSheetItem`): a **parts list** its view (a choice), its
+  columns as checkboxes (always written in the default order, the key dropped when all six
+  are shown, never none), per row the Name and Material typed over it. What is typed goes
+  under the row's **first body**; going back to the model's (empty text, or the round arrow
+  beside Name) removes it **under every body of the row**, since a typed value under any of
+  them counts; the card says how many balloons Delete takes along. A **balloon** its number,
+  its list (a choice when the sheet has more than one), its view and why it is lost or moved.
+  A **table** its size, rows and columns added or removed at the end (never the last one),
+  each width an `ExpressionInput` (1 to 1000 mm).
+- **Text fields** in the app: layout already fills them; typing in place and the cards show
+  what was typed. **Insert field** (a native select: the six fields, then each user parameter
+  as `{= name}`) on the Text and Leader note cards writes at the caret where the field was
+  left (the end when it never was), and in Sheet Setup into the title field left last (the
+  Title when none), each one step. A parameter rename rewriting `{= …}` is checked end to end.
+- **Browser**: balloons join the Notes folder ("Balloon 2 Front", lost: red, "lost");
+  parts lists and tables get a **Tables** folder after it ("Parts list Front", "Table 3 × 2"),
+  as the Drawing tab groups them (plan §3.1 names "parts list" only).
+- **Moving**: a parts list names a view but its `at` is sheet mm, so a drag or a nudge moves
+  it by sheet mm (`moveCommands`), never scaled and flipped like a balloon's view-frame `at`,
+  and it does not follow its view.
+- **Not offered, no field**: a parts list's title, its column order or widths, sorting, a
+  balloon's shape or size, a table's header row, cell alignment or merged cells, a Tab key
+  that moves to the next cell. Each would be a schema change or a decision of its own.
+- **Tests**: `listTools.test.ts` (what each tool makes, columns, typed rows, the balloon's
+  list and picks, a table's cells and edits, the fields offered, moves), `sheetParts.test.ts`
+  (when the kernel is asked again, merging, the export's question, fields and density),
+  `parts.test.ts` (`sheetTableGrid`); `e2e/sheet-lists.spec.ts` (the base frame: views, a
+  parts list with the legs as one row, Qty 2, their sizes; balloons 1, 2, 2; a typed
+  material and name; a hidden column; a free table typed in place; `{= legs}` following a
+  change and a rename; Insert field; a leg deleted and its balloon picked again; undo of each
+  step; the PDF's text). `SHEET_SHOTS=<dir>` saves pictures and the PDF.
+- **Rejected**: storing the rows the screen had for the export (derived data; the export
+  asks again); a second pick hook for balloons (S4's rule); balloons numbered by the selected
+  list (a selection the person can't see while picking; the card chooses another list); a
+  cell edit through the Table card only (the plan asks for typing in place); `{version}` as
+  the version's description (empty for many versions; `V3` is the name the app shows);
+  asking the kernel for rows on every sheet change (a typed text would ask again).
+
 ## Amendment (S6, the API, the script and the CLI), 2026-11-11
 
 Package 1 of S6 (plan §9's first two bullets, §10's "done when" for the CLI). No schema
@@ -1173,8 +1264,8 @@ change, no kernel facade change, no new dependency (one new workspace edge: `@ex
   `sheetModelNow`'s views use `sheetViewWants` and `sheetViewLines`, **moved unchanged from
   `apps/web/src/sheets/viewLines.ts` to `kernel/src/sheets/lines.ts`** (with `baseViewOf`,
   `sheetViewWant`, `pieceContour`; the app module re-exports them), and `exportAnchorsOf`,
-  `isAnchored`, `EXPORT_UNMEASURED` moved unchanged from `sheetAnchors.ts` (re-exported
-  there). The kernel's lines type is `ViewLines`, structurally the `SheetViewLines` layout
+  `isAnchored`, `EXPORT_UNMEASURED` moved unchanged from `sheetAnchors.ts`, and
+  `exportPartsOf`, `EXPORT_UNLISTED` from S5's `sheetParts.ts` (both re-export them). The kernel's lines type is `ViewLines`, structurally the `SheetViewLines` layout
   takes, so neither package imports the other. Rejected: one function in `@extrudo/sheets`
   calling the kernel (it would make the kernel a run-time dependency of the layout package,
   which ADR-0143 §7 keeps kernel-free); a CLI-only copy of the app's export (a second copy

@@ -877,8 +877,7 @@ export const TOOLS = {
     category: 'export',
     hint: 'Render a presentable picture of the design.',
   },
-  // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch. The
-  // tools of later slices (balloons, tables) are not listed until they exist.
+  // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch.
   sheets: {
     id: 'sheets',
     label: 'Drawing',
@@ -935,6 +934,28 @@ export const TOOLS = {
     icon: 'leader-note',
     category: 'inspect',
     hint: 'A note with an arrow to the model: pick an edge, a point or a face, click where the text goes, then type.',
+  },
+  // The list tools (P6-24 S5): Balloon with the notes, Parts List and Table in Tables.
+  sheetBalloon: {
+    id: 'sheetBalloon',
+    label: 'Balloon',
+    icon: 'balloon',
+    category: 'inspect',
+    hint: 'A numbered circle pointing at a part, numbered by the view’s parts list: pick the part, then click where it goes.',
+  },
+  sheetPartsList: {
+    id: 'sheetPartsList',
+    label: 'Parts List',
+    icon: 'parts-list',
+    category: 'insert',
+    hint: 'A table of a view’s bodies, equal ones in one row with a quantity: click the view, then where the list goes.',
+  },
+  sheetTable: {
+    id: 'sheetTable',
+    label: 'Table',
+    icon: 'sheet-table',
+    category: 'insert',
+    hint: 'A free table: click where it goes, then double-click a cell to type in it.',
   },
   sheetSticky: {
     id: 'sheetSticky',
@@ -1250,15 +1271,15 @@ export const TABS: Tab[] = [
     ],
   },
   // The drawing's own tab (P6-24, ADR-0143), shown in place of every tab but Home while a
-  // sheet is open; Finish Drawing sits after its groups. Tables join it with their slice,
-  // Balloon the Notes group.
+  // sheet is open; Finish Drawing sits after its groups.
   {
     id: 'sheet',
     label: 'Drawing',
     groups: [
       { label: 'Views', tools: ['baseView', 'projectedView'] },
       { label: 'Dimensions', tools: ['sheetDimension', 'sheetCentreMark', 'sheetCentreLine'] },
-      { label: 'Notes', tools: ['sheetText', 'sheetLeader', 'sheetSticky'] },
+      { label: 'Notes', tools: ['sheetText', 'sheetLeader', 'sheetBalloon', 'sheetSticky'] },
+      { label: 'Tables', tools: ['sheetPartsList', 'sheetTable'] },
       { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
       { label: 'Output', tools: ['exportSheets'] },
     ],

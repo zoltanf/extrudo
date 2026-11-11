@@ -66,12 +66,14 @@ export {
   type SheetPartsBodies,
   type SheetPartsOptions,
   type SheetPartsRowData,
+  type SheetTableGrid,
   sheetBalloonStatus,
   sheetNameStem,
   sheetPartBodies,
   sheetPartsCells,
   sheetPartsHeader,
   sheetPartsRows,
+  sheetTableGrid,
 } from './parts';
 export {
   LINE_SPACING,

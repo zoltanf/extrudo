@@ -40,12 +40,12 @@ import { Trash2 } from 'lucide-react';
 import { type ReactNode, useMemo } from 'react';
 import { Button, type IconName, type ToolCategory, ToolIcon } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
-import { CommitArea, Row, Switch } from './controls';
+import { CommitArea, type FieldChoice, Row, Switch, sheetFieldChoices } from './controls';
 import type { SheetItemRow } from './sheetAnchors';
 
-const CARD =
+export const CARD =
   'pointer-events-auto flex shrink-0 flex-col gap-3 rounded-dialog border border-line p-3 shadow-raised backdrop-blur-[6px]';
-const CARD_STYLE = { background: 'color-mix(in srgb, var(--x-raised) 92%, transparent)' };
+export const CARD_STYLE = { background: 'color-mix(in srgb, var(--x-raised) 92%, transparent)' };
 
 /** The notes tools by their session tool ID. */
 export type NoteToolId =
@@ -83,7 +83,7 @@ const fail = (expression: string, message: string): EvaluateResult => ({
 
 const num = (n: number) => String(Math.round(n * 1000) / 1000);
 
-function Heading({
+export function Heading({
   icon,
   category,
   name,
@@ -104,7 +104,7 @@ function Heading({
 }
 
 /** A length in mm from `min` to `max` (an `ExpressionInput`); empty means `none` when given. */
-function LengthField({
+export function LengthField({
   doc,
   label,
   value,
@@ -187,7 +187,7 @@ function Colours({
   );
 }
 
-function Delete({ onDelete }: { onDelete(): void }) {
+export function Delete({ onDelete }: { onDelete(): void }) {
   return (
     <Button onClick={onDelete}>
       <Trash2 size={14} strokeWidth={1.75} />
@@ -198,7 +198,7 @@ function Delete({ onDelete }: { onDelete(): void }) {
 }
 
 /** Why an anchored item is lost, moved or can't be drawn, and what to do (plan §4.6). */
-function ItemState({ row, what }: { row: SheetItemRow | undefined; what: string }) {
+export function ItemState({ row, what }: { row: SheetItemRow | undefined; what: string }) {
   const state = row?.state ?? 'ok';
   if (state === 'ok') return null;
   return (
@@ -299,13 +299,25 @@ const textProblem = (text: string) =>
       ? `At most ${SHEET_TEXT_MAX} characters.`
       : undefined;
 
-function TextField({ value, change, label }: { value: string; change: Change; label: string }) {
+function TextField({
+  value,
+  change,
+  label,
+  fields,
+}: {
+  value: string;
+  change: Change;
+  label: string;
+  /** The fields in braces it offers (S5): texts and leader notes take them. */
+  fields?: readonly FieldChoice[];
+}) {
   return (
     <CommitArea
       label="Text"
       value={value}
       maxLength={SHEET_TEXT_MAX}
       onCommit={(text) => textProblem(text) ?? change({ text } as SheetItemChanges, label)}
+      {...(fields && { fields })}
     />
   );
 }
@@ -325,9 +337,15 @@ export function TextCard({
   return (
     <section aria-label="Text" className={CARD} style={CARD_STYLE}>
       <Heading icon="sheet-text" category="inspect" name="Text" />
-      <TextField value={item.text} change={change} label="Edit text" />
+      <TextField
+        value={item.text}
+        change={change}
+        label="Edit text"
+        fields={sheetFieldChoices(doc)}
+      />
       <p className="text-sm text-muted">
-        Double-click it on the sheet to type there. {TYPING_KEYS}
+        Double-click it on the sheet to type there. {TYPING_KEYS} A field in braces, such as
+        {' {date}'} or {'{= width}'}, is filled in on the sheet.
       </p>
       <div className="grid grid-cols-[86px_minmax(0,1fr)] items-start gap-x-2 gap-y-1.5">
         <Row label="Height">
@@ -362,7 +380,15 @@ export function TextCard({
   );
 }
 
-function ViewLine({ sheet, view, children }: { sheet: Sheet; view: string; children: ReactNode }) {
+export function ViewLine({
+  sheet,
+  view,
+  children,
+}: {
+  sheet: Sheet;
+  view: string;
+  children: ReactNode;
+}) {
   const name = sheet.views.find((v) => v.id === view)?.name ?? 'No view';
   return (
     <p className="text-sm text-muted">
@@ -373,12 +399,14 @@ function ViewLine({ sheet, view, children }: { sheet: Sheet; view: string; child
 
 /** A selected leader note's card. */
 export function LeaderCard({
+  doc,
   sheet,
   item,
   row,
   change,
   onDelete,
 }: {
+  doc: ExtrudoDocument;
   sheet: Sheet;
   item: SheetLeaderItem;
   row: SheetItemRow | undefined;
@@ -402,7 +430,12 @@ export function LeaderCard({
         pointing at {on} of the model.
       </ViewLine>
       <ItemState row={row} what="an edge, a point or a face" />
-      <TextField value={item.text} change={change} label="Edit leader note" />
+      <TextField
+        value={item.text}
+        change={change}
+        label="Edit leader note"
+        fields={sheetFieldChoices(doc)}
+      />
       <p className="text-sm text-muted">Double-click it on the sheet to type there.</p>
       <Delete onDelete={onDelete} />
     </section>

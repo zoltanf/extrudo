@@ -403,6 +403,36 @@ function tableLines(item: SheetTableItem): { lines: string[][][]; heights: numbe
 }
 
 /**
+ * Where a free table's cells are, sheet mm: each column's left and width, each row's top
+ * and height (a row as tall as its tallest cell), as `layoutSheetTable` draws them. The app
+ * finds the cell under a double-click with it and lays the typing field on it.
+ */
+export interface SheetTableGrid {
+  lefts: number[];
+  widths: number[];
+  tops: number[];
+  heights: number[];
+}
+
+export function sheetTableGrid(item: SheetTableItem): SheetTableGrid {
+  const { heights } = tableLines(item);
+  const [x0, y0] = item.at;
+  const lefts: number[] = [];
+  let x = x0;
+  for (const w of item.columns) {
+    lefts.push(x);
+    x += w;
+  }
+  const tops: number[] = [];
+  let y = y0;
+  for (const h of heights) {
+    tops.push(y);
+    y += h;
+  }
+  return { lefts, widths: [...item.columns], tops, heights };
+}
+
+/**
  * A free table in sheet mm, keyed `item:<id>`: its columns as stored, each
  * cell's text wrapped inside the column (between words, or inside a word
  * too long for it), a row as tall as its tallest cell (7 mm for one line,

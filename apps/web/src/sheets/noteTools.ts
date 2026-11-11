@@ -159,6 +159,7 @@ export function noteRepick(
 export function repickAccepts(item: SheetItem, hit: SheetHit): boolean {
   switch (item.kind) {
     case 'leader':
+    case 'balloon':
       return true;
     case 'centreMark':
       return noteAccepts('centreMark', hit, []);
