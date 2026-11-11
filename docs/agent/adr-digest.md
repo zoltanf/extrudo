@@ -4401,7 +4401,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S0, S1a, S1, S2 and S3 done**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S0, S1a, S1, S2, S3 and S4 done**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4594,7 +4594,21 @@ and an outline's side is read back with one probe `resolveSheet`, never guessed 
 `layoutSheetDimension` of the real item with its resolved anchors; placing, every card change and picking again are each
 one undo step; "Show the unit" and arrows inside/outside are not offered until the schema has fields. e2e:
 `e2e/sheet-dimensions.spec.ts` (B2 with stored refs: if the naming changes, stored dimensions stop resolving and it
-fails; the wall bracket template for the tool).
+fails; the wall bracket template for the tool). **S4 notes in the app (package 2):** `usePickTool.ts` (`usePickTool`,
+`PickToolSpec`, `pickOf`, `PickKernel`), `noteTools.ts` (`noteAccepts`, `noteWhole`, `noteItem`, `noteStep`, `noteRepick`,
+`repickAccepts`, `repickWhole`), `faceHit.ts`, `SheetTextEditor.tsx`, `SheetNoteCard.tsx`, `snap.ts` (`snapMove`,
+`snapPoint`, `dimensionRows`, `ROW_STEP`), `RepickHandles.itemRepick`, `exportSheets.withEveryStickyNote`,
+`controls.CommitArea`, `selection/pick.faceAlong`; tools `sheetText` (`T`), `sheetLeader` (`N`), `sheetSticky`,
+`sheetCentreMark`, `sheetCentreLine`. Rules a change must keep: **every tool that anchors an item picks through
+`usePickTool` with its own spec** (S5's balloon too), never a copy of the hook; **a candidate whose resolved anchors make
+it `invalid` or `detached` is not placed**; only what the kind's rule takes is hovered; a face is picked by a ray along
+the view's direction into the display meshes, among the view's drawn bodies, its ref by name from the kernel; **a typed
+item is added only when its text is finished and not blank** (one undo step), and the same keys hold for every text kind
+and the cards' Text (Enter finishes, Shift+Enter a new line, Esc leaves it); the press that ends typing starts nothing;
+a lost note's reason is the kernel's when it gives one (this replaces "notes keep their own words"); the export's Sticky
+notes switch writes a copy with every note printed, never a document change; **snapping is how the pointer is read, never
+stored**: box edges and middles and dimension rows `ROW_STEP` (10 mm) apart, within the pick tolerance, guides on screen
+only, off with Snap; arrow keys never snap. e2e: `e2e/sheet-notes.spec.ts`.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

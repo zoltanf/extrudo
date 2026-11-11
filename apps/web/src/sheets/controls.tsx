@@ -1,10 +1,11 @@
 /**
  * Small controls of the drawing's panels and dialogs (P6-24): a segmented choice, a switch,
- * and a text field that commits on Enter or blur and reverts on Esc. Numbers never use the
+ * and a text field (one line, or several: `CommitArea`) that commits on Enter or blur and
+ * reverts on Esc. Numbers never use the
  * text field: they are `ExpressionInput`s (CLAUDE.md hard rule).
  */
 import { type ReactNode, type Ref, useState } from 'react';
-import { TextInput } from '../design-system';
+import { fieldClass, TextInput } from '../design-system';
 
 /** A few exclusive choices side by side (mock-up 2's "Landscape | Portrait"). */
 export function Segmented<T extends string>({
@@ -149,5 +150,64 @@ export function Row({ label, children }: { label: string; children: ReactNode })
       <span className="truncate pt-1 text-sm text-muted">{label}</span>
       <div className="min-w-0">{children}</div>
     </>
+  );
+}
+
+/**
+ * A text of several lines, with the same keys as typing on the sheet (`SheetTextEditor`):
+ * Enter writes it, Shift+Enter starts a new line, Esc puts it back; leaving it writes it too.
+ * `onCommit` returns why the text can't be taken, shown under the field.
+ */
+export function CommitArea({
+  label,
+  value,
+  onCommit,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onCommit(value: string): string | undefined;
+  maxLength?: number;
+}) {
+  const [draft, setDraft] = useState<string>();
+  const [error, setError] = useState<string>();
+  const shown = draft ?? value;
+  const commit = () => {
+    if (draft === undefined || draft === value) {
+      setDraft(undefined);
+      setError(undefined);
+      return;
+    }
+    const problem = onCommit(draft);
+    setError(problem);
+    if (!problem) setDraft(undefined);
+  };
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <textarea
+        aria-label={label}
+        value={shown}
+        maxLength={maxLength}
+        rows={Math.min(6, Math.max(2, shown.split('\n').length))}
+        aria-invalid={error !== undefined || undefined}
+        {...(error && { 'aria-description': error })}
+        data-keep-escape={draft !== undefined ? '' : undefined}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Escape' && draft !== undefined) {
+            event.preventDefault();
+            event.stopPropagation();
+            setDraft(undefined);
+            setError(undefined);
+          }
+        }}
+        className={`${fieldClass} h-auto min-h-14 resize-y py-1 text-sm`}
+      />
+      {error && <p className="text-sm text-error">{error}</p>}
+    </div>
   );
 }

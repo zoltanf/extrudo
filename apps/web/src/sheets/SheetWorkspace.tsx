@@ -12,33 +12,45 @@
  * reaches the entry chunk (ADR-0058 §4). The 3D view stays mounted underneath, covered.
  */
 import {
+  addSheetItem,
   type BodyId,
   CommandError,
   type DocumentStore,
   type ModelStore,
+  newId,
   type SessionStore,
+  type Sheet,
+  type SheetAnchors,
   type SheetId,
+  type SheetItem,
   type SheetItemChanges,
   type SheetItemId,
+  type SheetStickyColor,
   type SheetViewId,
   sheetBaseFrame,
+  sheetItemView,
   sheetPaperSize,
   sheetStandardFrom,
   updateSheetItem,
+  type Vec2,
   type Vec3,
 } from '@extrudo/core';
-import type { DisplayList } from '@extrudo/io';
+import type { DisplayItem, DisplayList, DisplayText } from '@extrudo/io';
 import { type BodyMesh, shownBodies } from '@extrudo/kernel';
 import {
   layoutSheet,
+  layoutSheetLeader,
   measureSheetDimension,
   SHEET_FONTS,
+  SHEET_NOTE,
+  SHEET_STICKY,
+  SHEET_TEXT_SIZE,
   type SheetViewLines,
   sheetItemStatus,
   sheetMargin,
   sheetViewScale,
 } from '@extrudo/sheets';
-import { Hand, Maximize, MousePointer2, Trash2, ZoomIn } from 'lucide-react';
+import { Hand, Magnet, Maximize, MousePointer2, StickyNote, Trash2, ZoomIn } from 'lucide-react';
 import {
   type RefObject,
   useCallback,
@@ -59,10 +71,14 @@ import type { ViewportStore } from '../viewport/store';
 import {
   DIMENSION_DEFAULTS,
   type DimensionChoices,
+  hitPickable,
+  type SheetHit,
   sheetPickables,
   toSheet,
 } from './dimensionTool';
+import { faceHit } from './faceHit';
 import { changeSheet, finishDrawing, renameSheet, type SheetModeStores } from './mode';
+import { NOTE_MOST, type NoteTool, noteAccepts, noteItem, noteStep, noteWhole } from './noteTools';
 import { RepickHandles } from './RepickHandles';
 import { SheetCanvas, type SheetCanvasControl } from './SheetCanvas';
 import {
@@ -70,8 +86,18 @@ import {
   DimensionOverlay,
   DimensionPanel,
   dimensionChanges,
+  PreviewItems,
 } from './SheetDimensionCard';
+import {
+  CentreCard,
+  LeaderCard,
+  type NoteToolId,
+  NoteToolPanel,
+  StickyCard,
+  TextCard,
+} from './SheetNoteCard';
 import { SheetSetup } from './SheetSetup';
+import { type SheetTextEdit, SheetTextEditor } from './SheetTextEditor';
 import {
   type BaseViewChoices,
   BaseViewPanel,
@@ -84,6 +110,7 @@ import {
   type SheetTarget,
   selectedTargets,
   sheetSelection,
+  targetBoxes,
   targetName,
   viewDeltas,
 } from './selection';
@@ -94,7 +121,9 @@ import {
   sheetItemsStore,
   useSheetAnchors,
 } from './sheetAnchors';
+import { dimensionRows, guidePath, rowOf, type SnapRow, snapPoint } from './snap';
 import { type DimensionKernel, useDimensionTool } from './useDimensionTool';
+import { type PickToolSpec, type PickToolState, usePickTool } from './usePickTool';
 import { useProjectedView } from './useProjectedView';
 import { baseViewOf, sheetViewNotice, sheetViewWant, sheetViewWants } from './viewLines';
 import {
@@ -144,6 +173,62 @@ const BASE_VIEW_DEFAULTS: BaseViewChoices = { looking: 'front', scale: undefined
 
 /** The right column's width and gap, px (as wide as the sketch palette). */
 const COLUMN = 256 + 12;
+
+/** A new sticky note's size, mm. */
+const STICKY_SIZE = [60, 40] as const;
+
+/** The anchored notes tools by their session tool ID. */
+const NOTE_TOOLS: Readonly<Record<string, NoteTool>> = {
+  sheetLeader: 'leader',
+  sheetCentreMark: 'centreMark',
+  sheetCentreLine: 'centreLine',
+};
+
+/** An anchored note tool's spec for the shared pick tool. */
+function noteSpec(tool: NoteTool): PickToolSpec {
+  return {
+    accepts: (hit, picks) => noteAccepts(tool, hit, picks),
+    whole: (hit, picks) => noteWhole(tool, hit, picks),
+    most: NOTE_MOST[tool],
+    placed: tool === 'leader' ? 'click' : 'now',
+    label:
+      tool === 'centreMark' ? 'Centre mark' : tool === 'centreLine' ? 'Centre line' : 'Leader note',
+    item: (id, picks, at) => noteItem(tool, id, picks, at),
+    ...(tool === 'leader' && {
+      preview: (sheet: Sheet, item: SheetItem, anchors: SheetAnchors) =>
+        item.kind === 'leader' ? { items: layoutSheetLeader(sheet, item, anchors) } : { items: [] },
+    }),
+  };
+}
+
+/** Each anchored note tool's spec: made once, so the pick tool keeps its picks. */
+const NOTE_SPECS: Readonly<Record<NoteTool, PickToolSpec>> = {
+  leader: noteSpec('leader'),
+  centreMark: noteSpec('centreMark'),
+  centreLine: noteSpec('centreLine'),
+};
+
+/** The first line drawn for display key `key`: where typing it in place starts. */
+function firstRun(items: readonly DisplayItem[] | undefined, key: string): DisplayText | undefined {
+  return items?.find((i): i is DisplayText => i.type === 'text' && i.key === key);
+}
+
+/** The undo step of a typed new item. */
+const TYPED_LABEL: Readonly<Record<SheetTextEdit['kind'], string>> = {
+  text: 'Text',
+  leader: 'Leader note',
+  sticky: 'Sticky note',
+};
+
+/** A sheet place is kept to a hundredth of a mm (as a move's). */
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The words of a moved note's row and status text (a dimension's are the status bar's own). */
+const MOVED: Partial<Record<SheetItem['kind'], string>> = {
+  leader: 'This note moved to matching geometry.',
+  centreMark: 'This centre mark moved to a matching circle.',
+  centreLine: 'This centre line moved to matching edges.',
+};
 
 export default function SheetWorkspace({
   stores,
@@ -198,20 +283,25 @@ export default function SheetWorkspace({
   );
 
   const one = selected.length === 1 ? selected[0] : undefined;
-  const selectedDimension = one?.startsWith('item:')
-    ? sheet?.items.find((i) => i.id === one.slice(5) && i.kind === 'dimension')
+  const selectedItem = one?.startsWith('item:')
+    ? sheet?.items.find((i) => i.id === one.slice(5))
     : undefined;
-  const dimension = selectedDimension?.kind === 'dimension' ? selectedDimension : undefined;
+  const dimension = selectedItem?.kind === 'dimension' ? selectedItem : undefined;
   const rows = useStore(sheetItemsStore, (s) => (s.sheet === sheet?.id ? s.rows : undefined));
-  const dimensionRow = dimension ? rows?.get(dimension.id) : undefined;
+  const itemRow = selectedItem ? rows?.get(selectedItem.id) : undefined;
+  const dimensionRow = dimension ? itemRow : undefined;
 
-  // The Dimension tool (S3) and picking a lost or moved dimension's geometry again: what on
-  // the sheet a click can take (exact, current lines only).
+  // The tools that pick the model (Dimension, S3; Leader Note, Centre Mark, Centreline, S4)
+  // and picking a lost or moved item's geometry again: what on the sheet a click can take
+  // (exact, current lines only).
   const dimensionTool = activeTool === 'sheetDimension';
+  const noteTool = activeTool ? NOTE_TOOLS[activeTool] : undefined;
   const repicking =
     !dimensionTool &&
-    dimension !== undefined &&
-    (dimensionRow?.state === 'detached' || dimensionRow?.state === 'moved');
+    !noteTool &&
+    selectedItem !== undefined &&
+    sheetItemView(selectedItem) !== undefined &&
+    (itemRow?.state === 'detached' || itemRow?.state === 'moved');
   const scaleOf = useCallback(
     (id: SheetViewId) => {
       const view = sheet?.views.find((v) => v.id === id);
@@ -220,37 +310,117 @@ export default function SheetWorkspace({
     },
     [sheet],
   );
+  const picking = dimensionTool || noteTool !== undefined || repicking;
   const pickables = useMemo(
     () =>
-      sheet && (dimensionTool || repicking)
+      sheet && picking
         ? sheetPickables(sheet, views.geometry, views.pending, (v) => scaleOf(v.id))
         : [],
-    [sheet, dimensionTool, repicking, views.geometry, views.pending, scaleOf],
+    [sheet, picking, views.geometry, views.pending, scaleOf],
+  );
+  // What the pointer is over: an edge, a vertex or an outline; with `faces`, else a face (a
+  // leader note's dot).
+  const hitEdges = useCallback(
+    (p: Vec2, tolerance: number, only?: SheetViewId) => hitPickable(pickables, p, tolerance, only),
+    [pickables],
+  );
+  const hitWithFaces = useCallback(
+    (p: Vec2, tolerance: number, only?: SheetViewId): SheetHit | undefined =>
+      hitPickable(pickables, p, tolerance, only) ??
+      (sheet
+        ? faceHit(sheet, views.geometry, views.pending, scaleOf, modelBodies, p, only)
+        : undefined),
+    [pickables, sheet, views.geometry, views.pending, scaleOf, modelBodies],
   );
   const [dimensionChoices, setDimensionChoices] = useState<DimensionChoices>(DIMENSION_DEFAULTS);
-  const dimensioning = useDimensionTool({
-    active: dimensionTool,
+  const toolArgs = {
     sheet,
     units: doc.settings.units,
     pickables,
     scaleOf,
     kernel: anchorsKernel,
     stores,
-    choices: dimensionChoices,
     notify,
     merge: resolved.merge,
+  };
+  const dimensioning = useDimensionTool({
+    ...toolArgs,
+    active: dimensionTool,
+    hitAt: hitEdges,
+    choices: dimensionChoices,
   });
+
+  // Typing on the sheet (S4): a new text, leader note or sticky note, or one double-clicked.
+  const [editing, setEditing] = useState<{
+    edit: SheetTextEdit;
+    /** A new item from its typed text; absent when an item is edited. */
+    make?: (text: string) => SheetItem;
+    /** A new leader note's reports, merged when it is made. */
+    reports?: SheetAnchors;
+    /** What is drawn while typing (a new leader's arrow), sheet mm. */
+    shows?: DisplayItem[];
+  }>();
+  // Whether the press now under way began while typing: its click only finishes the typing.
+  const pressedWhileTyping = useRef(false);
+  const leaderTool = usePickTool({
+    ...toolArgs,
+    active: noteTool === 'leader',
+    hitAt: hitWithFaces,
+    spec: NOTE_SPECS.leader,
+    onPlaced: (item, reports) => {
+      if (!sheet || item.kind !== 'leader') return;
+      const drawn = layoutSheetLeader({ ...sheet, items: [item] }, item, reports);
+      // The placeholder's first line: where the typed text starts.
+      const run = firstRun(drawn, `item:${item.id}`);
+      if (!run) return;
+      setEditing({
+        edit: { kind: 'leader', baseline: [run.at[0], run.at[1]], size: SHEET_NOTE.text, text: '' },
+        make: (text) => ({ ...item, text }),
+        reports,
+        shows: drawn.filter((d) => d.type !== 'text'),
+      });
+    },
+  });
+  const centreMarkTool = usePickTool({
+    ...toolArgs,
+    active: noteTool === 'centreMark',
+    hitAt: hitEdges,
+    spec: NOTE_SPECS.centreMark,
+  });
+  const centreLineTool = usePickTool({
+    ...toolArgs,
+    active: noteTool === 'centreLine',
+    hitAt: hitEdges,
+    spec: NOTE_SPECS.centreLine,
+  });
+  const picker: PickToolState | undefined = dimensionTool
+    ? dimensioning
+    : noteTool === 'leader'
+      ? leaderTool
+      : noteTool === 'centreMark'
+        ? centreMarkTool
+        : noteTool === 'centreLine'
+          ? centreLineTool
+          : undefined;
+  // The Text and Sticky Note tools' choices for the next one, kept for the session.
+  const [textSize, setTextSize] = useState<number>();
+  const [stickyColor, setStickyColor] = useState<SheetStickyColor>('yellow');
+  // Sticky notes shown on screen (the floating bar's switch; never stored).
+  const [showStickies, setShowStickies] = useState(true);
+  // Snapping (the floating bar's Snap, on by default) and a placing tool's guides.
+  const [snapOn, setSnapOn] = useState(true);
+  const [placeGuides, setPlaceGuides] = useState('');
   const pickedPoints = useMemo(() => {
     const out: [number, number][] = [];
-    for (const pick of dimensioning.picks) {
+    for (const pick of picker?.picks ?? []) {
       const view = sheet?.views.find((v) => v.id === pick.view);
-      if (pick.kind === 'point' && view) {
+      if ((pick.kind === 'point' || pick.kind === 'face') && pick.p && view) {
         const [x, y] = toSheet(view, scaleOf(view.id), pick.p);
         out.push([x, y]);
       }
     }
     return out;
-  }, [dimensioning.picks, sheet, scaleOf]);
+  }, [picker?.picks, sheet, scaleOf]);
   const waiting = useMemo(
     () =>
       (sheet?.views ?? [])
@@ -345,12 +515,16 @@ export default function SheetWorkspace({
     if (viewport.getState().tool === 'orbit') viewport.getState().setTool(undefined);
   }, [viewport]);
 
-  // What is on screen is what is exported: the same list `sheetsToPdf` writes.
+  // What is on screen is what is exported: the same list `sheetsToPdf` writes (with the
+  // floating bar's sticky notes switch off, without them).
   const list = useMemo<DisplayList | undefined>(() => {
     if (!sheet) return undefined;
     void fonts;
+    const shown = showStickies
+      ? sheet
+      : { ...sheet, items: sheet.items.filter((i) => i.kind !== 'sticky') };
     try {
-      return layoutSheet(drawnItems(sheet, asked), {
+      return layoutSheet(drawnItems(shown, asked), {
         name: doc.name,
         sheets,
         views: views.lines,
@@ -361,7 +535,28 @@ export default function SheetWorkspace({
       // The sheet fonts are still loading: the paper is drawn bare until they are in.
       return undefined;
     }
-  }, [sheet, sheets, doc.name, doc.settings.units, fonts, views.lines, anchors, asked]);
+  }, [
+    sheet,
+    sheets,
+    doc.name,
+    doc.settings.units,
+    fonts,
+    views.lines,
+    anchors,
+    asked,
+    showStickies,
+  ]);
+
+  // What a placed or dragged item snaps to: the targets' boxes and the dimensions' rows.
+  const boxes = useMemo(() => (list ? targetBoxes(list) : new Map()), [list]);
+  const dimensionTargets = useMemo(
+    () =>
+      new Set(
+        (sheet?.items ?? []).filter((i) => i.kind === 'dimension').map((i) => `item:${i.id}`),
+      ),
+    [sheet],
+  );
+  const snapRows = useMemo(() => dimensionRows(list, dimensionTargets), [list, dimensionTargets]);
 
   // Each item's text and state for the browser's rows and the status bar (plan §4.6).
   useEffect(() => {
@@ -376,7 +571,19 @@ export default function SheetWorkspace({
         item.kind === 'dimension'
           ? measureSheetDimension(sheet, item, anchors, options).text
           : undefined;
-      rows.set(item.id, { ...status, ...(text !== undefined && { text }) });
+      const moved = status.state === 'moved' && !status.message ? MOVED[item.kind] : undefined;
+      // A lost note says the kernel's reason when it has one (a deleted, suppressed or failed
+      // feature), as a dimension does (`measureSheetDimension`).
+      const lostWhy =
+        status.state === 'detached' && item.kind !== 'dimension'
+          ? anchors?.[item.id]?.find((r) => r.status === 'detached' && r.message)?.message
+          : undefined;
+      rows.set(item.id, {
+        ...status,
+        ...(moved && { message: moved }),
+        ...(lostWhy && { message: lostWhy }),
+        ...(text !== undefined && { text }),
+      });
     }
     sheetItemsStore.setState({ sheet: sheet.id, rows });
   }, [sheet, anchors, asked, doc.settings.units]);
@@ -478,8 +685,211 @@ export default function SheetWorkspace({
       });
   };
   const navTool = tool === 'pan' || tool === 'zoom' ? tool : undefined;
+
+  // Typing on the sheet (S4): Enter, or leaving the field, makes the new item (one undo step)
+  // or writes the edited text (one step, none when unchanged). Blank text makes or changes
+  // nothing.
+  const commitText = (text: string) => {
+    const now = editing;
+    setEditing(undefined);
+    if (!now || text.trim() === '') return;
+    if (now.make) {
+      const item = now.make(text);
+      const error = runSheetCommand(stores, {
+        ...addSheetItem({ sheet: sheet.id, item }),
+        label: TYPED_LABEL[now.edit.kind],
+      });
+      if (error) notify('error', error);
+      else if (now.reports) resolved.merge(now.reports);
+      return;
+    }
+    const was = sheet.items.find((i) => i.id === now.edit.id);
+    if (!was || !('text' in was) || was.text === text) return;
+    const error = runSheetCommand(stores, {
+      ...updateSheetItem({ id: was.id, changes: { text } as SheetItemChanges }),
+      label: 'Edit text',
+    });
+    if (error) notify('error', error);
+  };
+  const endText = () => setEditing(undefined);
+  /** A click of a tool while typing (the one that ends it) only finishes typing. */
+  const busyTyping = () => editing !== undefined || pressedWhileTyping.current;
+  /** Text and Sticky Note: a click starts a new one there, typed in place. */
+  const placeText = (point: Vec2) => {
+    if (busyTyping()) return;
+    const id = newId<SheetItemId>();
+    const at: [number, number] = [round2(point[0]), round2(point[1])];
+    if (activeTool === 'sheetText') {
+      const size = textSize ?? SHEET_TEXT_SIZE;
+      setEditing({
+        edit: { kind: 'text', baseline: [at[0], at[1] + size], size, text: '' },
+        make: (text) => ({
+          kind: 'text',
+          id,
+          at,
+          text,
+          ...(textSize !== undefined && { size: textSize }),
+        }),
+      });
+      return;
+    }
+    const { padding, text: size } = SHEET_NOTE;
+    const color = stickyColor;
+    setEditing({
+      edit: {
+        kind: 'sticky',
+        baseline: [at[0] + padding, at[1] + padding + size],
+        size,
+        note: { at, size: STICKY_SIZE, fill: SHEET_STICKY[color].fill, padding },
+        text: '',
+      },
+      make: (text) => ({
+        kind: 'sticky',
+        id,
+        at,
+        size: [STICKY_SIZE[0], STICKY_SIZE[1]],
+        text,
+        ...(color !== 'yellow' && { color }),
+      }),
+    });
+  };
+  /** A double-click: a text, a leader note's text or a sticky note is typed where it is. */
+  const openTarget = (target: string) => {
+    const item = target.startsWith('item:')
+      ? sheet.items.find((i) => i.id === target.slice(5))
+      : undefined;
+    if (!item) return;
+    session.getState().select(sheetSelection([target]));
+    if (item.kind === 'text' || item.kind === 'leader') {
+      const size = item.kind === 'text' ? (item.size ?? SHEET_TEXT_SIZE) : SHEET_NOTE.text;
+      const run = firstRun(list?.items, target);
+      const baseline: Vec2 | undefined = run
+        ? [run.at[0], run.at[1]]
+        : item.kind === 'text'
+          ? [item.at[0], item.at[1] + size]
+          : undefined;
+      if (!baseline) return;
+      setEditing({
+        edit: {
+          kind: item.kind,
+          id: item.id,
+          baseline,
+          size,
+          text: item.text,
+          ...(item.kind === 'text' && item.width !== undefined && { width: item.width }),
+        },
+      });
+    } else if (item.kind === 'sticky') {
+      const { padding, text: size } = SHEET_NOTE;
+      setEditing({
+        edit: {
+          kind: 'sticky',
+          id: item.id,
+          baseline: [item.at[0] + padding, item.at[1] + padding + size],
+          size,
+          note: {
+            at: item.at,
+            size: item.size,
+            fill: SHEET_STICKY[item.color ?? 'yellow'].fill,
+            padding,
+          },
+          text: item.text,
+        },
+      });
+    }
+  };
+  const textTool = activeTool === 'sheetText' || activeTool === 'sheetSticky';
+  /**
+   * Where a tool places at `p` with snapping: a text's or note's corner, or a dimension's or
+   * leader's text while it follows the pointer (a dimension's row 10 mm from the others').
+   */
+  const placeAt = (p: Vec2, tolerance: number): [number, number] => {
+    const placing = picker
+      ? picker.preview !== undefined && picker.pointer !== undefined
+      : textTool;
+    if (!snapOn || !placing) {
+      if (placeGuides) setPlaceGuides('');
+      return [p[0], p[1]];
+    }
+    // The preview's row was laid out at the tool's last point: it moves with the pointer.
+    let row: SnapRow | undefined;
+    const run = picker?.preview?.items.find((i): i is DisplayText => i.type === 'text');
+    const was = picker?.pointer;
+    const r = dimensionTool && run ? rowOf(run) : undefined;
+    if (r && was)
+      row = { axis: r.axis, at: r.at + (r.axis === 'x' ? p[0] - was[0] : p[1] - was[1]) };
+    const snapped = snapPoint(p, [...boxes.values()], tolerance, row, [...snapRows.values()]);
+    const d = guidePath(snapped.guides);
+    if (d !== placeGuides) setPlaceGuides(d);
+    return snapped.point;
+  };
+  const pointerTool = picker
+    ? {
+        onPoint: (p: [number, number], tolerance: number) =>
+          picker.onPoint(placeAt(p, tolerance), tolerance),
+        onClick: (p: [number, number], tolerance: number) => {
+          if (busyTyping()) return;
+          picker.onClick(picker.preview ? placeAt(p, tolerance) : p, tolerance);
+          setPlaceGuides('');
+        },
+        onLeave: () => {
+          picker.onLeave();
+          setPlaceGuides('');
+        },
+      }
+    : textTool
+      ? {
+          onPoint: (p: [number, number], tolerance: number) => {
+            if (!editing) placeAt(p, tolerance);
+          },
+          onClick: (p: [number, number], tolerance: number) => {
+            placeText(placeAt(p, tolerance));
+            setPlaceGuides('');
+          },
+          onLeave: () => setPlaceGuides(''),
+        }
+      : undefined;
+  const overlay = picker ? (
+    <>
+      <DimensionOverlay tool={picker} points={pickedPoints} />
+      {editing?.shows && <PreviewItems items={editing.shows} />}
+    </>
+  ) : repicking && selectedItem && anchorsKernel && sheetItemView(selectedItem) ? (
+    <RepickHandles
+      key={selectedItem.id}
+      sheet={sheet}
+      item={selectedItem}
+      anchors={anchors}
+      hitAt={selectedItem.kind === 'leader' ? hitWithFaces : hitEdges}
+      scale={scaleOf(sheetItemView(selectedItem) as SheetViewId)}
+      control={control}
+      kernel={anchorsKernel}
+      stores={stores}
+      notify={notify}
+    />
+  ) : undefined;
+  const changeItem =
+    (id: SheetItemId) =>
+    (changes: SheetItemChanges, label: string): string | undefined =>
+      runSheetCommand(stores, { ...updateSheetItem({ id, changes }), label });
+  const noteToolId = activeTool && (textTool || noteTool) ? (activeTool as NoteToolId) : undefined;
+  const noteStepText = editing
+    ? 'Type the text.'
+    : noteTool && picker
+      ? picker.busy
+        ? 'Reading the pick…'
+        : noteStep(noteTool, picker.picks)
+      : activeTool === 'sheetText'
+        ? 'Click where the text starts, then type.'
+        : 'Click where the note goes, then type.';
   return (
-    <div className="absolute inset-0 z-[5]" data-sheet-workspace="">
+    <div
+      className="absolute inset-0 z-[5]"
+      data-sheet-workspace=""
+      onPointerDownCapture={() => {
+        pressedWhileTyping.current = editing !== undefined;
+      }}
+    >
       <SheetCanvas
         list={list}
         sheetId={sheet.id}
@@ -508,32 +918,21 @@ export default function SheetWorkspace({
           },
         })}
         {...(projected.placing && { placing: projected.placing })}
-        {...(dimensionTool && {
-          pointer: {
-            onPoint: dimensioning.onPoint,
-            onClick: dimensioning.onClick,
-            onLeave: dimensioning.onLeave,
-          },
-          overlay: <DimensionOverlay tool={dimensioning} points={pickedPoints} />,
+        {...(pointerTool && { pointer: pointerTool })}
+        {...(overlay && { overlay })}
+        {...(editing && {
+          editor: (
+            <SheetTextEditor
+              key={editing.edit.id ?? 'new'}
+              edit={editing.edit}
+              onCommit={commitText}
+              onCancel={endText}
+            />
+          ),
         })}
-        {...(repicking &&
-          dimension &&
-          anchorsKernel && {
-            overlay: (
-              <RepickHandles
-                key={dimension.id}
-                sheet={sheet}
-                item={dimension}
-                anchors={anchors}
-                pickables={pickables}
-                scale={scaleOf(dimension.view)}
-                control={control}
-                kernel={anchorsKernel}
-                stores={stores}
-                notify={notify}
-              />
-            ),
-          })}
+        onOpen={openTarget}
+        {...(snapOn && { snap: { rows: snapRows } })}
+        {...(placeGuides && pointerTool && { guides: placeGuides })}
         movesOf={(targets, dx, dy, free) => {
           const moves = new Map<string, readonly [number, number]>(
             targets.map((t) => [t, [dx, dy] as const]),
@@ -644,8 +1043,24 @@ export default function SheetWorkspace({
           ref={zoomLabel}
           data-sheet-zoom=""
           aria-label="Zoom level"
-          className="min-w-12 border-l border-line pl-2 text-center font-mono text-xs text-muted tabular-nums"
+          className="min-w-12 border-x border-line px-2 text-center font-mono text-xs text-muted tabular-nums"
         />
+        <IconButton
+          label="Snap"
+          hint="Moved and placed items snap to other items' edges and middles, dimensions to rows 10 mm apart."
+          pressed={snapOn}
+          onClick={() => setSnapOn((on) => !on)}
+        >
+          <Magnet size={16} strokeWidth={1.75} />
+        </IconButton>
+        <IconButton
+          label="Show sticky notes"
+          hint="Sticky notes on the sheet: shown or hidden on screen. The export has its own switch."
+          pressed={showStickies}
+          onClick={() => setShowStickies((on) => !on)}
+        >
+          <StickyNote size={16} strokeWidth={1.75} />
+        </IconButton>
       </nav>
       <div className="pointer-events-none absolute top-3 right-3 bottom-3 z-10 flex w-64 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
         {dimensionTool ? (
@@ -657,6 +1072,17 @@ export default function SheetWorkspace({
             lost={lost}
             value={dimensionChoices}
             onChange={setDimensionChoices}
+          />
+        ) : noteToolId ? (
+          <NoteToolPanel
+            tool={noteToolId}
+            doc={doc}
+            step={noteStepText}
+            waiting={waiting}
+            textSize={textSize}
+            onTextSize={setTextSize}
+            color={stickyColor}
+            onColor={setStickyColor}
           />
         ) : activeTool === 'projectedView' ? (
           <ProjectedViewPanel
@@ -714,6 +1140,39 @@ export default function SheetWorkspace({
                 label,
               })
             }
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'text' ? (
+          <TextCard
+            key={selectedItem.id}
+            doc={doc}
+            item={selectedItem}
+            change={changeItem(selectedItem.id)}
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'leader' ? (
+          <LeaderCard
+            key={selectedItem.id}
+            sheet={sheet}
+            item={selectedItem}
+            row={itemRow}
+            change={changeItem(selectedItem.id)}
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'sticky' ? (
+          <StickyCard
+            key={selectedItem.id}
+            doc={doc}
+            item={selectedItem}
+            change={changeItem(selectedItem.id)}
+            onDelete={remove}
+          />
+        ) : selectedItem?.kind === 'centreMark' || selectedItem?.kind === 'centreLine' ? (
+          <CentreCard
+            key={selectedItem.id}
+            sheet={sheet}
+            item={selectedItem}
+            row={itemRow}
             onDelete={remove}
           />
         ) : selected.length > 0 && !(selected.length === 1 && selected[0] === 'title-block') ? (

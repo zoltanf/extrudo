@@ -344,6 +344,21 @@ export function targetName(sheet: Sheet | undefined, target: SheetTarget): strin
   }
   const item = sheet?.items.find((i) => i.id === target.slice(5));
   if (!item) return 'Item';
-  if (item.kind === 'text') return `Text “${item.text.split('\n')[0]?.slice(0, 40)}”`;
-  return item.kind === 'dimension' ? 'Dimension' : 'Item';
+  const first = 'text' in item ? item.text.split('\n')[0]?.slice(0, 40) : undefined;
+  switch (item.kind) {
+    case 'text':
+      return `Text “${first}”`;
+    case 'leader':
+      return `Leader note “${first}”`;
+    case 'sticky':
+      return `Sticky note “${first}”`;
+    case 'dimension':
+      return 'Dimension';
+    case 'centreMark':
+      return 'Centre mark';
+    case 'centreLine':
+      return 'Centre line';
+    default:
+      return 'Item';
+  }
 }

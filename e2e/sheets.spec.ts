@@ -314,7 +314,10 @@ test('selecting on the sheet: hover, click, toggle, box, title block, move, nudg
   await expect(sheet(page)).toHaveAttribute('data-hover', 'item:t1');
   await page.mouse.click(text.x, text.y);
   await expect(sheet(page)).toHaveAttribute('data-selected', 'item:t1');
-  await expect(page.getByRole('region', { name: 'Selection' })).toContainText('Text “A note”');
+  // A text's own card (S4): its Text.
+  await expect(
+    page.getByRole('region', { name: 'Text', exact: true }).getByRole('textbox', { name: 'Text' }),
+  ).toHaveValue('A note');
   await page.keyboard.down('Control');
   await page.mouse.click(view.x, view.y);
   await page.keyboard.up('Control');
@@ -341,6 +344,8 @@ test('selecting on the sheet: hover, click, toggle, box, title block, move, nudg
   ).toHaveValue('Selection');
 
   // A drag moves the view; the arrows nudge it 1 mm, 10 with Shift. Each is one undo step.
+  // Snap off (S4): the drag moves exactly as far as the pointer.
+  await page.getByRole('button', { name: 'Snap', exact: true }).click();
   await page.mouse.click(view.x, view.y);
   await expect(sheet(page)).toHaveAttribute('data-selected', 'view:v1');
   const x0 = await frameX(page, 'view:v1');

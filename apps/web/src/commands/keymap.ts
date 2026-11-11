@@ -80,6 +80,10 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   projectedView: ['P'],
   // D is Sketch Dimension's too: a sketch and the drawing are never open together.
   sheetDimension: ['D'],
+  // Text and Leader Note (S4): T is Trim in a sketch, N Annotate on the model; neither is
+  // offered in the drawing.
+  sheetText: ['T'],
+  sheetLeader: ['N'],
   exportSheets: ['Mod+E'],
   nextSheet: ['Mod+PageDown'],
   previousSheet: ['Mod+PageUp'],

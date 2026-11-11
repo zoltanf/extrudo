@@ -1014,3 +1014,103 @@ kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached d
   through the same edge); a separate kernel call for an end or a side (one `resolveSheet` of a
   probe answers both); "Show the unit" and arrows inside or outside on the panel and card (no field;
   left for a later schema change, above).
+
+## Amendment (S4, the notes tools), 2026-11-11
+
+Package 2 of S4: the notes in the app, which completes S4 (mock-up 1 rebuilt by hand in
+`e2e/sheet-notes.spec.ts`). Files: `apps/web/src/sheets/usePickTool.ts` (the shared pick tool
+and `pickOf`), `noteTools.ts` (the notes' specs), `faceHit.ts`, `SheetTextEditor.tsx`,
+`SheetNoteCard.tsx`, `snap.ts`; changes in `SheetWorkspace.tsx`, `SheetCanvas.tsx` (`editor`,
+`onOpen`, `snap`, `guides`, `--sheet-mm`), `RepickHandles.tsx` (any anchored item),
+`SheetsTree.tsx` (the Notes folder), `SheetViewCard.tsx` (Centre lines), `SheetExportDialog.tsx`
+and `exportSheets.ts` (Sticky notes), `selection.ts` (`targetName`), `controls.tsx`
+(`CommitArea`); `faceAlong` in `selection/pick.ts`; five tools and icons in `shell/tools.ts`.
+No schema change, no kernel change.
+
+- **Five tools** in the Drawing tab, as plan §4.1 places them: Dimensions › Centre Mark
+  (`sheetCentreMark`, icon `centre-mark`) and Centreline (`sheetCentreLine`, `centreline`),
+  category `sketch`; Notes › Text (`sheetText`, `T`, `sheet-text`), Leader Note
+  (`sheetLeader`, `N`, `leader-note`) and Sticky Note (`sheetSticky`, `sticky-note`),
+  category `inspect`. T is Trim's key in a sketch and N Annotate's on the model; neither is
+  offered in the drawing, and no key shared by every mode is taken. Leader Note took the
+  marking menu's Fit wedge (F6 and the floating bar's Fit stay). Each is in `SHEET_TOOLS`
+  and stays on until Esc.
+- **One pick tool, a spec per tool** (`usePickTool`, `PickToolSpec`): the Dimension tool's
+  hover, pick, candidate and preview, generalised; a spec says what it `accepts`, whether
+  an outline is taken as its face `whole`, how many picks it takes, what item they make and
+  whether it is placed by a click (dimension, leader note) or at once (centre mark and
+  line). The Dimension tool is that tool with its own spec (`dimensionSpec`); S5's balloon
+  is meant to be another. **The candidate is checked**: an item whose resolved anchors
+  `sheetItemStatus` calls `invalid` or `detached` is not placed and the tool says why (the
+  document's rule takes the shape, the model says whether it fits: a cone for a centre
+  mark, an axis seen end-on). Only shapes the kind's rule can take are hovered
+  (`noteAccepts`): a centre mark a circle or an outline, a centre line a straight edge and
+  then a parallel one in the same view, or an outline (its axis).
+- **A leader note on a face** (plan §4.5's "edge, vertex, or face"): a hidden-line view has no
+  face regions, so the face under the pointer is the first a ray along the view's direction
+  meets in the bodies' display meshes (`faceHit`, through the viewport's picking index
+  `faceAlong`), among the bodies the view's exact, current lines are drawn from; its name is
+  the mesh's `faceIds`, and the ref comes from the kernel by that name like any pick. An edge
+  or vertex within the tolerance wins over the face. The hover is a dot at the pointer.
+- **Typing in place** (`SheetTextEditor`): a text, a leader note and a sticky note are typed
+  where they are drawn: a textarea laid on the paper in mm (the canvas writes `--sheet-mm`,
+  px per mm, with the zoom), Inter at the item's size, its first baseline on the drawn
+  text's (from the display list's first run; for a new leader, the placeholder's). **Keys,
+  the same for the three kinds and for the cards' Text field (`CommitArea`)**: Enter
+  finishes, Shift+Enter starts a new line, Esc leaves it. A new item is added only when its
+  text is finished and not blank (one undo step: "Text", "Leader note", "Sticky note"), so
+  a placed leader waits for its text in memory; an edit is one `updateSheetItem` ("Edit
+  text"), none when unchanged. A click elsewhere finishes, and the press that ends the typing
+  starts nothing (the workspace notes whether the press began while typing). A double-click
+  on a target (no tool running) types a text, leader note or sticky note again.
+- **Cards** (plan §4.3), the fields the items have: text (Text, Letter height, Wrap width),
+  leader note (its view, what it points at, Text), sticky note (Text, Colour, Width, Height,
+  Print), centre mark and line (their view, hidden when the view's Centre lines is off);
+  each change one step, numbers `ExpressionInput`s storing the evaluated mm, Delete. A lost
+  or moved anchored note says why and offers its handles.
+- **Lost and moved notes**: `RepickHandles` takes any anchored item; what a drag may land on
+  and what it changes are the kind's (`repickAccepts`, `repickWhole`, `itemRepick`: a
+  dimension by `repickChanges`, a note by `noteRepick`). **A lost note's reason is the
+  kernel's when it gives one** ("The feature this was drawn on is deleted."), else the
+  layout's own words, in the browser row, the status text and the card; a moved one says it
+  moved to matching geometry. This supersedes the S3 note that notes keep their own words.
+- **Browser**: one **Notes** folder per sheet (plan §3.1 names "notes" beside dimensions)
+  with its texts, leader notes, sticky notes, centre marks and centre lines in the sheet's
+  order: the first line in quotes and the kind, the view, "moved" or "lost" with the reason
+  as the tooltip.
+- **Export**: the dialog's **Sticky notes** switch (mock-up 4; off by default, remembered
+  with the format in `export.sheets`). Off, the document decides: only notes switched to
+  Print are written, and the summary adds "· n sticky notes left out"
+  (`sheetStickiesLeftOut`, loaded lazily with `@extrudo/sheets`). On, every note is written,
+  through a copy of the sheet with each note's `print` set (`withEveryStickyNote`); nothing is
+  stored. The floating bar's **Show sticky notes** hides them on screen only.
+- **The view's Centre lines switch** (base and projected views) sets `centreLines: false`,
+  which hides that view's centre marks and lines (`sheetItemShown`); nothing is generated.
+- **Snapping** (`snap.ts`, plan §4.2): a dragged selection snaps, each axis on its own, to
+  the nearest left, middle or right (top, middle, bottom) of another target's box within the
+  pick tolerance (5 px), and **a dimension to rows**: its text's line (`y` of a level text,
+  `x` of an upright one; its dimension line is parallel at a fixed distance) to another
+  dimension's of the same direction plus a whole number of 10 mm steps (`ROW_STEP`). A
+  placed text or note corner, and a dimension or leader following the pointer, snap the
+  same way. Dashed guides (`[data-sheet-guides]`, 6 4 px like a sketch's) are written to
+  the DOM while dragging; the floating bar's **Snap** (on by default, session only) turns it
+  off; arrow-key nudges never snap.
+- **Not offered, no field**: a leader note's or sticky note's letter height (both 3.5 mm);
+  a text's or leader's font, weight or alignment; a sticky note's rotation (mock-up 1 draws
+  one turned); a leader with more than one arrow or a bent leader line; a centre line's
+  overshoot or dash lengths; the snap step. Each would be a schema change.
+- **Tests**: `noteTools.test.ts` (what each tool takes and makes, the panel's words, picking
+  again, the export's copy), `snap.test.ts` (edges, middles, rows, points);
+  `e2e/sheet-notes.spec.ts` (Standard views of the wall bracket, two dimensions, a centre mark,
+  a centre line, a leader on a hole and one on a face, a text and a sticky note, each one
+  undo step; typing in place and a double-click edit; the Centre lines switch; the sticky
+  note left out of the PDF, then printed; a snapped drag; the holes deleted, the leader lost
+  with the kernel's reason and dragged onto an edge, undo twice). `SHEET_SHOTS=<dir>` saves
+  pictures and the PDF.
+- **Rejected**: a second hook per tool copying the Dimension tool's (the task asked for one
+  way of picking, and S5's balloons need the same); faces picked from the view's outlines
+  only (a face seen flat has none; a leader to a face's middle needs the face itself);
+  adding a leader note before its text (the schema refuses blank text, and an undo step with
+  a placeholder would be one more to undo); a fixed time after typing in which clicks are
+  ignored (it swallowed a real pick made soon after); snapping in the document's commands
+  (the commands store what the person did; snapping is how the pointer is read).

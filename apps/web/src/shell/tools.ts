@@ -878,7 +878,7 @@ export const TOOLS = {
     hint: 'Render a presentable picture of the design.',
   },
   // Drawings (P6-24, ADR-0143): 2D sheets made from the model, a mode like a sketch. The
-  // tools of later slices (notes, tables) are not listed until they exist.
+  // tools of later slices (balloons, tables) are not listed until they exist.
   sheets: {
     id: 'sheets',
     label: 'Drawing',
@@ -906,6 +906,42 @@ export const TOOLS = {
     icon: 'sheet-dimension',
     category: 'sketch',
     hint: 'A length, distance, radius, diameter or angle measured from the model: pick, then click where the number goes.',
+  },
+  // The notes tools (P6-24 S4): they run on the sheet until Esc, like Dimension.
+  sheetCentreMark: {
+    id: 'sheetCentreMark',
+    label: 'Centre Mark',
+    icon: 'centre-mark',
+    category: 'sketch',
+    hint: 'A cross on the centre of a circle: click a circle, or a cylinder seen from the side.',
+  },
+  sheetCentreLine: {
+    id: 'sheetCentreLine',
+    label: 'Centreline',
+    icon: 'centreline',
+    category: 'sketch',
+    hint: 'A dash-dot line midway between two parallel edges, or along the axis of a cylinder or cone.',
+  },
+  sheetText: {
+    id: 'sheetText',
+    label: 'Text',
+    icon: 'sheet-text',
+    category: 'inspect',
+    hint: 'Text on the sheet: click where it starts and type. Enter finishes, Shift+Enter starts a new line.',
+  },
+  sheetLeader: {
+    id: 'sheetLeader',
+    label: 'Leader Note',
+    icon: 'leader-note',
+    category: 'inspect',
+    hint: 'A note with an arrow to the model: pick an edge, a point or a face, click where the text goes, then type.',
+  },
+  sheetSticky: {
+    id: 'sheetSticky',
+    label: 'Sticky Note',
+    icon: 'sticky-note',
+    category: 'inspect',
+    hint: 'A coloured note for yourself: on screen only until its Print switch is on.',
   },
   newSheet: {
     id: 'newSheet',
@@ -1214,14 +1250,15 @@ export const TABS: Tab[] = [
     ],
   },
   // The drawing's own tab (P6-24, ADR-0143), shown in place of every tab but Home while a
-  // sheet is open; Finish Drawing sits after its groups. Notes and Tables join it with their
-  // slices.
+  // sheet is open; Finish Drawing sits after its groups. Tables join it with their slice,
+  // Balloon the Notes group.
   {
     id: 'sheet',
     label: 'Drawing',
     groups: [
       { label: 'Views', tools: ['baseView', 'projectedView'] },
-      { label: 'Dimensions', tools: ['sheetDimension'] },
+      { label: 'Dimensions', tools: ['sheetDimension', 'sheetCentreMark', 'sheetCentreLine'] },
+      { label: 'Notes', tools: ['sheetText', 'sheetLeader', 'sheetSticky'] },
       { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
       { label: 'Output', tools: ['exportSheets'] },
     ],
