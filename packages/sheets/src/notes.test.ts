@@ -65,7 +65,11 @@ function sheetOf(items: SheetItem[], centreLines?: false): Sheet {
   };
 }
 
-const ref = (kind: 'edge' | 'face' | 'vertex', id: string, at: Vec3 = [0, 0, 0]) => ({
+const ref = (
+  kind: 'edge' | 'face' | 'vertex',
+  id: string,
+  at: [number, number, number] = [0, 0, 0],
+) => ({
   ref: { kind, id, fingerprint: { type: kind === 'face' ? 'cylinder' : 'line', at } },
 });
 const line = (start: Vec3, end: Vec3): SheetAnchorReport => ({
@@ -187,7 +191,9 @@ describe('leader notes', () => {
     expect(tip[0]).toBeCloseTo(113, 1);
     expect(tip[1]).toBeCloseTo(91, 1);
     const free = leader('n3', [20, 20], { free: [0, 0] });
-    const onFree = layoutSheetLeader(sheetOf([free]), free, { n3: [{ status: 'ok' }] });
+    const onFree = layoutSheetLeader(sheetOf([free]), free, {
+      n3: [{ status: 'ok' }],
+    } as SheetAnchors);
     expect(close(paths(onFree)[1]?.contours[0]?.start, [100, 100])).toBe(true);
   });
 
