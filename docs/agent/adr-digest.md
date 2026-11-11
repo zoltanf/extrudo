@@ -436,7 +436,13 @@ on an indirect frame **that has a seam** is `ShapeCustom::DirectFaces`' result
 with every reversed wire rebuilt forward (OCCT's writer otherwise reverses the wire itself and its
 `ShapeFix_Wire` reorder flips a seam wire's circles); any other body goes in
 as it is, byte-identical. Guarded by `export.test.ts`'s rim-fillet test
-(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses).
+(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses). **Its fourth amendment (2026-11-11, P6-25 S1)**: the
+rebuilt face is made on the **bare** face (`Located(TopLoc_Location())`) and
+given the explorer face's location back before `Replace` (never
+`EmptyCopied()` of a located face plus its relative wires: `BRep_Builder::Add`
+moves a child by the parent's inverse location); one rebuild per `TShape`.
+Guarded by `step-located.test.ts` (three FreeCAD-made B-rep shapes, plain,
+coloured and assembly STEP).
 `@extrudo/io` has
 `TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
@@ -4393,7 +4399,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted, nothing built yet**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, S1's document and layout built, its UI not**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4411,7 +4417,38 @@ new facade method (flat arrays, ADR-0001), the evaluator lives in `packages/kern
 **dimensions are measured, never driving**. **Output:** one display list drives screen, PDF and SVG; `writePdf` is our own
 writer in `@extrudo/io` (MIT: no GPL import, no PDF library), text as glyph outlines of the bundled Inter; `@extrudo/sheets`
 (no DOM, Node) goes into `scripts/check-boundaries.mjs`. **Defaults:** paper white in both themes, first angle per sheet,
-hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S1a (modes, done, no
+hidden + tangent + centre lines on, title block "Simple", zone border off, sticky notes not printed. **S0 (plan §13):** HLR cost
+follows overlapping curved edges, not size (B7's side views about 3.4 s each, B9 along its axis 3.8 s, a 209-face
+assembly 0.25 s for six views), and one view is one uninterruptible call: views compute one at a time with progress,
+cancel acts between views, the per-direction cache is required. Views come from **`Kernel.hlrSpans`** (our own walk of
+`HLRBRep_Algo`'s data: edge index, kind, an outline's face, range, visible and hidden spans in the edge's 3D parameter),
+**never `HLRBRep_HLRToShape`** (no faster, and its edges lose the model edge's name). Rules in the walk: HLR's status
+intervals are already 3D parameters (never convert them with `Parameter3d`); split edges map back through the
+outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
+(`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
+`writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; Adobe's Helvetica widths would need
+a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
+`HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
+vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
+**S2 kernel views (package 1):** the frame in `core/src/sheet-frame.ts` (`SheetViewFrame`, `sheetBaseFrame`,
+`sheetProjectedFrame`, `sheetViewFrame`, `toSheetView`, `SHEET_STANDARD_VIEWS`, `sheetStandardFrom`; view coordinates
+are mm at model scale, x right, y up, world origin at 0, 0; third angle shows the side a view is placed on, first the
+opposite; **isometric sides are the same in both angles**), the evaluator in `kernel/src/sheets/` (`exactView` from
+`hlrSpans`, `quickView` from `hlrPolySpans`; `ViewGeometry` with curves `visible`/`hidden`/`outline`/`tangent`, pieces
+`line`/`arc`/`ellipse`/`polyline`, `edge`/`face` topological names, `partial` with `skipped` for mesh and missing
+bodies), `RecomputeEngine.sheetView` (cache of 64 by body versions, skipped bodies, direction, up, exact/quick) and
+`KernelApi.sheetViews(requests, onView)` / `cancelSheetViews()`. Rules a change must keep: **raw edge and face indices
+never leave `sheets/evaluate.ts`** (the compound's indices map back through `Kernel.locate`); **every kind of curve
+comes back** and style and tangent edges are the app's filters (`shownCurves`), never in the key; scale and position
+are never in the key; **a quick view never names a curve** (`exact: false`; nothing anchors, measures or snaps to it);
+**before `hlrPolySpans` a body gets its display mesh** if this engine never meshed it (`#meshed`), since the
+polygonal run would leave a mesh of its own that the display mesher keeps; views run one at a time with a yield
+between them, and only `onView`'s `false` or `cancelSheetViews()` stops a run (not a newer call, not a recompute: a
+later view draws the new bodies and its `versions` say so). Goldens: `pnpm vitest run
+packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path as its value and runs every test).
+**S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
 `markingSlots`, `repeatSample`, `finish`), read by `visibleTabs`/`defaultTab` (`tools.ts`), the Finish tile (`Toolbar.tsx`),
@@ -4419,7 +4456,32 @@ behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spel
 `perMode`); the session's `enterMode(mode, fields)`/`exitMode()` are the only way in and out (`enterSketch`/`exitSketch`
 call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
 `enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
-`mode === 'sketch'` stays about sketching.
+`mode === 'sketch'` stays about sketching. **S1 document (done):** `doc.sheets` (`core/src/sheet-schema.ts`: `SheetSchema`,
+`SheetViewSchema` with `from` `base`/`projected`, `SheetItemSchema` union with `text` only, `sheetProblems`,
+`sheetPaperSize`, `projectedFrom`, `sheetItemView`, `isUnknownSheetItem`; IDs `SheetId`/`SheetViewId`/`SheetItemId`)
+and commands in `core/src/sheets.ts` (`addSheet`, `updateSheet`, `removeSheet`, `moveSheet`, `addSheetView`,
+`updateSheetView`, `removeSheetView`, `addSheetItem`, `updateSheetItem`, `removeSheetItems`; `changes` with `null`
+deleting); file format §4.11. Rules a change must keep: **every sheet command ends by validating the sheets it
+leaves** (`settle`: the schema plus `sheetProblems`), and a new rule goes into `sheetProblems` so the loader and the
+commands agree; sheet, view and item IDs are **unique in the whole design**; a new item kind is one schema added to
+`SheetItemSchema`'s union, and one tied to a view names it in a field called `view` (so `sheetItemView` and the
+`removeSheetView` cascade find it); **an unknown item `kind` is dropped on load** (`parseLeniently`, listed in
+`dropped`), never fails the design; deleting a feature or body never touches or refuses on a sheet (an unknown
+`bodies` entry is skipped when drawn); `restoreVersion` copies `sheets`, `remintSheets` renames copied bodies, and
+the script and plugin-command documents leave `sheets` out (`recompute/engine.ts`, `recomputer.ts`). **S1 layout and
+output (done, no UI):** the display list is io's `DisplayList` (`packages/io/src/display.ts`: `DisplayPath`,
+`DisplayText`, sheet mm, **origin top-left, y down**); `@extrudo/sheets` (`packages/sheets/`, GPL, no DOM, Node;
+`core, sketch, io, fonts`) has `layoutSheet(sheet, { name?, sheets?, views? })`, `sheetsToPdf`, `sheetToSvg`, the title
+block templates (`title-block.ts`: `SHEET_TITLE_BLOCKS`, `sheetTitleFields`) and text (`text.ts`). Rules a change must
+keep: **the screen, the SVG and the PDF draw the same list** (the screen through `displayPathData`, `displayPaint`,
+`displayTextLayer`, never its own layout); **`displayPdfPage` is the only y flip** into `writePdf`; a view's lines come
+in through `context.views` as `SheetViewLines` (io contours in the view's frame, mm at 1:1, y up, origin at the view's
+`at`) and layout alone scales, flips and places them; derived title-block cells (`scale`, `sheet`, `projection`)
+never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/text` (`shapeText`, `measureText`) in
+`SHEET_FONTS` (Inter Regular and Bold), which the caller loads; every item carries a `SheetDisplayKey` (`paper`,
+`border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
+`packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
+packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
@@ -4433,6 +4495,22 @@ read only by the import's throwaway kernel**, never by the project's kernel and 
 nothing and keeps the text's sub-shape order (the references depend on it); readers stay linear in their input (ADR-0083's
 hostile-file amendments), the XML reader has no DTD or entities; **no library file, file name or content in the
 repository** (`FCSTD_SAMPLES=<dir>` runs the private corpus, authored files only in tests).
+
+**ADR-0144, S1 (kernel):** `Kernel.readBrep` (`packages/kernel/src/kernel.ts`) refuses with a `KernelError`, before
+the text reaches the WASM heap: over **`MAX_BREP_BYTES`** (32 MB of UTF-8, exported), a table count (`Locations` …
+`TShapes`) that isn't 0…10 digits or exceeds half the text, a word of 200+ characters, `nan`/`inf` or an exponent over
+308; it keeps the short-form rule for 18+-digit integer parts exactly (never digits after a point). The facade's
+`readBrep` reads through **`CheckedShapeSet`** (a `BRepTools_ShapeSet` whose `ReadGeometry` overrides peek ahead with
+`tellg`/`seekg`): the `TShapes` count, and per shape its flags and sub-shape list, which must end in `*`, every
+reference naming a shape already read, nesting at most `MAX_DEPTH` (256); the root reference the same; the stream
+**throws on failure** (`exceptions(failbit | badbit)`); after the read **`missingGeometry`** refuses an edge without a 3D
+curve (a degenerate edge's null one is allowed), a null pcurve or surface record, a face with neither surface nor
+triangulation. Refusals are plain words (`std::runtime_error` text; any other failure "the text is damaged or cut
+short."). **Not stopped (a second parser would be needed):** a B-spline record's pole count of 10^9 or -1 (OCCT sizes
+the array first and writes past it) — the import's throwaway kernel and time budget bound them;
+`read-brep-hostile.test.ts` keeps them as `it.skip`. Every hostile case there must end in a shape or a `KernelError`
+under 5 s with `liveShapes` unchanged and the good box readable next. A new check must keep all of the library's
+stored shapes reading (S1: all of them, see the amendment).
 
 **ADR-0144, S2 (reader):** `packages/fcstd` (`@extrudo/fcstd`, deps `fflate` only so far; registered in
 `scripts/check-boundaries.mjs`) reads an `.FCStd` into plain data and knows nothing of Extrudo's document, API or

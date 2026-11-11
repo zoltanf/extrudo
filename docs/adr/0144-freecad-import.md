@@ -193,6 +193,96 @@ stored solids lose their solid on the way through today's writer.
   no sketch plane from an arbitrary frame; no cone primitive; extrude "to
   object" is not FreeCAD's "up to first" for a sketch on the body's own face.
 
+## Amendment (S1, 2026-11-11): `readBrep`'s checks, and the STEP writer
+
+### What `readBrep` checks and refuses
+
+The text comes from third-party files, so what must hold (decision 5) is: a
+bad text ends in a `KernelError` or a shape, in bounded time, with no shape
+left behind and the kernel usable for the next call.
+
+- **Before the heap** (`Kernel.readBrep`, a linear scan): more than
+  **`MAX_BREP_BYTES` = 32 MB** of UTF-8 (the library's largest stored entry
+  is 4,357,460 bytes, of 1,894 entries; none in FreeCAD's binary form); a
+  table count (`Locations` … `TShapes`) that isn't a plain number or exceeds
+  half the text's length (every entry takes two characters or more); a word
+  of 200 characters or more (OCCT copies words into 255-byte buffers);
+  `nan`, `inf` or an exponent over 308. The short form of an 18+-digit
+  integer part stays as it was.
+- **In the facade**: `CheckedShapeSet`, a `BRepTools_ShapeSet` that reads
+  ahead and puts the stream back: the `TShapes` count; per shape, its flags
+  and its sub-shape list, which must end in `*`, with every reference naming
+  a shape already read and the parts nesting at most 256 deep; the root
+  reference likewise. The stream throws on a failed read. After the read,
+  every non-degenerate edge needs its 3D curve, every pcurve and surface
+  record its curve or surface, every face a surface (or a triangulation).
+  Refusals say what is wrong in plain words.
+
+### What the hostile tests found
+
+`read-brep-hostile.test.ts` damages the box text of `read-brep.test.ts` in
+94 ways (each run in its own process, with a 30 s kill, to find the hangs).
+What OCCT did before, and what stops it now:
+
+| Damage | OCCT before | Now |
+|---|---|---|
+| Cut off at a section header or just after one | refused | refused |
+| Cut off in the middle of `TShapes` | **never returned** | the stream throws |
+| A table count of -1, -2^31 or 0 where entries follow | refused | refused |
+| A table count of 10^9 or 2^31 | **25 s to refuse, or never returned**; `TShapes`: **out-of-bounds read** | the scan |
+| A curve or surface index of 0, one past the end, 10^9, -1 | a shape that **traps** on its first check | refused after the read |
+| A pcurve index of the same | a valid shape (OCCT makes the pcurve on a plane) | the same |
+| A location index past the table | a valid shape (OCCT's lookup is checked) | the same |
+| A sub-shape or root index of 10^9 | **out-of-bounds read** | `CheckedShapeSet` |
+| A sub-shape index of 0, one past the end, -1 | refused | refused |
+| An unknown curve, pcurve, surface or shape type | refused | refused |
+| A B-spline degree of 10^9 | a shape that **traps** | refused after the read |
+| A B-spline knot count of 10^9 | **trap that leaves the kernel broken** | the stream throws (the first read past the text) |
+| A B-spline pole count of 10^9 or -1 | **out-of-bounds write** | **not stopped** (below) |
+| `NaN`, `inf`, `1e999` as a coordinate or tolerance | a shape (invalid for `inf`) | the scan |
+| A location that refers to itself or to a later one, a power of 10^9, a singular matrix | a shape | the same |
+| 1,000 nested compounds | a shape | the depth limit (deeper than 256) |
+| 10^5 nested compounds | **stack overflow** | the depth limit |
+
+**Not stopped:** OCCT sizes a B-spline's pole array from the count in its
+record before it reads a pole, and the poles it reads then go past the array.
+Only a reader of every curve and surface record could tell which number is
+such a count: a second B-rep parser, which the rejected list rules out. Those
+two tests are `it.skip`. Within the import they cost the throwaway kernel (decision 5),
+which the import must then replace, and the time budget of decision 9 covers
+the rest (S3).
+
+### The STEP writer
+
+185 of the library's 1,012 stored solids (186 in this run) came back from
+`writeStep` → `readStep` as faces with no solid. The cause: `stepShape()`
+(ADR-0034's third amendment) rebuilt a face with a reversed wire from the face
+an explorer gives, which carries every location above it, and added the
+face's own wires, relative to the face, to that located copy;
+`BRep_Builder::Add` moves a child by the inverse of its parent's location, so
+the wires moved (or, for an identity location, sat under a location OCCT no
+longer finds the edges' pcurves by). The fix rebuilds the bare face and gives
+it its location back (ADR-0034's fourth amendment). A design made in Extrudo
+can't meet it (that amendment says why), so it matters for imports.
+
+Library, stored solids written as STEP and read back: **186 lose their solid
+before, 2 after**. The 2 are zero-thickness boxes (FreeCAD's own volume 0, a
+flat bounding box), which a STEP reader drops; there is nothing to import.
+
+Of the 1,010 that keep their solid, 14 differ in volume by more than 1e-6
+relative (the largest 1.3e-4; 10 of them among the 184 the fix brings back,
+one an invalid shape) and 6 in face count (all 6 already before). S3 compares
+what it imports with the stored shape and will show which of those matter.
+
+### The library through the checked reader
+
+All 1,784 non-empty stored shapes go through `readBrep` in 9.6 s (the
+slowest 450 ms, the largest 4.4 MB). Two are refused, "an edge lacks its
+curve": stored shapes that are a single edge with no curve at all (an empty
+`Curves` table), so there is nothing to show. The first run of the checks
+refused 29 more, every one for a degenerate edge's null 3D curve (a sphere's
+pole), which is legitimate; the check allows it since.
+
 ## Amendment (S2, 2026-11-11): the reader package
 
 `packages/fcstd` has its first layer: `unzipFcstd`, our own XML reader,

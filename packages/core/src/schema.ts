@@ -20,6 +20,7 @@ import {
   RENDER_PRESETS,
   RENDER_QUALITIES,
 } from './render';
+import { SheetSchema, sheetProblems } from './sheet-schema';
 import { attachmentFontId, SketchDataSchema } from './sketch/schema';
 import { z } from './zod';
 
@@ -589,6 +590,11 @@ export const DocumentSchema = z
       .min(1)
       .optional()
       .describe('The highest annotation number ever given; absent until the first.'),
+    /** Drawing sheets, in page order (P6-24, ADR-0143); absent when there are none. */
+    sheets: z
+      .array(SheetSchema)
+      .optional()
+      .describe('Drawing sheets made from the model, in page order; absent when there are none.'),
     bodies: z.record(BodyIdSchema, BodyMetaSchema),
     views: z.array(NamedViewSchema),
     /** Render Picture settings (ADR-0101 §4); absent until the first render. */
@@ -634,6 +640,7 @@ export const DocumentSchema = z
     reportComponentRefs(ctx, doc);
     reportJoints(ctx, doc);
     reportAnnotations(ctx, doc);
+    reportSheets(ctx, doc);
     reportFonts(ctx, doc);
     reportFiles(ctx, doc);
   });
@@ -788,6 +795,17 @@ function reportAnnotations(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSch
       });
     }
   });
+}
+
+/**
+ * The sheets' own rules (`sheetProblems`, ADR-0143): unique IDs and names, a
+ * projected view's parent on the same sheet. The issue names the sheet's
+ * part, so a file's error points at it.
+ */
+function reportSheets(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  for (const { path, message } of sheetProblems(doc.sheets ?? [])) {
+    ctx.addIssue({ code: 'custom', path: ['sheets', ...path], message });
+  }
 }
 
 /**

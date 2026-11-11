@@ -39,6 +39,12 @@ export const ComponentIdSchema = id.brand<'ComponentId'>();
 export const JointIdSchema = id.brand<'JointId'>();
 /** A numbered note pinned to geometry, a point or a sketch (P6-23, ADR-0126 §1). */
 export const AnnotationIdSchema = id.brand<'AnnotationId'>();
+/** A drawing sheet: one page with views and items (P6-24, ADR-0143). */
+export const SheetIdSchema = id.brand<'SheetId'>();
+/** A view on a sheet; unique in the whole design, like a sheet's ID (ADR-0143). */
+export const SheetViewIdSchema = id.brand<'SheetViewId'>();
+/** An item on a sheet (a text, later dimensions and notes); unique in the whole design (ADR-0143). */
+export const SheetItemIdSchema = id.brand<'SheetItemId'>();
 
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export type FeatureId = z.infer<typeof FeatureIdSchema>;
@@ -55,6 +61,9 @@ export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
 export type ComponentId = z.infer<typeof ComponentIdSchema>;
 export type JointId = z.infer<typeof JointIdSchema>;
 export type AnnotationId = z.infer<typeof AnnotationIdSchema>;
+export type SheetId = z.infer<typeof SheetIdSchema>;
+export type SheetViewId = z.infer<typeof SheetViewIdSchema>;
+export type SheetItemId = z.infer<typeof SheetItemIdSchema>;
 
 type AnyId =
   | DocumentId
@@ -71,7 +80,10 @@ type AnyId =
   | AttachmentId
   | ComponentId
   | JointId
-  | AnnotationId;
+  | AnnotationId
+  | SheetId
+  | SheetViewId
+  | SheetItemId;
 
 /**
  * A random UUID v4. `crypto.randomUUID` exists only in secure contexts (HTTPS,

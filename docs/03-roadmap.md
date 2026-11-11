@@ -1709,8 +1709,10 @@ end to end, faster than in established desktop CAD.
   Acceptance per slice: the plan's "Done when", `pnpm check`, the affected e2e specs, CI
   green, and an amendment to ADR-0143. *Deps:* S1 needs S1a; S2 needs S0's answer; S0 and
   S1a can run side by side.
-  - [ ] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
-    with outlined text and a selectable layer.
+  - [x] S0 Spikes: hidden-line spans timed on B1–B10 (time, heap, correctness); `writePdf`
+    with outlined text and a selectable layer. Done 2026-11-11: HLR timed (plan §13; B1 has
+    no body fixture); `hlrSpans` and `hlrPolySpans` built and checked against known views
+    and drawings; `writePdf` checked in three readers (ADR-0143's S0 amendment).
   - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
     behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
     `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).
@@ -1735,8 +1737,9 @@ end to end, faster than in established desktop CAD.
   numbers on the private library (`FCSTD_SAMPLES`) in the pull request, and an amendment to
   ADR-0144 with its rules in the digest. *Deps:* the table in ADR-0144; S1 and S2 can run
   side by side.
-  - [ ] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
-    shape whose root carries a location.
+  - [x] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
+    shape whose root carries a location. *Done 2026-11-11 (ADR-0144's S1 amendment,
+    ADR-0034's fourth amendment).*
   - [x] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
     `FORMAT.md` (2026-11-11; ADR-0144's S2 amendment).
   - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
