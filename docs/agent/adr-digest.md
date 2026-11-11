@@ -4401,7 +4401,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views and the first view tools built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4473,6 +4473,22 @@ at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (ax
 PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
 through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
 geometry with no near match.
+**S4 notes (package 1, no UI):** items `leader` (`view`, one `anchor`, `at` in view mm, `text`), `sticky` (`at`,
+`size` in sheet mm, `text`, `color` from `SHEET_STICKY_COLORS`, absent yellow; `print` only `true`), `centreMark` and
+`centreLine` (`view`, `anchors`) in `core/src/sheet-schema.ts`, their rules in `sheetItemProblems` (leader: any one
+anchor; centre mark: one whole edge or a cylinder's face; centre line: two whole edges or outlines, or one face);
+`sheets/src/anchored.ts` (what every anchored item shares, out of `dimensions.ts`) and `sheets/src/notes.ts`
+(`layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`, `sheetItemStatus`, `sheetItemShown`,
+`sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`). Rules a change must keep: **`sheetItemAnchors(item)` is the one
+place that says which items have anchors** (the kernel resolves them, `remintSheets` rewrites them through
+`mapSheetItemAnchors`, layout reads reports by that index); every anchored item gets S3's resolve and its
+deleted/suppressed rule, the message in its own words (`lostFeature(ref, features, kind)`); **a whole face stands
+for what the kind takes** (`faceAs`: circle for dimension and centre mark, `axis` geometry for a centre line, the
+centroid point for a leader); **a sticky note without `print` never reaches an export** (`output: 'export'`, the
+default of `sheetsToPdf`/`sheetToSvg`; `layoutSheet` defaults to `screen`, which marks it "On screen only"); a view's
+`centreLines: false` hides its centre marks and lines; centre lines are dash-dot **built as segments** with a long
+dash at each end; a lost or invalid centre mark or line draws nothing (the browser row says why), a lost leader its
+text alone at `at`; **nothing is generated for a view by itself** (no automatic centre marks).
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
@@ -4520,7 +4536,27 @@ view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` 
 (`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
 that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
 `MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside
-`newSheet`. e2e: `e2e/sheets.spec.ts`.
+`newSheet`. e2e: `e2e/sheets.spec.ts`. **S2 the view tools (package 2):** `apps/web/src/sheets/viewLines.ts`
+(`sheetViewWants`, `sheetViewWant`, `sheetViewLines`, `pieceContour`, `linesAreCurrent`, `sheetViewNotice`),
+`viewRunner.ts` (`SheetViewRunner`, `sheetViewRunner(kernel)`: `want`, `cancel`, `retry`, `peek`, `exact`), `views.ts`
+(`LOOKING_FROM`, `lookingFromChoices`, `placedAt`, `rescaledAt`, `placeBaseView`, `changeSheetView`), `SheetViewCard.tsx`;
+`SheetViewLines.bounds`/`.state` in `@extrudo/sheets`; `Recomputer.bodyVersions()`. Rules a change must keep: **a view's `at`
+is where the world origin lands on the sheet** (aligned views share a coordinate; placing stores the origin that puts the
+quick lines' middle under the pointer; a new scale moves `at` to keep that middle); a request always names its bodies
+(base view's or every shown body) and its key is direction, up and bodies only; **lines are current only when every drawn
+body's version equals `bodyVersions()`**, otherwise shown with `state: 'stale'` (dimmed on screen, ignored by the writers);
+one run at a time, quick first for views with nothing current, exact after, `quiet` with the workspace's own notice (300 ms,
+Cancel between views, Draw after a cancel); the runner never re-runs the same remaining work by itself; **an export computes
+every view exactly first** (`exact`) and never writes quick lines; notices under views are on screen only, never in the
+display list; layout's per-view items and the selection's per-item boxes must stay keyed by object identity (a new lines
+object per result, the same one while unchanged). **Part 2:** `useProjectedView.ts`, `standardViews.ts` (lazy),
+`views.ts` (`projectedSide`, `projectedAt`, `projectedName`, `placeProjectedView`, `rescaleSheetView`, `fitScale`),
+`selection.ts` (`viewDeltas`). Rules: **a projected view beside its parent stores the parent's `at.y`, one above or below its
+`at.x`, exactly** (in the document, not only on screen); a drag keeps that line unless Alt or the parent moves too, and a
+moved or rescaled view carries the views projected from it in the same undo step; **layout of new views (Standard views, a
+dropped body, Projected View's place) uses exact bounds**, never the quick ones (stray pieces); Standard views are one base
+view and three projected from it; the view label is centred under the lines' bounds; template goldens fix the template's
+IDs (edge names, and so the curves' order and direction, follow them). e2e: `e2e/sheet-views.spec.ts`.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

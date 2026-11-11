@@ -1,7 +1,9 @@
 /**
  * A sheet as a display list (P6-24 S1, ADR-0143 §7): the paper, the border
  * (with zones when asked), the title block, the views (their lines once
- * slice S2 hands them in, a placeholder until then) and the items, in sheet
+ * slice S2 hands them in, a placeholder until then) and the items (texts,
+ * dimensions, notes, centre marks and lines; for an export, sticky notes
+ * only when printed), in sheet
  * mm from the top-left corner with y down, the document's own frame. The
  * screen, `writeDisplaySvg` and `writeDisplayPdf` draw the result unchanged.
  *
@@ -31,6 +33,13 @@ import {
   transformContour,
 } from '@extrudo/io';
 import { layoutSheetDimension } from './dimensions';
+import {
+  layoutSheetCentre,
+  layoutSheetLeader,
+  layoutSheetSticky,
+  type SheetOutput,
+  sheetItemShown,
+} from './notes';
 import { fitLine, LINE_SPACING, type SheetFont, textRun, textWidth, wrapText } from './text';
 import {
   CELL_PAD,
@@ -80,6 +89,17 @@ export interface SheetViewCurve {
 
 export interface SheetViewLines {
   curves: readonly SheetViewCurve[];
+  /**
+   * Around every curve, in the view's frame (mm at 1:1, y up): where the label
+   * goes, without flattening the curves. With no curves it is the frame the
+   * view keeps while it is empty (its body is gone).
+   */
+  bounds?: { min: Point; max: Point };
+  /**
+   * How the screen may mark the view's lines (`"stale"`: being recomputed,
+   * drawn dimmed), as a display item's `state`; writers ignore it.
+   */
+  state?: string;
 }
 
 export interface SheetContext {
@@ -90,12 +110,18 @@ export interface SheetContext {
   /** Each view's lines by view ID, once computed; a view not here draws as a placeholder. */
   views?: ReadonlyMap<SheetViewId, SheetViewLines>;
   /**
-   * The dimensions' anchors (`KernelApi.resolveSheet`, kept across a lost
-   * anchor with `keepLastAnchors`); a dimension not here is drawn detached.
+   * The items' anchors (`KernelApi.resolveSheet`, kept across a lost anchor
+   * with `keepLastAnchors`); an item not here is drawn detached.
    */
   anchors?: SheetAnchors;
   /** The design's length unit, which dimensions are written in; absent: mm. */
   units?: LengthUnit;
+  /**
+   * What the list is for. `screen` (the default for `layoutSheet`) draws every
+   * sticky note and marks those not printed "On screen only"; `export` (the
+   * default for `sheetsToPdf` and `sheetToSvg`) leaves those out.
+   */
+  output?: SheetOutput;
 }
 
 /**
@@ -154,7 +180,9 @@ export function layoutSheet(sheet: Sheet, context: SheetContext = {}): DisplayLi
   if (sheet.titleBlock) items.push(...titleBlock(sheet, context, width, height));
   for (const view of sheet.views)
     items.push(...viewItems(sheet, view, context.views?.get(view.id)));
-  for (const item of sheet.items) items.push(...sheetItem(sheet, item, context));
+  for (const item of sheet.items) {
+    if (sheetItemShown(sheet, item, context.output)) items.push(...sheetItem(sheet, item, context));
+  }
   return { width, height, items };
 }
 
@@ -291,6 +319,14 @@ function derived(cell: SheetTitleCell, sheet: Sheet, context: SheetContext): str
 /** The frame a view without lines is drawn as, mm, centred on its origin. */
 export const VIEW_PLACEHOLDER = { width: 60, height: 40 } as const;
 
+/**
+ * A view's items for the lines object they were made from, by what else they
+ * depend on: a sheet laid out again with the view unchanged (a text dragged, a
+ * field typed) gives back the same items, so nothing is transformed again and
+ * the screen's per-item caches hold.
+ */
+const viewCache = new WeakMap<SheetViewLines, { key: string; items: DisplayItem[] }>();
+
 function viewItems(
   sheet: Sheet,
   view: SheetView,
@@ -298,46 +334,74 @@ function viewItems(
 ): DisplayItem[] {
   const key = `view:${view.id}`;
   const [x, y] = view.at;
-  if (!lines) {
-    const { width: w, height: h } = VIEW_PLACEHOLDER;
+  const scale = sheetViewScale(sheet, view);
+  const k = scale[0] / scale[1];
+  if (!lines || lines.curves.length === 0) {
     const size = SHEET_TEXT_SIZE;
+    const b = lines?.bounds;
+    // The frame the view keeps while it is empty, else a placeholder centred on its origin.
+    const [x0, y0, x1, y1] = b
+      ? [x + k * b.min[0], y - k * b.max[1], x + k * b.max[0], y - k * b.min[1]]
+      : [
+          x - VIEW_PLACEHOLDER.width / 2,
+          y - VIEW_PLACEHOLDER.height / 2,
+          x + VIEW_PLACEHOLDER.width / 2,
+          y + VIEW_PLACEHOLDER.height / 2,
+        ];
     return [
       {
         type: 'path',
-        contours: [rect(x - w / 2, y - h / 2, x + w / 2, y + h / 2)],
+        contours: [rect(x0, y0, x1, y1)],
         stroke: { width: SHEET_LINE.thin, color: SHEET_MUTED, join: 'miter' },
         key,
       },
-      centred(view.name, [x, y + size / 2], size, { color: SHEET_MUTED, key }),
+      centred(view.name, [(x0 + x1) / 2, (y0 + y1) / 2 + size / 2], size, {
+        color: SHEET_MUTED,
+        key,
+      }),
     ];
   }
   const base = baseOf(sheet, view);
-  const scale = sheetViewScale(sheet, view);
-  const k = scale[0] / scale[1];
   const style = base?.style ?? 'hidden';
+  const own = formatSheetScale(scale);
+  const label = view.label
+    ? own === formatSheetScale(sheet.scale)
+      ? view.name
+      : `${view.name} (${own})`
+    : '';
+  const cacheKey = [x, y, k, style, view.tangentEdges, view.centreLines, label].join('|');
+  const cached = viewCache.get(lines);
+  if (cached?.key === cacheKey) return cached.items;
   // From the view's frame (y up, model size) to the sheet's (y down, at scale).
   const m: Matrix = [k, 0, 0, -k, x, y];
   const skip = new Set<SheetLineKind>();
   if (style !== 'hidden') skip.add('hidden');
   if (view.tangentEdges === false) skip.add('tangent');
   if (view.centreLines === false) skip.add('centre');
+  const state = lines.state ? { state: lines.state } : {};
   const out: DisplayItem[] = [];
-  let bottom = y;
+  let bottom = lines.bounds ? y - k * lines.bounds.min[1] : y;
   for (const kind of SHEET_LINE_KINDS) {
     if (skip.has(kind)) continue;
     const contours = lines.curves
       .filter((c) => c.kind === kind)
       .flatMap((c) => c.contours.map((contour) => transformContour(m, contour)));
     if (contours.length === 0) continue;
-    for (const c of contours)
-      for (const p of flattenContour(c, 0.05)) bottom = Math.max(bottom, p[1]);
-    out.push({ type: 'path', contours, stroke: STROKE[kind], key });
+    if (!lines.bounds) {
+      for (const c of contours)
+        for (const p of flattenContour(c, 0.05)) bottom = Math.max(bottom, p[1]);
+    }
+    out.push({ type: 'path', contours, stroke: STROKE[kind], key, ...state });
   }
-  if (view.label) {
-    const own = formatSheetScale(scale);
-    const text = own === formatSheetScale(sheet.scale) ? view.name : `${view.name} (${own})`;
-    out.push(centred(text, [x, bottom + 4 + SHEET_TEXT_SIZE], SHEET_TEXT_SIZE, { key }));
+  if (label) {
+    // Under the middle of the lines (their bounds), else under the view's origin.
+    const middle = lines.bounds ? x + (k * (lines.bounds.min[0] + lines.bounds.max[0])) / 2 : x;
+    out.push({
+      ...centred(label, [middle, bottom + 4 + SHEET_TEXT_SIZE], SHEET_TEXT_SIZE, { key }),
+      ...state,
+    });
   }
+  viewCache.set(lines, { key: cacheKey, items: out });
   return out;
 }
 
@@ -349,6 +413,13 @@ function sheetItem(sheet: Sheet, item: SheetItem, context: SheetContext): Displa
       return layoutSheetDimension(sheet, item, context.anchors, {
         ...(context.units && { units: context.units }),
       });
+    case 'leader':
+      return layoutSheetLeader(sheet, item, context.anchors);
+    case 'centreMark':
+    case 'centreLine':
+      return layoutSheetCentre(sheet, item, context.anchors);
+    case 'sticky':
+      return layoutSheetSticky(item, { output: context.output ?? 'screen' });
     case 'text': {
       const size = item.size ?? SHEET_TEXT_SIZE;
       const key = `item:${item.id}`;

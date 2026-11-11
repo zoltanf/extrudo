@@ -1,9 +1,10 @@
 /**
  * What the kernel tells about a sheet's anchors (P6-24 S3, ADR-0143's S3
- * amendment): `KernelApi.resolveSheet` resolves each dimension's anchors
+ * and S4 amendments): `KernelApi.resolveSheet` resolves each item's anchors
+ * (`sheetItemAnchors`: dimensions, leader notes, centre marks and lines)
  * against the bodies at the marker and gives back, per anchor, its state and
  * the 3D geometry it stands for. `@extrudo/sheets` projects that through the
- * view's frame, measures and lays the dimension out, so the app and the CLI
+ * view's frame, measures and lays the item out, so the app and the CLI
  * give the same result. None of it is stored: it is derived.
  */
 import type { SheetItemId } from './ids';
@@ -36,7 +37,12 @@ export type SheetAnchorGeometry =
    * A cylinder's or cone's outline in the dimension's view: the side the
    * anchor names, and the other side when the face has it.
    */
-  | ({ type: 'silhouette'; opposite?: SheetSegment3 } & SheetSegment3);
+  | ({ type: 'silhouette'; opposite?: SheetSegment3 } & SheetSegment3)
+  /**
+   * A cylinder's or cone's axis, for a centre line on its face: the stretch
+   * of the axis the face covers, from its lowest to its highest point along it.
+   */
+  | ({ type: 'axis' } & SheetSegment3);
 
 export interface SheetAnchorReport {
   status: SheetAnchorStatus;
@@ -47,14 +53,15 @@ export interface SheetAnchorReport {
   /**
    * Why a resolved anchor has no geometry ("The edge has no centre."), or why
    * one is detached when its feature is deleted or suppressed ("The feature
-   * this was measured on is deleted.").
+   * this was measured on is deleted.", "… drawn on …" for a note or a centre
+   * mark or line).
    */
   message?: string;
 }
 
 /**
- * A sheet's anchors, by dimension ID, one report per anchor in the item's
- * order; a free anchor's is `{ status: 'ok' }`.
+ * A sheet's anchors, by item ID, one report per anchor in `sheetItemAnchors`'
+ * order; a free anchor's is `{ status: 'ok' }`. Items without anchors are absent.
  */
 export type SheetAnchors = Record<SheetItemId, SheetAnchorReport[]>;
 
@@ -83,7 +90,7 @@ export function sheetSilhouetteSide(
 /**
  * The anchors to draw now: `next` (a fresh `resolveSheet`), except that an
  * anchor detached now keeps the geometry it had in `previous`, still marked
- * detached (and what it resolved to then), so a lost dimension stays where
+ * detached (and what it resolved to then), so a lost item stays where
  * it was drawn (ADR-0143's S3 amendment). Reports pair up by their index
  * in the item's anchors. The app holds `previous` in memory; nothing of it is stored,
  * so after reopening a file a detached dimension has no geometry.

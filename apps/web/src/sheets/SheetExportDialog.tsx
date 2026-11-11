@@ -4,11 +4,16 @@
  * name and a summary line. The format is remembered (`export.sheets`). PNG, DXF, the line
  * colour and the sticky-note and shaded-view switches come with the slices that need them.
  *
+ * Before a file is written the chosen sheets' views are drawn exactly from the model (S2),
+ * one at a time: the summary says how far ("Drawing the views · 2 of 4"), and Cancel stops
+ * it before the next view (nothing is written).
+ *
  * Test hooks: the dialog "Export drawing", a checkbox per sheet named "n · name", the radio
  * group "Format" ("PDF", "SVG"), the textbox "File name", `[data-sheet-export-summary]`, the
  * buttons "Cancel" and "Export".
  */
-import type { ExtrudoDocument, SheetId } from '@extrudo/core';
+import type { BodyId, ExtrudoDocument, SheetId } from '@extrudo/core';
+import { isSheetViewsCancelled } from '@extrudo/kernel';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Dialog, DialogClose, TextInput } from '../design-system';
 import type { FileAccess } from '../platform/files';
@@ -22,6 +27,7 @@ import {
   type SheetExportFormat,
   sheetExportPlan,
 } from './exportSheets';
+import type { SheetViewsKernel } from './viewRunner';
 
 /** What opened the dialog: every sheet (Export PDF), or the sheets given (Export This Sheet). */
 export interface SheetExportRequest {
@@ -30,8 +36,10 @@ export interface SheetExportRequest {
 
 export interface SheetExportDialogProps {
   request: SheetExportRequest | undefined;
-  doc: Pick<ExtrudoDocument, 'name' | 'sheets'>;
+  doc: ExtrudoDocument;
   files: Pick<FileAccess, 'download'>;
+  /** The views' model: the project's kernel and the bodies at the marker. */
+  views?: { kernel: SheetViewsKernel; bodies(): readonly BodyId[] };
   preferences: Preferences;
   notify(tone: 'info' | 'error', text: string): void;
   onClose(): void;
@@ -55,12 +63,14 @@ export function SheetExportDialog({
   preferences,
   notify,
   onClose,
+  views,
 }: SheetExportDialogProps) {
   const sheets = doc.sheets ?? [];
   const [chosen, setChosen] = useState<ReadonlySet<SheetId>>(new Set());
   const [format, setFormat] = useState<SheetExportFormat>('pdf');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [drawing, setDrawing] = useState<{ done: number; total: number }>();
   // Each opening starts from what it was asked for, and the remembered format.
   // biome-ignore lint/correctness/useExhaustiveDependencies: on opening only.
   useEffect(() => {
@@ -85,7 +95,12 @@ export function SheetExportDialog({
   return (
     <Dialog
       open={request !== undefined}
-      onOpenChange={(open) => !open && onClose()}
+      onOpenChange={(open) => {
+        if (open) return;
+        // Closing while the views are drawn stops them before the next one.
+        if (busy) views?.kernel.cancelSheetViews();
+        onClose();
+      }}
       title="Export drawing"
       size="medium"
     >
@@ -96,15 +111,29 @@ export function SheetExportDialog({
           if (plan.sheets.length === 0 || busy) return;
           setBusy(true);
           preferences.set(SHEET_EXPORT_KEY, { format });
-          exportSheets(doc, files, plan, format)
+          exportSheets(
+            doc,
+            files,
+            plan,
+            format,
+            views && {
+              kernel: views.kernel,
+              bodies: views.bodies(),
+              onProgress: (done, total) => setDrawing(total > 0 ? { done, total } : undefined),
+            },
+          )
             .then(() => onClose())
-            .catch((error: unknown) =>
+            .catch((error: unknown) => {
+              if (isSheetViewsCancelled(error)) return;
               notify(
                 'error',
                 `The drawing couldn't be exported: ${error instanceof Error ? error.message : String(error)}`,
-              ),
-            )
-            .finally(() => setBusy(false));
+              );
+            })
+            .finally(() => {
+              setBusy(false);
+              setDrawing(undefined);
+            });
         }}
       >
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-5">
@@ -176,7 +205,9 @@ export function SheetExportDialog({
             data-sheet-export-summary=""
             aria-live="polite"
           >
-            {plan.summary}
+            {drawing && busy
+              ? `Drawing the views · ${Math.min(drawing.done + 1, drawing.total)} of ${drawing.total}`
+              : plan.summary}
           </span>
           <DialogClose asChild>
             <Button>

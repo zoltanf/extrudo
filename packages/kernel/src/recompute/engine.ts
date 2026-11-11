@@ -35,11 +35,15 @@ import {
   type ReferenceIssue,
   referencedFeatures,
   type Sheet,
+  type SheetAnchoredItem,
   type SheetAnchorReport,
   type SheetAnchors,
-  type SheetDimensionItem,
+  type SheetItemId,
+  type SheetRefAnchor,
+  type SheetSilhouetteAnchor,
   scriptOfGenerated,
   sheetBaseFrame,
+  sheetItemAnchors,
   sheetViewFrame,
   valuesByName,
 } from '@extrudo/core';
@@ -65,7 +69,7 @@ import { type ScadExportOptions, writeScad } from '../scad-export/file';
 import { liveScalar, scadParameters } from '../scad-export/live';
 import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
-import { lostFeature, resolveSheetAnchor } from '../sheets/anchors';
+import { faceAs, lostFeature, resolveSheetAnchor } from '../sheets/anchors';
 import { exactView, quickView, type ViewBody } from '../sheets/evaluate';
 import type { SkippedBody, ViewGeometry } from '../sheets/geometry';
 import { type SheetViewRequest, type SheetViewResult, shownBodies } from '../sheets/views';
@@ -386,27 +390,30 @@ export class RecomputeEngine {
   }
 
   /**
-   * A sheet's dimension anchors against the bodies at the marker of the last
-   * finished recompute (P6-24 S3, ADR-0143's S3 amendment), resolved like an
-   * annotation's (`ok`, `moved`, `detached`), each with the 3D geometry it
-   * stands for, except that an anchor on a deleted or suppressed feature is
-   * `detached` with no search (`lostFeature`). Nothing is evaluated or
-   * cached, and nothing throws for a lost anchor: everything is `detached`
-   * before the first recompute.
+   * A sheet's anchors (`sheetItemAnchors`: dimensions, leader notes, centre
+   * marks and lines) against the bodies at the marker of the last finished
+   * recompute (P6-24 S3 and S4, ADR-0143's S3 and S4 amendments), resolved
+   * like an annotation's (`ok`, `moved`, `detached`), each with the 3D
+   * geometry it stands for, except that an anchor on a deleted or
+   * suppressed feature is `detached` with no search (`lostFeature`).
+   * Nothing is evaluated or cached, and nothing throws for a lost anchor:
+   * everything is `detached` before the first recompute.
    */
   resolveSheet(sheet: Sheet): SheetAnchors {
     const at = this.#atMarker;
     const out: SheetAnchors = {};
     for (const item of sheet.items) {
-      if (item.kind !== 'dimension') continue;
+      const anchors = sheetItemAnchors(item);
+      if (anchors.length === 0 || !('view' in item)) continue;
+      const kind = item.kind as SheetAnchoredItem['kind'];
       const frame = sheetViewFrame(sheet, item.view);
-      out[item.id] = item.anchors.map((anchor, i): SheetAnchorReport => {
+      out[item.id] = anchors.map((anchor): SheetAnchorReport => {
         if ('free' in anchor) return { status: 'ok' };
         if (!at) return { status: 'detached' };
-        // A dimension is never worth a failed call: whatever goes wrong
+        // An item is never worth a failed call: whatever goes wrong
         // resolving an anchor leaves it detached, and the rest stand.
         try {
-          return this.#sheetAnchor(item, i, frame, at);
+          return this.#sheetAnchor(item.id, kind, anchor, frame, at);
         } catch {
           return { status: 'detached' };
         }
@@ -416,18 +423,17 @@ export class RecomputeEngine {
   }
 
   #sheetAnchor(
-    item: SheetDimensionItem,
-    index: number,
+    id: SheetItemId,
+    kind: SheetAnchoredItem['kind'],
+    anchor: SheetRefAnchor | SheetSilhouetteAnchor,
     frame: ReturnType<typeof sheetViewFrame>,
     at: AtMarker,
   ): SheetAnchorReport {
-    const anchor = item.anchors[index];
-    if (!anchor || 'free' in anchor) return { status: 'ok' };
     const { doc } = at;
     const feature: Feature = {
-      id: item.id as unknown as FeatureId,
+      id: id as unknown as FeatureId,
       type: 'annotation',
-      name: 'Sheet dimension',
+      name: 'Sheet item',
       suppressed: false,
       inputs: { anchor: { kind: 'ref', refs: [anchor.ref] } },
     };
@@ -435,18 +441,19 @@ export class RecomputeEngine {
     const ids = new Set<string>(doc.features.map((f) => f.id));
     const position = new Map<string, number>(doc.features.map((f, i) => [f.id, i]));
     const rolledBack = referencedFeatures(feature, ids).some(
-      (id) => (position.get(id) ?? 0) >= doc.timelineMarker,
+      (fid) => (position.get(fid) ?? 0) >= doc.timelineMarker,
     );
     if (rolledBack) return { status: 'detached' };
     // On geometry of a deleted or suppressed feature: detached, never a
     // closest match (the owner, 2026-11-11; annotations still look for one).
-    const lost = lostFeature(anchor.ref, doc.features);
+    const lost = lostFeature(anchor.ref, doc.features, kind);
     if (lost) return lost;
     const { names, resolve } = this.#references(feature, at.bodies);
     return resolveSheetAnchor(
       { kernel: this.#kernel, describe: (shape) => this.#describe(shape), names, resolve },
       anchor,
       frame,
+      faceAs(kind),
     );
   }
 

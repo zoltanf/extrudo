@@ -42,6 +42,8 @@ export interface SheetTabsProps {
   actions: SheetTabActions;
   notify(tone: 'info' | 'error', text: string): void;
   notifications?: NotificationStore;
+  /** The timeline marker rolled back: the features the views show, of how many (plan §3.3). */
+  marker?: { at: number; of: number };
 }
 
 /** The type a dragged tab carries: the sheet's ID. */
@@ -49,17 +51,28 @@ const SHEET_MIME = 'application/x-extrudo-sheet';
 
 const num = (n: number) => String(Math.round(n * 1000) / 1000);
 
-/** The status text: "Editing drawing · sheet 1 of 2 · A3 landscape · 1:1 · mm". */
-export function sheetStatus(sheets: readonly Sheet[], id: SheetId | undefined, units: string) {
+/**
+ * The status text: "Editing drawing · sheet 1 of 2 · A3 landscape · 1:1 · mm", and "·
+ * Showing the model at feature 5 of 7" while the timeline marker is rolled back (the views
+ * draw the bodies at the marker).
+ */
+export function sheetStatus(
+  sheets: readonly Sheet[],
+  id: SheetId | undefined,
+  units: string,
+  marker?: { at: number; of: number },
+) {
   const at = sheets.findIndex((s) => s.id === id);
   const sheet = sheets[at];
   if (!sheet) return 'Editing drawing';
+  const back = marker && marker.at < marker.of;
   return [
     'Editing drawing',
     `sheet ${at + 1} of ${sheets.length}`,
     `${sizeLabel(sheet.size)} ${sheet.orientation}`,
     `${num(sheet.scale[0])}:${num(sheet.scale[1])}`,
     units,
+    ...(back ? [`Showing the model at feature ${marker.at} of ${marker.of}`] : []),
   ].join(' · ');
 }
 
@@ -70,6 +83,7 @@ export function SheetTabs({
   actions,
   notify,
   notifications,
+  marker,
 }: SheetTabsProps) {
   const active = useStore(session, (s) => s.activeSheetId);
   const [renaming, setRenaming] = useState<SheetId>();
@@ -189,7 +203,7 @@ export function SheetTabs({
       </ol>
       <span className="flex-1" />
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
-        {sheetStatus(sheets, active, units)}
+        {sheetStatus(sheets, active, units, marker)}
       </output>
       {notifications && <NotificationHistory store={notifications} />}
     </section>

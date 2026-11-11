@@ -4,11 +4,23 @@
  * `@extrudo/sheets` (and the text shaper under it) loads here, lazily, so it never reaches
  * the entry chunk (ADR-0058 §4). The names and the summary are pure (`sheetExportPlan`).
  */
-import type { ExtrudoDocument, Sheet, SheetId } from '@extrudo/core';
+import type { BodyId, ExtrudoDocument, Sheet, SheetId, SheetViewId } from '@extrudo/core';
+import type { SheetViewLines } from '@extrudo/sheets';
 import type { FileAccess } from '../platform/files';
 import { safeFileName } from '../platform/files';
 import { ensureUiFonts } from '../sketch/fonts';
 import { sizeLabel } from './defaults';
+import type { SheetViewsKernel } from './viewRunner';
+
+/**
+ * The model the views are drawn from: the project's kernel, the bodies at the marker, and
+ * who hears how far the views are (`done` of `total`).
+ */
+export interface SheetExportViews {
+  kernel: SheetViewsKernel;
+  bodies: readonly BodyId[];
+  onProgress?: (done: number, total: number) => void;
+}
 
 export type SheetExportFormat = 'pdf' | 'svg';
 
@@ -60,19 +72,30 @@ export function sheetExportPlan(
 
 /**
  * Writes the plan: one PDF of its sheets, or an SVG per sheet. The other sheets still count
- * for "sheet n of N". Returns the file names.
+ * for "sheet n of N". With `views`, every view of the chosen sheets is drawn exactly from
+ * the model first (S2: an export never holds the quick placeholder); a view that can't be
+ * drawn is its frame. Rejects with `isSheetViewsCancelled` when that is cancelled. Returns
+ * the file names.
  */
 export async function exportSheets(
-  doc: Pick<ExtrudoDocument, 'name' | 'sheets'>,
+  doc: ExtrudoDocument,
   files: Pick<FileAccess, 'download'>,
   plan: SheetExportPlan,
   format: SheetExportFormat,
+  views?: SheetExportViews,
 ): Promise<string[]> {
   if (plan.sheets.length === 0) throw new Error('Choose at least one sheet to export.');
   const all = doc.sheets ?? [];
   const sheets = await import('@extrudo/sheets');
   await ensureUiFonts(sheets.SHEET_FONTS);
-  const context = { name: doc.name, sheets: all };
+  let lines: Map<SheetViewId, SheetViewLines> | undefined;
+  if (views) {
+    const { sheetViewRunner } = await import('./viewRunner');
+    const { sheetViewWants } = await import('./viewLines');
+    const wants = plan.sheets.flatMap((sheet) => sheetViewWants(doc, sheet, views.bodies));
+    lines = await sheetViewRunner(views.kernel).exact(wants, views.onProgress);
+  }
+  const context = { name: doc.name, sheets: all, ...(lines && { views: lines }) };
   if (format === 'pdf') {
     const bytes = sheets.sheetsToPdf(plan.sheets, context);
     files.download(new Blob([bytes as BlobPart], { type: 'application/pdf' }), plan.files[0] ?? '');
