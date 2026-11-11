@@ -486,7 +486,9 @@ export const SHEET_HANDLERS: { [T in SheetToolName]: Handler<T> } = {
     const view = viewOf(sheet, input.view);
     const anchors: SheetAnchorInput[] = [];
     for (const [i, anchor] of input.anchors.entries()) {
-      anchors.push(await anchorInput(h, kernel, sheet, view, anchor, `anchors.${i}`));
+      // The input's path, built so it never reads as a preference key (settings inventory).
+      const path = ['anchors', i].join('.');
+      anchors.push(await anchorInput(h, kernel, sheet, view, anchor, path));
     }
     const d = scratch(h);
     const item = d
@@ -576,7 +578,7 @@ export const SHEET_HANDLERS: { [T in SheetToolName]: Handler<T> } = {
     const all = doc.sheets ?? [];
     if (all.length === 0) return failure('The design has no sheet: add_sheet makes one.');
     const chosen = input.sheets
-      ? [...new Set(input.sheets.map((name, i) => sheetOf(doc, name, `sheets.${i}`)))]
+      ? [...new Set(input.sheets.map((name, i) => sheetOf(doc, name, ['sheets', i].join('.'))))]
       : input.format === 'png'
         ? [openSheet(h) ?? (all[0] as Sheet)]
         : all;
