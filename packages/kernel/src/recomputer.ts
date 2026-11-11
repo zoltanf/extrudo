@@ -47,6 +47,8 @@ import {
   type PatternReport,
   PLUGIN_MEDIA_TYPE,
   pluginFileOf,
+  type Sheet,
+  type SheetAnchors,
   type SketchReport,
   type SweepReport,
   type ThreadReport,
@@ -752,6 +754,21 @@ export class Recomputer {
   /** Stops running sheet views before their next view. */
   cancelSheetViews(): void {
     this.client.call((api) => api.cancelSheetViews()).catch(() => {});
+  }
+
+  /**
+   * A sheet's dimension anchors against what the model store shows (P6-24
+   * S3): per dimension, per anchor, its state and 3D geometry. Undefined if
+   * the kernel can't say (keep the last result then).
+   */
+  async resolveSheet(sheet: Sheet, options?: WaitOptions): Promise<SheetAnchors | undefined> {
+    try {
+      return await this.#wait("Reading the sheet's dimensions…", options, () =>
+        this.client.call((api) => api.resolveSheet(sheet)),
+      );
+    } catch {
+      return undefined;
+    }
   }
 
   /** The dialog closed: drops a pending preview. */

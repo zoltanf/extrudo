@@ -4,7 +4,7 @@ import { removeFeature, restoreVersion } from './document-commands';
 import type { BodyId, FeatureId, SheetId, SheetItemId, SheetViewId } from './ids';
 import { remintSheets } from './remint';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
-import type { Sheet, SheetTextItem } from './sheet-schema';
+import type { Sheet, SheetDimensionItem, SheetTextItem } from './sheet-schema';
 import {
   addSheet,
   addSheetItem,
@@ -353,5 +353,65 @@ describe('sheets and the rest of the document', () => {
     expect(out?.views[1]).toEqual(projected('v2', 'v1'));
     expect(out?.items).toEqual([text('t1')]);
     expect(() => remintSheets([], copied, ['x'] as FeatureId[])).toThrow(/One new ID per feature/);
+  });
+
+  it("remintSheets renames a dimension's anchor references and leaves free anchors", () => {
+    const copied = [feature('cmd.f1')];
+    const fingerprint = { type: 'line', at: [0, 0, 0] as [number, number, number] };
+    const dimension: SheetDimensionItem = {
+      kind: 'dimension',
+      id: iid('d1'),
+      view: vid('v1'),
+      type: 'linear',
+      anchors: [
+        { ref: { kind: 'edge', id: 'e[extrude:cmd.f1:side:0|f2:cap]', fingerprint }, at: 'start' },
+        { free: [3, 4] },
+      ],
+      at: [0, 10],
+    };
+    const [out] = remintSheets(
+      [sheet('s1', 'A', { views: [front()], items: [dimension] })],
+      copied,
+      ['new1'] as FeatureId[],
+    );
+    expect(out?.items[0]).toEqual({
+      ...dimension,
+      anchors: [
+        { ref: { kind: 'edge', id: 'e[extrude:new1:side:0|f2:cap]', fingerprint }, at: 'start' },
+        { free: [3, 4] },
+      ],
+    });
+  });
+
+  it('adds, edits and removes a dimension; removing its view removes it; deleting a feature keeps it', () => {
+    const fingerprint = { type: 'line', at: [0, 0, 0] as [number, number, number] };
+    const dimension: SheetDimensionItem = {
+      kind: 'dimension',
+      id: iid('d1'),
+      view: vid('v1'),
+      type: 'linear',
+      anchors: [{ ref: { kind: 'edge', id: 'e[box:f3:side:0|box:f3:cap:end]', fingerprint } }],
+      at: [0, 10],
+    };
+    let doc = withSheets(sheet('s1', 'A', { views: [front()] }));
+    doc = roundTrip(doc, addSheetItem({ sheet: sid('s1'), item: dimension }));
+    doc = roundTrip(
+      doc,
+      updateSheetItem({ id: iid('d1'), changes: { decimals: 2, direction: 'vertical' } }),
+    );
+    expect(doc.sheets?.[0]?.items[0]).toMatchObject({ decimals: 2, direction: 'vertical' });
+    expect(refused(doc, updateSheetItem({ id: iid('d1'), changes: { type: 'angle' } }))).toMatch(
+      /Sheet "A", item 1: anchors don't fit an angle dimension/,
+    );
+    expect(
+      refused(
+        doc,
+        addSheetItem({ sheet: sid('s1'), item: { ...dimension, id: iid('d2'), view: vid('v9') } }),
+      ),
+    ).toMatch(/view is v9, which is not a view of this sheet/);
+    const kept = roundTrip(doc, removeFeature({ id: 'f3' as FeatureId }));
+    expect(kept.sheets).toEqual(doc.sheets);
+    expect(roundTrip(doc, removeSheetView({ id: vid('v1') })).sheets?.[0]?.items).toEqual([]);
+    expect(roundTrip(doc, removeSheetItems({ ids: [iid('d1')] })).sheets?.[0]?.items).toEqual([]);
   });
 });

@@ -34,8 +34,13 @@ import {
   type ParameterEvaluation,
   type ReferenceIssue,
   referencedFeatures,
+  type Sheet,
+  type SheetAnchorReport,
+  type SheetAnchors,
+  type SheetDimensionItem,
   scriptOfGenerated,
   sheetBaseFrame,
+  sheetViewFrame,
   valuesByName,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
@@ -60,6 +65,7 @@ import { type ScadExportOptions, writeScad } from '../scad-export/file';
 import { liveScalar, scadParameters } from '../scad-export/live';
 import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
+import { resolveSheetAnchor } from '../sheets/anchors';
 import { exactView, quickView, type ViewBody } from '../sheets/evaluate';
 import type { SkippedBody, ViewGeometry } from '../sheets/geometry';
 import { type SheetViewRequest, type SheetViewResult, shownBodies } from '../sheets/views';
@@ -377,6 +383,65 @@ export class RecomputeEngine {
     const at = this.#atMarker;
     if (!at) return { id: annotation.id, status: 'detached' };
     return this.#annotation(annotation, at);
+  }
+
+  /**
+   * A sheet's dimension anchors against the bodies at the marker of the last
+   * finished recompute (P6-24 S3, ADR-0143's S3 amendment), resolved like an
+   * annotation's (`ok`, `moved`, `detached`), each with the 3D geometry it
+   * stands for. Nothing is evaluated or cached, and nothing throws for a lost
+   * anchor: everything is `detached` before the first recompute.
+   */
+  resolveSheet(sheet: Sheet): SheetAnchors {
+    const at = this.#atMarker;
+    const out: SheetAnchors = {};
+    for (const item of sheet.items) {
+      if (item.kind !== 'dimension') continue;
+      const frame = sheetViewFrame(sheet, item.view);
+      out[item.id] = item.anchors.map((anchor, i): SheetAnchorReport => {
+        if ('free' in anchor) return { status: 'ok' };
+        if (!at) return { status: 'detached' };
+        // A dimension is never worth a failed call: whatever goes wrong
+        // resolving an anchor leaves it detached, and the rest stand.
+        try {
+          return this.#sheetAnchor(item, i, frame, at);
+        } catch {
+          return { status: 'detached' };
+        }
+      });
+    }
+    return out;
+  }
+
+  #sheetAnchor(
+    item: SheetDimensionItem,
+    index: number,
+    frame: ReturnType<typeof sheetViewFrame>,
+    at: AtMarker,
+  ): SheetAnchorReport {
+    const anchor = item.anchors[index];
+    if (!anchor || 'free' in anchor) return { status: 'ok' };
+    const { doc } = at;
+    const feature: Feature = {
+      id: item.id as unknown as FeatureId,
+      type: 'annotation',
+      name: 'Sheet dimension',
+      suppressed: false,
+      inputs: { anchor: { kind: 'ref', refs: [anchor.ref] } },
+    };
+    // On geometry of a feature the marker has rolled back: nothing there yet.
+    const ids = new Set<string>(doc.features.map((f) => f.id));
+    const position = new Map<string, number>(doc.features.map((f, i) => [f.id, i]));
+    const rolledBack = referencedFeatures(feature, ids).some(
+      (id) => (position.get(id) ?? 0) >= doc.timelineMarker,
+    );
+    if (rolledBack) return { status: 'detached' };
+    const { names, resolve } = this.#references(feature, at.bodies);
+    return resolveSheetAnchor(
+      { kernel: this.#kernel, describe: (shape) => this.#describe(shape), names, resolve },
+      anchor,
+      frame,
+    );
   }
 
   /**
