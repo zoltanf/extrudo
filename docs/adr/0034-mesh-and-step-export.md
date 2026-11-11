@@ -480,3 +480,40 @@ cove. A fillet on a cone's base round (its torus) had the same fault.
   is byte-stable unless it has to change.
 - **Flipping the flags in the written model** (or in the text): it would work
   around the writer's output instead of handing it a shape it writes right.
+
+## Amendment (2026-11-11, P6-25 S1): a face that carries a location
+
+`stepShape()` (the third amendment) rebuilt each face with a reversed wire
+from the face an explorer gives, which carries every location above it: the
+solid's placement, an identity one included. It made the new face with
+`EmptyCopied()` (which keeps that location) and added the face's own wires,
+read relative to the face; `BRep_Builder::Add` moves a child by the inverse
+of its parent's location, so the wires ended up displaced (or, for an identity
+location, under a location OCCT no longer finds the edges' pcurves by). The
+writer then wrote a `MANIFOLD_SOLID_BREP` whose faces didn't close, and
+`readStep` gave the faces with no solid.
+
+**Decision.** The face is rebuilt on its bare `TShape` (location removed),
+from its wires as stored, and the result given the face's location back
+before it goes into the `ShapeBuild_ReShape`. A face met at several
+locations is rebuilt once. Shapes without such a face still go in as they
+are, so every file the third amendment left byte-identical stays so.
+
+**Who meets it.** Shapes with a location on a solid (or on anything above an
+indirect face with a seam): FreeCAD's stored shapes do (a placed solid, a
+prism of a placed sketch). A design made in Extrudo does not: Move, mirror
+and patterns rebuild the geometry (`BRepBuilderAPI_Transform` with copy),
+STEP brings in only direct frames (`AXIS2_PLACEMENT_3D` can't hold another),
+and the only located faces, a sketch's profiles, are planes, which have no
+seam. Tried before the fix: 66 extrudes, revolves and fillets on five sketch
+frames, moved, turned and mirrored, all wrote and read back with their
+solid. So the fix is listed for imports.
+
+**Guarded by** `packages/kernel/src/step-located.test.ts`: three B-rep shapes
+made with our own FreeCAD scripts (a disc prism with a located face, which
+already passed; the same kind of prism with an identity location on the
+solid; one placed by a translation and a quarter turn), each written as STEP
+plain, coloured (XDE) and as an assembly part, read back with one solid, the
+same volume (1e-6 relative), the same faces in the same order (centroids),
+and `badEdgeUses` empty. The rim-fillet test of the third amendment passes
+unchanged.
