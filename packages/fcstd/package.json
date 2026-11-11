@@ -12,6 +12,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@extrudo/api": "workspace:*",
+    "@extrudo/core": "workspace:*",
+    "@extrudo/sketch": "workspace:*",
     "fflate": "^0.8.3"
   }
 }

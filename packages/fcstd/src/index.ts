@@ -58,6 +58,47 @@ export {
   versionAtLeast,
 } from './model';
 export {
+  type DecodedSketch,
+  decodeSketch,
+  type FcConstraint,
+  type FcGeometry,
+  GEO_UNDEF,
+  H_AXIS,
+  MAX_BSPLINE_POLES,
+  MAX_SKETCH_CONSTRAINTS,
+  MAX_SKETCH_GEOMETRY,
+  V_AXIS,
+} from './sketch-decode';
+export {
+  arcEnds,
+  CONSTRAINT_TYPES,
+  type ConstraintOutcome,
+  type LeftOut,
+  MAX_CANDIDATES,
+  MAX_VET_ROUNDS,
+  mapSketch,
+  type SketchMapOptions,
+  type SketchMapResult,
+  typeName,
+} from './sketch-map';
+export {
+  compose,
+  NO_PLANE,
+  type PlaneKind,
+  placeSketch,
+  type SketchFrameOf,
+  type SketchPlacement,
+  sketchFrame,
+} from './sketch-place';
+export {
+  type AddSketchOptions,
+  type AddSketchResult,
+  addSketch,
+  type ExpressionBinding,
+  type SketchOutcome,
+  sketchObjects,
+} from './sketches';
+export {
   MAX_ATTRIBUTES,
   MAX_DEPTH,
   MAX_NODES,
