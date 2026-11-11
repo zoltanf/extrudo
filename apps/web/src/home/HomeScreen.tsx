@@ -52,7 +52,7 @@ import { AppMenu } from '../shell/AppMenu';
 import { BugReportDialog } from '../shell/BugReportDialog';
 import { errorLog, watchWindowErrors } from '../shell/bugReport';
 import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
-import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { applyUpdate, useUpdateNotice } from '../shell/useUpdateNotice';
 import { useWhatsNew } from '../shell/useWhatsNew';
 import { useMarkingStyle } from '../shell/viewMenu';
 import { WhatsNewDialog } from '../shell/WhatsNewDialog';
@@ -144,6 +144,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const persistence = usePersistence(platform);
   const { toasts, push, dismiss, keep } = useToasts();
   useUpdateNotice(push, platform);
+  const updates = platform.updates;
   // "Updated to Extrudo X.Y.Z." once per update (ADR-0133).
   useWhatsNew(push, platform);
   const [query, setQuery] = useState('');
@@ -275,6 +276,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
             {...(platform.updates?.check && {
               onCheckUpdates: () => platform.updates?.check?.(),
             })}
+            onApplyUpdate={updates && (() => void applyUpdate(updates, push))}
             onSource={() => platform.openSite('repo')}
             onQuit={platform.menus ? () => platform.menus?.quit() : undefined}
           />

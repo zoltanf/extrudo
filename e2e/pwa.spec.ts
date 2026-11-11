@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, saveStatus, selectTab, startFromTemplate } from './helpers';
+import { kernelReady, openAppMenu, saveStatus, selectTab, startFromTemplate } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The rest of the suite blocks service workers (playwright.config.ts); this
@@ -222,6 +222,27 @@ test.describe('an update is waiting', () => {
     // The reloaded page runs and has no second toast for the same update.
     await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
     await expect(page.getByText('A new version of Extrudo is ready.')).toHaveCount(0);
+  });
+
+  // The app menu's strip offers the same reload while the update waits (desktop: Restart).
+  test("the menu strip's Reload activates the new version too", async ({ page }) => {
+    await page.goto(`${host.url}/`);
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+    await expect.poll(() => activeVersion(page)).toBeTruthy();
+    let strip = (await openAppMenu(page)).locator('[data-update-strip]');
+    await expect(strip.getByRole('button')).toHaveText(['GitHub']);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Menu', exact: true })).toHaveCount(0);
+
+    await publishUpdate(page, 'test-v4');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toBeVisible();
+    strip = (await openAppMenu(page)).locator('[data-update-strip]');
+    await expect(strip).toHaveAttribute('data-update-word', 'Update ready');
+    await expect(strip.getByRole('button')).toHaveText(['Reload', 'GitHub']);
+    await strip.getByRole('button', { name: 'Reload' }).click();
+    await expect.poll(() => activeVersion(page), { timeout: 15_000 }).toBe('test-v4');
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
   });
 
   test('the reload keeps what you were doing: the open design is saved first', async ({ page }) => {

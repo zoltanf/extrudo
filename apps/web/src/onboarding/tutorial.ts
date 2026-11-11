@@ -8,6 +8,7 @@
  */
 import {
   CHAMFER_TYPE,
+  type EditMode,
   EXTRUDE_TYPE,
   type ExtrudoDocument,
   FILLET_TYPE,
@@ -21,7 +22,7 @@ import type { ToolId } from '../shell/tools';
 /** What the steps look at. */
 export interface TutorialFacts {
   doc: ExtrudoDocument;
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   /** The session's running tool: `sketch` while Create Sketch waits for a plane. */
   activeTool: string | undefined;
 }

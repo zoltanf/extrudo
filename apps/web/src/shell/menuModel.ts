@@ -10,6 +10,7 @@
  * not to register it (`registerAccelerator: false`), so the web's own keydown
  * handling keeps working and nothing fires twice.
  */
+import type { EditMode } from '@extrudo/core';
 import { DEFAULT_KEYMAP } from '../commands/keymap';
 import type { AppCommand } from './commands';
 import { visibleTabs } from './tools';
@@ -151,7 +152,7 @@ const toItem = (command: AppCommand): MenuItemModel => {
  */
 export function menuModel(
   commands: readonly AppCommand[],
-  mode: 'model' | 'sketch',
+  mode: EditMode,
   options: MenuModelOptions = {},
 ): MenuModel[] {
   const groups = new Map<string, AppCommand[]>();

@@ -1,3 +1,4 @@
+import type { EditMode } from '@extrudo/core';
 import { useCallback, useSyncExternalStore } from 'react';
 import type { Preferences } from '../platform';
 import {
@@ -13,8 +14,8 @@ import {
 /** The person's own keys (ADR-0082's 2026-10-18 amendment): only what they changed. */
 export const KEYMAP_PREFERENCE = 'keymap.overrides';
 
-/** The two modes a command can be offered in. */
-export type KeymapMode = 'model' | 'sketch';
+/** The modes a command can be offered in: the edit modes (`MODES` in `shell/modes.ts`). */
+export type KeymapMode = EditMode;
 
 const sameKeys = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((key, i) => key === b[i]);

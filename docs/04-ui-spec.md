@@ -66,7 +66,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   Settings…, About Extrudo, then Close design on the web or Quit on the
   desktop) and Learn (Help for \<tool\>, User Guide, Tutorial, Online
   Tutorials, Examples, Tool Reference); and **the version strip** (a dot and a
-  word for the update state, the version, Check now on the desktop and GitHub).
+  word for the update state, the version, Restart on the desktop or Reload on
+  the web while an update is ready, Check now on the desktop and GitHub).
   Rail controls leave the panel open; an item runs and closes it. Arrow keys
   move within a rail group or a column, Tab between them, Escape closes.
   **About Extrudo** (ADR-0085, also Ctrl+K "About Extrudo", the home

@@ -212,6 +212,14 @@
 #include <XCAFDoc_ShapeTool.hxx>
 #include <StepBasic_Product.hxx>
 #include <StepData_StepModel.hxx>
+#include <StepVisual_LayeredItem.hxx>
+#include <StepVisual_PresentationLayerAssignment.hxx>
+#include <StepVisual_StyledItem.hxx>
+#include <StepVisual_StyledItemTarget.hxx>
+#include <TransferBRep.hxx>
+#include <Transfer_TransientProcess.hxx>
+#include <XSControl_TransferReader.hxx>
+#include <XSControl_WorkSession.hxx>
 #include <TCollection_HAsciiString.hxx>
 #include <STEPControl_Writer.hxx>
 #include <UnitsMethods_LengthUnit.hxx>
@@ -3469,6 +3477,72 @@ public:
     }
   }
 
+  /**
+   * Which of a STEP file's solids the file hides (ADR-0066's amendment of
+   * 2026-11-10): the same text as readStep(), read the same way (a plain
+   * STEPControl_Reader), so the solids are readStep()'s own. A solid is
+   * hidden when one of the file's INVISIBILITY entities lists the solid
+   * itself, a STYLED_ITEM whose item it is, or a PRESENTATION_LAYER_ASSIGNMENT
+   * it is assigned to. The lists come from the text (stepInvisibleIds): the
+   * schema allows only styled items, layers and representations there, so
+   * OCCT's reader drops a solid that is listed directly, which is how some
+   * writers hide one. Read with geometryPtr/Size: 1 (hidden) or 0 per solid,
+   * in the order readStep()'s shape lists them (TopExp::MapShapes, as
+   * count()/subShape() do). Returns the number of solids, or -1.
+   */
+  int readStepHidden(const char* text) {
+    beginOp();
+    quietMessages();
+    geometry_.clear();
+    try {
+      std::vector<int> ids;
+      stepInvisibleIds(text == nullptr ? "" : text, ids);
+      std::sort(ids.begin(), ids.end());
+      std::istringstream in(text == nullptr ? "" : text);
+      STEPControl_Reader reader;
+      if (reader.ReadStream("extrudo.step", in) != IFSelect_RetDone) {
+        fail("STEP import failed: the file couldn't be read.");
+        return -1;
+      }
+      if (reader.TransferRoots() <= 0) {
+        fail("STEP import failed: the file has no shapes.");
+        return -1;
+      }
+      // The hidden solids without their locations: a solid is the same one
+      // wherever an assembly places it.
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> hidden;
+      if (!ids.empty()) {
+        const Handle(StepData_StepModel) model = reader.StepModel();
+        const Handle(Transfer_TransientProcess) process =
+            reader.WS()->TransferReader()->TransientProcess();
+        const int entities = model->NbEntities();
+        for (int i = 1; i <= entities; ++i) {
+          const Handle(Standard_Transient)& entity = model->Value(i);
+          if (!std::binary_search(ids.begin(), ids.end(), model->IdentLabel(entity))) continue;
+          if (entity->IsKind(STANDARD_TYPE(StepVisual_PresentationLayerAssignment))) {
+            const Handle(StepVisual_PresentationLayerAssignment) layer =
+                Handle(StepVisual_PresentationLayerAssignment)::DownCast(entity);
+            for (int k = 1; k <= layer->NbAssignedItems(); ++k) {
+              stepHideSolids(process, layer->AssignedItemsValue(k).Value(), hidden);
+            }
+          } else {
+            stepHideSolids(process, entity, hidden);
+          }
+        }
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> solids;
+      TopExp::MapShapes(reader.OneShape(), TopAbs_SOLID, solids);
+      for (int i = 1; i <= solids.Extent(); ++i) {
+        geometry_.push_back(hidden.Contains(solids(i).Located(TopLoc_Location())) ? 1.0 : 0.0);
+      }
+      return solids.Extent();
+    } catch (...) {
+      geometry_.clear();
+      failFromException("STEP import failed");
+      return -1;
+    }
+  }
+
   /** Frees the export buffers once JS has copied them. */
   void clearExport() {
     std::vector<double>().swap(exportPositions_);
@@ -6443,6 +6517,102 @@ private:
       TDF_Label sub;
       if (shapes->FindSubShape(label, solids(i), sub) && stepLabelName(sub, name)) found = &name;
       readNames_.push_back(found == nullptr ? std::string() : *found);
+    }
+  }
+
+  /** Past the spaces and block comments at `p`. */
+  static const char* stepSkipBlank(const char* p) {
+    for (;;) {
+      if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
+        ++p;
+      } else if (p[0] == '/' && p[1] == '*') {
+        p += 2;
+        while (*p != '\0' && !(p[0] == '*' && p[1] == '/')) ++p;
+        if (*p != '\0') p += 2;
+      } else {
+        return p;
+      }
+    }
+  }
+
+  /**
+   * readStepHidden(): the entity numbers a STEP text's INVISIBILITY entities
+   * list (`INVISIBILITY((#12,#34))`, a CONTEXT_DEPENDENT_INVISIBILITY's
+   * too). Strings and comments are passed over, so a name that holds the
+   * keyword lists nothing.
+   */
+  static void stepInvisibleIds(const char* text, std::vector<int>& ids) {
+    static const char KEY[] = "INVISIBILITY";
+    static const char LONG_KEY[] = "CONTEXT_DEPENDENT_INVISIBILITY";
+    const auto word = [](char c) {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+    };
+    const char* p = text;
+    while (*p != '\0') {
+      if (*p == '\'') {
+        // A string; a doubled quote inside one reads as two strings, which is the same here.
+        ++p;
+        while (*p != '\0' && *p != '\'') ++p;
+        if (*p != '\0') ++p;
+        continue;
+      }
+      if (p[0] == '/' && p[1] == '*') {
+        p = stepSkipBlank(p);
+        continue;
+      }
+      if (!word(*p)) {
+        ++p;
+        continue;
+      }
+      const char* start = p;
+      while (word(*p)) ++p;
+      const std::string keyword(start, static_cast<size_t>(p - start));
+      if (keyword != KEY && keyword != LONG_KEY) continue;
+      const char* q = stepSkipBlank(p);
+      if (*q != '(') continue;
+      q = stepSkipBlank(q + 1);
+      if (*q != '(') continue;
+      ++q;
+      for (;;) {
+        q = stepSkipBlank(q);
+        if (*q == ',') {
+          ++q;
+        } else if (*q == '#') {
+          ++q;
+          long long id = 0;
+          while (*q >= '0' && *q <= '9') {
+            if (id < 2000000000) id = id * 10 + (*q - '0');
+            ++q;
+          }
+          if (id > 0 && id < 2000000000) ids.push_back(static_cast<int>(id));
+        } else {
+          break;
+        }
+      }
+      p = q;
+    }
+  }
+
+  /**
+   * readStepHidden(): the solids of what an INVISIBILITY item stands for go
+   * into `hidden` without their locations. A styled item stands for the item
+   * it styles; anything else for itself (a solid, a representation). A face,
+   * a shell or a curve holds no solid, so hiding one hides no body.
+   */
+  static void stepHideSolids(const Handle(Transfer_TransientProcess)& process,
+                             const Handle(Standard_Transient)& listed,
+                             NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher>& hidden) {
+    Handle(Standard_Transient) entity = listed;
+    if (!entity.IsNull() && entity->IsKind(STANDARD_TYPE(StepVisual_StyledItem))) {
+      const Handle(StepVisual_StyledItem) styled = Handle(StepVisual_StyledItem)::DownCast(entity);
+      entity = styled->Item();
+      if (entity.IsNull()) entity = styled->ItemAP242().Value();
+    }
+    if (entity.IsNull() || process.IsNull()) return;
+    const TopoDS_Shape shape = TransferBRep::ShapeResult(process, entity);
+    if (shape.IsNull()) return;
+    for (TopExp_Explorer solid(shape, TopAbs_SOLID); solid.More(); solid.Next()) {
+      hidden.Add(solid.Current().Located(TopLoc_Location()));
     }
   }
 

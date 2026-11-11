@@ -8,6 +8,7 @@
  * its layout; the day the command appears in `buildCommands`, the slot
  * lights up with no change here (Press Pull did so in P3-08).
  */
+import type { EditMode } from '@extrudo/core';
 import type { IconName, ToolCategory } from '../design-system';
 import type { AppCommand } from '../shell/commands';
 
@@ -77,10 +78,7 @@ export interface ResolvedSlot {
  * `marking.slots` preference. Per mode, one entry per wedge: a command ID, or
  * `null` (and a missing entry) for the table's own wedge.
  */
-export interface MarkingOverrides {
-  model?: readonly (string | null)[];
-  sketch?: readonly (string | null)[];
-}
+export type MarkingOverrides = Partial<Record<EditMode, readonly (string | null)[]>>;
 
 export const MARKING_SLOTS_KEY = 'marking.slots';
 

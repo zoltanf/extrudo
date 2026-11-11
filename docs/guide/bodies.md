@@ -16,7 +16,8 @@ Features that build material start one when they have nothing to join:
 [Extrude](./tools/extrude.md), [Revolve](./tools/revolve.md), [Sweep](./tools/sweep.md),
 [Loft](./tools/loft.md), [Coil](./tools/coil.md) and the primitives ([Box](./tools/box.md),
 [Cylinder](./tools/cylinder.md), [Sphere](./tools/sphere.md), [Torus](./tools/torus.md)). An
-imported STEP or mesh file makes one body per solid in it. Their **Operation** decides what
+imported STEP or mesh file makes one body per solid in it (a solid the STEP file hides comes in
+hidden, with its eye off in the browser). Their **Operation** decides what
 happens when the new material meets an existing body: **New body**, **Join**, **Cut** or
 **Intersect**. Extrudo proposes one from where you started, as described in
 [features and the timeline](./features-and-timeline.md).

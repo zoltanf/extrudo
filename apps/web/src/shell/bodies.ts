@@ -200,6 +200,7 @@ export function followBodyNames(store: DocumentStore, model: ModelStore<unknown>
     if (missing.length === 0) return;
     const colors = importedColors(imports);
     const names = importedNames(imports);
+    const hidden = importedHidden(imports);
     store.getState().amend(
       nameBodies({
         bodies: Object.fromEntries(
@@ -210,6 +211,7 @@ export function followBodyNames(store: DocumentStore, model: ModelStore<unknown>
               ...e.meta,
               ...(name !== undefined && { name }),
               ...(color !== undefined && { color }),
+              ...(hidden.has(e.id) && { visible: false }),
               ...(e.component !== undefined && { component: e.component }),
             };
             return [e.id, meta];
@@ -257,6 +259,22 @@ export function importedNames(
     for (const [id, name] of Object.entries(report.names ?? {}) as [BodyId, string][]) {
       if (name.trim() !== '') out.set(id, name);
     }
+  }
+  return out;
+}
+
+/**
+ * The bodies STEP imports report as hidden in their file (ADR-0066's amendment
+ * of 2026-11-10). Like a body's colour, `followBodyNames` hides such a body
+ * only when it first names it: a body with stored metadata keeps what the
+ * document says, so a body the user showed stays shown through a recompute, a
+ * re-import or a change of Up, and a design stored before the amendment keeps
+ * all its bodies in sight.
+ */
+export function importedHidden(imports: ModelState<unknown>['imports'] | undefined): Set<BodyId> {
+  const out = new Set<BodyId>();
+  for (const report of Object.values(imports ?? {})) {
+    for (const id of report.hidden ?? []) out.add(id);
   }
   return out;
 }

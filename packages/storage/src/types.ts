@@ -212,7 +212,7 @@ export class StorageError extends Error {
   }
 }
 
-export type ArchiveErrorCode = 'not-a-zip' | 'not-extrudo' | 'damaged';
+export type ArchiveErrorCode = 'not-a-zip' | 'not-extrudo' | 'damaged' | 'too-large';
 
 /** A file that isn't a readable `.extrudo` archive. The message is for people. */
 export class ArchiveError extends Error {

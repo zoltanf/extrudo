@@ -6,10 +6,10 @@ import {
   DocumentLoadError,
   FORMAT_VERSION,
 } from '@extrudo/core';
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { gzipSync, strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import v0 from '../../core/fixtures/v0-bracket.json' with { type: 'json' };
-import { attachmentNotices, readArchive, writeArchive } from './archive';
+import { attachmentNotices, gunzipLimited, readArchive, writeArchive } from './archive';
 import { sha256Hex } from './sha256';
 import { ArchiveError } from './types';
 
@@ -89,6 +89,29 @@ describe('.extrudo archives', () => {
     } catch (error) {
       expect((error as ArchiveError).code).toBe(code);
     }
+  });
+
+  it('opens a gzipped file (.extrudo.gz, how a design comes from a GitHub issue)', () => {
+    const d = doc();
+    const archive = readArchive(gzipSync(writeArchive(d, new Uint8Array([7]))));
+    expect(archive.doc).toEqual(d);
+    expect(archive.thumbnail).toEqual(new Uint8Array([7]));
+  });
+
+  it('refuses a gzip that unpacks past the limit, and a damaged one', () => {
+    const big = gzipSync(new Uint8Array(200_000));
+    expect(gunzipLimited(big, 300_000)).toHaveLength(200_000);
+    expect(() => gunzipLimited(big, 100_000)).toThrow(
+      expect.objectContaining({ name: 'ArchiveError', code: 'too-large' }),
+    );
+    const cut = gzipSync(writeArchive(doc())).subarray(0, 40);
+    expect(() => readArchive(cut)).toThrow(
+      expect.objectContaining({ name: 'ArchiveError', code: 'damaged' }),
+    );
+    // Gzipped bytes that aren't a zip inside are "not a zip", as plain ones are.
+    expect(() => readArchive(gzipSync(strToU8('hello')))).toThrow(
+      expect.objectContaining({ code: 'not-a-zip' }),
+    );
   });
 
   it('carries versions, and refuses a version the file lists but lacks', () => {

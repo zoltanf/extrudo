@@ -28,6 +28,7 @@ import {
   createFaceActions,
   followBodyNames,
   importedColors,
+  importedHidden,
   importedNames,
   isSwatch,
   parseBodyColor,
@@ -205,6 +206,7 @@ describe('followBodyNames', () => {
         kind: 'import' as const,
         colors: colors as Record<BodyId, string>,
         names: {},
+        hidden: [],
         coloredFaces: 0,
       },
     });
@@ -238,6 +240,7 @@ describe('followBodyNames', () => {
         kind: 'import' as const,
         colors: {},
         names: names as Record<BodyId, string>,
+        hidden: [],
         coloredFaces: 0,
       },
     });
@@ -263,6 +266,61 @@ describe('followBodyNames', () => {
     computed('A:0', 'B:0', 'B:1');
     expect(meta('B:0')?.name).toBe('Cover');
   });
+  it('hides a body its STEP file hides when it first names it, never later (ADR-0066)', () => {
+    const { store, model, computed } = setup();
+    followBodyNames(store, model as ModelStore<unknown>);
+    const report = (hidden: string[]) => ({
+      B: {
+        kind: 'import' as const,
+        colors: {},
+        names: { [bid('B:1')]: 'Pocket tool' },
+        hidden: hidden.map(bid),
+        coloredFaces: 0,
+      },
+    });
+    model.getState().computed({
+      features: {},
+      bodies: live('A:0', 'B:0', 'B:1'),
+      imports: report(['B:1']),
+      doc: store.getState().doc,
+    });
+    const meta = (id: string) => store.getState().doc.bodies[bid(id)];
+    expect(meta('B:0')).toEqual({ name: 'Body2', visible: true });
+    expect(meta('B:1')).toEqual({ name: 'Pocket tool', visible: false });
+    expect(meta('A:0')).toEqual({ name: 'Body1', visible: true });
+    // Shown by the user: a later report (a recompute, another Up) hides nothing again,
+    // and a body already stored as shown is not hidden by a report that now lists it.
+    store.getState().dispatch(updateBody({ id: bid('B:1'), changes: { visible: true } }));
+    model.getState().computed({
+      features: {},
+      bodies: live('A:0', 'B:0', 'B:1'),
+      imports: report(['B:0', 'B:1']),
+      doc: store.getState().doc,
+    });
+    expect(meta('B:1')?.visible).toBe(true);
+    expect(meta('B:0')?.visible).toBe(true);
+    computed('A:0', 'B:0', 'B:1');
+    expect(meta('B:1')?.visible).toBe(true);
+  });
+});
+
+describe('importedHidden', () => {
+  it('merges every import report', () => {
+    const report = (hidden: string[]) => ({
+      kind: 'import' as const,
+      colors: {},
+      names: {},
+      hidden: hidden.map(bid),
+      coloredFaces: 0,
+    });
+    const hidden = importedHidden({
+      ['F' as FeatureId]: report(['F:1', 'F:2']),
+      ['G' as FeatureId]: report([]),
+      ['H' as FeatureId]: report(['H:0']),
+    });
+    expect([...hidden]).toEqual(['F:1', 'F:2', 'H:0']);
+    expect(importedHidden(undefined).size).toBe(0);
+  });
 });
 
 describe('importedColors', () => {
@@ -272,6 +330,7 @@ describe('importedColors', () => {
         kind: 'import',
         colors: { [bid('F:0')]: '#ABCDEF', [bid('F:1')]: 'red' },
         names: {},
+        hidden: [],
         coloredFaces: 3,
       },
     });
@@ -287,6 +346,7 @@ describe('importedNames', () => {
         kind: 'import',
         colors: {},
         names: { [bid('F:0')]: 'Lid', [bid('F:1')]: '  ' },
+        hidden: [],
         coloredFaces: 0,
       },
     });
