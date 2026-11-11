@@ -80,7 +80,9 @@ describe('writePdf', () => {
     // A full circle is four quarter Béziers.
     const circleOps = content.split('\n').find((l) => l.startsWith('60 50 m')) ?? '';
     expect(circleOps.match(/ c/g)).toHaveLength(4);
-    expect(content).toMatch(/f\*\nQ\nBT\n3 Tr\n\/F1 4\.8747 Tf/);
+    expect(content).toContain('/BaseFont /Courier /Encoding /WinAnsiEncoding');
+    // Courier sized by its cap height (3.5 / 0.562), stretched from 13 codes × 0.6 em to 30 mm.
+    expect(content).toMatch(/f\*\nQ\nBT\n3 Tr\n\/F1 6\.2278 Tf\n61\.758 Tz/);
     expect(content).toContain(
       `<${winAnsi('Ø 12 ±0.1 90°')
         .map((b) => b.toString(16).padStart(2, '0'))

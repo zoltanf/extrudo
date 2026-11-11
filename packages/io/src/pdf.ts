@@ -6,9 +6,10 @@
  * lower left, as PDF's own user space but scaled by one `cm` per page.
  *
  * Text is the caller's glyph outlines, filled, plus an invisible copy of its
- * string (render mode 3) in Helvetica, a base-14 font no reader needs
+ * string (render mode 3) in Courier, a base-14 font no reader needs
  * embedded, stretched with `Tz` to the outlines' width so selecting and
- * searching land on the drawn text. The string is written in WinAnsiEncoding;
+ * searching land on the drawn text. Courier is monospaced (every glyph
+ * advances 600/1000 em), so the writer needs no table of widths. The string is written in WinAnsiEncoding;
  * a character outside it goes in as `?` (the outlines still draw it).
  *
  * Nothing here shapes text: `@extrudo/io` is MIT and must not import the
@@ -80,7 +81,7 @@ export function writePdf(pages: readonly PdfPage[], options: PdfOptions = {}): U
     `<< /Type /Pages /Kids [${pages.map((_, i) => pageRef(i)).join(' ')}] /Count ${pages.length} >>`,
   ];
   objects[3] = [
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>',
   ];
   objects[4] = [
     `<< /Producer (Extrudo)${options.title ? ` /Title ${textString(options.title)}` : ''} >>`,
@@ -155,9 +156,11 @@ function pageContent(page: PdfPage): string {
       if (path) ops.push('q', `${rgb(item.color ?? '#000000')} rg`, path, 'f*', 'Q');
       const encoded = winAnsi(item.text);
       if (encoded.length === 0 || item.height <= 0) continue;
-      // Helvetica's cap height is 718/1000 em.
-      const size = item.height / 0.718;
-      const natural = (helveticaWidth(encoded) / 1000) * size;
+      // Size the invisible text so its capitals are the drawn ones' height:
+      // one number, Courier's cap height of 562/1000 em. Its width is
+      // 600/1000 em per code (monospaced); Tz stretches it to the outlines.
+      const size = item.height / 0.562;
+      const natural = 0.6 * size * encoded.length;
       const stretch = natural > 0 && item.width > 0 ? (100 * item.width) / natural : 100;
       const c = Math.cos(item.angle ?? 0);
       const s = Math.sin(item.angle ?? 0);
@@ -319,35 +322,4 @@ export function winAnsi(text: string): number[] {
     else out.push(WIN_ANSI_HIGH[code] ?? 0x3f);
   }
   return out;
-}
-
-/**
- * Helvetica's advance widths (1/1000 em) from Adobe's core-font metrics, for
- * codes 0x20–0x7E and 0xA0–0xFF of WinAnsiEncoding; 0x80–0x9F use 556 (most
- * are; a wrong one only shifts the selection box, the stretch fixes the total).
- */
-const HELVETICA_ASCII = [
-  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556,
-  556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667,
-  611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667,
-  667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
-  222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
-];
-const HELVETICA_LATIN1 = [
-  278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333,
-  333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611, 667, 667, 667, 667, 667, 667,
-  1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778,
-  722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556,
-  278, 278, 278, 278, 556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556,
-  500,
-];
-
-function helveticaWidth(codes: readonly number[]): number {
-  let width = 0;
-  for (const code of codes) {
-    if (code >= 0x20 && code <= 0x7e) width += HELVETICA_ASCII[code - 0x20] ?? 556;
-    else if (code >= 0xa0) width += HELVETICA_LATIN1[code - 0xa0] ?? 556;
-    else width += 556;
-  }
-  return width;
 }
