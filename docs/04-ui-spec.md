@@ -890,7 +890,8 @@ no text shown the tab alone is the callout, rounded on all four corners. A
 
 A design's 2D sheets, made from the model (slice S1: sheets, Sheet Setup, the
 title block, text items and export; S2: views drawn from the model, Base View,
-Projected View, Standard views and the view card; dimensions and notes come with S3 to S5). The UI says "drawing" and "sheet"; code says `sheet`.
+Projected View, Standard views and the view card; S3: dimensions and the Dimension tool;
+notes and lists come with S4 and S5). The UI says "drawing" and "sheet"; code says `sheet`.
 
 - **Ways in:** Make › **Drawing** (New drawing when the design has no sheet,
   else the sheet edited last); the browser's **Drawings** folder below
@@ -916,8 +917,8 @@ Projected View, Standard views and the view card; dimensions and notes come with
   without zones, with the design's name, today's date and the units filled in.
   "Drawn by" is never filled in by itself: the last name typed there is
   offered as a "Use …" button.
-- **The screen:** tabs Home and **Drawing** (Views: Base View, Projected View; Sheet: New
-  Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
+- **The screen:** tabs Home and **Drawing** (Views: Base View, Projected View; Dimensions:
+  Dimension; Sheet: New Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
   mounted underneath, inert): white paper in both themes with a shadow, a
   floating bar with Select, Pan, Zoom, Fit and the zoom level. Pan and zoom
   follow the mouse preset's bindings (no orbit), the wheel zooms at the
@@ -963,8 +964,28 @@ Projected View, Standard views and the view card; dimensions and notes come with
   to draw."; these notes are on screen only. A hidden body leaves the views
   that show all shown bodies and stays in a view that names it. With the
   marker rolled back the status text ends "Showing the model at feature 5 of
-  7". Dimensions a file holds are drawn detached (their text with "?") until
-  the Dimension tool (S3).
+  7".
+- **Dimensions** (S3): measured from the model, never driving it. The open
+  sheet's anchors are asked of the kernel after the model, a view or an item
+  changes; a dimension (or note) the kernel has not answered for yet is not
+  drawn, so nothing shows as lost while it answers. A **lost** one (its edge
+  gone, or the feature it was measured on deleted, suppressed or failing) is
+  drawn where it was last, in the paper's red with dashed lines; one the
+  kernel found again by its fingerprint ("moved") is drawn as usual. The
+  sheet's folder in the browser has **Dimensions**: a row per dimension with
+  its text and view ("74 Front"), a click selects it; a moved row has a
+  warning triangle and "moved", a lost row is red with "lost its edge" (its
+  tooltip says why). While a lost or moved dimension is selected (else under
+  the pointer) the status text says why: the kernel's reason ("The feature
+  this was measured on is deleted.", "Pocket, the feature this was measured
+  on, is suppressed. Unsuppress it to show the dimension again.", "…, has an
+  error. Fix it to show the dimension again.") or "This dimension lost its
+  edge: drag an end onto an edge, or delete it.". The export resolves the
+  anchors again and writes only the model as it is now, in black: a lost
+  dimension is its text alone with "?" for the value, a lost leader note its
+  text without the arrow, a lost centre mark or line nothing; its summary adds
+  "· 1 dimension detached, written as ?" when some are. If the model can't be
+  measured, the export stops and says so.
 - **Base View** (`V`): the right column shows its choices (Looking from, Scale,
   Style), a frame with the view's quick lines follows the pointer, a click
   places the view with the middle of its lines there (one undo step, "Base
@@ -979,6 +1000,32 @@ Projected View, Standard views and the view card; dimensions and notes come with
   makes ("Top", "Isometric"). The frame of that view's lines follows the
   pointer along the parent's line, exactly lined up; a click places it (one
   undo step, "Projected view"). The tool stays on for the next one until Esc.
+- **Dimension** (`D`, mock-up 3): one tool for a length, a distance, a radius
+  or diameter and an angle, measured from the model and never driving it.
+  Hovering highlights what a click takes in the accent: an edge, a vertex at
+  a line's end (a diamond), a circle, or a cylinder's or cone's outline. Only
+  a view's exact, current lines can be picked: while a view shows its quick
+  lines (or lines of an older model) nothing on it is, and the panel says
+  "Front is still being drawn: its lines can be picked once they are exact."
+  A line alone is its length, a circle its diameter, an arc its radius, an
+  outline its length; a second pick in the same view makes a distance (two
+  parallel lines, points, a circle's centre), an angle (two lines that cross)
+  or a diameter (a cylinder's two outlines). Once the picks make a dimension
+  it follows the pointer in blue with its value and "Click to place"; where
+  it is placed decides horizontal, vertical or aligned, as in a sketch. A
+  click on empty paper places it (one undo step, "Dimension"); the tool
+  stays on. The first Esc drops the picks, the next ends the tool. The
+  panel says what to pick next and holds the choices the next dimension is
+  placed with: Direction (Auto, Horizontal, Vertical, Aligned), Decimals (empty:
+  the sheet's), Before, After, In brackets (reference).
+- **A dimension selected** shows its card: its text and kind, its view,
+  why it is lost or moved, Direction (a linear one), Decimals, Before, After,
+  In brackets and Delete; each change one undo step. A lost or moved
+  dimension selected has a handle on each end (where its geometry was last
+  drawn; by its text when none was kept): **dragging one onto an edge, a
+  vertex or an outline picks that again** (one undo step, "Pick again"). Show
+  the unit and arrows inside or outside are not offered (no field yet: the
+  arrows go outside by themselves when there is no room).
 - **A view's menu** (right-click on a view): Projected View from This, Fit
   Scale (the largest standard scale at which its base view fits inside the
   border, the views projected from it scaled with it, one undo step, "Fit
@@ -1012,7 +1059,8 @@ Projected View, Standard views and the view card; dimensions and notes come with
   landscape"); no sheet chosen can't export. The format is remembered. Export
   first draws every view of the chosen sheets exactly (the summary says
   "Drawing the views · 2 of 4"; closing the dialog stops it and writes
-  nothing), so a file never holds the quick placeholder lines.
+  nothing), so a file never holds the quick placeholder lines. Lengths are
+  written in the design's unit.
 - **Model-only tools** (Import, Canvas, Customizer) say "Finish the drawing to
   use …"; Parameters stays available; camera and named views are not offered.
   An Edit that opens a sketch or a feature dialog (a recompute error's Edit)
@@ -1045,8 +1093,9 @@ position (they work on any layout). The keys live in one table,
 `apps/web/src/commands/keymap.ts`; P is Project (P2-09), Shift+P Intersect in a
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
-ADR-0081 §4). In the drawing (§4a): Ctrl+E Export PDF, Ctrl+PageDown and
-Ctrl+PageUp the next and previous sheet.
+ADR-0081 §4). In the drawing (§4a): V Base View, P Projected View, D Dimension (Sketch
+Dimension's key: a sketch and the drawing are never open together), Ctrl+E Export PDF,
+Ctrl+PageDown and Ctrl+PageUp the next and previous sheet.
 
 The sketch constraints have no usual keys in mainstream CAD, so they are **K, then a
 letter** (a chord; ADR-0023's amendment of 2026-10-18): K C Coincident, K L Collinear,

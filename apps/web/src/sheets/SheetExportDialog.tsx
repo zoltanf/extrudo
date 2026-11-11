@@ -6,7 +6,9 @@
  *
  * Before a file is written the chosen sheets' views are drawn exactly from the model (S2),
  * one at a time: the summary says how far ("Drawing the views · 2 of 4"), and Cancel stops
- * it before the next view (nothing is written).
+ * it before the next view (nothing is written). The chosen sheets' anchors are resolved as
+ * the dialog opens, and the summary says how many dimensions are detached and that they are
+ * written as "?" (S3).
  *
  * Test hooks: the dialog "Export drawing", a checkbox per sheet named "n · name", the radio
  * group "Format" ("PDF", "SVG"), the textbox "File name", `[data-sheet-export-summary]`, the
@@ -27,6 +29,7 @@ import {
   type SheetExportFormat,
   sheetExportPlan,
 } from './exportSheets';
+import { detachedDimensions, type SheetAnchorsKernel } from './sheetAnchors';
 import type { SheetViewsKernel } from './viewRunner';
 
 /** What opened the dialog: every sheet (Export PDF), or the sheets given (Export This Sheet). */
@@ -39,7 +42,11 @@ export interface SheetExportDialogProps {
   doc: ExtrudoDocument;
   files: Pick<FileAccess, 'download'>;
   /** The views' model: the project's kernel and the bodies at the marker. */
-  views?: { kernel: SheetViewsKernel; bodies(): readonly BodyId[] };
+  views?: {
+    kernel: SheetViewsKernel;
+    bodies(): readonly BodyId[];
+    anchors?: SheetAnchorsKernel;
+  };
   preferences: Preferences;
   notify(tone: 'info' | 'error', text: string): void;
   onClose(): void;
@@ -84,6 +91,30 @@ export function SheetExportDialog({
     () => sheetExportPlan(doc, chosen, format, name.trim() || doc.name),
     [doc, chosen, format, name],
   );
+  // How many of the chosen sheets' dimensions are detached (the kernel's answer now), for the
+  // summary: the export writes them as "?".
+  const [detached, setDetached] = useState(0);
+  const resolver = views?.anchors;
+  useEffect(() => {
+    setDetached(0);
+    if (!request || !resolver) return;
+    let live = true;
+    const picked = (doc.sheets ?? []).filter((s) => chosen.has(s.id));
+    void Promise.all(
+      picked.map(async (sheet) =>
+        detachedDimensions(sheet, await resolver.resolveSheet(sheet, { quiet: true })),
+      ),
+    ).then((counts) => {
+      if (live) setDetached(counts.reduce((a, b) => a + b, 0));
+    });
+    return () => {
+      live = false;
+    };
+  }, [request, resolver, doc, chosen]);
+  const summary =
+    detached > 0 && plan.sheets.length > 0
+      ? `${plan.summary} · ${detached} ${detached === 1 ? 'dimension' : 'dimensions'} detached, written as ?`
+      : plan.summary;
   const toggle = (id: SheetId, on: boolean) => {
     const next = new Set(chosen);
     if (on) next.add(id);
@@ -119,6 +150,7 @@ export function SheetExportDialog({
             views && {
               kernel: views.kernel,
               bodies: views.bodies(),
+              ...(views.anchors && { anchors: views.anchors }),
               onProgress: (done, total) => setDrawing(total > 0 ? { done, total } : undefined),
             },
           )
@@ -207,7 +239,7 @@ export function SheetExportDialog({
           >
             {drawing && busy
               ? `Drawing the views · ${Math.min(drawing.done + 1, drawing.total)} of ${drawing.total}`
-              : plan.summary}
+              : summary}
           </span>
           <DialogClose asChild>
             <Button>

@@ -122,6 +122,7 @@ export const ICON_NAMES = [
   'sheets',
   'base-view',
   'projected-view',
+  'sheet-dimension',
   'new-sheet',
   'sheet-setup',
   'export-pdf',

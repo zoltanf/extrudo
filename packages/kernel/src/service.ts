@@ -144,15 +144,16 @@ export interface KernelApi {
   endPreview(): Promise<void>;
   /**
    * A reference to a face, edge or vertex of a body the last recompute
-   * returned (its index in the body's mesh), or with `base` one the last
-   * preview returned as its base (editing a feature), with its persistent
-   * name and fingerprint (ADR-0005): what a feature's `ref` input stores.
-   * Undefined if the body or the sub-shape is gone.
+   * returned (its index in the body's mesh, or its persistent name: a sheet
+   * view's curve carries that), or with `base` one the last preview returned
+   * as its base (editing a feature), with its persistent name and fingerprint
+   * (ADR-0005): what a feature's `ref` input stores. Undefined if the body or
+   * the sub-shape is gone.
    */
   reference(
     body: BodyId,
     kind: SubShapeKind,
-    index: number,
+    index: number | string,
     base?: boolean,
   ): Promise<GeomRef | undefined>;
   /**
@@ -533,7 +534,7 @@ export class KernelService implements KernelApi {
   reference(
     body: BodyId,
     kind: SubShapeKind,
-    index: number,
+    index: number | string,
     base = false,
   ): Promise<GeomRef | undefined> {
     return this.#run(() => this.#engineOf().reference(body, kind, index, base));

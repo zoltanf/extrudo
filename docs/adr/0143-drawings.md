@@ -352,6 +352,12 @@ No facade change.
   document, the anchor is `detached` with "The feature this was measured on is deleted."; if one is
   suppressed, `detached` with "<name>, the feature this was measured on, is suppressed. Unsuppress it to
   show the dimension again." (deleted outranks suppressed; `lostFeature` in `kernel/src/sheets/anchors.ts`).
+  **Package 2 carried it one step further:** a named feature still in the document and active whose status
+  was an error in the last recompute detaches the anchor too, with "<name>, the feature this was measured
+  on, has an error. Fix it to show the dimension again." (after deleted and suppressed). The statuses are
+  the recompute's own: the engine keeps the failed feature IDs with the marker's state (`AtMarker.failed`)
+  and passes them to `lostFeature`. Found on B2: the pocket made to cut upwards has nothing to cut and
+  fails; its floor edge's dimension was `moved` by fingerprint onto the box's bottom edge (80 for 74).
   No fingerprint search runs then. Why: the closest match on a drawing is another edge, and its number
   is wrong without looking wrong (B2: 80 for 74); a missing number is safer than a wrong one. A
   suppressed feature makes nothing while suppressed, so the same wrong match can happen. Rolled back
@@ -911,3 +917,100 @@ UI spec §4a describes what a person sees.
   kernel wait notice with a Cancel (ADR-0111 keeps Cancel off kernel waits; this one changes
   no document); the notes in the display list (they would be exported); dimming by colour in
   the list (the display list carries no screen colour).
+
+## Amendment (S3, the Dimension tool), 2026-11-11
+
+Package 2 of S3: dimensions in the app. Part 1 (this part): the open sheet's anchors resolved and
+drawn, the detached and moved states, the browser's Dimensions folder, the export; one kernel rule.
+Files: `apps/web/src/sheets/sheetAnchors.ts`, `SheetWorkspace.tsx`, `SheetCanvas.tsx` (`screenPaint`),
+`SheetsTree.tsx`, `SheetTabs.tsx` (`itemReason`), `exportSheets.ts`, `SheetExportDialog.tsx`; the
+kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached dimension's message.
+
+- **When anchors are resolved**: on a new sheet object (a view or an item changed) and after every
+  finished recompute (the model store's `features`, new each time), never while the model computes;
+  `quiet` (no wait notice: it takes milliseconds). Answers older than the newest request are
+  dropped; each answer goes through `keepLastAnchors` with the last one, so a lost dimension stays
+  where it was drawn.
+- **Waiting for the first answer**: an anchored item the kernel has not been asked about yet (a file
+  just opened, a sheet opened, an item brought back by undo) is left out of the layout until the
+  answer comes (`drawnItems`), so nothing is drawn detached because the kernel has not answered.
+  Without a kernel, or when the first answer fails, every item is drawn (detached).
+- **Nothing stored**: the anchors live in memory; `sheetItemsStore` keeps, per sheet visited, what
+  was drawn (`kept`, for the screen only: a sheet opened again starts from it), each open-sheet
+  item's text, state and reason (`rows`) for the browser and the status bar.
+- **States on screen** (plan §4.6): `detached` in the paper's red (`#d93d3d`, the light theme's
+  error colour, since the paper is white in both themes) with dashed lines (1.6 1 mm); `invalid`
+  in red, solid; `moved` drawn as usual. The browser's row warns ("moved"; red "lost its edge"),
+  and the status text says why while the item is selected, else under the pointer. **A detached
+  dimension's reason is the kernel's** (deleted, suppressed, failed feature) when it gives one,
+  else the plan's "This dimension lost its edge: …" (`measureSheetDimension`); leader notes and
+  centre marks keep their own words.
+- **The export writes only the model as it is now** (`exportAnchorsOf`): it resolves every chosen
+  sheet with anchored items again and keeps **no** geometry, since the writers ignore `state` and a
+  kept "74" would print black, like a valid one: the wrong number the owner's rule is there to
+  prevent. On the page a lost dimension is its text alone at its place with "?" for the value (as
+  a file just opened shows it), a lost leader note its typed text without the arrow, a lost centre
+  mark or line nothing. If the kernel can't answer, the export stops with "The drawing couldn't be
+  exported: its dimensions couldn't be measured from the model. Try again once the model is
+  computed." and writes nothing. It passes the design's units (it wrote millimetres before). Its
+  dialog resolves as it opens and adds "· n dimensions detached, written as ?" to the summary. The
+  screen is unchanged: last geometry, red and dashed, the reason in the status bar.
+- **The browser** (plan §3.1): a Dimensions folder in each sheet's folder when it has dimensions,
+  a row per dimension (its text on the open sheet, else "Dimension"; its view's name), a click
+  selects it on its sheet.
+- **Left for a later schema change** (the owner, 2026-11-11): mock-up 3's "Show the unit" and the
+  card's "arrows inside or outside" (plan §4.3). The item has no field for either; the layout puts
+  the arrows outside by itself when there is no room between the extension lines.
+- **Rejected**: the export keeping the screen's last geometry for a lost dimension (it printed a
+  black "74" on B2 with the pocket deleted); writing what the screen last had when the kernel
+  can't answer; drawing anchored items detached until the first answer (every opening would
+  flash red); keeping the whole sheet bare until then (views would wait on dimensions); the
+  theme's error token on the paper (it is a light red in the dark theme, meant for a dark
+  background); a message for each kind in the browser row (the status text has room for it).
+- **Part 2: the Dimension tool** (`D`, `sheetDimension` in `SHEET_TOOLS`, the Drawing tab's
+  Dimensions group, its own icon `sheet-dimension`, New Sheet's wedge in the marking menu).
+  Files: `dimensionTool.ts` (pure: `sheetPickables`, `hitPickable`, `dimensionOf`,
+  `dimensionItem`, `nextStep`), `useDimensionTool.ts` (`pickOf`, the hook),
+  `SheetDimensionCard.tsx` (panel, card, overlay), `RepickHandles.tsx`; `SheetCanvas`'s
+  `pointer` and `overlay` props and its control's `sheetPoint` and `tolerance`;
+  `runSheetCommand` in `views.ts`; in the kernel, `reference` takes a sub-shape's persistent
+  name as well as its index.
+- **What can be picked**: a view's curves only when its geometry is exact and current (not
+  `pending`): never the quick placeholder, never lines of an older model. Each model edge by its
+  name, its curves of every kind together (a circle half hidden is two curves), and each
+  cylinder's or cone's outline by its face's name; hidden lines only where the view draws them,
+  tangent edges likewise. A line's or an open curve's ends are its vertices. The pointer takes the
+  nearest within 5 px (at least 0.8 mm); an end wins when it is within that and not more than a
+  third of it further than the line (so the middle of a short edge is the edge).
+- **A pick becomes an anchor through the kernel**: `Recomputer.reference(body, kind, name)` gives
+  the ref with its fingerprint; an edge whole is `{ ref }`; **a vertex is the edge's `start` or
+  `end`** (no vertex name is needed), and which one, like an outline's side, is read back with one
+  `resolveSheet` of a throwaway item with both (`~probe`), taking the one under the pointer.
+- **Which dimension** (`dimensionOf`): a line its length, a full circle its diameter, an arc its
+  radius, an outline its length; of two in one view, two outlines of one face a diameter, two
+  lines (edges or outlines) that cross an angle, anything else a linear distance. Placement
+  decides horizontal, vertical or aligned (`measureSheetDimension`), unless the panel fixes a
+  direction. Once the picks make one, its anchors are resolved once (`~dimension`), and the
+  preview is `layoutSheetDimension` of the item at the pointer, drawn in the paper's blue
+  (`#2f86f0`) with "Click to place"; the picks in the paper's orange. A click on empty paper places
+  it ("Dimension"), its reports merged into the workspace's anchors so it is drawn at once.
+  The first Esc drops the picks (a capture listener), the shell's Esc ends the tool.
+- **The panel** (mock-up 3) holds the next dimension's Direction, Decimals (an `ExpressionInput`,
+  empty for the sheet's), Before, After and In brackets. **The card** (plan §4.3) has the same
+  fields for a selected dimension, each one `updateSheetItem` step (a cleared field or Auto is
+  `null`), its kind, view and reason, and Delete.
+- **Picking again**: a lost or moved dimension selected shows a handle per model anchor, at its
+  geometry's point, middle or centre as last drawn (by the text when none was kept); dragging one
+  onto something pickable in the dimension's view replaces that anchor ("Pick again"). A one-anchor
+  dimension takes the type its new pick makes (and loses a direction it no longer has); a
+  two-anchor one keeps its type, and the document refuses an unfitting pair with why.
+- **Tests**: `dimensionTool.test.ts` (pickables, hits, which dimension, the item, the panel's
+  words, the card's changes, picking again); the kernel's `reference` by name in
+  `anchors.test.ts`; `e2e/sheet-dimensions.spec.ts` places a length, a distance, an angle and a
+  diameter on the wall bracket template, follows `width`, the card and its undo, the holes deleted
+  and a lost end dragged onto an edge, undo, and the PDF's text.
+- **Rejected (part 2)**: picking quick lines and fixing the ref later (a quick line has no name,
+  and a wrong edge is the wrong number); a vertex name (an edge's end says the same and resolves
+  through the same edge); a separate kernel call for an end or a side (one `resolveSheet` of a
+  probe answers both); "Show the unit" and arrows inside or outside on the panel and card (no field;
+  left for a later schema change, above).

@@ -288,13 +288,13 @@ function solve(
   const placed = placeAnchors(item.anchors, reports, frame);
   if (placed.problem) return { state: 'invalid', message: placed.problem, frame, at };
   const shapes = placed.shapes ?? [];
+  // Why it is lost: the kernel's reason when it gives one (a deleted, suppressed or
+  // failed feature), else what to do about it.
+  const lost =
+    reports?.find((r) => r.status === 'detached' && r.message)?.message ??
+    'This dimension lost its edge: drag an end onto an edge, or delete it.';
   if (shapes.some((s) => s === undefined)) {
-    return {
-      state: 'detached',
-      message: 'This dimension lost its edge: drag an end onto an edge, or delete it.',
-      frame,
-      at,
-    };
+    return { state: 'detached', message: lost, frame, at };
   }
   const measured = measure(item, shapes as Shape[], at);
   let message: string | undefined;
@@ -302,7 +302,7 @@ function solve(
     if (state !== 'detached') state = 'invalid';
     message = measured.message;
   } else if (state === 'detached') {
-    message = 'This dimension lost its edge: drag an end onto an edge, or delete it.';
+    message = lost;
   }
   return { state, frame, at, measured, ...(message && { message }) };
 }

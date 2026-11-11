@@ -18,15 +18,26 @@ import {
   type ModelStore,
   type SessionStore,
   type SheetId,
+  type SheetItemChanges,
+  type SheetItemId,
   type SheetViewId,
   sheetBaseFrame,
   sheetPaperSize,
   sheetStandardFrom,
+  updateSheetItem,
   type Vec3,
 } from '@extrudo/core';
 import type { DisplayList } from '@extrudo/io';
 import { type BodyMesh, shownBodies } from '@extrudo/kernel';
-import { layoutSheet, SHEET_FONTS, type SheetViewLines, sheetMargin } from '@extrudo/sheets';
+import {
+  layoutSheet,
+  measureSheetDimension,
+  SHEET_FONTS,
+  type SheetViewLines,
+  sheetItemStatus,
+  sheetMargin,
+  sheetViewScale,
+} from '@extrudo/sheets';
 import { Hand, Maximize, MousePointer2, Trash2, ZoomIn } from 'lucide-react';
 import {
   type RefObject,
@@ -45,8 +56,21 @@ import { basis } from '../viewport/camera';
 import { ProgressCube } from '../viewport/ModelProgress';
 import { WAITING_AFTER_MS } from '../viewport/progressRules';
 import type { ViewportStore } from '../viewport/store';
+import {
+  DIMENSION_DEFAULTS,
+  type DimensionChoices,
+  sheetPickables,
+  toSheet,
+} from './dimensionTool';
 import { changeSheet, finishDrawing, renameSheet, type SheetModeStores } from './mode';
+import { RepickHandles } from './RepickHandles';
 import { SheetCanvas, type SheetCanvasControl } from './SheetCanvas';
+import {
+  DimensionCard,
+  DimensionOverlay,
+  DimensionPanel,
+  dimensionChanges,
+} from './SheetDimensionCard';
 import { SheetSetup } from './SheetSetup';
 import {
   type BaseViewChoices,
@@ -63,6 +87,14 @@ import {
   targetName,
   viewDeltas,
 } from './selection';
+import {
+  drawnItems,
+  isAnchored,
+  type SheetItemRow,
+  sheetItemsStore,
+  useSheetAnchors,
+} from './sheetAnchors';
+import { type DimensionKernel, useDimensionTool } from './useDimensionTool';
 import { useProjectedView } from './useProjectedView';
 import { baseViewOf, sheetViewNotice, sheetViewWant, sheetViewWants } from './viewLines';
 import {
@@ -78,6 +110,7 @@ import {
   placeBaseView,
   placedAt,
   rescaleSheetView,
+  runSheetCommand,
   scaleText,
 } from './views';
 
@@ -98,6 +131,11 @@ export interface SheetWorkspaceProps {
   model: ModelStore<BodyMesh>;
   /** The project's kernel; without it the views stay frames. */
   kernel?: SheetViewsKernel;
+  /**
+   * The kernel's anchors and reference calls; without them dimensions and notes are drawn
+   * detached and nothing can be picked.
+   */
+  anchorsKernel?: DimensionKernel;
 }
 
 const noSubscribe = () => () => {};
@@ -121,6 +159,7 @@ export default function SheetWorkspace({
   onMenu,
   model,
   kernel,
+  anchorsKernel,
 }: SheetWorkspaceProps) {
   const doc = useStore(store, (s) => s.doc);
   const sheets = doc.sheets ?? [];
@@ -146,6 +185,11 @@ export default function SheetWorkspace({
   // While the model is computed the views wait (the kernel has nothing, or is replacing it).
   const computing = useStore(model, (st) => st.status === 'idle' || st.status === 'computing');
   useEffect(() => runner?.want(wants, computing), [runner, wants, computing]);
+  // The items' anchors (S3): resolved after the model, a view or an item changes, the lost
+  // ones kept where they were drawn; an item not asked about yet waits (`drawnItems`).
+  const recomputed = useStore(model, (st) => st.features);
+  const resolved = useSheetAnchors(anchorsKernel, sheet, recomputed, computing);
+  const { anchors, asked } = resolved;
   // Leaving the drawing: the run stops before the next view (its results stay cached).
   useEffect(() => () => runner?.want([]), [runner]);
   const views = useSyncExternalStore<SheetViewsState>(
@@ -154,6 +198,70 @@ export default function SheetWorkspace({
   );
 
   const one = selected.length === 1 ? selected[0] : undefined;
+  const selectedDimension = one?.startsWith('item:')
+    ? sheet?.items.find((i) => i.id === one.slice(5) && i.kind === 'dimension')
+    : undefined;
+  const dimension = selectedDimension?.kind === 'dimension' ? selectedDimension : undefined;
+  const rows = useStore(sheetItemsStore, (s) => (s.sheet === sheet?.id ? s.rows : undefined));
+  const dimensionRow = dimension ? rows?.get(dimension.id) : undefined;
+
+  // The Dimension tool (S3) and picking a lost or moved dimension's geometry again: what on
+  // the sheet a click can take (exact, current lines only).
+  const dimensionTool = activeTool === 'sheetDimension';
+  const repicking =
+    !dimensionTool &&
+    dimension !== undefined &&
+    (dimensionRow?.state === 'detached' || dimensionRow?.state === 'moved');
+  const scaleOf = useCallback(
+    (id: SheetViewId) => {
+      const view = sheet?.views.find((v) => v.id === id);
+      const [a, b] = view && sheet ? sheetViewScale(sheet, view) : [1, 1];
+      return a / b;
+    },
+    [sheet],
+  );
+  const pickables = useMemo(
+    () =>
+      sheet && (dimensionTool || repicking)
+        ? sheetPickables(sheet, views.geometry, views.pending, (v) => scaleOf(v.id))
+        : [],
+    [sheet, dimensionTool, repicking, views.geometry, views.pending, scaleOf],
+  );
+  const [dimensionChoices, setDimensionChoices] = useState<DimensionChoices>(DIMENSION_DEFAULTS);
+  const dimensioning = useDimensionTool({
+    active: dimensionTool,
+    sheet,
+    units: doc.settings.units,
+    pickables,
+    scaleOf,
+    kernel: anchorsKernel,
+    stores,
+    choices: dimensionChoices,
+    notify,
+    merge: resolved.merge,
+  });
+  const pickedPoints = useMemo(() => {
+    const out: [number, number][] = [];
+    for (const pick of dimensioning.picks) {
+      const view = sheet?.views.find((v) => v.id === pick.view);
+      if (pick.kind === 'point' && view) {
+        const [x, y] = toSheet(view, scaleOf(view.id), pick.p);
+        out.push([x, y]);
+      }
+    }
+    return out;
+  }, [dimensioning.picks, sheet, scaleOf]);
+  const waiting = useMemo(
+    () =>
+      (sheet?.views ?? [])
+        .filter((v) => !views.geometry.get(v.id)?.exact || views.pending.has(v.id))
+        .map((v) => v.name),
+    [sheet, views.geometry, views.pending],
+  );
+  const lost = useMemo(
+    () => [...(rows?.values() ?? [])].some((r) => r.state === 'detached'),
+    [rows],
+  );
   const selectedView = one?.startsWith('view:')
     ? sheet?.views.find((v) => v.id === one.slice(5))
     : undefined;
@@ -242,12 +350,37 @@ export default function SheetWorkspace({
     if (!sheet) return undefined;
     void fonts;
     try {
-      return layoutSheet(sheet, { name: doc.name, sheets, views: views.lines });
+      return layoutSheet(drawnItems(sheet, asked), {
+        name: doc.name,
+        sheets,
+        views: views.lines,
+        ...(anchors && { anchors }),
+        units: doc.settings.units,
+      });
     } catch {
       // The sheet fonts are still loading: the paper is drawn bare until they are in.
       return undefined;
     }
-  }, [sheet, sheets, doc.name, fonts, views.lines]);
+  }, [sheet, sheets, doc.name, doc.settings.units, fonts, views.lines, anchors, asked]);
+
+  // Each item's text and state for the browser's rows and the status bar (plan §4.6).
+  useEffect(() => {
+    if (!sheet) return;
+    const rows = new Map<SheetItemId, SheetItemRow>();
+    const drawn = drawnItems(sheet, asked);
+    const options = { units: doc.settings.units };
+    for (const item of drawn.items) {
+      if (!isAnchored(item)) continue;
+      const status = sheetItemStatus(sheet, item, anchors, options);
+      const text =
+        item.kind === 'dimension'
+          ? measureSheetDimension(sheet, item, anchors, options).text
+          : undefined;
+      rows.set(item.id, { ...status, ...(text !== undefined && { text }) });
+    }
+    sheetItemsStore.setState({ sheet: sheet.id, rows });
+  }, [sheet, anchors, asked, doc.settings.units]);
+  useEffect(() => () => sheetItemsStore.setState({ sheet: undefined, rows: new Map() }), []);
 
   // What the screen says under a view: being drawn, a body gone, a mesh body (plan §4.6).
   const notices = useMemo(() => {
@@ -375,6 +508,32 @@ export default function SheetWorkspace({
           },
         })}
         {...(projected.placing && { placing: projected.placing })}
+        {...(dimensionTool && {
+          pointer: {
+            onPoint: dimensioning.onPoint,
+            onClick: dimensioning.onClick,
+            onLeave: dimensioning.onLeave,
+          },
+          overlay: <DimensionOverlay tool={dimensioning} points={pickedPoints} />,
+        })}
+        {...(repicking &&
+          dimension &&
+          anchorsKernel && {
+            overlay: (
+              <RepickHandles
+                key={dimension.id}
+                sheet={sheet}
+                item={dimension}
+                anchors={anchors}
+                pickables={pickables}
+                scale={scaleOf(dimension.view)}
+                control={control}
+                kernel={anchorsKernel}
+                stores={stores}
+                notify={notify}
+              />
+            ),
+          })}
         movesOf={(targets, dx, dy, free) => {
           const moves = new Map<string, readonly [number, number]>(
             targets.map((t) => [t, [dx, dy] as const]),
@@ -489,7 +648,17 @@ export default function SheetWorkspace({
         />
       </nav>
       <div className="pointer-events-none absolute top-3 right-3 bottom-3 z-10 flex w-64 flex-col gap-2 overflow-y-auto [scrollbar-width:none]">
-        {activeTool === 'projectedView' ? (
+        {dimensionTool ? (
+          <DimensionPanel
+            doc={doc}
+            sheet={sheet}
+            tool={dimensioning}
+            waiting={waiting}
+            lost={lost}
+            value={dimensionChoices}
+            onChange={setDimensionChoices}
+          />
+        ) : activeTool === 'projectedView' ? (
           <ProjectedViewPanel
             {...(projected.parent && { parent: projected.parent.name })}
             {...(projected.next && { side: projected.next })}
@@ -528,6 +697,24 @@ export default function SheetWorkspace({
             notify={notify}
             onDelete={remove}
             onFinish={() => finishDrawing(stores)}
+          />
+        ) : dimension ? (
+          <DimensionCard
+            key={dimension.id}
+            doc={doc}
+            sheet={sheet}
+            item={dimension}
+            row={dimensionRow}
+            change={(changes, label) =>
+              runSheetCommand(stores, {
+                ...updateSheetItem({
+                  id: dimension.id,
+                  changes: dimensionChanges(changes) as SheetItemChanges,
+                }),
+                label,
+              })
+            }
+            onDelete={remove}
           />
         ) : selected.length > 0 && !(selected.length === 1 && selected[0] === 'title-block') ? (
           <SelectionCard

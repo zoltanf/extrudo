@@ -326,6 +326,24 @@ describe('moved and detached anchors', () => {
     expect(keepLastAnchors(now, before)).toEqual(before);
   });
 
+  it('a detached one says the kernel’s reason when it has one, kept geometry or not', () => {
+    const item = dim('x4', 'linear', [0, 40], [edge('top', [0, -10, 30])]);
+    const sheet = sheetOf([item]);
+    const why =
+      'Pocket, the feature this was measured on, has an error. Fix it to show the dimension again.';
+    const lost: SheetAnchors = { [item.id]: [{ status: 'detached', message: why }] };
+    expect(measureSheetDimension(sheet, item, lost)).toMatchObject({
+      state: 'detached',
+      message: why,
+    });
+    const before: SheetAnchors = { [item.id]: [TOP_EDGE] };
+    expect(measureSheetDimension(sheet, item, keepLastAnchors(before, lost))).toMatchObject({
+      value: 10,
+      state: 'detached',
+      message: why,
+    });
+  });
+
   it('an anchor that resolves but gives nothing is invalid, with the kernel’s reason', () => {
     const item = dim('x3', 'linear', [0, 40], [{ ...edge('top'), at: 'centre' }, { free: [0, 0] }]);
     const sheet = sheetOf([item]);

@@ -78,6 +78,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // browser's tabs. V is no other command's key; P is Project, offered in a sketch only.
   baseView: ['V'],
   projectedView: ['P'],
+  // D is Sketch Dimension's too: a sketch and the drawing are never open together.
+  sheetDimension: ['D'],
   exportSheets: ['Mod+E'],
   nextSheet: ['Mod+PageDown'],
   previousSheet: ['Mod+PageUp'],

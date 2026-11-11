@@ -30,6 +30,7 @@ import { nameRelation } from '../naming/topo-id';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature } from '../recompute/testing';
+import { lostFeature } from './anchors';
 
 let kernel: Kernel;
 let engine: RecomputeEngine | undefined;
@@ -44,12 +45,12 @@ afterEach(() => {
 });
 afterAll(() => kernel?.dispose());
 
-async function recompute(doc: ExtrudoDocument) {
+async function recompute(doc: ExtrudoDocument, failing?: string) {
   engine ??= new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
   const result = await engine.recompute({ doc });
   if (result.status !== 'done') throw new Error(result.status);
   for (const [id, status] of Object.entries(result.features)) {
-    if (status.status === 'error') throw new Error(`${id}: ${status.message}`);
+    if (status.status === 'error' && id !== failing) throw new Error(`${id}: ${status.message}`);
   }
   return result;
 }
@@ -373,6 +374,15 @@ describe('B2 (the storage box): a dimension follows the model', () => {
   const resolve = (sheet: Sheet, id: string) =>
     (engine as RecomputeEngine).resolveSheet(sheet)[id as SheetItemId] ?? [];
 
+  // The Dimension tool picks a view's curve, which carries its edge's name, not an index.
+  it('gives the same reference for an edge by its name as by its index', {
+    timeout: 60_000,
+  }, async () => {
+    const { floor } = await picks();
+    expect(engine?.reference(body, 'edge', floor.id)).toEqual(floor);
+    expect(engine?.reference(body, 'edge', 'e[no such edge]')).toBeUndefined();
+  });
+
   it('follows a parameter change: the height edge grows with `height`', {
     timeout: 60_000,
   }, async () => {
@@ -475,6 +485,42 @@ describe('B2 (the storage box): a dimension follows the model', () => {
     expect(length(report?.geometry)).toBeCloseTo(74, 6);
     const line = report?.geometry as { start: Vec3; end: Vec3 };
     expect([line.start[2], line.end[2]]).toEqual([0, 0]);
+  });
+  // The pocket made to cut upwards, out of the box: it has nothing to cut and fails.
+  // The fingerprint would find the box's bottom edge (80, not 74); the feature the anchor
+  // names failed, so it is detached first, like a deleted or suppressed one.
+  it('detaches when the feature it was measured on failed in the last recompute, and is ok when it is fixed', {
+    timeout: 60_000,
+  }, async () => {
+    const { floor, height } = await picks();
+    const sheet = sheetWith([
+      dim('d1', 'linear', [{ ref: floor }]),
+      dim('d2', 'linear', [{ ref: height }]),
+    ]);
+    const pocket = doc.features[3] as Feature;
+    const distance = pocket.inputs.distance;
+    if (distance?.kind !== 'expr') throw new Error('the pocket has no distance');
+    const upwards: Feature = {
+      ...pocket,
+      inputs: { ...pocket.inputs, distance: { ...distance, expr: '10 mm' } },
+    };
+    const result = await recompute(
+      { ...doc, features: doc.features.map((f) => (f.id === pocket.id ? upwards : f)) },
+      pocket.id,
+    );
+    expect(result.features[pocket.id]?.status).toBe('error');
+    expect(resolve(sheet, 'd1')).toEqual([
+      {
+        status: 'detached',
+        message: `${pocket.name}, the feature this was measured on, has an error. Fix it to show the dimension again.`,
+      },
+    ]);
+    // The box's own edge stays.
+    expect(resolve(sheet, 'd2')[0]?.status).toBe('ok');
+    await recompute(doc);
+    const [back] = resolve(sheet, 'd1');
+    expect(back).toMatchObject({ status: 'ok', resolved: floor });
+    expect(length(back?.geometry)).toBeCloseTo(74, 6);
   });
 });
 
@@ -668,5 +714,41 @@ describe('notes and centre lines on a plate with a hole (ADR-0143, S4)', () => {
       message: 'The face is not a cylinder or a cone: it has no axis.',
     });
     expect(out['c2' as SheetItemId]?.map((r) => r.geometry?.type)).toEqual(['line', 'line']);
+  });
+});
+
+describe('lostFeature: which lost feature it names', () => {
+  const name = 'e[extrude:a:cap:start|extrude:b:side:c]';
+  const ref = { kind: 'edge' as const, id: name };
+  const features = [
+    { id: 'a', name: 'Box', suppressed: false },
+    { id: 'b', name: 'Pocket', suppressed: false },
+  ] as Pick<Feature, 'id' | 'name' | 'suppressed'>[];
+  const failedB = new Set(['b']);
+
+  it('is undefined with every feature there, active and made', () => {
+    expect(lostFeature(ref, features)).toBeUndefined();
+    expect(lostFeature(ref, features, 'dimension', new Set(['other']))).toBeUndefined();
+  });
+
+  it('says a failed feature has an error, in the words of the item', () => {
+    expect(lostFeature(ref, features, 'dimension', failedB)).toEqual({
+      status: 'detached',
+      message:
+        'Pocket, the feature this was measured on, has an error. Fix it to show the dimension again.',
+    });
+    expect(lostFeature(ref, features, 'leader', failedB)?.message).toBe(
+      'Pocket, the feature this was drawn on, has an error. Fix it to show the note again.',
+    );
+  });
+
+  it('ranks deleted over suppressed over failed', () => {
+    const suppressedA = features.map((f) => (f.id === 'a' ? { ...f, suppressed: true } : f));
+    expect(lostFeature(ref, suppressedA, 'dimension', failedB)?.message).toMatch(
+      /^Box, .* is suppressed\./,
+    );
+    expect(lostFeature(ref, suppressedA.slice(1), 'dimension', failedB)?.message).toBe(
+      'The feature this was measured on is deleted.',
+    );
   });
 });

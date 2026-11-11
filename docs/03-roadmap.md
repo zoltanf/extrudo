@@ -1725,7 +1725,8 @@ end to end, faster than in established desktop CAD.
     Base and Projected View; Standard views. Done 2026-11-11: views drawn from the model
     in the app (quick, then exact, Cancel), Base View, Projected View, the view card, New
     drawing's Start with, a dragged body, the view's menu (ADR-0143's S2 amendments).
-  - [ ] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states.
+  - [x] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states
+    (ADR-0143's S3 amendments; `e2e/sheet-dimensions.spec.ts`).
   - [ ] S4 Notes: leader notes, sticky notes, centre marks and centre lines; snapping.
   - [ ] S5 Lists: parts list with merged quantities and Size; balloons; free table; text
     fields.

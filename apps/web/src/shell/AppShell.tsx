@@ -187,6 +187,8 @@ import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExpor
 import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
 import { SheetTabs } from '../sheets/SheetTabs';
 import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
+import type { SheetAnchorsKernel } from '../sheets/sheetAnchors';
+import type { DimensionKernel } from '../sheets/useDimensionTool';
 import type { SheetViewsKernel } from '../sheets/viewRunner';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
@@ -398,6 +400,7 @@ export interface AppShellProps {
         | 'sheetViews'
         | 'cancelSheetViews'
         | 'bodyVersions'
+        | 'resolveSheet'
       >
     > &
     Partial<{
@@ -2018,12 +2021,12 @@ function Shell({
       exportSheets();
       return;
     }
-    // Base View and Projected View (P6-24 S2): they run on the sheet until Esc.
-    if (tool === 'baseView' || tool === 'projectedView') {
+    // Base View, Projected View (P6-24 S2) and Dimension (S3): they run on the sheet until Esc.
+    if (tool === 'baseView' || tool === 'projectedView' || tool === 'sheetDimension') {
       if (mode !== 'sheet') return;
       viewport.getState().setTool(undefined);
       // Projected View starts from the view selected, if one is.
-      if (tool === 'baseView') session.getState().clearSelection();
+      if (tool !== 'projectedView') session.getState().clearSelection();
       session.getState().setTool(activeTool === tool ? undefined : tool);
       return;
     }
@@ -3361,6 +3364,7 @@ function Shell({
                 kernel.bodyVersions && {
                   kernel: kernel as SheetViewsKernel,
                 })}
+              {...(kernel?.resolveSheet && { anchorsKernel: kernel as unknown as DimensionKernel })}
               onMenu={(at) => {
                 const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
                 if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
@@ -3553,6 +3557,7 @@ function Shell({
             views: {
               kernel: kernel as SheetViewsKernel,
               bodies: () => Object.keys(model.getState().bodies) as BodyId[],
+              ...(kernel.resolveSheet && { anchors: kernel as SheetAnchorsKernel }),
             },
           })}
         preferences={platform.preferences}

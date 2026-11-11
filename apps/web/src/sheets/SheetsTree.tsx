@@ -5,18 +5,25 @@
  *   when empty, like Sketches; a row per sheet, double-click or Enter opens it, F2
  *   renames, its menu has Open, Rename, Duplicate, Export and Delete.
  * - **Sheets** (in the drawing, before Bodies): a folder per sheet, the open one marked
- *   "editing", with its views and its title block; a click on a sheet opens it.
+ *   "editing", with its views, a Dimensions folder (S3) and its title block; a click on a
+ *   sheet opens it. A dimension's row reads its text and its view ("74 · Front"); on the
+ *   open sheet a moved one has a warning ("moved") and a lost one is red ("lost its edge"),
+ *   the reason in its tooltip (`sheetItemsStore`, what the workspace found).
  *
  * Test hooks: the folders "Drawings" and "Sheets", each sheet's row `data-sheet-row` (the
- * sheet ID), a view's `data-sheet-view-row`, the title block's `data-sheet-title-row`.
+ * sheet ID), a view's `data-sheet-view-row`, the folder "Dimensions", a dimension's
+ * `data-sheet-item-row` (the item ID) with `data-state` (`ok`, `moved`, `detached`,
+ * `invalid`), the title block's `data-sheet-title-row`.
  */
-import type { Sheet, SheetId } from '@extrudo/core';
-import { Copy, FileDown, FolderOpen, TextCursorInput, Trash2 } from 'lucide-react';
+import type { Sheet, SheetDimensionItem, SheetId } from '@extrudo/core';
+import { Copy, FileDown, FolderOpen, TextCursorInput, Trash2, TriangleAlert } from 'lucide-react';
 import { type KeyboardEvent, useState } from 'react';
+import { useStore } from 'zustand';
 import { ContextMenu, MenuItem, MenuSeparator, ToolIcon } from '../design-system';
 import { Folder, Leaf } from '../shell/BrowserPanel';
 import { RenameField } from '../shell/FeatureMenu';
 import { sizeLabel } from './defaults';
+import { type SheetItemRow, sheetItemsStore } from './sheetAnchors';
 
 export interface SheetRowActions {
   open(id: SheetId): void;
@@ -223,6 +230,11 @@ export function SheetsTree({
               </Leaf>
             ))
           )}
+          <DimensionRows
+            sheet={sheet}
+            isSelected={(target) => isSelected(sheet, target)}
+            onSelect={(target) => actions.select?.(sheet.id, target)}
+          />
           {sheet.titleBlock && (
             <Leaf data-sheet-title-row={sheet.id} active={isSelected(sheet, 'title-block')}>
               <button
@@ -236,6 +248,73 @@ export function SheetsTree({
           )}
         </Folder>
       ))}
+    </Folder>
+  );
+}
+
+/** What a dimension's row says after its text and view, by its state. */
+const ROW_NOTE: Partial<Record<SheetItemRow['state'], string>> = {
+  moved: 'moved',
+  detached: 'lost its edge',
+  invalid: "can't be measured",
+};
+
+/** A sheet's Dimensions folder: one row per dimension, which selects it on its sheet. */
+function DimensionRows({
+  sheet,
+  isSelected,
+  onSelect,
+}: {
+  sheet: Sheet;
+  isSelected(target: string): boolean;
+  onSelect(target: string): void;
+}) {
+  const open = useStore(sheetItemsStore, (s) => (s.sheet === sheet.id ? s.rows : undefined));
+  const dimensions = sheet.items.filter((i): i is SheetDimensionItem => i.kind === 'dimension');
+  if (dimensions.length === 0) return null;
+  return (
+    <Folder
+      nested
+      label="Dimensions"
+      icon={<ToolIcon name="sheet-dimension" category="sketch" size={16} />}
+      count={dimensions.length}
+    >
+      {dimensions.map((item) => {
+        const row = open?.get(item.id);
+        const state = row?.state ?? 'ok';
+        const view = sheet.views.find((v) => v.id === item.view)?.name ?? 'No view';
+        const note = ROW_NOTE[state];
+        const warn = state !== 'ok';
+        return (
+          <Leaf
+            key={item.id}
+            data-sheet-item-row={item.id}
+            data-state={state}
+            active={isSelected(`item:${item.id}`)}
+            className={state === 'detached' || state === 'invalid' ? 'text-error' : ''}
+          >
+            <button
+              type="button"
+              title={row?.message}
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+              onClick={() => onSelect(`item:${item.id}`)}
+            >
+              <span className="shrink-0 font-mono text-xs">{row?.text ?? 'Dimension'}</span>
+              <span className={`min-w-0 truncate ${warn ? '' : 'text-muted'}`}>
+                {note ? `${view} · ${note}` : view}
+              </span>
+            </button>
+            {warn && (
+              <TriangleAlert
+                size={14}
+                strokeWidth={1.75}
+                aria-label={row?.message ?? note}
+                className={`ml-auto shrink-0 ${state === 'moved' ? 'text-warning' : ''}`}
+              />
+            )}
+          </Leaf>
+        );
+      })}
     </Folder>
   );
 }

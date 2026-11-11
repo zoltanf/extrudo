@@ -18,8 +18,11 @@
  *
  * **Placing a view** (Base View, S2): the frame of the new view's lines follows the pointer
  * (`[data-sheet-placing]`, its transform written directly) and a click places it
- * (`onPlace` with the view's `at`); nothing is selected meanwhile. **Notices** (a view
- * being drawn, a body gone) are written under their target's frame, on screen only.
+ * (`onPlace` with the view's `at`); nothing is selected meanwhile. **A pointer tool** (the
+ * Dimension tool, S3) hears every pointer move and click in sheet mm with the pick tolerance
+ * (`pointer`) and draws what it shows in the `overlay`, sheet mm; nothing is selected
+ * meanwhile. **Notices** (a view being drawn, a body gone) are written under their target's
+ * frame, on screen only.
  *
  * Test hooks: the region "Sheet" (`data-sheet-canvas`, `data-sheet` the sheet ID,
  * `data-paper` "420x297", `data-zoom` "62%", `data-hover` and `data-selected` the targets),
@@ -31,7 +34,15 @@
 import type { DisplayItem, DisplayList, DisplayText } from '@extrudo/io';
 import { displayPaint, displayPathData, displayTextLayer } from '@extrudo/io';
 import type { SheetViewLines } from '@extrudo/sheets';
-import { memo, type RefObject, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  memo,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import {
   dragAction,
   dragZoomFactor,
@@ -74,6 +85,16 @@ export interface SheetPlacing {
   onPlace(at: [number, number], point: [number, number]): void;
 }
 
+/**
+ * A tool that takes the pointer on the sheet (the Dimension tool): every move and every click
+ * (a press and release without a drag), in sheet mm, with how near counts as on something.
+ */
+export interface SheetPointerTool {
+  onPoint(point: [number, number], tolerance: number): void;
+  onClick(point: [number, number], tolerance: number): void;
+  onLeave?(): void;
+}
+
 /** A drag's move of each target, sheet mm. */
 export type SheetMoves = ReadonlyMap<SheetTarget, readonly [number, number]>;
 
@@ -85,6 +106,10 @@ export interface SheetCanvasControl {
   fit(): void;
   /** The sheet as a PNG, its longer side `size` px. */
   snapshot(size: number): Promise<Blob | null>;
+  /** The sheet point (mm) under a window point. */
+  sheetPoint(clientX: number, clientY: number): [number, number];
+  /** How near counts as on something at this zoom, mm (5 px, at least 0.8 mm). */
+  tolerance(): number;
 }
 
 export interface SheetCanvasProps {
@@ -126,6 +151,10 @@ export interface SheetCanvasProps {
   onDropBodies?: (ids: string[], point: [number, number]) => void;
   /** A view tool's frame following the pointer; selecting is off meanwhile. */
   placing?: SheetPlacing;
+  /** A tool taking the pointer (moves and clicks); selecting is off meanwhile. */
+  pointer?: SheetPointerTool;
+  /** What a tool draws over the sheet, in sheet mm (no pointer events unless it asks). */
+  overlay?: ReactNode;
   /** What the screen says under a target (a view being drawn, a body gone). */
   notices?: ReadonlyMap<SheetTarget, string>;
 }
@@ -156,6 +185,8 @@ export function SheetCanvas({
   onTargetMenu,
   onDropBodies,
   placing,
+  pointer,
+  overlay: extra,
   notices,
 }: SheetCanvasProps) {
   const host = useRef<HTMLElement>(null);
@@ -167,8 +198,30 @@ export function SheetCanvas({
     () => (list ? targetBoxes(list) : new Map<SheetTarget, SheetBox>()),
     [list],
   );
-  const latest = useRef({ paper, insets, preset, tool, onMenu, boxes, selected, hovered, placing });
-  latest.current = { paper, insets, preset, tool, onMenu, boxes, selected, hovered, placing };
+  const latest = useRef({
+    paper,
+    insets,
+    preset,
+    tool,
+    onMenu,
+    boxes,
+    selected,
+    hovered,
+    placing,
+    pointer,
+  });
+  latest.current = {
+    paper,
+    insets,
+    preset,
+    tool,
+    onMenu,
+    boxes,
+    selected,
+    hovered,
+    placing,
+    pointer,
+  };
   const ghost = useRef<SVGGElement>(null);
   /** Moves the placing frame so the middle of its lines is under the sheet point. */
   const follow = (point: [number, number]) => {
@@ -241,7 +294,8 @@ export function SheetCanvas({
   };
   const snapshot = async (size: number) =>
     svg.current ? sheetSnapshot(svg.current, latest.current.paper, size) : null;
-  control.current = { fit, snapshot };
+  const tolerance = () => Math.max(0.8, 5 / view.current.scale);
+  control.current = { fit, snapshot, sheetPoint: at, tolerance };
 
   // A sheet shown for the first time, or one whose paper changed, is fitted.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refit when these change only.
@@ -313,7 +367,7 @@ export function SheetCanvas({
       data-paper={`${round(paper.width)}x${round(paper.height)}`}
       data-hover={hovered}
       data-selected={selected.join(' ') || undefined}
-      className="absolute inset-0 touch-none overflow-hidden select-none"
+      className={`absolute inset-0 touch-none overflow-hidden select-none ${pointer ? 'cursor-crosshair' : ''}`}
       style={{ background: 'var(--x-viewport-glow)' }}
       onContextMenu={(event) => event.preventDefault()}
       onPointerDown={(event) => {
@@ -327,8 +381,8 @@ export function SheetCanvas({
           last: { x: event.clientX, y: event.clientY },
           moved: false,
         };
-        if (event.button === 0 && !action && latest.current.placing) {
-          // A view tool: the press places on release, never selects.
+        if (event.button === 0 && !action && (latest.current.placing || latest.current.pointer)) {
+          // A view tool or a pointer tool: the press places (clicks) on release, never selects.
         } else if (event.button === 0 && !action) {
           const { boxes: b, selected: chosen } = latest.current;
           const from = at(event.clientX, event.clientY);
@@ -354,9 +408,10 @@ export function SheetCanvas({
       onPointerMove={(event) => {
         const d = drag.current;
         if (latest.current.placing) follow(at(event.clientX, event.clientY));
+        latest.current.pointer?.onPoint(at(event.clientX, event.clientY), tolerance());
         if (!d) {
           // No button down: pre-highlight what a click would take.
-          if (event.buttons !== 0 || latest.current.placing) return;
+          if (event.buttons !== 0 || latest.current.placing || latest.current.pointer) return;
           const [x, y] = at(event.clientX, event.clientY);
           const { boxes: b, hovered: was } = latest.current;
           const now = hitTarget(b, x, y, Math.max(0.8, 5 / view.current.scale));
@@ -415,6 +470,11 @@ export function SheetCanvas({
           if (under?.startsWith('view:') && menu)
             menu(under, { x: event.clientX, y: event.clientY });
           else latest.current.onMenu?.({ x: event.clientX, y: event.clientY });
+        }
+        const tap = latest.current.pointer;
+        if (tap && d.button === 0 && !d.action && !d.moved) {
+          tap.onClick(at(event.clientX, event.clientY), tolerance());
+          return;
         }
         const place = latest.current.placing;
         if (place && d.button === 0 && !d.action && !d.moved) {
@@ -488,6 +548,7 @@ export function SheetCanvas({
         if (bodies.length > 0) drop(bodies, at(event.clientX, event.clientY));
       }}
       onPointerLeave={() => {
+        latest.current.pointer?.onLeave?.();
         if (!drag.current && latest.current.hovered) events.current.onHover?.(undefined);
         if (ghost.current) ghost.current.style.display = 'none';
       }}
@@ -549,6 +610,7 @@ export function SheetCanvas({
               );
             })}
           {placing && <PlacingFrame ref={ghost} placing={placing} />}
+          {extra}
           <rect
             ref={band}
             data-sheet-band=""
@@ -620,13 +682,36 @@ const DisplayPath = memo(function DisplayPath({ item }: { item: DisplayItem }) {
   return (
     <path
       d={displayPathData(contours)}
-      {...displayPaint(item)}
+      {...screenPaint(item)}
       data-key={item.key}
       data-state={item.state}
       opacity={item.state === 'stale' ? 0.35 : undefined}
     />
   );
 });
+
+/**
+ * The paper's own error colour (the light theme's: the paper is white in both themes):
+ * what a lost dimension or note is drawn in (plan §4.6).
+ */
+export const PAPER_ERROR = '#d93d3d';
+
+/**
+ * How an item is painted on screen: as the writers paint it, except that a `detached` item
+ * (an anchor lost) is in the error colour with its lines dashed, and an `invalid` one (its
+ * anchors don't make it) in the error colour (plan §4.6). The export ignores `state`.
+ */
+export function screenPaint(item: DisplayItem): ReturnType<typeof displayPaint> {
+  const paint = displayPaint(item);
+  if (item.state !== 'detached' && item.state !== 'invalid') return paint;
+  const out = { ...paint };
+  if (out.fill && out.fill !== 'none') out.fill = PAPER_ERROR;
+  if (out.stroke) {
+    out.stroke = PAPER_ERROR;
+    if (item.state === 'detached') out.strokeDasharray = '1.6 1';
+  }
+  return out;
+}
 
 /**
  * The new view's frame and lines in the accent, from the view's origin (moved with the
