@@ -213,8 +213,7 @@ test("a file's dimensions are drawn from the model, follow a parameter, and are 
   if (process.env.SHEET_SHOTS) await writeFile(join(process.env.SHEET_SHOTS, 'export.pdf'), bytes);
   const pdf = pdfContent(bytes);
   // The invisible text layer writes each string in hex ("74" is <3734>).
-  const hex = (value: string) => Buffer.from(value, 'latin1').toString('hex');
-  for (const value of ['55', '80', '74']) expect(pdf).toContain(`<${hex(value)}> Tj`);
+  for (const value of ['55', '80', '74']) expect(pdf).toContain(`<${hexOf(value)}> Tj`);
 });
 
 test('a deleted or suppressed feature detaches its dimension; undo attaches it again', async ({
@@ -512,7 +511,6 @@ test('the Dimension tool places a length, a distance, an angle and a diameter; t
   );
   if (process.env.SHEET_SHOTS) await writeFile(join(process.env.SHEET_SHOTS, 'export.pdf'), bytes);
   const pdf = pdfContent(bytes);
-  const hex = (value: string) => Buffer.from(value, 'latin1').toString('hex');
   for (const value of ['100.0', '40.0', '56.4', '90.0°'])
-    expect(pdf).toContain(`<${hex(value)}> Tj`);
+    expect(pdf).toContain(`<${hexOf(value)}> Tj`);
 });

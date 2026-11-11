@@ -228,6 +228,10 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Base View](./baseView.md) — A view of the model from a direction you choose: the frame follows the pointer, a click places it.
 - [Projected View](./projectedView.md) — Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.
 
+### Dimensions
+
+- [Dimension](./sheetDimension.md) — A length, distance, radius, diameter or angle measured from the model: pick, then click where the number goes.
+
 ### Sheet
 
 - [New Sheet](./newSheet.md) — Add an empty sheet after this one.

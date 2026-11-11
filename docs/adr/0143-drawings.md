@@ -875,3 +875,50 @@ kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached d
   flash red); keeping the whole sheet bare until then (views would wait on dimensions); the
   theme's error token on the paper (it is a light red in the dark theme, meant for a dark
   background); a message for each kind in the browser row (the status text has room for it).
+- **Part 2: the Dimension tool** (`D`, `sheetDimension` in `SHEET_TOOLS`, the Drawing tab's
+  Dimensions group, its own icon `sheet-dimension`, New Sheet's wedge in the marking menu).
+  Files: `dimensionTool.ts` (pure: `sheetPickables`, `hitPickable`, `dimensionOf`,
+  `dimensionItem`, `nextStep`), `useDimensionTool.ts` (`pickOf`, the hook),
+  `SheetDimensionCard.tsx` (panel, card, overlay), `RepickHandles.tsx`; `SheetCanvas`'s
+  `pointer` and `overlay` props and its control's `sheetPoint` and `tolerance`;
+  `runSheetCommand` in `views.ts`; in the kernel, `reference` takes a sub-shape's persistent
+  name as well as its index.
+- **What can be picked**: a view's curves only when its geometry is exact and current (not
+  `pending`): never the quick placeholder, never lines of an older model. Each model edge by its
+  name, its curves of every kind together (a circle half hidden is two curves), and each
+  cylinder's or cone's outline by its face's name; hidden lines only where the view draws them,
+  tangent edges likewise. A line's or an open curve's ends are its vertices. The pointer takes the
+  nearest within 5 px (at least 0.8 mm); an end wins when it is within that and not more than a
+  third of it further than the line (so the middle of a short edge is the edge).
+- **A pick becomes an anchor through the kernel**: `Recomputer.reference(body, kind, name)` gives
+  the ref with its fingerprint; an edge whole is `{ ref }`; **a vertex is the edge's `start` or
+  `end`** (no vertex name is needed), and which one, like an outline's side, is read back with one
+  `resolveSheet` of a throwaway item with both (`~probe`), taking the one under the pointer.
+- **Which dimension** (`dimensionOf`): a line its length, a full circle its diameter, an arc its
+  radius, an outline its length; of two in one view, two outlines of one face a diameter, two
+  lines (edges or outlines) that cross an angle, anything else a linear distance. Placement
+  decides horizontal, vertical or aligned (`measureSheetDimension`), unless the panel fixes a
+  direction. Once the picks make one, its anchors are resolved once (`~dimension`), and the
+  preview is `layoutSheetDimension` of the item at the pointer, drawn in the paper's blue
+  (`#2f86f0`) with "Click to place"; the picks in the paper's orange. A click on empty paper places
+  it ("Dimension"), its reports merged into the workspace's anchors so it is drawn at once.
+  The first Esc drops the picks (a capture listener), the shell's Esc ends the tool.
+- **The panel** (mock-up 3) holds the next dimension's Direction, Decimals (an `ExpressionInput`,
+  empty for the sheet's), Before, After and In brackets. **The card** (plan §4.3) has the same
+  fields for a selected dimension, each one `updateSheetItem` step (a cleared field or Auto is
+  `null`), its kind, view and reason, and Delete.
+- **Picking again**: a lost or moved dimension selected shows a handle per model anchor, at its
+  geometry's point, middle or centre as last drawn (by the text when none was kept); dragging one
+  onto something pickable in the dimension's view replaces that anchor ("Pick again"). A one-anchor
+  dimension takes the type its new pick makes (and loses a direction it no longer has); a
+  two-anchor one keeps its type, and the document refuses an unfitting pair with why.
+- **Tests**: `dimensionTool.test.ts` (pickables, hits, which dimension, the item, the panel's
+  words, the card's changes, picking again); the kernel's `reference` by name in
+  `anchors.test.ts`; `e2e/sheet-dimensions.spec.ts` places a length, a distance, an angle and a
+  diameter on the wall bracket template, follows `width`, the card and its undo, the holes deleted
+  and a lost end dragged onto an edge, undo, and the PDF's text.
+- **Rejected (part 2)**: picking quick lines and fixing the ref later (a quick line has no name,
+  and a wrong edge is the wrong number); a vertex name (an edge's end says the same and resolves
+  through the same edge); a separate kernel call for an end or a side (one `resolveSheet` of a
+  probe answers both); "Show the unit" and arrows inside or outside on the panel and card (no field;
+  left for a later schema change, above).

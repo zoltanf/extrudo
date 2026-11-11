@@ -2199,6 +2199,19 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - An export with a lost dimension writes it as "?" (`<3f> Tj`), never its last value: the spec
   checks that after deleting the pocket (the dialog's summary ends "· 1 dimension detached,
   written as ?").
+- **The tool** (`#toolbar-groups [data-label="Dimension"]`, key `D`) is tested on the wall
+  bracket template: Empty sheet, front and top Base Views at 2:1, positions from each view's
+  lines' box (`getBBox` of `path[data-key="view:<id>"][stroke-width]`, once none is stale). Its
+  panel is the region "Dimension tool" (`[data-dimension-waiting]` while a view's lines are not
+  exact: wait for it to go; `[data-dimension-step]` what to pick next, "Reading the pick…" while
+  the kernel answers). Move the pointer before clicking: `[data-dimension-hover]` (the
+  pickable's key, `data-end` at a vertex) shows what a click takes; picked ones are
+  `[data-dimension-picked]`; the preview `[data-dimension-preview]` carries its text in
+  `data-text`. A click on empty paper places. The card is the region "Dimension" (`exact`):
+  radio group "Direction" ("Horizontal" etc. by accessible name; the labels are shortened),
+  textbox "Decimals" (`ExpressionInput`), "Text before", "Text after", switch "In brackets
+  (reference)". A lost or moved dimension selected has `[data-repick-handle="<i>"]` circles:
+  drag one with `mouse.down/move/up` onto an edge (wait for `[data-dimension-hover]`).
 - The export's PDF text layer writes strings in lowercase hex (`<3734> Tj` is "74"); inflate the
   `/FlateDecode` streams first. `SHEET_SHOTS=<dir>` makes the spec save light and dark
   screenshots for a person to look at.

@@ -298,6 +298,11 @@ export function DimensionCard({
           {row.message}
         </p>
       )}
+      {state === 'detached' && (
+        <p className="text-sm text-muted">
+          Drag its end onto an edge to pick it again, or delete it.
+        </p>
+      )}
       {state === 'moved' && !row?.message && (
         <p className="text-sm text-warning" data-dimension-state={state}>
           It moved to a matching edge: drag an end onto an edge to pick it again.

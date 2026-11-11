@@ -4399,7 +4399,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views and the first view tools built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S0, S1a, S1, S2 and S3 done**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4567,8 +4567,15 @@ value; the export fails when the kernel can't answer) **and passes the design's 
 lines and invalid red, on screen only (the writers ignore `state`); a detached dimension's message is the kernel's when it
 gives one (`measureSheetDimension`), notes keep their own words; **an anchor on a feature whose status was an error in the
 last recompute is detached** ("…, has an error. Fix it to show the dimension again."), after deleted and suppressed, before
-any search. e2e: `e2e/sheet-dimensions.spec.ts` (B2 with stored refs: if the naming changes, stored dimensions stop
-resolving and it fails).
+any search. **Part 2, the Dimension tool** (`sheetDimension`, `D`): `dimensionTool.ts`, `useDimensionTool.ts`,
+`SheetDimensionCard.tsx`, `RepickHandles.tsx`, `SheetCanvas`'s `pointer`/`overlay`, the kernel's `reference` by name.
+Rules: **only exact, current view lines are pickable** (geometry `exact` and the view not `pending`), never quick
+ones; a pick's ref comes from `reference(body, kind, name)` with its fingerprint; a vertex is an edge's `start`/`end`
+and an outline's side is read back with one probe `resolveSheet`, never guessed in the app; the preview is
+`layoutSheetDimension` of the real item with its resolved anchors; placing, every card change and picking again are each
+one undo step; "Show the unit" and arrows inside/outside are not offered until the schema has fields. e2e:
+`e2e/sheet-dimensions.spec.ts` (B2 with stored refs: if the naming changes, stored dimensions stop resolving and it
+fails; the wall bracket template for the tool).
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
