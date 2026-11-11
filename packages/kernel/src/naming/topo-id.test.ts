@@ -3,6 +3,7 @@ import {
   createdName,
   edgeName,
   faceRelation,
+  featuresOfName,
   indexedName,
   nameRelation,
   parseCompound,
@@ -21,6 +22,19 @@ describe('TopoId grammar', () => {
     expect(createdName('fillet', 'F2', 'from', edge)).toBe(
       'fillet:F2:from:(e[extrude:F1:cap:end|extrude:F1:side:l3])',
     );
+  });
+
+  it('reads the features a name names, nested ones too, from the grammar alone', () => {
+    expect(featuresOfName('extrude:F1:cap:end#2')).toEqual(['F1']);
+    expect(featuresOfName('e[extrude:F1:cap:end|extrude:F2:side:l3]@2')).toEqual(['F1', 'F2']);
+    // A role with colons of its own, and a source that is a nested name.
+    expect(
+      featuresOfName('v[fillet:F3:from:(e[extrude:F1:cap:end|box:B~1:side:0])|emboss:E:clip:2]'),
+    ).toEqual(['F3', 'F1', 'B~1', 'E']);
+    // A source that is not a name (a sketch curve) names no feature; neither does a bad name.
+    expect(featuresOfName('extrude:F1:side:(sk1/c3)')).toEqual(['F1']);
+    expect(featuresOfName('origin:xy')).toEqual([]);
+    expect(featuresOfName('e[broken')).toEqual([]);
   });
 
   it('sorts and dedupes the faces of edges and vertices', () => {

@@ -1743,8 +1743,8 @@ end to end, faster than in established desktop CAD.
   - [x] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
     shape whose root carries a location. *Done 2026-11-11 (ADR-0144's S1 amendment,
     ADR-0034's fourth amendment).*
-  - [ ] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
-    `FORMAT.md`.
+  - [x] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
+    `FORMAT.md` (2026-11-11; ADR-0144's S2 amendment).
   - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
     the app flow and report; the cadmpeg route no longer takes this format.
   - [ ] S4 Sketches: geometry, constraints, placement.

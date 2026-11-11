@@ -65,7 +65,7 @@ import { type ScadExportOptions, writeScad } from '../scad-export/file';
 import { liveScalar, scadParameters } from '../scad-export/live';
 import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
-import { resolveSheetAnchor } from '../sheets/anchors';
+import { lostFeature, resolveSheetAnchor } from '../sheets/anchors';
 import { exactView, quickView, type ViewBody } from '../sheets/evaluate';
 import type { SkippedBody, ViewGeometry } from '../sheets/geometry';
 import { type SheetViewRequest, type SheetViewResult, shownBodies } from '../sheets/views';
@@ -389,8 +389,10 @@ export class RecomputeEngine {
    * A sheet's dimension anchors against the bodies at the marker of the last
    * finished recompute (P6-24 S3, ADR-0143's S3 amendment), resolved like an
    * annotation's (`ok`, `moved`, `detached`), each with the 3D geometry it
-   * stands for. Nothing is evaluated or cached, and nothing throws for a lost
-   * anchor: everything is `detached` before the first recompute.
+   * stands for, except that an anchor on a deleted or suppressed feature is
+   * `detached` with no search (`lostFeature`). Nothing is evaluated or
+   * cached, and nothing throws for a lost anchor: everything is `detached`
+   * before the first recompute.
    */
   resolveSheet(sheet: Sheet): SheetAnchors {
     const at = this.#atMarker;
@@ -436,6 +438,10 @@ export class RecomputeEngine {
       (id) => (position.get(id) ?? 0) >= doc.timelineMarker,
     );
     if (rolledBack) return { status: 'detached' };
+    // On geometry of a deleted or suppressed feature: detached, never a
+    // closest match (the owner, 2026-11-11; annotations still look for one).
+    const lost = lostFeature(anchor.ref, doc.features);
+    if (lost) return lost;
     const { names, resolve } = this.#references(feature, at.bodies);
     return resolveSheetAnchor(
       { kernel: this.#kernel, describe: (shape) => this.#describe(shape), names, resolve },

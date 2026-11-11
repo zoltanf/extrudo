@@ -4457,7 +4457,10 @@ packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path
 `context.anchors` and `context.units`). Rules a change must keep: **no value is stored** (a dimension's text is measured
 each time; `at` and free anchors are view mm, so they move and scale with the view); **every anchor ref has a fingerprint
 and is never `index:`**; an anchor resolves through `#references` like an annotation (rolled back or not found:
-`detached`; related name or fingerprint: `moved`), **a lost anchor never throws, never fails a recompute and never
+`detached`; related name or fingerprint: `moved`) **except that an anchor naming a deleted or suppressed feature is
+`detached` with a `message` before any related-name or fingerprint search** (`lostFeature`, the features read from the
+name by `featuresOfName`; the owner, 2026-11-11: a missing number beats a wrong one; annotations still take the closest
+match), **a lost anchor never throws, never fails a recompute and never
 refuses a delete**; a resolved anchor whose geometry can't give what is asked (a line's centre, a flat face's radius)
 is `ok`/`moved` with a `message` and no `geometry`, which layout draws as `invalid`; **linear and angle values are
 measured in the view's plane, radius and diameter on the circle itself**; the text follows the anchors by the mean
@@ -4465,8 +4468,9 @@ move of their fingerprint points; display items carry `state` (`moved`, `detache
 a screen colour**; a detached dimension draws from the geometry the caller kept (`keepLastAnchors`), else its text alone
 at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (axis with canonical sign × view direction).
 `@extrudo/sheets` has the kernel as a devDependency only (`dimensions.kernel.test.ts`; `SHEETS_OUT=<dir>` writes a sample
-PDF). The naming service's fingerprint can re-find a near edge after its feature is deleted (B2's pocket floor →
-the box's bottom edge, `moved`); tests that need `detached` anchor to geometry with no near match.
+PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
+through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
+geometry with no near match.
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
@@ -4557,3 +4561,23 @@ the array first and writes past it) — the import's throwaway kernel and time b
 `read-brep-hostile.test.ts` keeps them as `it.skip`. Every hostile case there must end in a shape or a `KernelError`
 under 5 s with `liveShapes` unchanged and the good box readable next. A new check must keep all of the library's
 stored shapes reading (S1: all of them, see the amendment).
+
+**ADR-0144, S2 (reader):** `packages/fcstd` (`@extrudo/fcstd`, deps `fflate` only so far; registered in
+`scripts/check-boundaries.mjs`) reads an `.FCStd` into plain data and knows nothing of Extrudo's document, API or
+kernel; the format is `packages/fcstd/FORMAT.md` (update it with anything newly read). `archive.ts` `unzipFcstd` walks
+the central directory itself and checks every entry before inflating any (`MAX_ENTRIES` 20,000, `MAX_ENTRY_BYTES`
+128 MB, `MAX_TOTAL_BYTES` 512 MB declared, `MAX_RATIO` 500 + 4 kB; stored/deflate only; ZIP64, encryption, several
+disks, shared local headers refused); entries inflate **only on `get`**, streaming into the declared size, which they
+must fill, CRC-32 checked; names are keys only (a non-plain name or a second entry of a name is left out with a
+problem). `xml.ts` is our own reader: no DTD, no entity but the five predefined and numeric references, limits
+`MAX_DEPTH` 256, `MAX_ATTRIBUTES` 256, `MAX_NODES` 4 M, a tree in one forward pass, null-prototype attribute records
+(keep them so: names come from the file). `model.ts` `readFcstd` decodes a property **by its value element, never its
+declared type**; numbers through `finite` (a bad number drops that property with a problem, never the file); an unknown
+element is kept raw (`kind: 'unknown'`) and counted in `unknownTypes`, never an error; sketch geometry and constraints
+stay raw records (S4 interprets them); a Python proxy's value is never decoded. Stored shapes: follow the property's
+`file` attribute (`storedShapeEntry`), never derive an entry name; `storedShapeText` never parses B-rep text (only the
+import's kernel does) and gives `undefined` plus a problem for empty, missing, binary or non-B-rep entries.
+`finalShapes` (decision 7, rule in FORMAT.md) is O(objects + links) with indexes built once, ends on container loops
+and link cycles (`MAX_LINK_HOPS` 32) with a problem, and must keep the library's count (383 objects, the same per
+file as the investigation's; change the rule only with the corpus run's new numbers). Everything left out goes to
+`FcDocument.problems`. `corpus.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_CENSUS` optional).
