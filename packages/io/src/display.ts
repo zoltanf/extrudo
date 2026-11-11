@@ -46,6 +46,11 @@ export interface DisplayPath {
   fill?: DisplayFill;
   /** What the item is part of, for the screen's picking (`"item:<id>"`); writers ignore it. */
   key?: string;
+  /**
+   * How the screen may mark it, never a colour (a sheet's `"detached"`
+   * dimension, drawn in the error colour there); writers ignore it.
+   */
+  state?: string;
 }
 
 /** One line of text: its glyph outlines, filled even-odd, and the string they spell. */
@@ -66,6 +71,8 @@ export interface DisplayText {
   /** Baseline direction, radians from +x towards +y (clockwise as seen); 0 when left out. */
   angle?: number;
   key?: string;
+  /** As a path's `state`. */
+  state?: string;
 }
 
 export type DisplayItem = DisplayPath | DisplayText;

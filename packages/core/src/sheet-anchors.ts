@@ -79,8 +79,9 @@ export function sheetSilhouetteSide(
 /**
  * The anchors to draw now: `next` (a fresh `resolveSheet`), except that an
  * anchor detached now keeps the geometry it had in `previous`, still marked
- * detached, so a lost dimension stays where it was drawn (ADR-0143's S3
- * amendment). The app holds `previous` in memory; nothing of it is stored,
+ * detached (and what it resolved to then), so a lost dimension stays where
+ * it was drawn (ADR-0143's S3 amendment). Reports pair up by their index
+ * in the item's anchors. The app holds `previous` in memory; nothing of it is stored,
  * so after reopening a file a detached dimension has no geometry.
  */
 export function keepLastAnchors(
@@ -91,10 +92,14 @@ export function keepLastAnchors(
   for (const [id, reports] of Object.entries(next) as [SheetItemId, SheetAnchorReport[]][]) {
     const before = previous?.[id];
     out[id] = reports.map((report, i) => {
-      const last = before?.[i]?.geometry;
-      return report.status === 'detached' && !report.geometry && last
-        ? { status: 'detached', geometry: last }
-        : report;
+      const last = before?.[i];
+      if (report.status !== 'detached' || report.geometry || !last?.geometry) return report;
+      // What it resolved to last, too: the text stays where it was drawn.
+      return {
+        status: 'detached',
+        geometry: last.geometry,
+        ...(last.resolved && { resolved: last.resolved }),
+      };
     });
   }
   return out;

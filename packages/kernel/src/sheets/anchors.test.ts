@@ -6,7 +6,6 @@ import {
   type BodyId,
   type ExtrudoDocument,
   type Feature,
-  type GeomRef,
   loadDocument,
   type PrimitiveInputOptions,
   type PrimitiveType,
@@ -16,6 +15,7 @@ import {
   type SheetDimensionItem,
   type SheetId,
   type SheetItemId,
+  type SheetRefAnchor,
   type SheetViewId,
   sheetStandardFrom,
 } from '@extrudo/core';
@@ -55,36 +55,46 @@ function primitive(id: string, type: PrimitiveType, options: PrimitiveInputOptio
   return { ...testFeature(id, type), inputs: primitiveInputs(type, options) };
 }
 
+function shapeOf(body: BodyId) {
+  const shape = engine?.latestBody(body);
+  if (shape === undefined) throw new Error(`no body ${body}`);
+  return shape;
+}
+
 const near = (a: readonly number[], b: readonly number[]) =>
   a.every((x, i) => Math.abs(x - (b[i] as number)) < 1e-6);
 
 /** The edge of a body whose middle is at `mid`, as a reference the Dimension tool would store. */
-function edgeAt(body: BodyId, mid: Vec3): GeomRef {
+function edgeAt(body: BodyId, mid: Vec3): AnchorRef {
   const shape = engine?.latestBody(body);
   if (shape === undefined) throw new Error(`no body ${body}`);
   const index = kernel.describe(shape).edges.findIndex((e) => near(e.midpoint, mid));
-  const ref = index < 0 ? undefined : engine?.reference(body, 'edge', index);
+  const ref =
+    index < 0 ? undefined : (engine?.reference(body, 'edge', index) as AnchorRef | undefined);
   if (!ref) throw new Error(`no edge at ${mid}`);
   return ref;
 }
 
-function faceOf(body: BodyId, type: string): GeomRef {
+function faceOf(body: BodyId, type: string): AnchorRef {
   const shape = engine?.latestBody(body);
   if (shape === undefined) throw new Error(`no body ${body}`);
   const index = kernel.describe(shape).faces.findIndex((f) => f.type === type);
-  const ref = engine?.reference(body, 'face', index);
+  const ref = engine?.reference(body, 'face', index) as AnchorRef | undefined;
   if (!ref) throw new Error(`no ${type} face`);
   return ref;
 }
 
-function vertexAt(body: BodyId, at: Vec3): GeomRef {
+function vertexAt(body: BodyId, at: Vec3): AnchorRef {
   const shape = engine?.latestBody(body);
   if (shape === undefined) throw new Error(`no body ${body}`);
   const index = kernel.describe(shape).vertices.findIndex((v) => near(v.point, at));
-  const ref = engine?.reference(body, 'vertex', index);
+  const ref = engine?.reference(body, 'vertex', index) as AnchorRef | undefined;
   if (!ref) throw new Error(`no vertex at ${at}`);
   return ref;
 }
+
+/** A reference as a sheet anchor keeps it (the engine gives a face, edge or vertex one here). */
+type AnchorRef = SheetRefAnchor['ref'];
 
 const front = sheetStandardFrom('front');
 const top = sheetStandardFrom('top');
@@ -103,9 +113,9 @@ function sheetWith(dimensions: Omit<SheetDimensionItem, 'kind' | 'view' | 'at'>[
         id: 'front' as SheetViewId,
         name: 'Front',
         at: [100, 100],
-        from: { kind: 'base', ...front },
+        from: front,
       },
-      { id: 'top' as SheetViewId, name: 'Top', at: [100, 200], from: { kind: 'base', ...top } },
+      { id: 'top' as SheetViewId, name: 'Top', at: [100, 200], from: top },
     ],
     items: dimensions.map((d) => ({
       kind: 'dimension',
@@ -173,7 +183,7 @@ describe('a box, 10 × 20 × 30 (centred on the XY plane, z up)', () => {
 
   it('is detached before the first recompute, with the marker before the box, and for a lost name', async () => {
     engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
-    const lost: GeomRef = {
+    const lost: AnchorRef = {
       kind: 'edge',
       id: 'e[box:Gone:side:0|box:Gone:cap:end]',
       fingerprint: { type: 'line', at: [500, 500, 500], dir: [1, 0, 0], size: 3 },
@@ -216,11 +226,11 @@ describe('a cylinder, Ø10 × 20', () => {
 
   it('gives its rim as a circle, its face as a circle on the axis, and its two outlines', async () => {
     await recompute(doc);
-    const shape = engine?.latestBody(body) as number;
+    const shape = shapeOf(body);
     const rimIndex = kernel
       .describe(shape)
       .edges.findIndex((e) => e.type === 'circle' && Math.abs(e.midpoint[2] - 20) < 1e-6);
-    const rim = engine?.reference(body, 'edge', rimIndex) as GeomRef;
+    const rim = engine?.reference(body, 'edge', rimIndex) as AnchorRef;
     const wall = faceOf(body, 'cylinder');
     const sheet = sheetWith([
       dim('top-r', 'radius', [{ ref: rim }]),
@@ -322,12 +332,12 @@ describe('B2 (the storage box): a dimension follows the model', () => {
   /** The box's height edge, the pocket's floor edge and the drain's rim. */
   async function picks() {
     await recompute(doc);
-    const shape = engine?.latestBody(body) as number;
+    const shape = shapeOf(body);
     const edges = kernel.describe(shape).edges;
     const find = (test: (e: (typeof edges)[number]) => boolean) => {
       const index = edges.findIndex(test);
       if (index < 0) throw new Error('no such edge');
-      return engine?.reference(body, 'edge', index) as GeomRef;
+      return engine?.reference(body, 'edge', index) as AnchorRef;
     };
     return {
       height: find((e) => e.type === 'line' && Math.abs(e.length - 40) < 1e-6),
