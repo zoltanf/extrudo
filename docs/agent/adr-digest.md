@@ -4420,3 +4420,16 @@ behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spel
 call them). **To add a mode:** extend `EditMode`, add its `MODES` row and its `ModeFields`, enter it through
 `enterMode`; never branch on the mode for tabs, Finish, keymap or marking slots; `mode !== 'model'` covers a new mode,
 `mode === 'sketch'` stays about sketching.
+
+ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
+background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
+reads the file and maps it onto a design through `@extrudo/api`; everything that needs geometry goes through an interface
+the caller supplies (a throwaway kernel worker in the app, a kernel in Node for tests and the CLI). **Rules:** every mapped
+feature is rebuilt and compared with the shape the file stores for it, and **the stored shape wins** where they differ; a
+reference (`EdgeN`/`FaceN`) is the N-th element of the referenced object's **stored** shape, matched by geometry on the
+rebuilt body and written as a persistent reference, never an index, and never guessed when none or several match; stored
+shapes enter a design only as STEP attachments on `import` features (ADR-0084's pattern, no schema change); **B-rep text is
+read only by the import's throwaway kernel**, never by the project's kernel and never stored; `Kernel.readBrep` heals
+nothing and keeps the text's sub-shape order (the references depend on it); readers stay linear in their input (ADR-0083's
+hostile-file amendments), the XML reader has no DTD or entities; **no library file, file name or content in the
+repository** (`FCSTD_SAMPLES=<dir>` runs the private corpus, authored files only in tests).

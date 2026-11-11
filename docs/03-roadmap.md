@@ -1725,6 +1725,33 @@ end to end, faster than in established desktop CAD.
   - [ ] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;
     an example design with a sheet.
 
+- [ ] **P6-25 FreeCAD file import, with history** (owner, 2026-11-11; ADR-0144). Extrudo
+  opens `.FCStd` files itself, in the browser and the desktop app: sketches with their
+  constraints, the feature history where the features map, parameters, and the file's own
+  stored shape (as a STEP attachment) wherever a step can't be rebuilt. Every rebuilt
+  feature is checked against the shape the file stores for it. The investigation, the
+  measurements on a 60-file library and the prototype: `docs/plans/freecad-import-2026-11-10.md`.
+  Acceptance per slice: `pnpm check`, CI green, the slice's own tests on authored files, its
+  numbers on the private library (`FCSTD_SAMPLES`) in the pull request, and an amendment to
+  ADR-0144 with its rules in the digest. *Deps:* the table in ADR-0144; S1 and S2 can run
+  side by side.
+  - [ ] S1 Kernel: `readBrep` (limits, docs, tests); the STEP writer keeps the solid of a
+    shape whose root carries a location.
+  - [ ] S2 Reader package `@extrudo/fcstd`: archive, XML, object model, final-shape rule,
+    `FORMAT.md`.
+  - [ ] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
+    the app flow and report; the cadmpeg route no longer takes this format.
+  - [ ] S4 Sketches: geometry, constraints, placement.
+  - [ ] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape.
+  - [ ] S6 Fillet and Chamfer, their edges found by geometry.
+  - [ ] S7 Patterns, Mirrored, Hole.
+  - [ ] S8 The stored-shape step in the middle of a body.
+  - [ ] S9 Projected geometry in sketches, up-to-face, reference axes.
+  - [ ] S10 Parameters and expressions.
+  - [ ] S11 Part workbench: primitives and booleans as a timeline.
+  - [ ] S12 Structure: part containers, links as copies, files from before bodies, meshes.
+  - [ ] S13 User guide page; a second hostile-file pass.
+
 ## Phase 7 — Later (lowest priority, after everything else)
 
 **Owner, 2026-10-14: the last work on the roadmap.** Don't pick a task here

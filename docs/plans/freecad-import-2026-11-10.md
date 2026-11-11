@@ -16,7 +16,9 @@ prototype run.
 **Update, same day:** a prototype has since run the whole library; section 9
 has the measured numbers, which replace the estimates of 3.6.
 
-Status: investigation only. Nothing is implemented, no decision is taken.
+Status: the owner decided on 2026-11-11 to build it (ADR-0144, roadmap P6-25). The
+open decisions of section 7 are answered there; section 3.2's hidden-solids fix
+for the STEP import landed on 2026-11-10 (ADR-0066's amendment).
 
 ## 1. What was done
 
