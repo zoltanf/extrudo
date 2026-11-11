@@ -9,7 +9,7 @@
  * `enterMode`/`exitMode` (`@extrudo/core`'s session store).
  */
 import type { EditMode } from '@extrudo/core';
-import { MODEL_SLOTS, SKETCH_SLOTS, type SlotSpec } from '../commands/marking';
+import { MODEL_SLOTS, SHEET_SLOTS, SKETCH_SLOTS, type SlotSpec } from '../commands/marking';
 import type { TabId, ToolId } from './tools';
 
 export interface ModeChrome {
@@ -28,7 +28,7 @@ export interface ModeChrome {
 }
 
 /** The modes in the order Settings lists them. */
-export const EDIT_MODES: readonly EditMode[] = ['model', 'sketch'];
+export const EDIT_MODES: readonly EditMode[] = ['model', 'sketch', 'sheet'];
 
 export const MODES: Readonly<Record<EditMode, ModeChrome>> = {
   model: {
@@ -48,6 +48,16 @@ export const MODES: Readonly<Record<EditMode, ModeChrome>> = {
     markingSlots: SKETCH_SLOTS,
     repeatSample: 'line',
     finish: { tool: 'finishSketch', tab: 'sketch' },
+  },
+  // The drawing (P6-24, ADR-0143): Home and its own tab, like a sketch. Its tools are in
+  // `sheets/`; the sheet takes the view's place and the sheet tabs the timeline's.
+  sheet: {
+    label: 'Drawing',
+    tabs: new Set(['home', 'sheet']),
+    defaultTab: 'sheet',
+    markingSlots: SHEET_SLOTS,
+    repeatSample: 'newSheet',
+    finish: { tool: 'finishDrawing', tab: 'sheet' },
   },
 };
 

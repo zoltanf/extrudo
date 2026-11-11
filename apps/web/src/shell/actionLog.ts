@@ -283,10 +283,18 @@ export function watchActions(
   log.info('app', `Design opened: ${store.getState().doc.features.length} features`);
   const stopHistory = store.getState().subscribeHistory((event) => logHistory(log, event));
   const stopSession = session.subscribe((s, prev) => {
-    if (s.mode !== prev.mode || s.activeSketchId !== prev.activeSketchId) {
+    if (
+      s.mode !== prev.mode ||
+      s.activeSketchId !== prev.activeSketchId ||
+      s.activeSheetId !== prev.activeSheetId
+    ) {
       log.info(
         'tool',
-        s.mode === 'sketch' ? `Sketch mode: ${s.activeSketchId ?? 'no sketch'}` : 'Model mode',
+        s.mode === 'sketch'
+          ? `Sketch mode: ${s.activeSketchId ?? 'no sketch'}`
+          : s.mode === 'sheet'
+            ? `Drawing mode: ${s.activeSheetId ?? 'no sheet'}`
+            : 'Model mode',
       );
     }
     if (s.activeTool !== prev.activeTool) log.info('tool', `Tool: ${s.activeTool ?? 'none'}`);

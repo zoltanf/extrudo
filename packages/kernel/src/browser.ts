@@ -68,6 +68,7 @@ function connect(worker: Worker): KernelConnection {
     cancelCheck: () => api.cancelCheck(),
     sheetViews: (requests, onView) => api.sheetViews(requests, onView && Comlink.proxy(onView)),
     cancelSheetViews: () => api.cancelSheetViews(),
+    resolveSheet: (sheet) => api.resolveSheet(sheet),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),

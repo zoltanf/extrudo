@@ -4401,7 +4401,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes and S0 spikes done, S1's document and layout built, its UI not**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; S1a modes, S0 spikes and S1 done, S2's kernel views built**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4429,8 +4429,8 @@ intervals are already 3D parameters (never convert them with `Parameter3d`); spl
 outliner's `NewSOldS`; a smooth edge or seam a face turns away at is an outline that keeps its edge. `hlrPolySpans`
 (`HLRBRep_PolyAlgo`, milliseconds) may draw a view first, but only the exact result feeds dimensions and snapping.
 `writePdf(pages)` (`packages/io/src/pdf.ts`) takes paths and `text` items that carry the caller's glyph outlines **and**
-the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; Adobe's Helvetica widths would need
-a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
+the string: outlines filled, the string invisible (`3 Tr`) in non-embedded Courier (monospaced: no width table; decided 2026-11-11, Courier stays: Adobe's Helvetica widths
+are rejected, third-party data needing a NOTICE entry for slightly better selection boxes), WinAnsi, stretched with `Tz` to the outline width; keep it dependency-free beyond fflate, deterministic, and keep text selectable (check readers with the
 sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
 `HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
 vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
@@ -4450,6 +4450,29 @@ polygonal run would leave a mesh of its own that the display mesher keeps; views
 between them, and only `onView`'s `false` or `cancelSheetViews()` stops a run (not a newer call, not a recompute: a
 later view draws the new bodies and its `versions` say so). Goldens: `pnpm vitest run
 packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path as its value and runs every test).
+**S3 dimensions (package 1, no UI):** the `dimension` item and `SheetAnchor` (`{ ref, at? }`, `{ ref, silhouette: 1 |
+-1 }`, `{ free }`) in `core/src/sheet-schema.ts` with `dimensionProblems` (the anchors fit the type; `direction` only on
+`linear`), refs reminted by `remintSheets`; report types and `sheetSilhouetteSide`, `keepLastAnchors` in
+`core/src/sheet-anchors.ts`; `kernel/src/sheets/anchors.ts` (`resolveSheetAnchor`), `RecomputeEngine.resolveSheet`,
+`KernelApi.resolveSheet(sheet)` and `Recomputer.resolveSheet`; measuring and layout in `sheets/src/dimensions.ts`
+(`measureSheetDimension`, `layoutSheetDimension`, `sheetDimensionText`, `SHEET_DIMENSION`; `layoutSheet` takes
+`context.anchors` and `context.units`). Rules a change must keep: **no value is stored** (a dimension's text is measured
+each time; `at` and free anchors are view mm, so they move and scale with the view); **every anchor ref has a fingerprint
+and is never `index:`**; an anchor resolves through `#references` like an annotation (rolled back or not found:
+`detached`; related name or fingerprint: `moved`) **except that an anchor naming a deleted or suppressed feature is
+`detached` with a `message` before any related-name or fingerprint search** (`lostFeature`, the features read from the
+name by `featuresOfName`; the owner, 2026-11-11: a missing number beats a wrong one; annotations still take the closest
+match), **a lost anchor never throws, never fails a recompute and never
+refuses a delete**; a resolved anchor whose geometry can't give what is asked (a line's centre, a flat face's radius)
+is `ok`/`moved` with a `message` and no `geometry`, which layout draws as `invalid`; **linear and angle values are
+measured in the view's plane, radius and diameter on the circle itself**; the text follows the anchors by the mean
+move of their fingerprint points; display items carry `state` (`moved`, `detached`, `invalid`) for the screen, **never
+a screen colour**; a detached dimension draws from the geometry the caller kept (`keepLastAnchors`), else its text alone
+at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (axis with canonical sign × view direction).
+`@extrudo/sheets` has the kernel as a devDependency only (`dimensions.kernel.test.ts`; `SHEETS_OUT=<dir>` writes a sample
+PDF). With every named feature there and active the fingerprint can still find another edge (B2's pocket made a
+through cut: the floor edge's dimension `moved` to the pocket's bottom edge); tests that need a plain `detached` anchor to
+geometry with no near match.
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
@@ -4483,7 +4506,21 @@ never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/t
 `SHEET_FONTS` (Inter Regular and Bold), which the caller loads; every item carries a `SheetDisplayKey` (`paper`,
 `border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
 `packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
-packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet.
+packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet. **S1 the mode (done):** `EditMode` `'sheet'` with
+`activeSheetId`; `apps/web/src/sheets/` holds `mode.ts` (`openSheet`, `openSheets`, `finishDrawing`, `leaveSketch`,
+`keepSheetOpen`, `createSheet`, `addNewSheet`, `duplicateSheet`, `deleteSheet`, `renameSheet`, `moveSheetTo`, `stepSheet`,
+`changeSheet`), `selection.ts` (targets by display key), `exportSheets.ts` and the lazy `SheetWorkspace` (`SheetCanvas`,
+`SheetSetup`, `SheetTabs`, `SheetsTree`, `NewSheetsDialog`, `SheetExportDialog`); UI spec §4a. Rules a change must keep:
+**`sheet` in code, except the tool `finishDrawing`**; every sheet command calls `leaveSketch` before its first dispatch
+and is one undo step with its own label, Finish Drawing none; undo in the mode is a plain undo (never `reopenSketch`);
+the screen draws `layoutSheet`'s list and nothing of its own, and moves the paper through the DOM, not React state;
+**selection is by display key** (`item:<id>`, `view:<id>`, `title-block`; session item `{ kind: 'sheet', id }`), never by
+item kind, and a multi-target move or delete is one undo step (`runAsOneStep`); an item tied to a view moves in the
+view's frame (scaled, y flipped) and not again with its view; `@extrudo/sheets` loads lazily only
+(`SheetWorkspace`, `exportSheets`); the model's browser folders stay mounted (hidden `Activity`) in the mode; a tool
+that enters or leaves the mode or only opens a dialog is in `NOT_REPEATABLE`; a new model-only Home tool joins
+`MODEL_ONLY_TOOLS`; S2 to S5 put their tools on the Drawing tab, in `SHEET_SLOTS` and in AppShell's `run()` beside
+`newSheet`. e2e: `e2e/sheets.spec.ts`.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

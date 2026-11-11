@@ -290,7 +290,7 @@ test('the Home tab imports, and the drawing import needs a sketch', async ({ pag
   // Outside a sketch the drawing import says why it can't run.
   await selectTab(page, 'Home');
   await page.locator('[data-tool="importDrawing"]').click();
-  await expect(page.getByText('Open a sketch to import a drawing into it.')).toBeVisible();
+  await expect(page.getByText('Open a sketch to import an SVG or DXF file into it.')).toBeVisible();
 
   // Home's Import is the same command whatever opened it.
   const chooser = page.waitForEvent('filechooser');

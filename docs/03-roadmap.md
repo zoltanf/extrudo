@@ -1716,8 +1716,11 @@ end to end, faster than in established desktop CAD.
   - [x] S1a Modes: `'model' | 'sketch'` becomes an `EditMode` type and a per-mode table. No
     behaviour change; every existing test passes untouched. Done 2026-11-10: `EditMode`,
     `MODES` (`apps/web/src/shell/modes.ts`), `enterMode`/`exitMode` (ADR-0143's S1a amendment).
-  - [ ] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
-    text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF.
+  - [x] S1 Sheets: schema, commands, cascades; the mode; Sheet Setup, border, title block,
+    text; Export PDF/SVG; Import Drawing renamed Import SVG/DXF. Done 2026-11-11: the
+    document, layout and output, and the Drawing mode (ADR-0143's three S1 amendments); a
+    text item is drawn, selected, moved, deleted and exported, but no tool in the app places
+    one yet.
   - [ ] S2 Views: the facade's spans, the view evaluator, the worker call and its cache;
     Base and Projected View; Standard views.
   - [ ] S3 Dimensions: anchors resolved; the Dimension tool; detached and moved states.

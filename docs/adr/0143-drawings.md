@@ -186,9 +186,10 @@ The spikes' numbers, drawings and readers are in the plan's §13.
 - **Rejected: `HLRBRep_HLRToShape`.** Its edge building after `Hide` takes under a
   millisecond, so it is no faster, and its compounds carry no link to the model edges or
   faces, so dimension anchors would need geometric matching to get a name back.
-- **Rejected: Helvetica with its advance widths** for the selectable text layer: better
-  per-letter selection boxes, but the widths are Adobe's AFM data and need a NOTICE entry;
-  open with the owner. Courier, monospaced, needs no table.
+- **Rejected: Helvetica with its advance widths** for the selectable text layer (the
+  owner, 2026-11-11: Courier stays): better per-letter selection boxes, but the widths are
+  Adobe's AFM data, third-party data that would need a `NOTICE` entry, for a small gain.
+  Courier, monospaced, needs no table.
 - **`hlrPolySpans` (`HLRBRep_PolyAlgo` on the faces' triangulation) is the quick path:**
   2.5 ms for B7's side view and 8 ms for B9's axis view, against 3.4 s and 3.8 s, with each
   piece's source edge, but chords of the mesh with small artefacts. **For S2:** a view is
@@ -288,6 +289,81 @@ Package 1 of S2: the kernel turns a sheet view into 2D lines; no UI. Files:
   one view would stop the exact runs of the others); stopping a run on every recompute
   (every sheet edit sends one); isometric sides that follow the projection angle (in first
   angle, `iso-above-right` would look from below and the left).
+
+## Amendment (S3, dimensions: document, anchors, layout), 2026-11-11
+
+Package 1 of S3: dimensions without UI. Files: `packages/core/src/sheet-schema.ts`
+(`SheetDimensionItemSchema`, `SheetAnchorSchema`, `dimensionProblems`), `packages/core/src/sheet-anchors.ts`
+(the report types, `sheetSilhouetteSide`, `keepLastAnchors`), `remintSheets`,
+`packages/kernel/src/sheets/anchors.ts`, `RecomputeEngine.resolveSheet`, `KernelApi.resolveSheet`,
+`Recomputer.resolveSheet`, `packages/sheets/src/dimensions.ts`, a `state` field on io's display items.
+No facade change.
+
+- **The item** follows plan §5.1: `view`, `type` (`linear`, `radius`, `diameter`, `angle`), `direction`
+  (linear only), `anchors` (one or two), `at`, `decimals`, `before`, `after`, `reference`.
+  **`at` is in the view's own mm** (model size, y up), like a free anchor, so a dimension moves and
+  scales with its view and needs no rewrite when the view is moved.
+- **Anchors** are one of three shapes told apart by their keys: `{ ref, at? }` (a vertex; an edge whole
+  or its `start`, `end`, `middle`, `centre`; a cylinder's face whole), `{ ref, silhouette: 1 | -1 }` (a
+  cylinder's or cone's outline in the dimension's view; `1` is on the side of `axis × direction`, the
+  face's axis with its canonical sign) and `{ free }`. Refs name a vertex, edge or face, **carry their
+  fingerprint** (required in the schema, stricter than an annotation's) and are never `index:` refs.
+- **What fits a type** (`dimensionProblems`, applied by `sheetProblems`): linear takes one whole edge or
+  outline or two points or lines; radius one circle; diameter one circle or two outlines; angle two
+  lines. Whether a whole edge is a line or a circle is the model's to say at resolve time.
+- **`resolveSheet(sheet)`** resolves every anchor against all bodies at the marker as the annotation
+  pass does (`#references`; rolled back → `detached`; on a deleted or suppressed feature → `detached`,
+  below; exact name `ok`; related name or fingerprint `moved`; nothing → `detached`) and returns, per dimension and anchor, `{ status, geometry?, resolved?,
+  message? }`. Geometry: a `point`; a `line`'s ends; a `circle`'s centre, axis, x direction and radius (a
+  cylinder face's centre on the axis, level with the face's middle); a `curve`'s ends; a `silhouette`
+  (the named side's line from `faceSilhouettes`, the longest piece, and the opposite one). Plain data
+  only, no shape made. Anything that throws leaves that anchor `detached`. Evaluates nothing, cached
+  nowhere.
+- **Measuring** (`@extrudo/sheets`, so app and CLI agree): **linear and angle in the view's plane at
+  model size, radius and diameter on the circle itself**. A whole circular edge in a linear dimension
+  stands for its centre; point to line is square to the line; two lines must be parallel (else
+  `invalid`); an unset direction is horizontal when the text is above or below the two points, vertical
+  beside them, else aligned. Text: the item's decimals or the sheet's, the design's unit without the
+  unit, `R`/`Ø` prefixes, `°`, `before`/`after`, brackets for a reference.
+- **Layout**: lines 0.18 mm, filled 3 × 1 mm arrowheads (outside on stubs when there is no room), 1 mm
+  gap and 2 mm overshoot on extension lines, 3.5 mm text above the line along it (reading from below or
+  the right); radius and diameter on a leader with a shelf; angles as an arc with level text outside
+  it. Items are keyed `item:<id>` and carry `state` (`moved`, `detached`, `invalid`) when not `ok`; the
+  writers ignore it, so the export never gets a screen colour.
+- **Following the model**: the text's place is `at` plus the mean move of the ref anchors' fingerprint
+  points (stored → now) in the view, as an annotation's point follows its geometry.
+- **Lost anchors, as proposed**: nothing derived is stored. A `detached` dimension draws from the
+  geometry the caller kept in memory (`keepLastAnchors(previous, next)`), still marked detached; with
+  none (a file just opened) it is its text alone at `at`, `?` for the value, no extension lines.
+- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, commands, remint);
+  `kernel/src/sheets/anchors.test.ts` (a box, a cylinder, B2 following `height`, a drain hole deleted,
+  rolled back and back again; the pocket deleted, suppressed and made a through cut, below); `sheets/src/dimensions.test.ts` (values,
+  positions, text, states, a golden SVG); `sheets/src/dimensions.kernel.test.ts` (every type measured to
+  known sizes on a part the kernel builds; `SHEETS_OUT=<dir>` writes a sample PDF, checked with
+  `pdftoppm`).
+- **Found:** the naming service's fingerprint fallback re-finds a close edge after its feature is
+  deleted: deleting B2's pocket made a dimension on the pocket floor's edge `moved` onto the box's
+  bottom edge (74 → 80), not `detached`. Annotations and features behave the same and keep doing so;
+  for sheet anchors the owner chose to detach instead (next point).
+- **Deleted and suppressed features (the owner, 2026-11-11)**: before an anchor is looked for by a
+  related name or its fingerprint, the features its persistent name names are read from the name's
+  grammar (`featuresOfName` in `kernel/src/naming/topo-id.ts`: each created face's `feature`, nested
+  sources too; a script's generated feature counts as the script). If one is no longer in the
+  document, the anchor is `detached` with "The feature this was measured on is deleted."; if one is
+  suppressed, `detached` with "<name>, the feature this was measured on, is suppressed. Unsuppress it to
+  show the dimension again." (deleted outranks suppressed; `lostFeature` in `kernel/src/sheets/anchors.ts`).
+  No fingerprint search runs then. Why: the closest match on a drawing is another edge, and its number
+  is wrong without looking wrong (B2: 80 for 74); a missing number is safer than a wrong one. A
+  suppressed feature makes nothing while suppressed, so the same wrong match can happen. Rolled back
+  past the marker stays `detached` with no message, checked first. With every named feature there and
+  active nothing changes: exact name `ok`, related name or fingerprint `moved`, even when the
+  fingerprint finds another edge (B2 with `bottom` 0, the pocket a through cut: the floor edge's
+  dimension is `moved` onto the pocket's bottom edge at z = 0, still 74). `keepLastAnchors` keeps the
+  detached report's `message`. Annotations are unchanged: their pass still takes the closest match.
+- **Rejected**: `at` in sheet mm (moving a view would leave its dimensions behind); storing the last
+  measured value or position for a detached dimension (derived data in the document); resolving only
+  among the view's bodies (projected views would need the app's body rules in the kernel; annotations
+  resolve among all bodies); screen colours or dashes in the display list for a detached dimension.
 
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
@@ -475,3 +551,60 @@ set), renders as expected (`pdftoppm`, looked at each page) and gives back every
   text module; one function there (`measureText`) is less to wire than an interface.
 - **The ISO projection symbol in the full title block.** Words ("First angle") can't be
   drawn the wrong way round; the symbol can come with a title-block editor.
+
+## Amendment (S1, the mode), 2026-11-11
+
+Slice S1's app part: the Drawing mode, built on S1a's mode table, S1's document and its
+layout. `EditMode` gains `'sheet'` with the field `activeSheetId`; `MODES` gets its row
+(tabs Home and Drawing, the Drawing tab by default, `SHEET_SLOTS`, Repeat last's sample
+`newSheet`, Finish Drawing). The functions are in `apps/web/src/sheets/mode.ts`; the screen
+is the lazy `sheets/SheetWorkspace.tsx` chunk; UI spec §4a describes what a person sees.
+
+- **Naming:** the UI says "drawing" and "sheet"; code says `sheet`, except the tool
+  `finishDrawing` (the plan's name). The Make tile's tool is `sheets`.
+- **Entering** (Make › Drawing, the browser's Drawings folder, Ctrl+K) ends an open sketch
+  (its edits one undo step), a waiting Create Sketch and a feature dialog. **Every sheet
+  command does the same first** (`leaveSketch`), since New Drawing and the Drawings folder
+  are reachable while sketching: a sheet change is never part of a sketch's undo step.
+- **Undo:** every sheet edit is one command and one undo step with its own label, and
+  Finish Drawing is none (decision 13). Undo in the mode is a plain undo, never
+  `reopenSketch` (which would leave the drawing). An undo, redo or restore that takes the
+  open sheet away opens its neighbour, or ends the mode with the last sheet
+  (`keepSheetOpen`).
+- **The sheet on screen** is `layoutSheet`'s display list as SVG through io's screen
+  helpers, the same list the PDF and SVG writers get. Pan and zoom write the paper
+  element's box to the DOM, with no React render per frame; the 3D view stays mounted and
+  `inert` underneath. While the Sheets tree shows, the model's browser folders stay mounted
+  in a hidden React `Activity`, so their open state survives the visit.
+- **Selection is by display key**, not by item kind: a target is `item:<id>`, `view:<id>`
+  or `title-block` (its fields' keys fold into it); the paper and the border are not
+  targets. A target's box is the union of its drawn items, strokes included; the smallest
+  box under the pointer wins. In the session a target is the selection item
+  `{ kind: 'sheet', id }`. Moves and deletes of several targets are one undo step
+  ("Move on sheet", "Delete from sheet", `selection.ts`); the title block is neither moved
+  nor deleted there. An item tied to a view (S3's dimension) keeps its `at` in the view's
+  own frame, so its move is scaled by the view's scale and flipped in y, and it is not moved
+  again when its view moves with it.
+- **Export:** one dialog (mock-up 4) for Export PDF and Export This Sheet: PDF is one file
+  with a page per chosen sheet, SVG a file per sheet; the format is the preference
+  `export.sheets`. `@extrudo/sheets` loads lazily, never in the entry chunk.
+- **Elsewhere in the shell:** an Edit from the drawing that opens a sketch or a feature
+  dialog ends the drawing first; Repeat last skips the tools that enter or leave the mode or
+  only open a dialog; the web build's Report a Bug attaches a PNG of the sheet, not the
+  hidden 3D view; Import Drawing is called Import SVG/DXF; the load notice counts a dropped
+  sheet item as an item, not a setting.
+- **Plan §3.1** says Home's model-only tools say "Finish the drawing to use …" "as they do
+  in a sketch". That was not true when the mode was built: in a sketch their search entries
+  and keys said so, but a click on their tile did nothing. The drawing shows the message on
+  a click too; a separate change brings sketch mode in line.
+
+**Rejected:**
+
+- **A second shortcut for the sheet tabs.** A browser may keep Ctrl+PageUp/PageDown for its
+  own tabs; the sheet tabs are always clickable, and the UI spec says so.
+- **Unmounting the model's folders in the drawing.** Simpler, but each folder keeps its
+  open state in its own component, so the tree came back with every folder at its default.
+- **Refusing a recompute error's Edit in the drawing.** The click says what the person
+  wants; ending the drawing (no undo step) and opening the dialog does it.
+- **Selection by item kind.** S3 to S5 add dimensions, notes and tables; keys keep the
+  selection layer unchanged for them.

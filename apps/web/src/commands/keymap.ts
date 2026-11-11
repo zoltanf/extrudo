@@ -74,6 +74,10 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   joint: ['J'],
   // Section Analysis (P3-09): there is no usual key for it.
   section: ['Shift+S'],
+  // The drawing (P6-24, ADR-0143): Export PDF, and the sheet tabs as a browser's tabs.
+  exportSheets: ['Mod+E'],
+  nextSheet: ['Mod+PageDown'],
+  previousSheet: ['Mod+PageUp'],
   // Help (P6-06 S9): F1 opens the hovered tool's docs page, else the guide.
   help: ['F1'],
   // View: F6 fits; Shift+1…7 are ours.

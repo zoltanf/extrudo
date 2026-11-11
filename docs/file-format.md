@@ -255,7 +255,8 @@ Whole-document rules (checked after the per-field rules):
 - Sheet `id`s are unique and sheet `name`s are unique case-insensitively;
   view `id`s and item `id`s are unique in the whole design; view `name`s are
   unique case-insensitively in their sheet; a projected view's `parent` is
-  another view of the same sheet, with no cycle (section 4.11).
+  another view of the same sheet, with no cycle; a dimension's `view` is a
+  view of its sheet and its anchors fit its type (section 4.11).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
@@ -611,13 +612,31 @@ An object whose **`kind`** says which of two it is:
 #### 4.11.3 `SheetItem`
 
 An object whose **`kind`** says what it is. Every item has an `id`, unique
-among every sheet's items. This version knows one kind; later versions add
-more (dimensions, notes, lists), and a reader leaves out an item of a kind it
-doesn't know (section 3).
+among every sheet's items. This version knows two kinds; later versions add
+more (notes, lists), and a reader leaves out an item of a kind it doesn't
+know (section 3).
 
 | `kind` | Fields | Meaning |
 |---|---|---|
 | `text` | `at` ([x, y]), `text` (string), `size` (number, optional), `width` (number, optional) | A text placed on the sheet. `at` is its top-left corner, mm. `text` is plain, up to 2000 characters and not blank; it may contain newlines. `size` is the letter height in mm, absent means 3.5. `width`, when present, is the width it wraps at, in mm. |
+| `dimension` | `view` (ID), `type` (string), `direction` (string, optional), `anchors` (array of SheetAnchor, 4.11.4), `at` ([x, y]), `decimals` (integer, optional), `before` (string, optional), `after` (string, optional), `reference` (boolean, optional) | A dimension in a view, measured from the model and never driving it; **its value is not stored**, it is measured each time the sheet is drawn. `view` is a view of the same sheet (removing the view removes the dimension). `type` is `linear` (a distance), `radius` or `diameter` (a circle) or `angle` (between two lines). `direction`, for a linear one only: `horizontal`, `vertical` or `aligned`; absent means it follows where the dimension is placed. `anchors` are one or two, fitting the type: `linear` takes one whole edge or outline (its length) or two anchors that are points or lines; `radius` one circle (a whole circular edge or a cylinder's face); `diameter` one circle or two outlines (a cylinder seen from the side); `angle` two lines (whole edges or outlines). Whether a whole edge is a line or a circle is the model's to say when the sheet is drawn. `at` is where its text is, in the view's own mm (model size, x right, y up, the world origin at 0, 0), so it moves and scales with the view; when the anchors' geometry moves (a parameter changes), the text moves as far as their fingerprint points moved. `decimals` is 0 to 4, absent means the sheet's. `before` and `after` are written around the value (and before `R` or `Ø`), up to 100 characters each. `reference` (`true` only) writes it in brackets. |
+
+#### 4.11.4 `SheetAnchor`
+
+What a dimension measures from: one of three shapes, told apart by their keys.
+
+| Shape | Fields | Meaning |
+|---|---|---|
+| On geometry | `ref` (GeomRef), `at` (string, optional) | `ref` names a `vertex`, an `edge` or a `face` by its persistent name (section 10) and **must carry its `fingerprint`**; an `index:` reference is refused. `at` takes one point of an edge: `start`, `end`, `middle` or `centre` (a circle's or an ellipse's); absent means the whole edge, the vertex, or a cylinder's face (for a radius or diameter). A vertex and a face never have `at`. |
+| On an outline | `ref` (GeomRef), `silhouette` (`1` or `-1`) | The outline of a cylinder or cone `face` as the dimension's view sees it: `1` is the one on the side the face's axis (with its canonical sign: first non-zero component positive) crossed with the view's direction points to, `-1` the other. |
+| Free | `free` ([x, y]) | A point in the view's own mm, tied to nothing. |
+
+An anchor whose geometry is gone is not an error: the file still loads and
+the dimension is drawn as detached (the reference resolves as a feature's
+does, section 10: by its name, a related name or its fingerprint). An anchor
+on geometry of a feature the design no longer has, or one that is
+suppressed, is detached without that search: a close match there would be
+another edge.
 
 ```json
 "sheets": [
@@ -634,7 +653,13 @@ doesn't know (section 3).
       { "id": "41c2…", "name": "Front", "at": [120, 150], "from": { "kind": "base", "direction": [0, 1, 0], "up": [0, 0, 1] } },
       { "id": "7d90…", "name": "Right", "at": [260, 150], "from": { "kind": "projected", "parent": "41c2…", "side": "right" } }
     ],
-    "items": [{ "kind": "text", "id": "c3a1…", "at": [20, 20], "text": "All edges 0.5 mm" }]
+    "items": [
+      { "kind": "text", "id": "c3a1…", "at": [20, 20], "text": "All edges 0.5 mm" },
+      {
+        "kind": "dimension", "id": "9e04…", "view": "41c2…", "type": "linear", "at": [0, -12],
+        "anchors": [{ "ref": { "kind": "edge", "id": "e[box:…:side:front|box:…:cap:start]", "fingerprint": { "type": "line", "at": [0, -20, 0], "dir": [1, 0, 0], "size": 60 } } }]
+      }
+    ]
   }
 ]
 ```

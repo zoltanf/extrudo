@@ -1050,8 +1050,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   'Report a bug')` opens the `dialog` "Report a bug" (also from About's footer button and the
   home screen's app menu). Fields by label: "Title", "What happened?", "Steps to reproduce",
   "Include the timeline" (a checkbox, absent on the home screen). The screenshot is
-  `img` "Screenshot" (the viewport snapshot; Remove, then "No screenshot" and the button "Take
-  screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
+  `img` "Screenshot" (the viewport snapshot; in the drawing the sheet's own PNG, A3 landscape
+  `1600x1131` by `naturalWidth`/`naturalHeight`, read with a typed `evaluate` callback since
+  e2e/ has no DOM types; Remove, then "No screenshot" and the button "Take screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
   into "Copied" for 1.6 s; "Open GitHub draft" opens a popup on the prefilled issue URL
   (github.com answered locally with `context.route`). Trap: grant `clipboard-read` and
   `clipboard-write`; the PNG is not read back, only the text copy and the popup URL.
@@ -1115,11 +1116,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/import-drawing.spec.ts`
 
 - **Import drawing e2e** (`e2e/import-drawing.spec.ts`, P4-06 slice 1): the tool
-  is `importDrawing` in the Sketch tab's Create menu ("Import Drawing…", no
+  is `importDrawing` in the Sketch tab's Create menu ("Import SVG/DXF…" since
+  ADR-0143's S1, before it "Import Drawing…"; no
   key); it opens the file dialog at once, so the spec waits for the
   `filechooser` **beside** the click (`chooser.setFiles('packages/io/src/
   fixtures/rect-circle.svg')`, the fixtures `@extrudo/io`'s own tests read). The
-  panel is the region "Import drawing": the file's name, the comboboxes "Units"
+  panel is the region "Import SVG/DXF": the file's name, the comboboxes "Units"
   (the file's own preselected: `mm`, `in`) and "Position" (`origin`/`centre`),
   the "Scale" textbox (an `ExpressionInput`, so `fill('2')`), the "Fixed"
   checkbox, `[data-import-summary]` ("5 curves", or the reason it can't be
@@ -2093,6 +2095,55 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   menuitem "Change shortcut…". A Search row's key button is `[data-change-shortcut]`
   (visible on the active row). Read the preference with
   `localStorage.getItem('extrudo.keymap.overrides')`.
+
+### `e2e/sheets.spec.ts`
+
+- **The Drawing mode** (P6-24 S1, ADR-0143). Make › `pickTool(page, 'Drawing')` opens the
+  dialog "New drawing" (summary `[data-new-sheets-summary]`, button "Create Drawing"). In the
+  mode the toolbar tabs are Home and Drawing, the timeline's region is gone and the bottom row
+  is the region "Sheets": the list "Sheet tabs" with a `[data-sheet-tab]` (sheet ID) per tab,
+  `aria-current="page"` on the open tab's button, the button "New sheet",
+  `output[aria-label="Status"]` ("Editing drawing · sheet 1 of 1 · A3 landscape · 1:1 · mm").
+- **The sheet** is the region "Sheet" (`exact: true`: "Sheet setup" and "Sheets" exist too),
+  `[data-sheet-canvas]`, with `data-paper` ("420x297", mm across × down) and `data-zoom`
+  ("54%", written directly on every pan and zoom: read it with a polling assertion). Each
+  drawn item is a `path[data-key]` (`paper`, `border`, `title-block`, `title-block:<field>`,
+  `item:<id>`, `view:<id>`); the text layer `[data-sheet-text] text[data-key]` holds the
+  strings. **Trap:** a title-block cell's label ("TITLE") and its value share the key; the
+  value is the last. Text appears only after the sheet fonts load (the paper is drawn bare
+  before), so wait for a string before reading geometry.
+- **Sheet Setup** is the region "Sheet setup": textboxes by label ("Sheet name", "Title",
+  "Drawn by", …) commit on Enter or blur; the combobox "Paper" takes `selectOption('A4')`;
+  the radio groups "Orientation" and "Projection"; the switches "Border" and "Zones"; number
+  fields ("Scale: model", "Scale: sheet", "Decimals", a custom size's "Width"/"Height") are
+  `ExpressionInput`s.
+- Finish Drawing lists the sheet under the browser's Drawings folder (`[data-sheet-row]`,
+  text "1 · AssemblyA4": the name, then the size); double-click reopens it. The undo after
+  Finish takes back the last sheet edit (Finish is no step); undoing New drawing ends the mode.
+- The 3D view stays mounted (inert) under the sheet. Ctrl+PageUp/PageDown reach the page in
+  Playwright (the browser's own tab keys are not in its way there).
+- The model's browser folders stay mounted but hidden (React `Activity`) in the mode: a folder
+  opened before ("Document settings", closed by default) is `aria-expanded="true"` again
+  after Finish Drawing; while the drawing is open it is hidden, not gone.
+- **Export drawing** (part B): the Export PDF tile and the tab menu's "Export This Sheet" open
+  the dialog "Export drawing": a checkbox per sheet named "n · name", the radio group
+  "Format" (radios "PDF", "SVG", `aria-checked`), the textbox "File name" (no extension),
+  `[data-sheet-export-summary]` ("2 pages · A3 landscape, A4 landscape", "1 SVG file · A4
+  landscape", "Choose at least one sheet."), the button "Export" (disabled with no sheet).
+  A PDF has a `/MediaBox` per page (A3 landscape `[0 0 1190.551 841.89]`, A4 landscape
+  `[0 0 841.89 595.276]`); an SVG starts `width="297mm" height="210mm" viewBox="0 0 297 210"`.
+  The format is the preference `export.sheets`; the spec checks it survives a reopening.
+- **Selecting** uses a fixture written with `writeArchive` (sheet `s1`: text `t1` "A note" at
+  [40, 40], view `v1` "Front" at [200, 150] drawn as its 60 × 40 mm placeholder centred on
+  `at`) and imported with home's "Import…". Sheet mm → screen: the `[data-sheet-paper]` box
+  spans the paper (420 × 297 for A3). The region "Sheet" carries `data-hover` and
+  `data-selected` (targets joined by spaces: `item:t1 view:v1`, `title-block`); each frame is
+  `[data-sheet-frame="<target>"]` with `data-state` `hover`/`selected`, and its `rect`'s `x`
+  (mm, the box's left minus 1.2) shows a move; frames exist only while hovered or selected,
+  so select again after an undo of Delete. The right column is the region "Selection" (its
+  name, e.g. `Text “A note”`), or the region "Title block" (template and fields) when the
+  title block alone is selected. Ctrl+click toggles; drag on empty paper is a box select;
+  arrows nudge 1 mm (Shift 10 mm); Delete removes; each is one undo step.
 
 ### `e2e/shell-feature.spec.ts`
 

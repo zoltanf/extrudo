@@ -16,5 +16,8 @@
     "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",
     "@extrudo/sketch": "workspace:*"
+  },
+  "devDependencies": {
+    "@extrudo/kernel": "workspace:*"
   }
 }
