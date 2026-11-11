@@ -4679,3 +4679,25 @@ is a **nested worker** (`importKernel.ts`), so terminating the import's worker e
 STEP bytes are written before the document. Import Model hands an `.FCStd` to the same new-design import as an `.f3d`.
 `corpus-shapes.test.ts` runs with `FCSTD_SAMPLES` (`FCSTD_REPORT`, `FCSTD_GT` and `FCSTD_GT_PREFIX` optional; numbers
 in the amendment).
+
+**ADR-0144, S4 (sketches):** `packages/fcstd` now depends on `@extrudo/api`, core and sketch (types only from
+sketch's main entry; `tangentReversed` from `@extrudo/sketch/inference`). `sketch-decode.ts` `decodeSketch` reads a
+sketch's `Geometry`/`Constraints` records: numbers through `finite`, an unreadable record becomes `undefined` **in its
+slot** (constraints name geometry by index, expressions name constraints by index: never compact the lists), limits
+`MAX_SKETCH_GEOMETRY` 10,000, `MAX_SKETCH_CONSTRAINTS` 20,000, `MAX_BSPLINE_POLES` 1,000 (a sketch over one is refused
+whole, one empty slot per constraint); the construction flag is the `SketchGeometryExtension`'s bit 1 when there is
+one, else the legacy `<Construction>`. `sketch-place.ts`: the frame is the stored `Placement` times the geo-group
+containers' (same list as `final-shapes.ts`), world coordinates; the plane is an origin plane (mirrored when the normal
+is against it), offset along its normal, or a `planeAtAngle` about an origin axis (and offset), planes shared per
+design; anything else is **no plane** (`NO_PLANE`), never a guess; a frame that is not a finite position and a unit rotation is refused first (`frameIsSound`, `BAD_FRAME`). `sketch-map.ts` `mapSketch`: imported geometry
+never moves (decision 8, f3d's rule): a constraint goes in only when the drawn geometry satisfies it, then the solver
+vets (redundant/conflicting out one per component and round, latest first; moving: the suspects on what moved tried
+alone, the one without which it moves least goes; `MAX_CANDIDATES` 1,000, `MAX_VET_ROUNDS` 64, 256 trial solves);
+without a solver nothing goes in (`unchecked`). Every FreeCAD constraint has **exactly one outcome**, `mapped` or a
+`LeftOut` of the closed set; one FreeCAD constraint may be several Extrudo items, in and out together. H/V and X/Y
+follow the map's `axes` (swap swaps them; `rotated`: level lines become `parallel` to the drawn axis, the rest
+`unsupported`). Origin and axes are importer-drawn fixed construction, removed again when no kept constraint uses
+them. A dimension's value is the stored number (15 digits); expression bindings come back for S10, never evaluated
+here. `addSketch` never throws for file content and returns plain outcome data; IDs come from the caller's `Design`.
+Fixtures go in `sketch-fixtures.ts`. `sketch-corpus.test.ts` (`FCSTD_SAMPLES`, `FCSTD_REPORT`, `FCSTD_GT`) must keep
+219 of 221 placed, nothing kept moving, and the mapped count (2,744 of 2,984) unless a change explains the new one.

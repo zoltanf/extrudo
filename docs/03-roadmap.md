@@ -1751,7 +1751,8 @@ end to end, faster than in established desktop CAD.
   - [x] S3 Shapes-only import end to end: final shapes with names, colours and visibility;
     the app flow and report; the cadmpeg route no longer takes this format (2026-11-11;
     ADR-0144's S3 amendment, ADR-0115's amendment of 2026-11-11).
-  - [ ] S4 Sketches: geometry, constraints, placement.
+  - [x] S4 Sketches: geometry, constraints, placement (2026-11-11; ADR-0144's S4
+    amendment).
   - [ ] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape.
   - [ ] S6 Fillet and Chamfer, their edges found by geometry.
   - [ ] S7 Patterns, Mirrored, Hole.

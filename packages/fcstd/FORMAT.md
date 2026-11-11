@@ -252,9 +252,101 @@ On the library: 383 final shapes (35 bodies, 14 chain tips, 236 other
 shapes, 13 links, 85 meshes; 27 hidden), the same per file as the
 investigation's count, against 1,784 stored shapes.
 
+## Sketches
+
+A `Sketcher::SketchObject` holds its curves in `Geometry` (a
+`GeometryList` of `Geometry` records) and its constraints in `Constraints`
+(a `ConstraintList` of `Constrain` records). `sketch-decode.ts` reads both;
+the rest of the package works from that typed form.
+
+**Frame.** Coordinates are in the sketch's own frame, millimetres; the
+curves lie in its plane (Z is 0, and a conic's normal is ±Z; a record with
+any other normal is not read). The frame is the stored `Placement`, which
+FreeCAD always writes as the attacher's result at save time, in the
+coordinates of the sketch's container. Containers that move what they hold
+(a body, a part, an origin, a coordinate system, a PartDesign boolean, an
+assembly) apply their own placements outside it, outermost first; plain
+folders don't. On the library the stored placement equals FreeCAD 1.1's
+loaded one for 219 of 221 sketches (within the 1e-6 rounding of FreeCAD's
+numbers); the other two are 0.14 sketches on an origin plane's back side,
+which FreeCAD 1.1 attaches again without the flip. No support face needs
+to be looked up to place a sketch.
+
+**Geometry records.** `Geometry@type` names the curve; its curve element
+holds the numbers:
+
+| Type | Element and attributes | Point positions |
+|---|---|---|
+| `Part::GeomLineSegment` | `LineSegment` `StartX/Y/Z`, `EndX/Y/Z` | 1 start, 2 end |
+| `Part::GeomCircle` | `Circle` `CenterX/Y/Z`, `NormalX/Y/Z`, `AngleXU` (0.17+), `Radius` | 3 centre |
+| `Part::GeomArcOfCircle` | `ArcOfCircle` as a circle plus `StartAngle`, `EndAngle` (radians, end > start, may pass 2π) | 1, 2 ends, 3 centre |
+| `Part::GeomPoint` | `GeomPoint` `X/Y/Z` | 1 the point |
+| `Part::GeomBSplineCurve` | `BSplineCurve` `PolesCount`, `KnotsCount`, `Degree`, `IsPeriodic`; `Pole X/Y/Z Weight` per pole; `Knot Value Mult` per distinct knot (values as stored, not from 0 to 1) | 1 first, 2 last pole |
+| `Part::GeomEllipse`, `Part::GeomArcOfEllipse` | `Ellipse` / `ArcOfEllipse` `CenterX/Y/Z`, `NormalX/Y/Z`, `MajorRadius`, `MinorRadius`, `AngleXU` (the major axis), arcs `StartAngle`, `EndAngle` (eccentric anomaly) | |
+
+A conic's own frame is X turned by `AngleXU` about its normal; a normal
+pointing down (−Z) reverses X, so the curve runs clockwise in the sketch.
+An arc's point positions 1 and 2 are its counter-clockwise start and end in
+the sketch, whatever the normal: with a downward normal the stored start
+angle gives position 2. Every circle and arc in the library has an upward
+normal.
+
+**Construction and helper geometry.** Up to 0.18 the only flag is a
+`<Construction value="0|1">` element before the curve. From 0.19 a
+`GeoExtensions` element holds a `Sketcher::SketchGeometryExtension` whose
+`geometryModeFlags` is a bit string, its rightmost character bit 0
+(blocked) and the next bit 1 (construction); its `internalGeometryType`
+marks helper geometry tied to another curve (9 a B-spline pole circle, 10
+a knot point, 1 to 8 and 11 the parts of ellipses, hyperbolas and
+parabolas). From 1.0 the old element is written again after the curve, for
+old readers (in the library with the extension's value); the extension's
+flag is the one to read. The
+library's 11 B-splines are all quadratic with three poles of weight 1,
+not periodic.
+
+**Constraint records.** `Constrain` attributes: `Type` (below), `Value`
+(millimetres, radians for angles), `First`, `Second`, `Third` (geometry
+indices: 0 and up the sketch's own, −1 the horizontal axis, −2 the
+vertical, −3 and down external geometry, −2000 unused), `FirstPos`,
+`SecondPos`, `ThirdPos` (0 the curve, 1 start, 2 end, 3 centre; −1 with
+position 1 is the sketch's origin), `Name`, `IsDriving` (0: a reference
+dimension; absent before 0.15: 1), `IsActive` (absent: 1),
+`IsInVirtualSpace`, label placement, and from 1.1 `ElementIds` /
+`ElementPositions` with all elements (the three legacy attributes are still
+written and come first), and for type 15 `InternalAlignmentType` and
+`InternalAlignmentIndex`. A constraint names geometry by its index in the
+list, and an expression names a constraint by its index
+(`.Constraints[3]`) or its name (`.Constraints.width`), so an unreadable
+record keeps its slot.
+
+| Type | Constraint | Value |
+|---|---|---|
+| 1 | Coincident (two points) | |
+| 2, 3 | Horizontal, Vertical (a line, or two points) | |
+| 4 | Parallel | |
+| 5 | Tangent: two curves; a point and a curve; two ends (a joint); via a third point | an encoded angle at a joint (±π/2, 0 undecided) |
+| 6 | Distance: a line's length, an arc's length, two points, a point and a line | mm, ≥ 0 |
+| 7, 8 | DistanceX, DistanceY: a line (end − start), a point alone (its coordinate), two points (second − first) | mm, signed |
+| 9 | Angle: a line from +X, an arc's sweep, two lines (counter-clockwise from the first), two lines from given ends, via a point | radians, signed |
+| 10 | Perpendicular (two curves, at a joint, via a point) | |
+| 11, 18 | Radius, Diameter | mm |
+| 12 | Equal (lengths, radii) | |
+| 13 | Point on object | |
+| 14 | Symmetric: two points about a line (third position 0) or about a point | |
+| 15 | Internal alignment (helper geometry to its curve) | |
+| 16 | Snell's law | ratio |
+| 17 | Block | |
+| 19 | Weight (a B-spline pole) | |
+
+**Limits** (`sketch-decode.ts`, set from the library with room): 10,000
+curves per sketch (the library's largest has 28), 20,000 constraints (71),
+1,000 poles per B-spline (3). A sketch over a limit is not decoded.
+
 ## Not read yet
 
-- Sketch geometry and constraints are kept raw (S4 interprets them).
+- Sketches: external geometry (`ExternalGeometry`, `ExternalGeo`), `MapMode`
+  and the attachment (the stored placement is enough), the 1.1 n-ary element
+  lists past the first three, geometry ids and layers.
 - Mesh kernels, colour lists past the first entry, vector/float/placement
   list entries, the 1.0 element maps and string hasher, thumbnails.
 - Link arrays (`ElementCount`, `PlacementList`, `LinkElement`s) and links to
