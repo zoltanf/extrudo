@@ -15,7 +15,7 @@ import {
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { type SheetViewLines, sheetToSvg } from '@extrudo/sheets';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { wallBracket } from '../project/templates';
 import { sheetViewLines, sheetViewWants } from './viewLines';
 
@@ -58,7 +58,14 @@ const SHEET: Sheet = {
 
 describe('the wall bracket template on a sheet', () => {
   it('draws its four standard views as the golden', { timeout: 120_000 }, async () => {
+    // The template's IDs fixed: its edges' names, and so the order and direction of the
+    // curves, follow its feature IDs, which are new on every call.
+    let n = 0;
+    const ids = vi
+      .spyOn(crypto, 'randomUUID')
+      .mockImplementation(() => `00000000-0000-4000-8000-${(++n).toString(16).padStart(12, '0')}`);
     const doc = wallBracket();
+    ids.mockRestore();
     const kernel = new Kernel(await loadOcct());
     try {
       const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
