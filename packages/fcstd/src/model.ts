@@ -154,6 +154,12 @@ export interface FcObject {
   readonly expressions: readonly FcExpression[];
   /** FreeCAD marked it invalid when saving (its recompute failed). */
   readonly invalid?: boolean;
+  /**
+   * The properties the reader left out because their value can't be read (a
+   * number that is not finite …), by name; absent when there are none. A
+   * mapper that reads one of them refuses rather than take a default.
+   */
+  readonly unreadable?: readonly string[];
   /** `GuiDocument.xml`'s view of it; `undefined` when the file has no GUI document or no view provider for it. */
   readonly gui?: FcGui;
 }
@@ -427,6 +433,7 @@ function propertiesOf(
   block: XmlElement | undefined,
   owner: string,
   ctx: Context,
+  unreadable?: string[],
 ): Record<string, FcProperty> {
   const out: Record<string, FcProperty> = Object.create(null);
   for (const p of children(block, 'Property')) {
@@ -449,6 +456,7 @@ function propertiesOf(
     } catch (error) {
       if (!(error instanceof FcstdFormatError)) throw error;
       ctx.problems.push(`${what} was left out: ${error.message}`);
+      unreadable?.push(name);
     }
   }
   return out;
@@ -644,7 +652,8 @@ export function readFcstdEntries(entries: FcEntries): FcDocument {
     }
     const declaredAs = types.get(name);
     if (!declaredAs) ctx.problems.push(`Document: ${short(name)} has data but no declared type.`);
-    const props = propertiesOf(child(o, 'Properties'), name, ctx);
+    const unreadable: string[] = [];
+    const props = propertiesOf(child(o, 'Properties'), name, ctx, unreadable);
     const label = props.Label?.value;
     const engine = props.ExpressionEngine?.value;
     const facts = gui?.get(name);
@@ -659,6 +668,7 @@ export function readFcstdEntries(entries: FcEntries): FcDocument {
       properties: props,
       expressions: engine?.kind === 'expressions' ? engine.items : [],
       ...(declaredAs?.invalid ? { invalid: true } : {}),
+      ...(unreadable.length > 0 ? { unreadable } : {}),
       ...(facts || visible !== undefined
         ? { gui: { ...facts, ...(visible !== undefined ? { visible } : {}) } }
         : {}),

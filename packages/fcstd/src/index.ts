@@ -22,7 +22,42 @@ export {
   MAX_TOTAL_BYTES,
   unzipFcstd,
 } from './archive';
+export {
+  type BodyHistory,
+  type BodyWalkOptions,
+  bodyChain,
+  type HistoryStop,
+  importBodies,
+  MAX_BODY_FEATURES,
+  MAX_FILE_FEATURES,
+  MAX_PROFILE_REGIONS,
+  MAX_REBUILD_BODIES,
+  type MappedFeature,
+  profileRefs,
+} from './bodies';
+export { type BudgetOptions, type CallOutcome, KernelBudget } from './budget';
+export {
+  combined,
+  type Drift,
+  drift,
+  HISTORY_AREA_TOLERANCE,
+  HISTORY_BOX_TOLERANCE,
+  HISTORY_VOLUME_TOLERANCE,
+  historyDisagreement,
+} from './check';
 export { FcstdFormatError, finite } from './errors';
+export {
+  type DecodedAxis,
+  type DecodedFeature,
+  type DecodedSide,
+  decodeFeature,
+  FEATURE_TYPES,
+  type FeatureContext,
+  type FeatureDecode,
+  type FeatureKind,
+  type FeatureRefusal,
+  MAX_FEATURE_LENGTH,
+} from './features';
 export {
   type FinalShape,
   type FinalShapeKind,
@@ -33,13 +68,19 @@ export {
   rotate,
 } from './final-shapes';
 export {
+  type BodyImport,
   type FcstdImportOptions,
   type FcstdImportReport,
   type FcstdImportResult,
   importFcstd,
   MAX_FCSTD_BYTES,
 } from './import';
-export type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
+export type {
+  ImportKernel,
+  RebuildResult,
+  ShapeMeasure,
+  StoredShapeStep,
+} from './import-kernel';
 export {
   binaryFormProblem,
   brepHasSolid,
@@ -84,7 +125,9 @@ export {
   SHAPE_TIMEOUT_MS,
   type ShapeImportOptions,
   type ShapeImportResult,
+  saneMeasure,
   saneReply,
+  setBodies,
   VOLUME_TOLERANCE,
   volumeDrift,
 } from './shapes';
@@ -115,6 +158,8 @@ export {
 export {
   BAD_FRAME,
   compose,
+  containerChain,
+  forgetRemovedPlanes,
   frameIsSound,
   NO_PLANE,
   type PlaneKind,

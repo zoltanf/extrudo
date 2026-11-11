@@ -12,10 +12,16 @@ const post = (reply: FcstdWorkerReply, transfer: Transferable[] = []) =>
 
 self.onmessage = async ({ data }: MessageEvent<FcstdWorkerRequest>) => {
   const kernel = workerImportKernel();
+  // The solver vets the sketches' constraints (S4); without it the sketches
+  // come in with none, which is still an import.
+  const solver = await import('@extrudo/sketch/browser')
+    .then((m) => m.loadSketchSolver())
+    .catch(() => undefined);
   try {
     const { design, files, report } = await importFcstd(new Uint8Array(data.bytes), data.name, {
       ...data.options,
       kernel,
+      ...(solver ? { solver } : {}),
       onProgress: (done, total) => post({ progress: [done, total] }),
     });
     const list = [...files];
@@ -37,5 +43,9 @@ self.onmessage = async ({ data }: MessageEvent<FcstdWorkerRequest>) => {
     });
   } finally {
     kernel.dispose();
+    // A solver that failed may fail to dispose too: that must not lose the import.
+    try {
+      solver?.dispose();
+    } catch {}
   }
 };

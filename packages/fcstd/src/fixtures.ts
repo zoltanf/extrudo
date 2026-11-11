@@ -392,3 +392,12 @@ export function sheetFile(): Uint8Array {
   ];
   return fcstd({ 'Document.xml': documentXml(objects) });
 }
+
+/**
+ * The history half of an `ImportKernel` for fakes that only convert shapes:
+ * a test that reaches it fails loudly.
+ */
+export const NO_HISTORY = {
+  measureStoredShape: () => Promise.reject(new Error('this fake kernel has no history side')),
+  rebuild: () => Promise.reject(new Error('this fake kernel has no history side')),
+};

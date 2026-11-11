@@ -17,6 +17,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { finalShapes, linkedObjects } from './final-shapes';
+import { NO_HISTORY } from './fixtures';
 import { importFcstd } from './import';
 import type { ImportKernel } from './import-kernel';
 import { type FcDocument, type FcPlacement, readFcstd } from './model';
@@ -168,13 +169,22 @@ describe.skipIf(!root)('a folder of real .FCStd files through importFcstd', () =
             shapeMs = Math.max(shapeMs, performance.now() - t);
           }
         },
+        ...NO_HISTORY,
         restart: () => base.restart(),
       };
       const t = performance.now();
       try {
         const doc = readFcstd(bytes);
         const shapes = finalShapes(doc);
-        const { design, files: attached, report } = await importFcstd(bytes, 'X', { kernel });
+        // S3's numbers: no history walked (S5's own corpus test walks it).
+        const {
+          design,
+          files: attached,
+          report,
+        } = await importFcstd(bytes, 'X', {
+          kernel,
+          maxFileFeatures: 0,
+        });
         const ms = performance.now() - t;
         times.push(ms);
         if (ms > slowest.ms) slowest = { ms, file };

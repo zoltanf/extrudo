@@ -1,15 +1,21 @@
 /**
- * `importFcstd`: a FreeCAD file as a new Extrudo design (P6-25 S3, ADR-0144).
- * This slice brings the file's final shapes as STEP attachments on `import`
- * features; later slices add sketches and features on top.
+ * `importFcstd`: a FreeCAD file as a new Extrudo design (P6-25, ADR-0144).
+ * Each PartDesign body comes in with its history as far as it can be rebuilt
+ * and proven equal to what the file stores (S5, `bodies.ts`); every other
+ * final shape, and a body whose history stopped before its last feature,
+ * comes in as a STEP attachment on an `import` feature (S3, `shapes.ts`),
+ * with one Remove taking out what was rebuilt of such a body.
  */
 import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
+import type { SketchSolver } from '@extrudo/sketch';
+import { type BodyHistory, bodyChain, importBodies } from './bodies';
+import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
 import { readFcstd } from './model';
 import { cleanName } from './names';
-import { type ImportedShape, importShapes, type LeftOutShape } from './shapes';
+import { type ImportedShape, importShapes, type LeftOutShape, setBodies } from './shapes';
 
 /**
  * The most a `.FCStd` file may be before it is read: the import holds the
@@ -26,8 +32,24 @@ export interface FcstdImportOptions {
   readonly shapeTimeoutMs?: number;
   readonly importTimeoutMs?: number;
   readonly maxRestarts?: number;
+  /** Vets the sketches' constraints (planegcs, which the caller loads); without one no constraint is imported. */
+  readonly solver?: SketchSolver;
   readonly onProgress?: (done: number, total: number) => void;
   readonly now?: () => number;
+  /** The history walk's limits (`MAX_BODY_FEATURES`, `MAX_FILE_FEATURES`), for tests. */
+  readonly maxBodyFeatures?: number;
+  readonly maxFileFeatures?: number;
+}
+
+/** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
+export interface BodyImport extends BodyHistory {
+  /**
+   * `history`: every feature came in, no `import`. `shape`: the final shape
+   * came in as an `import` (a Remove took out what was rebuilt). `left-out`:
+   * the history stopped and the final shape couldn't come in (`leftOut` says
+   * why); what was rebuilt stays.
+   */
+  readonly outcome: 'history' | 'shape' | 'left-out';
 }
 
 /** What the import did, as plain data: the app words it. */
@@ -44,6 +66,8 @@ export interface FcstdImportReport {
   readonly linkArrays: readonly string[];
   /** How many times the import's kernel was replaced after a failure. */
   readonly restarts: number;
+  /** Each PartDesign body, in document order: what came in with its history and where it stopped. */
+  readonly bodies: readonly BodyImport[];
 }
 
 export interface FcstdImportResult {
@@ -71,7 +95,52 @@ export async function importFcstd(
     ...(options.id ? { id: options.id as never } : {}),
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   });
-  const result = await importShapes(doc, shapes, design, options);
+  const budget = new KernelBudget(options.kernel, options);
+  // Progress: each feature the walk takes, then each shape converted.
+  const steps = shapes.reduce((n, s) => {
+    if (s.kind !== 'body') return n;
+    const chain = bodyChain(doc, s.object);
+    return n + ('features' in chain ? chain.features.length : 0);
+  }, 0);
+  let walked = 0;
+  const histories = await importBodies(doc, shapes, design, {
+    budget,
+    ...(options.solver ? { solver: options.solver } : {}),
+    ...(options.maxBodyFeatures !== undefined ? { maxBodyFeatures: options.maxBodyFeatures } : {}),
+    ...(options.maxFileFeatures !== undefined ? { maxFileFeatures: options.maxFileFeatures } : {}),
+    onStep: () => options.onProgress?.(++walked, steps + shapes.length),
+  });
+  const complete = new Set(histories.filter((h) => !h.stop).map((h) => h.object));
+  const rest = shapes.filter((s) => !(s.kind === 'body' && complete.has(s.object.name)));
+  const removesAt = design.doc.features.length;
+  const result = await importShapes(doc, rest, design, {
+    ...options,
+    budget,
+    onProgress: (done, total) => options.onProgress?.(walked + done, walked + total),
+  });
+  const came = new Set(result.imported.map((s) => s.object));
+  const byObject = new Map(rest.map((s) => [s.object.name, s]));
+  const bodies: BodyImport[] = histories.map((h) => ({
+    ...h,
+    outcome: !h.stop ? 'history' : came.has(h.object) ? 'shape' : 'left-out',
+  }));
+  design.transaction('Take out the rebuilt bodies', () => {
+    let index = removesAt;
+    for (const b of bodies) {
+      if (b.bodies.length === 0) continue;
+      if (b.outcome === 'shape')
+        design.add(
+          'remove',
+          { bodies: b.bodies.map((id) => ({ kind: 'body', id })) },
+          { name: `Remove ${b.name}`, index: index++ },
+        );
+      else if (b.outcome === 'left-out') {
+        // The file's shape couldn't come in: what was rebuilt stands in for it, named as the file names it.
+        const shape = byObject.get(b.object);
+        if (shape) setBodies(design, b.bodies, shape, b.name);
+      }
+    }
+  });
   const arrays = doc.objects.filter((o) => {
     const count = o.properties.ElementCount?.value;
     return o.type === 'App::Link' && count?.kind === 'integer' && count.value > 0;
@@ -88,7 +157,8 @@ export async function importFcstd(
       finalShapes: shapes.length,
       problems: doc.problems.filter((p) => !arrayLines.has(p)),
       linkArrays,
-      restarts: result.restarts,
+      restarts: budget.restarts,
+      bodies,
     },
   };
 }

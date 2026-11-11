@@ -5,10 +5,17 @@
  * runs inside the import's own worker (`fcstdWorker.ts`), so the kernel is a
  * nested worker: terminating the import's worker ends it too, however the
  * import ends. A kernel worker that dies fails the call in progress at once
- * rather than at the time budget.
+ * rather than at the time budget. The history walk's rebuilds (S5) go
+ * through the kernel's `importRebuilder`, one per worker, so a fresh kernel
+ * after a restart is sent the files again and recomputes from nothing.
  */
 import type { ImportKernel, StoredShapeStep } from '@extrudo/fcstd';
-import { connectKernelWorker, type KernelConnection } from '@extrudo/kernel';
+import {
+  connectKernelWorker,
+  type ImportRebuilder,
+  importRebuilder,
+  type KernelConnection,
+} from '@extrudo/kernel';
 import { IMPORT_KERNEL_WORKER_NAME } from './kernelNames';
 
 export const IMPORT_KERNEL_DIED = 'the geometry kernel stopped';
@@ -27,10 +34,12 @@ export function workerImportKernel(
   spawn: () => KernelConnection = spawnImportKernel,
 ): ImportKernel & { dispose(): void } {
   let connection: KernelConnection | undefined;
+  let rebuilder: ImportRebuilder | undefined;
   let died: Promise<never> = new Promise(() => {});
   const start = () => {
     const c = spawn();
     connection = c;
+    rebuilder = importRebuilder(c.api);
     died = new Promise<never>((_, reject) => {
       c.onFatal((error) => reject(new Error(`${IMPORT_KERNEL_DIED}: ${error.message}`)));
     });
@@ -43,6 +52,14 @@ export function workerImportKernel(
       const c = connection ?? start();
       return Promise.race([c.api.storedShapeToStep(text, [...chain]), died]);
     },
+    measureStoredShape: (text, chain) => {
+      const c = connection ?? start();
+      return Promise.race([c.api.measureStoredShape(text, [...chain]), died]);
+    },
+    rebuild: (doc, files, skip) => {
+      if (!connection) start();
+      return Promise.race([(rebuilder as ImportRebuilder).rebuild(doc, files, skip), died]);
+    },
     restart: async () => {
       connection?.terminate();
       start();
@@ -50,6 +67,7 @@ export function workerImportKernel(
     dispose: () => {
       connection?.terminate();
       connection = undefined;
+      rebuilder = undefined;
     },
   };
 }

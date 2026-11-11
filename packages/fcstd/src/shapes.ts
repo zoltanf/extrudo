@@ -10,6 +10,7 @@
 import type { Design } from '@extrudo/api';
 import { type AttachmentId, addAttachment, importInputs, newId } from '@extrudo/core';
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES, sha256Hex } from '@extrudo/storage';
+import { KernelBudget } from './budget';
 import type { FinalShape } from './final-shapes';
 import type { ImportKernel, ShapeMeasure, StoredShapeStep } from './import-kernel';
 import { binaryFormProblem, type FcDocument, storedShapeText } from './model';
@@ -24,12 +25,7 @@ import { cleanName, clip, stepFileName } from './names';
 export const VOLUME_TOLERANCE = 1e-3;
 /** How far a box corner may move through STEP, relative to the box's diagonal (plus 1e-6 mm). */
 export const BOX_TOLERANCE = 1e-4;
-/** One shape's conversion (read, place, write, read back). The library's slowest takes about a second. */
-export const SHAPE_TIMEOUT_MS = 60_000;
-/** The whole import. The library's slowest file takes about ten seconds. */
-export const IMPORT_TIMEOUT_MS = 10 * 60_000;
-/** How many times a failed kernel is replaced before the rest of the shapes are left out. */
-export const MAX_RESTARTS = 3;
+export { IMPORT_TIMEOUT_MS, MAX_RESTARTS, NONSENSE_REPLY, SHAPE_TIMEOUT_MS } from './budget';
 /**
  * The most solids one stored shape may come back with. The import makes a
  * body (and a metadata record) per solid, so the count bounds what one reply
@@ -89,6 +85,8 @@ export interface ImportedShape {
 
 export interface ShapeImportOptions {
   readonly kernel: ImportKernel;
+  /** The budget to share with what ran before (the history walk); a new one from the options below when absent. */
+  readonly budget?: KernelBudget;
   readonly shapeTimeoutMs?: number;
   readonly importTimeoutMs?: number;
   readonly maxRestarts?: number;
@@ -143,7 +141,11 @@ export function disagreement(read: ShapeMeasure, back: ShapeMeasure): string | u
   return undefined;
 }
 
-const finiteMeasure = (m: unknown): boolean => {
+/**
+ * Whether one measure from the import kernel has the shape it must: a whole
+ * solid count from 0 to `MAX_SOLIDS_PER_SHAPE`, finite volume, area and box.
+ */
+export function saneMeasure(m: unknown): m is ShapeMeasure {
   if (typeof m !== 'object' || m === null) return false;
   const { solids, volume, area, box } = m as Partial<ShapeMeasure>;
   return (
@@ -160,7 +162,7 @@ const finiteMeasure = (m: unknown): boolean => {
     box.max.length === 3 &&
     [...box.min, ...box.max].every(Number.isFinite)
   );
-};
+}
 
 /**
  * Whether a reply from the import kernel has the shape it must: a string
@@ -171,42 +173,14 @@ const finiteMeasure = (m: unknown): boolean => {
 export function saneReply(reply: unknown): reply is StoredShapeStep {
   if (typeof reply !== 'object' || reply === null) return false;
   const r = reply as Partial<StoredShapeStep>;
-  return typeof r.step === 'string' && finiteMeasure(r) && finiteMeasure(r.read);
+  const read = r.read;
+  return typeof r.step === 'string' && saneMeasure(read) && saneMeasure(r);
 }
-
-/** The left-out detail for a reply `saneReply` refuses. */
-export const NONSENSE_REPLY = "the kernel's answer makes no sense";
 
 /** `|Δvolume| / volume`. */
 export function volumeDrift(read: ShapeMeasure, back: ShapeMeasure): number {
   const scale = Math.max(Math.abs(read.volume), Math.abs(back.volume));
   return scale === 0 ? 0 : Math.abs(read.volume - back.volume) / scale;
-}
-
-const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-
-type Outcome =
-  | { kind: 'done'; value: StoredShapeStep }
-  | { kind: 'failed'; error: string }
-  | { kind: 'time' };
-
-/** `work` or its time running out, whichever comes first; a late result is dropped. */
-async function within(work: Promise<StoredShapeStep>, ms: number): Promise<Outcome> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const out = new Promise<Outcome>((resolve) => {
-    timer = setTimeout(() => resolve({ kind: 'time' }), Math.max(0, ms));
-  });
-  try {
-    return await Promise.race([
-      work.then(
-        (value): Outcome => ({ kind: 'done', value }),
-        (error: unknown): Outcome => ({ kind: 'failed', error: message(error) }),
-      ),
-      out,
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 /**
@@ -255,12 +229,7 @@ export async function importShapes(
   design: Design,
   options: ShapeImportOptions,
 ): Promise<ShapeImportResult> {
-  const { kernel } = options;
-  const now = options.now ?? Date.now;
-  const shapeMs = options.shapeTimeoutMs ?? SHAPE_TIMEOUT_MS;
-  const importMs = options.importTimeoutMs ?? IMPORT_TIMEOUT_MS;
-  const maxRestarts = options.maxRestarts ?? MAX_RESTARTS;
-  const start = now();
+  const budget = options.budget ?? new KernelBudget(options.kernel, options);
   const leftOut: LeftOutShape[] = [];
   const converted: Converted[] = [];
   // The design's own attachments, by hash, and the bytes this import keeps.
@@ -273,8 +242,6 @@ export async function importShapes(
   const kept = new Map<string, Uint8Array>();
   let keptBytes = 0;
   let peakBytes = 0;
-  let restarts = 0;
-  let broken = false;
   let done = 0;
 
   for (const shape of shapes) {
@@ -292,45 +259,15 @@ export async function importShapes(
         leave(found.reason, found.detail);
         continue;
       }
-      if (broken) {
-        leave('restarts');
-        continue;
-      }
-      const left = start + importMs - now();
-      if (left <= 0) {
-        leave('import-time');
-        continue;
-      }
-      const outcome = await within(
+      const outcome = await budget.call(
         // No name or colour in the STEP: the body's metadata carries them, and
         // two objects with the same shape then share one attachment.
-        kernel.storedShapeToStep(found.text, shape.chain),
-        Math.min(shapeMs, left),
+        () => budget.kernel.storedShapeToStep(found.text, shape.chain),
+        saneReply,
       );
-      let failed = outcome.kind !== 'done';
-      if (outcome.kind === 'time')
-        leave(
-          shapeMs <= left ? 'time' : 'import-time',
-          `over ${Math.round(Math.min(shapeMs, left) / 1000)} s`,
-        );
-      else if (outcome.kind === 'failed') leave('kernel', outcome.error);
-      else if (!saneReply(outcome.value)) {
-        leave('kernel', NONSENSE_REPLY);
-        failed = true;
-      }
-      if (failed || outcome.kind !== 'done') {
-        // A failed kernel may be corrupted: nothing more from it.
-        if (restarts >= maxRestarts) {
-          broken = true;
-          continue;
-        }
-        restarts++;
-        try {
-          await kernel.restart();
-        } catch {
-          // No new kernel: the shapes after this one are left out as `restarts`.
-          broken = true;
-        }
+      if (outcome.kind !== 'done') {
+        // The budget restarted the kernel where it could; nothing more from the old one.
+        leave(outcome.kind, 'detail' in outcome ? outcome.detail : undefined);
         continue;
       }
       const step = outcome.value;
@@ -376,7 +313,8 @@ export async function importShapes(
 
   const imported: ImportedShape[] = [];
   const files = new Map<AttachmentId, Uint8Array>();
-  if (converted.length === 0) return { imported, leftOut, files, restarts, peakBytes };
+  if (converted.length === 0)
+    return { imported, leftOut, files, restarts: budget.restarts, peakBytes };
   const byHash = new Map(existing);
   design.transaction("Import the file's shapes", () => {
     for (const { shape, name, solids, drift, sha256, size } of converted) {
@@ -401,18 +339,13 @@ export async function importShapes(
       const feature = design.add('import', importInputs({ file: attachment, up: 'z' }), {
         name: `Import ${name}`,
       });
-      const colour = shape.colour ? hexColour(shape.colour) : undefined;
       // The import names a feature's bodies `<feature>:0`, `<feature>:1` … (ADR-0030).
-      for (let i = 0; i < solids; i++) {
-        design.setBody(`${feature.id}:${i}`, {
-          name: i === 0 ? name : `${name} ${i + 1}`,
-          ...(colour && colour !== FREECAD_DEFAULT_COLOUR ? { color: colour } : {}),
-          ...(shape.transparency !== undefined && shape.transparency > 0
-            ? { opacity: Math.max(0.1, Math.min(1, 1 - shape.transparency)) }
-            : {}),
-          ...(shape.visible ? {} : { visible: false }),
-        });
-      }
+      setBodies(
+        design,
+        Array.from({ length: solids }, (_, i) => `${feature.id}:${i}`),
+        shape,
+        name,
+      );
       imported.push({
         object: shape.object.name,
         name,
@@ -423,7 +356,30 @@ export async function importShapes(
       });
     }
   });
-  return { imported, leftOut, files, restarts, peakBytes };
+  return { imported, leftOut, files, restarts: budget.restarts, peakBytes };
+}
+
+/**
+ * Gives `bodies` the file's name ("Label", "Label 2" …), colour, opacity and
+ * visibility of `shape`: S3's imported bodies and S5's rebuilt ones alike.
+ */
+export function setBodies(
+  design: Design,
+  bodies: readonly string[],
+  shape: Pick<FinalShape, 'colour' | 'transparency' | 'visible'>,
+  name: string,
+): void {
+  const colour = shape.colour ? hexColour(shape.colour) : undefined;
+  bodies.forEach((id, i) => {
+    design.setBody(id, {
+      name: i === 0 ? name : `${name} ${i + 1}`,
+      ...(colour && colour !== FREECAD_DEFAULT_COLOUR ? { color: colour } : {}),
+      ...(shape.transparency !== undefined && shape.transparency > 0
+        ? { opacity: Math.max(0.1, Math.min(1, 1 - shape.transparency)) }
+        : {}),
+      ...(shape.visible ? {} : { visible: false }),
+    });
+  });
 }
 
 const mb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);

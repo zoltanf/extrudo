@@ -84,7 +84,15 @@ export interface SketchOutcome {
 }
 
 export type AddSketchResult =
-  | { readonly imported: true; readonly id: FeatureId; readonly outcome: SketchOutcome }
+  | {
+      readonly imported: true;
+      readonly id: FeatureId;
+      readonly outcome: SketchOutcome;
+      /** The Extrudo line each FreeCAD line became, by geometry index (S5: a revolve's axis line). */
+      readonly lines: readonly (string | undefined)[];
+      /** The sketch axes drawn as fixed construction lines (`AddSketchOptions.axes`). */
+      readonly axes: { readonly h?: string; readonly v?: string };
+    }
   | { readonly imported: false; readonly reason: string; readonly outcome: SketchOutcome };
 
 export interface AddSketchOptions {
@@ -92,6 +100,8 @@ export interface AddSketchOptions {
   readonly solver?: SketchSolver;
   /** The Extrudo sketch's name; the object's label by default. */
   readonly name?: string;
+  /** Sketch axes to draw as fixed construction lines even when no constraint names them (S5: a revolve's axis). */
+  readonly axes?: readonly ('h' | 'v')[];
 }
 
 /** The document's sketch objects, in document order. */
@@ -220,6 +230,7 @@ export function addSketch(
         mapped = mapSketch(k, decoded, where, {
           taken,
           ...(options.solver ? { solver: options.solver } : {}),
+          ...(options.axes ? { axes: options.axes } : {}),
         });
       },
       { name: options.name ?? object.label },
@@ -228,6 +239,8 @@ export function addSketch(
       imported: true,
       id: handle.id,
       outcome: tally(object, names, types, mapped, placed, undefined),
+      lines: mapped?.lines ?? [],
+      axes: mapped?.axes ?? {},
     };
   } catch (error) {
     return {
