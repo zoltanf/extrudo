@@ -436,7 +436,13 @@ on an indirect frame **that has a seam** is `ShapeCustom::DirectFaces`' result
 with every reversed wire rebuilt forward (OCCT's writer otherwise reverses the wire itself and its
 `ShapeFix_Wire` reorder flips a seam wire's circles); any other body goes in
 as it is, byte-identical. Guarded by `export.test.ts`'s rim-fillet test
-(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses).
+(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses). **Its fourth amendment (2026-11-11, P6-25 S1)**: the
+rebuilt face is made on the **bare** face (`Located(TopLoc_Location())`) and
+given the explorer face's location back before `Replace` (never
+`EmptyCopied()` of a located face plus its relative wires: `BRep_Builder::Add`
+moves a child by the parent's inverse location); one rebuild per `TShape`.
+Guarded by `step-located.test.ts` (three FreeCAD-made B-rep shapes, plain,
+coloured and assembly STEP).
 `@extrudo/io` has
 `TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
@@ -4433,6 +4439,22 @@ read only by the import's throwaway kernel**, never by the project's kernel and 
 nothing and keeps the text's sub-shape order (the references depend on it); readers stay linear in their input (ADR-0083's
 hostile-file amendments), the XML reader has no DTD or entities; **no library file, file name or content in the
 repository** (`FCSTD_SAMPLES=<dir>` runs the private corpus, authored files only in tests).
+
+**ADR-0144, S1 (kernel):** `Kernel.readBrep` (`packages/kernel/src/kernel.ts`) refuses with a `KernelError`, before
+the text reaches the WASM heap: over **`MAX_BREP_BYTES`** (32 MB of UTF-8, exported), a table count (`Locations` …
+`TShapes`) that isn't 0…10 digits or exceeds half the text, a word of 200+ characters, `nan`/`inf` or an exponent over
+308; it keeps the short-form rule for 18+-digit integer parts exactly (never digits after a point). The facade's
+`readBrep` reads through **`CheckedShapeSet`** (a `BRepTools_ShapeSet` whose `ReadGeometry` overrides peek ahead with
+`tellg`/`seekg`): the `TShapes` count, and per shape its flags and sub-shape list, which must end in `*`, every
+reference naming a shape already read, nesting at most `MAX_DEPTH` (256); the root reference the same; the stream
+**throws on failure** (`exceptions(failbit | badbit)`); after the read **`missingGeometry`** refuses an edge without a 3D
+curve (a degenerate edge's null one is allowed), a null pcurve or surface record, a face with neither surface nor
+triangulation. Refusals are plain words (`std::runtime_error` text; any other failure "the text is damaged or cut
+short."). **Not stopped (a second parser would be needed):** a B-spline record's pole count of 10^9 or -1 (OCCT sizes
+the array first and writes past it) — the import's throwaway kernel and time budget bound them;
+`read-brep-hostile.test.ts` keeps them as `it.skip`. Every hostile case there must end in a shape or a `KernelError`
+under 5 s with `liveShapes` unchanged and the good box readable next. A new check must keep all of the library's
+stored shapes reading (S1: all of them, see the amendment).
 
 **ADR-0144, S2 (reader):** `packages/fcstd` (`@extrudo/fcstd`, deps `fflate` only so far; registered in
 `scripts/check-boundaries.mjs`) reads an `.FCStd` into plain data and knows nothing of Extrudo's document, API or

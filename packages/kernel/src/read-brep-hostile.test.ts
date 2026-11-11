@@ -18,16 +18,14 @@ beforeAll(async () => {
 
 /**
  * The cases nothing short of a second B-rep parser stops: OCCT sizes a
- * B-spline's arrays from the counts in its record before it reads a pole, and
- * only a reader of every curve and surface record knows which number is a
- * count. The import's time budget and its throwaway kernel (ADR-0144) are
- * what bound them.
+ * B-spline's pole array from the count in its record before it reads a pole,
+ * and the poles it then reads go past the array (probably because the byte
+ * size wraps in 32 bits; not verified). Only a reader of every curve and surface record knows which number
+ * is such a count. The import's throwaway kernel and its time budget
+ * (ADR-0144) are what bound them. (A knot count of 10^9 is stopped: the first
+ * read past the text throws before the array is written.)
  */
-const UNSTOPPED = new Set([
-  'a B-spline pole count of 10^9',
-  'a B-spline knot count of 10^9',
-  'a B-spline pole count of -1',
-]);
+const UNSTOPPED = new Set(['a B-spline pole count of 10^9', 'a B-spline pole count of -1']);
 
 /** Reads `text`; a shape comes back after a check and a count, released. */
 function readOrRefuse(text: string): 'shape' | 'refused' {
