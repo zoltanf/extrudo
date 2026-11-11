@@ -4442,6 +4442,25 @@ polygonal run would leave a mesh of its own that the display mesher keeps; views
 between them, and only `onView`'s `false` or `cancelSheetViews()` stops a run (not a newer call, not a recompute: a
 later view draws the new bodies and its `versions` say so). Goldens: `pnpm vitest run
 packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path as its value and runs every test).
+**S3 dimensions (package 1, no UI):** the `dimension` item and `SheetAnchor` (`{ ref, at? }`, `{ ref, silhouette: 1 |
+-1 }`, `{ free }`) in `core/src/sheet-schema.ts` with `dimensionProblems` (the anchors fit the type; `direction` only on
+`linear`), refs reminted by `remintSheets`; report types and `sheetSilhouetteSide`, `keepLastAnchors` in
+`core/src/sheet-anchors.ts`; `kernel/src/sheets/anchors.ts` (`resolveSheetAnchor`), `RecomputeEngine.resolveSheet`,
+`KernelApi.resolveSheet(sheet)` and `Recomputer.resolveSheet`; measuring and layout in `sheets/src/dimensions.ts`
+(`measureSheetDimension`, `layoutSheetDimension`, `sheetDimensionText`, `SHEET_DIMENSION`; `layoutSheet` takes
+`context.anchors` and `context.units`). Rules a change must keep: **no value is stored** (a dimension's text is measured
+each time; `at` and free anchors are view mm, so they move and scale with the view); **every anchor ref has a fingerprint
+and is never `index:`**; an anchor resolves through `#references` like an annotation (rolled back or not found:
+`detached`; related name or fingerprint: `moved`), **a lost anchor never throws, never fails a recompute and never
+refuses a delete**; a resolved anchor whose geometry can't give what is asked (a line's centre, a flat face's radius)
+is `ok`/`moved` with a `message` and no `geometry`, which layout draws as `invalid`; **linear and angle values are
+measured in the view's plane, radius and diameter on the circle itself**; the text follows the anchors by the mean
+move of their fingerprint points; display items carry `state` (`moved`, `detached`, `invalid`) for the screen, **never
+a screen colour**; a detached dimension draws from the geometry the caller kept (`keepLastAnchors`), else its text alone
+at `at` with `?` for the value. The silhouette side is `sheetSilhouetteSide` (axis with canonical sign × view direction).
+`@extrudo/sheets` has the kernel as a devDependency only (`dimensions.kernel.test.ts`; `SHEETS_OUT=<dir>` writes a sample
+PDF). The naming service's fingerprint can re-find a near edge after its feature is deleted (B2's pocket floor →
+the box's bottom edge, `moved`); tests that need `detached` anchor to geometry with no near match.
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
