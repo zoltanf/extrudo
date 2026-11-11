@@ -303,7 +303,9 @@ async function viewBox(page: Page, id: string): Promise<[number, number, number,
   return paths.evaluateAll((all) => {
     let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
     for (const p of all) {
-      const b = (p as unknown as SVGGraphicsElement).getBBox();
+      const b = (
+        p as unknown as { getBBox(): { x: number; y: number; width: number; height: number } }
+      ).getBBox();
       x0 = Math.min(x0, b.x);
       y0 = Math.min(y0, b.y);
       x1 = Math.max(x1, b.x + b.width);
