@@ -358,7 +358,8 @@ export default function SheetWorkspace({
     /** What is drawn while typing (a new leader's arrow), sheet mm. */
     shows?: DisplayItem[];
   }>();
-  const typedAt = useRef(0);
+  // Whether the press now under way began while typing: its click only finishes the typing.
+  const pressedWhileTyping = useRef(false);
   const leaderTool = usePickTool({
     ...toolArgs,
     active: noteTool === 'leader',
@@ -555,9 +556,16 @@ export default function SheetWorkspace({
           ? measureSheetDimension(sheet, item, anchors, options).text
           : undefined;
       const moved = status.state === 'moved' && !status.message ? MOVED[item.kind] : undefined;
+      // A lost note says the kernel's reason when it has one (a deleted, suppressed or failed
+      // feature), as a dimension does (`measureSheetDimension`).
+      const lostWhy =
+        status.state === 'detached' && item.kind !== 'dimension'
+          ? anchors?.[item.id]?.find((r) => r.status === 'detached' && r.message)?.message
+          : undefined;
       rows.set(item.id, {
         ...status,
         ...(moved && { message: moved }),
+        ...(lostWhy && { message: lostWhy }),
         ...(text !== undefined && { text }),
       });
     }
@@ -668,7 +676,6 @@ export default function SheetWorkspace({
   const commitText = (text: string) => {
     const now = editing;
     setEditing(undefined);
-    typedAt.current = performance.now();
     if (!now || text.trim() === '') return;
     if (now.make) {
       const item = now.make(text);
@@ -688,12 +695,9 @@ export default function SheetWorkspace({
     });
     if (error) notify('error', error);
   };
-  const endText = () => {
-    setEditing(undefined);
-    typedAt.current = performance.now();
-  };
-  /** A click of a tool while typing (or the one that just ended it) only finishes typing. */
-  const busyTyping = () => editing !== undefined || performance.now() - typedAt.current < 400;
+  const endText = () => setEditing(undefined);
+  /** A click of a tool while typing (the one that ends it) only finishes typing. */
+  const busyTyping = () => editing !== undefined || pressedWhileTyping.current;
   /** Text and Sticky Note: a click starts a new one there, typed in place. */
   const placeText = (point: Vec2) => {
     if (busyTyping()) return;
@@ -815,7 +819,7 @@ export default function SheetWorkspace({
       runSheetCommand(stores, { ...updateSheetItem({ id, changes }), label });
   const noteToolId = activeTool && (textTool || noteTool) ? (activeTool as NoteToolId) : undefined;
   const noteStepText = editing
-    ? 'Type the text. Enter finishes, Esc leaves it.'
+    ? 'Type the text.'
     : noteTool && picker
       ? picker.busy
         ? 'Reading the pick…'
@@ -824,7 +828,13 @@ export default function SheetWorkspace({
         ? 'Click where the text starts, then type.'
         : 'Click where the note goes, then type.';
   return (
-    <div className="absolute inset-0 z-[5]" data-sheet-workspace="">
+    <div
+      className="absolute inset-0 z-[5]"
+      data-sheet-workspace=""
+      onPointerDownCapture={() => {
+        pressedWhileTyping.current = editing !== undefined;
+      }}
+    >
       <SheetCanvas
         list={list}
         sheetId={sheet.id}
