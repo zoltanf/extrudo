@@ -78,6 +78,7 @@ export {
   Kernel,
   KernelError,
   type KernelStats,
+  MAX_BREP_BYTES,
   MESH_HANDLE_BASE,
   MeshBodyError,
   MeshError,
