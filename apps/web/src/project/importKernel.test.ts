@@ -1,6 +1,12 @@
 import type { KernelApi, KernelConnection } from '@extrudo/kernel';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IMPORT_KERNEL_DIED, workerImportKernel } from './importKernel';
+import { IMPORT_KERNEL_WORKER_NAME } from './kernelNames';
+import { spawnProjectKernel } from './spawnKernel';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 /** A connection whose calls never answer unless told to, and which can die. */
 function fakeConnection(answer?: unknown) {
@@ -53,5 +59,32 @@ describe("the FreeCAD import's kernel worker (ADR-0144 decision 5)", () => {
     const call = kernel.storedShapeToStep('text', []);
     c.die('out of memory');
     await expect(call).rejects.toThrow(`${IMPORT_KERNEL_DIED}: out of memory`);
+  });
+});
+
+describe('which kernel worker is an import kernel (ADR-0144 decision 5)', () => {
+  it("is named so only by the import's spawner, never by a project's", async () => {
+    const started: { url: string; name?: string }[] = [];
+    vi.stubGlobal(
+      'Worker',
+      class {
+        constructor(url: URL, options?: WorkerOptions) {
+          started.push({ url: String(url), ...(options?.name ? { name: options.name } : {}) });
+        }
+        addEventListener() {}
+        removeEventListener() {}
+        postMessage() {}
+        terminate() {}
+      },
+    );
+    spawnProjectKernel().terminate();
+    const kernel = workerImportKernel();
+    void kernel.storedShapeToStep('text', []).catch(() => {});
+    kernel.dispose();
+    expect(started).toHaveLength(2);
+    expect(started[0]?.name).toBe('extrudo-kernel');
+    expect(started[1]?.name).toBe(IMPORT_KERNEL_WORKER_NAME);
+    // The same entry: one kernel bundle in the build, not two.
+    expect(started[1]?.url.replace(/\?.*$/, '')).toBe(started[0]?.url.replace(/\?.*$/, ''));
   });
 });

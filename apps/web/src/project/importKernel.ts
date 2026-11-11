@@ -1,6 +1,7 @@
 /**
  * The FreeCAD importer's `ImportKernel` (ADR-0144 decision 2) on a throwaway
- * kernel worker started as an import kernel (`importKernelWorker.ts`). It
+ * kernel worker started as an import kernel: the project's kernel entry
+ * (`kernelWorker.ts`) under the name `IMPORT_KERNEL_WORKER_NAME`. It
  * runs inside the import's own worker (`fcstdWorker.ts`), so the kernel is a
  * nested worker: terminating the import's worker ends it too, however the
  * import ends. A kernel worker that dies fails the call in progress at once
@@ -8,14 +9,15 @@
  */
 import type { ImportKernel, StoredShapeStep } from '@extrudo/fcstd';
 import { connectKernelWorker, type KernelConnection } from '@extrudo/kernel';
+import { IMPORT_KERNEL_WORKER_NAME } from './kernelNames';
 
 export const IMPORT_KERNEL_DIED = 'the geometry kernel stopped';
 
 function spawnImportKernel(): KernelConnection {
   return connectKernelWorker(
-    new Worker(new URL('./importKernelWorker.ts', import.meta.url), {
+    new Worker(new URL('./kernelWorker.ts', import.meta.url), {
       type: 'module',
-      name: 'extrudo-import-kernel',
+      name: IMPORT_KERNEL_WORKER_NAME,
     }),
   );
 }

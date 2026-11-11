@@ -346,10 +346,14 @@ and copies share one attachment.
 
 Decision 5 is enforced in code: the service refuses the call with a
 `KernelError` unless it was started with `KernelServiceOptions.importKernel`.
-Only `serveKernel({ importKernel: true })` in
-`apps/web/src/project/importKernelWorker.ts` sets it; the project's kernel
-worker, the kernel's own and the debug worker never do. A test shows a normal
-kernel refuses.
+In the app only `apps/web/src/project/kernelWorker.ts` sets it, and only when
+its worker was spawned under the name `IMPORT_KERNEL_WORKER_NAME`, which only
+the import's spawner (`importKernel.ts`) gives; the project's spawner names
+its kernel `extrudo-kernel`, and the kernel's own and the debug worker never
+set the option. Tests show a normal kernel refuses and that only the
+import's spawner uses the name. (A second entry of its own, the first
+version, put another 624 KB copy of the kernel's JavaScript in the build and
+took the app over its 2 MB brotli budget, ADR-0100 §5.)
 
 **Where the kernel worker starts:** inside the import's own module worker
 (`fcstdWorker.ts`), as a nested worker (`importKernel.ts`). The app already

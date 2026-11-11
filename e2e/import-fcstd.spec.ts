@@ -60,7 +60,6 @@ test("a FreeCAD file opens as a new design with the file's shapes as bodies", as
     });
   await expect(bodyLeaf(page, 'Hidden box')).toHaveAttribute('data-body-display', 'hidden');
   expect(workers.some((url) => /fcstdWorker/.test(url))).toBe(true);
-  expect(workers.some((url) => /importKernelWorker/.test(url))).toBe(true);
 });
 
 test("a file that isn't a FreeCAD file says why, and the page stays", async ({ page }) => {

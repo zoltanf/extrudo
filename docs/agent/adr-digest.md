@@ -4538,9 +4538,11 @@ file as the investigation's; change the rule only with the corpus run's new numb
 options?)` (on `KernelApi`, `worker-api.ts`, `browser.ts`) reads, places (outermost first), writes STEP and reads it back
 in one call, releasing every shape, and returns both measures; no solid gives `step: ''`; the STEP header's time stamp is
 fixed (same shape → same bytes → one attachment). **It refuses with a `KernelError` unless the service was started with
-`KernelServiceOptions.importKernel`**, set only by `serveKernel({ importKernel: true })` in
-`apps/web/src/project/importKernelWorker.ts`: never set it in the project's kernel worker (`kernelWorker.ts`,
-`spawnProjectKernel`), the kernel's own or the debug worker; `stored-shape.test.ts` proves a normal kernel refuses.
+`KernelServiceOptions.importKernel`**, set in the app only by `kernelWorker.ts` when its worker's name is
+`IMPORT_KERNEL_WORKER_NAME` (`kernelNames.ts`), a name only `importKernel.ts` spawns with: never give that name in
+`spawnProjectKernel` (`extrudo-kernel`), never set the option in the kernel's own or the debug worker, and don't add a
+second kernel entry for the import (a second copy of the kernel JS breaks ADR-0100 §5's app-JS budget);
+`stored-shape.test.ts` proves a normal kernel refuses, `importKernel.test.ts` that only the import uses the name.
 `packages/fcstd`: `import-kernel.ts` (`ImportKernel`: `storedShapeToStep`, `restart`; extend it, never import the kernel
 outside tests), `shapes.ts` `importShapes` (one `import` feature per final shape in document order, `Import <label>`,
 bodies `<feature>:<n>` named "Label", "Label 2" … through **`Design.setBody`** (new API method: name, colour, opacity,

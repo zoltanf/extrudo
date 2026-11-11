@@ -1151,7 +1151,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   history." and the "Not imported: Scan (…); Empty body (no shape)." line; body rows are
   `[data-body]` filtered by the name button (`exact: true`), `data-body-display` "shown" or
   "hidden" ("Hidden box"); the compound gives "Pair" and "Pair 2". `page.on('worker')` sees
-  both `fcstdWorker` and the nested `importKernelWorker`. A file that isn't a zip ends in the
+  `fcstdWorker` (its nested kernel is a `kernelWorker` like the project's, so its URL tells
+  nothing). A file that isn't a zip ends in the
   `alert` toast "Import failed: This file can't be read as a FreeCAD file: …". The first test
   allows 60 s for the kernel worker to start under load.
 
