@@ -256,7 +256,7 @@ shows. A check written `mode !== 'model'` already covers the new mode; one writt
   `sheets` out (`recompute/engine.ts`, `recomputer.ts`, beside the
   annotations). Sheets are in no cache key.
 
-**Forward compatibility** (the coordinator's decision): on load, a sheet item
+**Forward compatibility**: on load, a sheet item
 whose `kind` this version doesn't know is left out and listed in `dropped` by
 its path (`sheets.0.items.2`), the path an unknown key takes
 (`parseLeniently`), so `loadNotice` reports it; it never fails the design. An
