@@ -71,7 +71,16 @@ describe('the wall bracket template on a sheet', () => {
         if ('error' in drawn) throw new Error(drawn.error);
         expect(drawn.geometry.exact).toBe(true);
         expect(drawn.geometry.curves.length).toBeGreaterThan(0);
-        views.set(want.request.id as SheetViewId, sheetViewLines(drawn.geometry));
+        // The template's feature IDs are new each time, and the curves' order follows their
+        // names: sort them by what they draw, so the golden compares geometry only.
+        const lines = sheetViewLines(drawn.geometry);
+        const key = (c: (typeof lines.curves)[number]) => `${c.kind}${JSON.stringify(c.contours)}`;
+        views.set(want.request.id as SheetViewId, {
+          ...lines,
+          curves: [...lines.curves].sort((a, b) =>
+            key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0,
+          ),
+        });
       }
       engine.clear();
       // The front view: the L's profile, 40 mm across and 60 up at 1:2 (from the origin).

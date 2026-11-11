@@ -35,7 +35,7 @@ import { Button, Select, ToolIcon } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import { CommitField, Row, Segmented, Switch } from './controls';
 import { baseViewOf } from './viewLines';
-import { type LookingFrom, lookingFromOf, rescaledAt, STANDARD_SCALES, scaleText } from './views';
+import { type LookingFrom, lookingFromOf, STANDARD_SCALES, scaleText } from './views';
 
 const CARD =
   'pointer-events-auto flex shrink-0 flex-col gap-3 rounded-dialog border border-line p-3 shadow-raised backdrop-blur-[6px]';
@@ -200,10 +200,13 @@ export interface SheetViewCardProps {
   /** The bodies at the marker, in the browser's order. */
   bodies: readonly BodyId[];
   choices: readonly LookingFrom[];
-  /** Around the view's lines (view mm), when drawn: a new scale keeps their middle in place. */
-  bounds?: { min: readonly number[]; max: readonly number[] };
   /** One change as one undo step; returns a refusal's message. */
   change(changes: SheetViewChanges, label: string): string | undefined;
+  /**
+   * A new scale (`undefined`: the sheet's) as one undo step: the view keeps its middle and
+   * its projected views follow (`rescaleSheetView`); returns a refusal's message.
+   */
+  rescale(scale: SheetScale | undefined): string | undefined;
   notify(tone: 'info' | 'error', text: string): void;
   onDelete(): void;
   onFinish(): void;
@@ -216,8 +219,8 @@ export function SheetViewCard({
   view,
   bodies,
   choices,
-  bounds,
   change,
+  rescale,
   notify,
   onDelete,
   onFinish,
@@ -288,10 +291,8 @@ export function SheetViewCard({
                 sheet={sheet}
                 value={view.scale}
                 onChange={(scale) => {
-                  const [a, b] = view.scale ?? sheet.scale;
-                  const [c, d] = scale ?? sheet.scale;
-                  const at = rescaledAt(view.at, bounds, a / b, c / d);
-                  apply({ scale: scale ?? null, at }, 'View scale');
+                  const problem = rescale(scale);
+                  if (problem) notify('error', problem);
                 }}
               />
             </Row>
@@ -370,7 +371,8 @@ export function SheetViewCard({
       {followers.length > 0 && base?.id === view.id && (
         <p className="text-sm text-accent">
           {followers.map((v) => v.name).join(' and ')}{' '}
-          {followers.length === 1 ? 'follows' : 'follow'} this view: scale, style and bodies.
+          {followers.length === 1 ? 'follows' : 'follow'} this view: it moves, scales and restyles
+          with it.
         </p>
       )}
       <Button onClick={onDelete}>
@@ -453,6 +455,43 @@ export function BaseViewPanel({
       <p className="text-sm text-muted">
         {drawing ? 'Drawing the view…' : 'Click on the sheet to place the view. Esc ends the tool.'}
       </p>
+    </section>
+  );
+}
+
+/**
+ * Projected View's panel while the tool runs (plan §4.5): which view it projects from and
+ * what to do; before a view is chosen, how to choose one.
+ */
+export function ProjectedViewPanel({
+  parent,
+  side,
+  drawing,
+}: {
+  /** The parent view's name; absent until one is chosen. */
+  parent?: string;
+  /** What the pointer's place gives ("Top"). */
+  side?: string;
+  drawing: boolean;
+}) {
+  return (
+    <section aria-label="Projected view" className={CARD} style={CARD_STYLE}>
+      <Heading name="Projected View" kind="tool" />
+      {parent ? (
+        <>
+          <p className="text-sm" data-projected-next={side}>
+            From <span className="font-semibold">{parent}</span>
+            {side ? <span className="text-muted"> · next: {side}</span> : null}
+          </p>
+          <p className="text-sm text-muted">
+            {drawing
+              ? 'Drawing the view…'
+              : 'Move beside, above or below it for the view of that side, or diagonally for an isometric. Click to place; Esc ends the tool.'}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-muted">Click the view to project from. Esc ends the tool.</p>
+      )}
     </section>
   );
 }

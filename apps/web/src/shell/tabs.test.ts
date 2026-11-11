@@ -26,7 +26,7 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     expect(labels('sheet')).toEqual(['Home', 'Drawing']);
     const drawing = TABS.find((t) => t.id === 'sheet');
     expect(drawing?.groups.map((g) => [g.label, g.tools])).toEqual([
-      ['Views', ['baseView']],
+      ['Views', ['baseView', 'projectedView']],
       ['Sheet', ['newSheet', 'sheetSetup']],
       ['Output', ['exportSheets']],
     ]);

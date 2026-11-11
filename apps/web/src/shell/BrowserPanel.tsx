@@ -1390,6 +1390,7 @@ function BodyEyeToggle({
 }
 
 /** What a body row drag carries: a JSON list of body IDs (P6-05 S3). */
+/** The type a dragged body row carries (the drawing's sheet takes it too: `SheetCanvas`). */
 const BODIES_MIME = 'application/x-extrudo-bodies';
 
 /**

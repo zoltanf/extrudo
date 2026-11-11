@@ -168,44 +168,105 @@ function viewScale(sheet: Sheet, id: SheetViewId): number {
   return a / b;
 }
 
+/** A view's move on the sheet, mm. */
+export type SheetDelta = readonly [number, number];
+
 /**
- * The commands that move the targets by (`dx`, `dy`) sheet mm: each view's `at`, and each
- * item's. An item tied to a view (a dimension) keeps its `at` in the view's own frame
- * (model mm, y up), so its move is scaled and flipped; it moves with its view when that is
- * moved too.
+ * How far each view moves when the targets are moved by (`dx`, `dy`) sheet mm (S2, plan
+ * §4.2): a projected view placed beside its parent moves only across (left, right) or only
+ * up and down (above, below), so it stays lined up with it, unless `free` (Alt) or its
+ * parent moves too; an isometric one moves freely. A view's projected views that are not
+ * moved themselves follow it along the coordinate they share with it (all of its move for
+ * an isometric one), at any depth. Items are not in the map (`moveCommands` moves them).
+ */
+export function viewDeltas(
+  sheets: readonly Sheet[],
+  targets: readonly SheetTarget[],
+  dx: number,
+  dy: number,
+  free = false,
+): Map<SheetViewId, SheetDelta> {
+  const chosen = new Set(targets.filter((t) => t.startsWith('view:')).map((t) => t.slice(5)));
+  const out = new Map<SheetViewId, SheetDelta>();
+  for (const sheet of sheets) {
+    const views = sheet.views.filter((v) => chosen.has(v.id));
+    if (views.length === 0) continue;
+    const queue: SheetViewId[] = [];
+    for (const view of views) {
+      const from = view.from;
+      const along =
+        free || from.kind === 'base' || chosen.has(from.parent)
+          ? 'both'
+          : from.side === 'left' || from.side === 'right'
+            ? 'x'
+            : from.side === 'above' || from.side === 'below'
+              ? 'y'
+              : 'both';
+      out.set(view.id, [along === 'y' ? 0 : dx, along === 'x' ? 0 : dy]);
+      queue.push(view.id);
+    }
+    // The projected views of a moved view follow it.
+    while (queue.length > 0) {
+      const id = queue.shift() as SheetViewId;
+      const [ex, ey] = out.get(id) ?? [0, 0];
+      for (const child of sheet.views) {
+        if (child.from.kind !== 'projected' || child.from.parent !== id || out.has(child.id)) {
+          continue;
+        }
+        const side = child.from.side;
+        const follow: SheetDelta =
+          side === 'left' || side === 'right'
+            ? [0, ey]
+            : side === 'above' || side === 'below'
+              ? [ex, 0]
+              : [ex, ey];
+        out.set(child.id, follow);
+        queue.push(child.id);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The commands that move the targets by (`dx`, `dy`) sheet mm: each view's `at` as
+ * `viewDeltas` says (its projected views with it), and each item's. An item tied to a view
+ * (a dimension) keeps its `at` in the view's own frame (model mm, y up), so its move is
+ * scaled and flipped; it moves with its view when that is moved too.
  */
 export function moveCommands(
   sheets: readonly Sheet[],
   targets: readonly SheetTarget[],
   dx: number,
   dy: number,
+  free = false,
 ): Command[] {
   const out: Command[] = [];
-  const views = new Set(targets.filter((t) => t.startsWith('view:')).map((t) => t.slice(5)));
+  const deltas = viewDeltas(sheets, targets, dx, dy, free);
   for (const target of targets) {
-    if (target.startsWith('item:')) {
-      const id = target.slice(5) as SheetItemId;
-      const at = findSheetItem(sheets, id);
-      const sheet = at && sheets[at.sheet];
-      const item = at && sheet?.items[at.item];
-      if (!sheet || !item) continue;
-      const [x, y] = item.at;
-      const view = sheetItemView(item);
-      if (view === undefined) {
-        out.push(updateSheetItem({ id, changes: { at: [round(x + dx), round(y + dy)] } }));
-      } else if (!views.has(view)) {
-        const k = viewScale(sheet, view);
-        out.push(updateSheetItem({ id, changes: { at: [round(x + dx / k), round(y - dy / k)] } }));
-      }
-    } else if (target.startsWith('view:')) {
-      const id = target.slice(5) as SheetViewId;
-      const at = findSheetView(sheets, id);
-      const view = at && sheets[at.sheet]?.views[at.view];
-      if (!view) continue;
-      out.push(
-        updateSheetView({ id, changes: { at: [round(view.at[0] + dx), round(view.at[1] + dy)] } }),
-      );
+    if (!target.startsWith('item:')) continue;
+    const id = target.slice(5) as SheetItemId;
+    const at = findSheetItem(sheets, id);
+    const sheet = at && sheets[at.sheet];
+    const item = at && sheet?.items[at.item];
+    if (!sheet || !item) continue;
+    const [x, y] = item.at;
+    const view = sheetItemView(item);
+    if (view === undefined) {
+      out.push(updateSheetItem({ id, changes: { at: [round(x + dx), round(y + dy)] } }));
+    } else if (!deltas.has(view)) {
+      const k = viewScale(sheet, view);
+      out.push(updateSheetItem({ id, changes: { at: [round(x + dx / k), round(y - dy / k)] } }));
     }
+  }
+  for (const [id, [ex, ey]] of deltas) {
+    if (ex === 0 && ey === 0) continue;
+    const at = findSheetView(sheets, id);
+    const view = at && sheets[at.sheet]?.views[at.view];
+    if (!view) continue;
+    out.push(
+      updateSheetView({ id, changes: { at: [round(view.at[0] + ex), round(view.at[1] + ey)] } }),
+    );
   }
   return out;
 }
@@ -234,14 +295,18 @@ export function runAsOneStep(store: DocumentStore, label: string, steps: readonl
   }
 }
 
-/** Moves the targets by (`dx`, `dy`) mm as one undo step (a drag, an arrow key). */
+/**
+ * Moves the targets by (`dx`, `dy`) mm as one undo step (a drag, an arrow key); `free` (Alt)
+ * lets a projected view leave its parent's line.
+ */
 export function moveTargets(
   store: DocumentStore,
   targets: readonly SheetTarget[],
   dx: number,
   dy: number,
+  free = false,
 ): void {
-  const commands = moveCommands(store.getState().doc.sheets ?? [], targets, dx, dy);
+  const commands = moveCommands(store.getState().doc.sheets ?? [], targets, dx, dy, free);
   runAsOneStep(
     store,
     'Move on sheet',

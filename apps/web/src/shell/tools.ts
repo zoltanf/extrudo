@@ -893,6 +893,13 @@ export const TOOLS = {
     category: 'create',
     hint: 'A view of the model from a direction you choose: the frame follows the pointer, a click places it.',
   },
+  projectedView: {
+    id: 'projectedView',
+    label: 'Projected View',
+    icon: 'projected-view',
+    category: 'create',
+    hint: 'Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.',
+  },
   newSheet: {
     id: 'newSheet',
     label: 'New Sheet',
@@ -1206,7 +1213,7 @@ export const TABS: Tab[] = [
     id: 'sheet',
     label: 'Drawing',
     groups: [
-      { label: 'Views', tools: ['baseView'] },
+      { label: 'Views', tools: ['baseView', 'projectedView'] },
       { label: 'Sheet', tools: ['newSheet', 'sheetSetup'] },
       { label: 'Output', tools: ['exportSheets'] },
     ],

@@ -34,7 +34,7 @@ import {
   type SheetId,
   type ViewId,
 } from '@extrudo/core';
-import type { BodyMesh, Recomputer } from '@extrudo/kernel';
+import { type BodyMesh, type Recomputer, shownBodies as shownBodyIds } from '@extrudo/kernel';
 import type { Matrix12 } from '@extrudo/kernel/matrix';
 import {
   type ComponentProps,
@@ -1442,6 +1442,21 @@ function Shell({
   // amendment of 2026-11-06); the next Undo takes back one edit.
   // The drawing's sheet actions (P6-24): the sheet tabs', the browser rows' and Ctrl+K's.
   // Export PDF and Export This Sheet open the export dialog (mock-up 4) on those sheets.
+  // New drawing's bodies: those at the marker that are shown, by name (S2).
+  const newSheetBodies = useMemo(
+    () =>
+      newSheetsOpen
+        ? shownBodyIds(doc, Object.keys(bodies) as BodyId[]).map((id) => ({
+            id,
+            name: doc.bodies[id]?.name ?? 'Body',
+          }))
+        : [],
+    [newSheetsOpen, doc, bodies],
+  );
+  const sheetViewsKernel =
+    kernel?.sheetViews && kernel.cancelSheetViews && kernel.bodyVersions
+      ? (kernel as SheetViewsKernel)
+      : undefined;
   const exportSheets = useCallback(
     (ids?: readonly SheetId[]) => setSheetExport(ids ? { ids } : {}),
     [],
@@ -2003,11 +2018,12 @@ function Shell({
       exportSheets();
       return;
     }
-    // Base View (P6-24 S2): the tool runs on the sheet until a click places the view or Esc.
-    if (tool === 'baseView') {
+    // Base View and Projected View (P6-24 S2): they run on the sheet until Esc.
+    if (tool === 'baseView' || tool === 'projectedView') {
       if (mode !== 'sheet') return;
       viewport.getState().setTool(undefined);
-      session.getState().clearSelection();
+      // Projected View starts from the view selected, if one is.
+      if (tool === 'baseView') session.getState().clearSelection();
       session.getState().setTool(activeTool === tool ? undefined : tool);
       return;
     }
@@ -3546,9 +3562,29 @@ function Shell({
       <NewSheetsDialog
         open={newSheetsOpen}
         onOpenChange={setNewSheetsOpen}
-        onCreate={(options) => {
+        bodies={newSheetBodies}
+        {...(sheetViewsKernel && {
+          plan: (start, request) =>
+            import('../sheets/standardViews').then((m) =>
+              m.planSheetStart(
+                sheetViewsKernel,
+                store.getState().doc,
+                Object.keys(model.getState().bodies) as BodyId[],
+                start,
+                request,
+              ),
+            ),
+        })}
+        onCreate={(options, start, plan) => {
           setNewSheetsOpen(false);
-          createSheet(stores, options);
+          createSheet(
+            stores,
+            options,
+            new Date(),
+            plan ? { scale: plan.scale, views: plan.views } : {},
+          );
+          // One view: Base View places it (and carries on as Projected View).
+          if (start === 'one') session.getState().setTool('baseView');
         }}
       />
       <MacroDialog
