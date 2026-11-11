@@ -129,7 +129,7 @@ const sticky = (
 const paths = (items: DisplayItem[]) => items.filter((i): i is DisplayPath => i.type === 'path');
 const texts = (items: DisplayItem[]) => items.filter((i): i is DisplayText => i.type === 'text');
 const close = (a: readonly number[] | undefined, b: readonly number[]) =>
-  a !== undefined && a.every((x, i) => Math.abs(x - (b[i] as number)) < 1e-6);
+  a?.every((x, i) => Math.abs(x - (b[i] as number)) < 1e-6) === true;
 /** Each line of a stroked path as [x0, y0, x1, y1]. */
 const segments = (path: DisplayPath | undefined) =>
   (path?.contours ?? []).map((c) => {

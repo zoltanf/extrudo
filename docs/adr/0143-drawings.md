@@ -364,6 +364,86 @@ No facade change.
   among the view's bodies (projected views would need the app's body rules in the kernel; annotations
   resolve among all bodies); screen colours or dashes in the display list for a detached dimension.
 
+## Amendment (S4, notes: document, anchors, layout), 2026-11-11
+
+Package 1 of S4: leader notes, sticky notes, centre marks and centre lines without UI (no
+tools, no snapping rows). Files: `packages/core/src/sheet-schema.ts` (four item schemas,
+`SHEET_STICKY_COLORS`, `sheetItemAnchors`, `mapSheetItemAnchors`, `sheetItemProblems`),
+`remintSheets`, the `axis` geometry in `core/src/sheet-anchors.ts`,
+`packages/kernel/src/sheets/anchors.ts` (`faceAs`, `lostFeature`'s words per kind),
+`RecomputeEngine.resolveSheet`, and in `@extrudo/sheets` the new `anchored.ts` (what every
+anchored item shares, moved out of `dimensions.ts` unchanged) and `notes.ts`. No facade
+change.
+
+- **The items** follow plan §5.1. `leader`: `view`, one `anchor`, `at`, `text` (not blank,
+  newlines kept). `sticky`: `at`, `size` (5 to 1000 mm a side), `text` (not blank),
+  `color` (`yellow`, `orange`, `pink`, `blue`, `green`; absent: yellow), `print` (only as
+  `true`). `centreMark` and `centreLine`: `view`, `anchors` (one or two in the schema; the
+  rule decides). Frames as S3 settled them: a leader's `at` and every anchor are in the
+  view's own mm; a sticky note belongs to the sheet and has sheet mm.
+- **What fits a kind** (`sheetItemProblems`, applied by `sheetProblems` with the dimension's
+  rule): a leader takes any one anchor; a centre mark one whole edge (a circle, told when it
+  resolves) or a cylinder's face; a centre line two whole edges or outlines (parallel in the
+  view, told at layout) or one cylinder's or cone's face. Every item with a `view` must name
+  a view of its own sheet; `removeSheetView` already removes them by `view`.
+- **One place says which items have anchors**: `sheetItemAnchors(item)` (a leader's anchor
+  as a list of one). The kernel resolves those, `remintSheets` rewrites them through
+  `mapSheetItemAnchors`, and layout reads their reports by that index; a new anchored kind is
+  added there and nowhere else.
+- **Resolving** is the S3 pass for every anchored item, the deleted and suppressed rule
+  included, with the message in the item's words ("The feature this was drawn on is
+  deleted.", "Unsuppress it to show the note / centre mark / centre line again."; a
+  dimension's words are unchanged). **A whole face stands for what the item takes of it**
+  (`faceAs`): a circle for a dimension and a centre mark (a cylinder's), the **axis** for a
+  centre line (a cylinder's or cone's: the stretch of the axis between the lowest and highest
+  points of the face's edges along it, `{ type: 'axis', start, end }`, world mm), and a
+  point for a leader (the face's centroid, where its dot goes).
+- **Layout** (`notes.ts`; lines 0.18 mm, text 3.5 mm, keys `item:<id>`, `state` as a
+  dimension's): a **leader** is a filled 3 × 1 mm arrowhead on the anchor (a 0.75 mm dot on
+  a face), the line to `at`, a 3 mm level shoulder away from the arrow and the text 1 mm past
+  it, its first line's capitals centred on the shoulder, further lines below (left of the
+  arrow the lines end there). On a whole edge the arrow lands on the edge's nearest point to
+  the text, on a circle on its rim towards the text. `at` follows the anchor as a
+  dimension's text does. A detached leader draws from kept geometry, else it is its text
+  alone at `at`, marked. A **centre mark** is a level and an upright line through the
+  centre, each a 1.5 mm cross arm, a 1 mm gap and a long dash out to 3 mm past the circle
+  (on an ellipse, past its reach each way; one plain line on a small circle); a circle seen
+  edge-on is `invalid`. A **centre line** runs midway between its two lines, or along the
+  axis, from the first end to the last plus 3 mm each way, **dash-dot built as segments**
+  (long dashes near 8 mm stretched so both ends are long, 1.5 mm gaps, 1 mm dots), not a dash
+  pattern, so it never starts or ends on a gap; lines not parallel, or an axis seen end-on,
+  are `invalid`. A centre mark or line that is lost with no geometry kept, or invalid, draws
+  nothing: the browser row says why (`sheetItemStatus`). **A sticky note** is a filled note
+  with 1.5 mm rounded corners in its colour (`SHEET_STICKY`: a paper and an ink colour each),
+  its text wrapped inside a 3 mm padding (lines past the bottom left out, the last shown one
+  ending in "…").
+- **Screen or export**: `layoutSheet`'s context takes `output` (`screen` by default for
+  `layoutSheet`, `export` by default for `sheetsToPdf` and `sheetToSvg`). On screen every
+  sticky note is drawn and one without `print` carries "On screen only" in its ink colour;
+  for an export it is left out. `sheetStickiesLeftOut(sheets)` counts those for the export
+  dialog's summary. A view's `centreLines: false` leaves out its centre marks and centre
+  lines (`sheetItemShown`).
+- **Nothing is generated**: this package makes no centre mark or centre line for a view by
+  itself; each one is an item someone placed. Automatic centre marks on a view's holes would
+  be a later decision.
+- **For the tools**: `layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`,
+  `sheetItemStatus` (any item's state and message), `sheetItemShown`,
+  `sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`, `SHEET_STICKY_SCREEN_ONLY`, and
+  `SheetItemState` (what `SheetDimensionState` now aliases).
+- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, remint, the view
+  cascade); `kernel/src/sheets/anchors.test.ts` (a plate with a hole: each kind resolved, a
+  leader following its edge, the hole deleted and suppressed, back again; a flat face has no
+  axis); `sheets/src/notes.test.ts` (positions, states, export rules, a golden SVG per kind);
+  `dimensions.kernel.test.ts` (the same items on the part the kernel builds, through layout;
+  `SHEETS_OUT=<dir>` also writes `items.pdf` and `items-screen.pdf`, checked with
+  `pdftoppm`).
+- **Rejected**: a leader's tip stored as a parameter on its edge (a new anchor shape; the
+  nearest point to the text follows a moved text naturally, and `at: 'middle'` pins it);
+  an axis anchor of its own (`{ ref, axis: true }`: a whole face already says it, the kind
+  decides what a face stands for); the dash-dot as a stroke dash pattern (the ends would
+  fall anywhere); a sticky note's "On screen only" left to the screen (the screen draws the
+  list as it is and derives nothing, S1's rule).
+
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
 Built with no behaviour change, before any drawing code.
