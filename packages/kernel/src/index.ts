@@ -78,6 +78,7 @@ export {
   Kernel,
   KernelError,
   type KernelStats,
+  MAX_BREP_BYTES,
   MESH_HANDLE_BASE,
   MeshBodyError,
   MeshError,
@@ -247,4 +248,21 @@ export {
   KernelCrashError,
   type KernelInfo,
 } from './service';
+export {
+  boundsOf,
+  isSheetViewsCancelled,
+  pieceAt,
+  pieceEnds,
+  type SheetViewProgress,
+  type SheetViewRequest,
+  type SheetViewResult,
+  SheetViewsCancelledError,
+  type SkippedBody,
+  shownCurves,
+  type ViewBounds,
+  type ViewCurve,
+  type ViewCurveKind,
+  type ViewGeometry,
+  type ViewPiece,
+} from './sheets';
 export { TEST_PART, type TestPart } from './test-part';

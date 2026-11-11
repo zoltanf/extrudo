@@ -35,6 +35,7 @@ import {
   type ReferenceIssue,
   referencedFeatures,
   scriptOfGenerated,
+  sheetBaseFrame,
   valuesByName,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
@@ -59,6 +60,9 @@ import { type ScadExportOptions, writeScad } from '../scad-export/file';
 import { liveScalar, scadParameters } from '../scad-export/live';
 import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
+import { exactView, quickView, type ViewBody } from '../sheets/evaluate';
+import type { SkippedBody, ViewGeometry } from '../sheets/geometry';
+import { type SheetViewRequest, type SheetViewResult, shownBodies } from '../sheets/views';
 import { hashOf } from './hash';
 import {
   type BodyResult,
@@ -76,6 +80,9 @@ import {
 } from './types';
 
 export const DEFAULT_TESSELLATION: MeshOptions = { linearDeflection: 0.05, angularDeflection: 0.3 };
+
+/** Sheet views the engine keeps (plain data, no shapes): a few sheets' worth of views. */
+export const SHEET_VIEW_CACHE = 64;
 
 export interface EngineOptions {
   /** Cache entries kept besides those the latest recompute and preview use. Default 256. */
@@ -189,6 +196,12 @@ export class RecomputeEngine {
   readonly #runs = new Map<string, ScriptRun>();
   /** The last finished recompute at its marker, for joints (`resolveJoint`). */
   #atMarker: AtMarker | undefined;
+  /** Shapes this engine gave a display mesh (`#meshAll`): their faces carry its triangulation. */
+  readonly #meshed = new Set<ShapeHandle>();
+  /** The tessellation of the last recompute's display meshes. */
+  #tessellation: MeshOptions = DEFAULT_TESSELLATION;
+  /** Sheet views by bodies, versions, frame and method, least recently used first (P6-24 S2). */
+  readonly #sheetViews = new Map<string, ViewGeometry>();
 
   constructor(
     kernel: Kernel,
@@ -367,6 +380,89 @@ export class RecomputeEngine {
   }
 
   /**
+   * One sheet view of the bodies at the marker of the last finished
+   * recompute (P6-24 S2, ADR-0143's S2 amendment): its 2D lines, exact
+   * (`hlrSpans`) or with `quick` the polygonal placeholder. Cached by the
+   * bodies' versions, the frame and the method; scale and position aren't in
+   * the key (the app applies them), and every kind of line comes back, so
+   * the style and the tangent-edge switch are the app's filters too. A mesh
+   * body or one the model no longer has is skipped (`partial`), never an
+   * error. One synchronous kernel run: nothing interrupts it.
+   */
+  sheetView(request: SheetViewRequest): SheetViewResult {
+    const at = this.#atMarker;
+    if (!at) return { id: request.id, error: 'The model is still being computed.' };
+    let frame: ReturnType<typeof sheetBaseFrame>;
+    try {
+      frame = sheetBaseFrame(request.direction, request.up);
+    } catch (error) {
+      return { id: request.id, error: error instanceof Error ? error.message : String(error) };
+    }
+    const ids = request.bodies
+      ? [...new Set(request.bodies)].sort()
+      : shownBodies(at.doc, this.#latest.keys());
+    const bodies: ViewBody[] = [];
+    const skipped: SkippedBody[] = [];
+    const versions: Record<BodyId, string> = {};
+    for (const id of ids) {
+      const shape = this.#latest.get(id);
+      if (shape === undefined) skipped.push({ body: id, reason: 'missing' });
+      else if (this.#kernel.isMesh(shape)) skipped.push({ body: id, reason: 'mesh' });
+      else {
+        const names = this.#names.get(shape);
+        bodies.push({ id, shape, ...(names && { names }) });
+        versions[id] = this.#versions.get(shape) ?? hashOf('shape', shape);
+      }
+    }
+    const keyOf = (quick: boolean) =>
+      hashOf('sheet-view', quick, frame.direction, frame.up, versions, skipped);
+    const exactKey = keyOf(false);
+    const key = request.quick ? keyOf(true) : exactKey;
+    // A quick request takes the exact lines when they are there.
+    for (const k of request.quick ? [exactKey, key] : [key]) {
+      const hit = this.#sheetViews.get(k);
+      if (!hit) continue;
+      this.#sheetViews.delete(k);
+      this.#sheetViews.set(k, hit);
+      return { id: request.id, geometry: hit, versions, ms: 0 };
+    }
+    const start = performance.now();
+    let geometry: ViewGeometry;
+    try {
+      if (request.quick) {
+        // hlrPolySpans meshes a face that has no triangulation and leaves that
+        // mesh on it, which the display mesh would then keep (finer or coarser
+        // than asked): give such a body its display mesh first.
+        for (const body of bodies) {
+          if (this.#meshed.has(body.shape)) continue;
+          this.#kernel.mesh(body.shape, this.#tessellation);
+          this.#meshed.add(body.shape);
+        }
+        geometry = quickView(
+          this.#kernel,
+          bodies,
+          frame,
+          this.#tessellation.linearDeflection,
+          skipped,
+        );
+      } else {
+        geometry = exactView(this.#kernel, bodies, frame, skipped);
+      }
+    } catch (error) {
+      if (!(error instanceof KernelError)) throw error;
+      return { id: request.id, error: error.message };
+    }
+    const ms = performance.now() - start;
+    this.#sheetViews.set(key, geometry);
+    while (this.#sheetViews.size > SHEET_VIEW_CACHE) {
+      const oldest = this.#sheetViews.keys().next().value;
+      if (oldest === undefined) break;
+      this.#sheetViews.delete(oldest);
+    }
+    return { id: request.id, geometry, versions, ms };
+  }
+
+  /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): the timeline replayed as body versions through the features'
    * `csg` hooks, polyhedra where they can't follow. Synchronous, so the
@@ -431,6 +527,7 @@ export class RecomputeEngine {
     this.#runs.clear();
     this.#latest = new Map();
     this.#atMarker = undefined;
+    this.#sheetViews.clear();
     this.#previewBase = new Map();
     this.#pinned.recompute.clear();
     this.#pinned.preview.clear();
@@ -679,6 +776,7 @@ export class RecomputeEngine {
     let annotations: Record<AnnotationId, AnnotationReport> | undefined;
     if (channel === 'recompute') {
       this.#latest = bodies;
+      this.#tessellation = request.tessellation ?? DEFAULT_TESSELLATION;
       // The joint pass (ADR-0081 §4): every unsuppressed joint's frames at the
       // marker. Not cached and in no key, so editing a joint recomputes nothing.
       const outputs = new Map<FeatureId, FeatureOutput>();
@@ -742,6 +840,7 @@ export class RecomputeEngine {
       }
       try {
         const mesh = this.#kernel.mesh(shape, request.tessellation ?? DEFAULT_TESSELLATION);
+        this.#meshed.add(shape);
         const names = this.#names.get(shape);
         if (names) {
           mesh.faceIds = [...names.faces];
@@ -1354,6 +1453,7 @@ export class RecomputeEngine {
       return;
     }
     this.#refs.delete(h);
+    this.#meshed.delete(h);
     this.#versions.delete(h);
     this.#makers.delete(h);
     this.#names.delete(h);

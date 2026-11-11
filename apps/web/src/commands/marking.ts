@@ -170,7 +170,9 @@ export function resolveSlots(
  * the ones you'd want again (a sketch tool, Extrude, Fillet...). Undo, Redo
  * and Delete would be dangerous to repeat by accident, view and panel
  * commands aren't work, and leaving a sketch or opening a dialog such as
- * Parameters or Export isn't something to run twice.
+ * Parameters or Export isn't something to run twice. The same holds in the drawing:
+ * entering or leaving it (Make › Drawing, Finish Drawing) and its dialogs (Sheet Setup,
+ * Export PDF); New Sheet stays repeatable.
  */
 export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'finishSketch',
@@ -183,6 +185,10 @@ export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'recordMacro',
   'stopMacro',
   'exportScript',
+  'sheets',
+  'finishDrawing',
+  'sheetSetup',
+  'exportSheets',
 ]);
 
 /** Whether running the tool `id` counts as "the last command" for Repeat last. */

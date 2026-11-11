@@ -175,6 +175,39 @@ describe('the drawing mode (P6-24, ADR-0143)', () => {
     expect(t.store.getState().undoLabel).toBe(steps);
   });
 
+  it('ends an open sketch before any sheet command, so each is an undo step of its own', () => {
+    const t = setup();
+    const a = createSheet(t.stores, {}, DAY);
+    finishDrawing(t.stores);
+    const features = () => t.store.getState().doc.features.length;
+    const sketching = () => {
+      createSketchOn(t.stores, originPlaneRef('origin:xy'));
+      expect(t.store.getState().transactionDepth).toBe(1);
+      return features();
+    };
+    const commands: [string, () => void][] = [
+      ['Rename sheet', () => renameSheet(t.stores, a, 'Assembly')],
+      ['Duplicate sheet', () => duplicateSheet(t.stores, a)],
+      ['Move sheet', () => moveSheetTo(t.stores, a, 1)],
+      ['Delete sheet', () => deleteSheet(t.stores, t.sheets()[0]?.id as SheetId)],
+      ['New drawing', () => createSheet(t.stores, {}, DAY)],
+    ];
+    for (const [label, command] of commands) {
+      const withSketch = sketching();
+      const sheets = t.sheets();
+      command();
+      expect(t.store.getState().transactionDepth).toBe(0);
+      expect(t.session.getState().mode).not.toBe('sketch');
+      expect(t.store.getState().undoLabel).toBe(label);
+      // One undo takes the sheet change back and leaves the sketch.
+      t.store.getState().undo();
+      expect(t.sheets()).toEqual(sheets);
+      expect(features()).toBe(withSketch);
+      t.store.getState().redo();
+      finishDrawing(t.stores);
+    }
+  });
+
   it('opens the sheet edited last, or reports that there is none', () => {
     const t = setup();
     expect(openSheets(t.stores)).toBe(false);

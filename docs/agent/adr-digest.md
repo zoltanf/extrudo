@@ -436,7 +436,13 @@ on an indirect frame **that has a seam** is `ShapeCustom::DirectFaces`' result
 with every reversed wire rebuilt forward (OCCT's writer otherwise reverses the wire itself and its
 `ShapeFix_Wire` reorder flips a seam wire's circles); any other body goes in
 as it is, byte-identical. Guarded by `export.test.ts`'s rim-fillet test
-(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses).
+(`badEdgeUses` in `step-test-support.ts`: every edge two opposite uses). **Its fourth amendment (2026-11-11, P6-25 S1)**: the
+rebuilt face is made on the **bare** face (`Located(TopLoc_Location())`) and
+given the explorer face's location back before `Replace` (never
+`EmptyCopied()` of a located face plus its relative wires: `BRep_Builder::Add`
+moves a child by the parent's inverse location); one rebuild per `TShape`.
+Guarded by `step-located.test.ts` (three FreeCAD-made B-rep shapes, plain,
+coloured and assembly STEP).
 `@extrudo/io` has
 `TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
@@ -4426,6 +4432,22 @@ a NOTICE entry), WinAnsi, stretched with `Tz` to the outline width; keep it depe
 sample: `PDF_OUT=<file> pnpm vitest run packages/sketch/src/text/pdf-sample`). Gated tools: `HLR_BENCH=1` (+
 `HLR_METHODS=1`) `pnpm vitest run packages/kernel/src/hlr-bench` re-times HLR; `HLR_PDF=<file>` (+ `HLR_POLY=1`) `pnpm
 vitest run packages/kernel/src/hlr-views` draws views from the spans to look at.
+**S2 kernel views (package 1):** the frame in `core/src/sheet-frame.ts` (`SheetViewFrame`, `sheetBaseFrame`,
+`sheetProjectedFrame`, `sheetViewFrame`, `toSheetView`, `SHEET_STANDARD_VIEWS`, `sheetStandardFrom`; view coordinates
+are mm at model scale, x right, y up, world origin at 0, 0; third angle shows the side a view is placed on, first the
+opposite; **isometric sides are the same in both angles**), the evaluator in `kernel/src/sheets/` (`exactView` from
+`hlrSpans`, `quickView` from `hlrPolySpans`; `ViewGeometry` with curves `visible`/`hidden`/`outline`/`tangent`, pieces
+`line`/`arc`/`ellipse`/`polyline`, `edge`/`face` topological names, `partial` with `skipped` for mesh and missing
+bodies), `RecomputeEngine.sheetView` (cache of 64 by body versions, skipped bodies, direction, up, exact/quick) and
+`KernelApi.sheetViews(requests, onView)` / `cancelSheetViews()`. Rules a change must keep: **raw edge and face indices
+never leave `sheets/evaluate.ts`** (the compound's indices map back through `Kernel.locate`); **every kind of curve
+comes back** and style and tangent edges are the app's filters (`shownCurves`), never in the key; scale and position
+are never in the key; **a quick view never names a curve** (`exact: false`; nothing anchors, measures or snaps to it);
+**before `hlrPolySpans` a body gets its display mesh** if this engine never meshed it (`#meshed`), since the
+polygonal run would leave a mesh of its own that the display mesher keeps; views run one at a time with a yield
+between them, and only `onView`'s `false` or `cancelSheetViews()` stops a run (not a newer call, not a recompute: a
+later view draws the new bodies and its `versions` say so). Goldens: `pnpm vitest run
+packages/kernel/src/sheets/golden --update` (`-u` before the path takes the path as its value and runs every test).
 **S1a (modes, done, no
 behaviour change):** `EditMode` (`packages/core/src/stores.ts`) is the only spelling of the mode union (`KeymapMode` and
 `MarkingMode` alias it); `MODES` in `apps/web/src/shell/modes.ts` is one row per mode (`label`, `tabs`, `defaultTab`,
@@ -4460,3 +4482,32 @@ never read `fields`; sizes are cap heights; text only through `@extrudo/sketch/t
 `border`, `title-block`, `title-block:<field>`, `view:<id>`, `item:<id>`); layout is pure and deterministic (golden
 `packages/sheets/src/golden/small-sheet.svg`, `UPDATE_GOLDEN=1`). Sample: `SHEETS_OUT=<dir> pnpm vitest run
 packages/sheets/src/sample` writes `sheets.pdf` and one SVG per sheet.
+
+ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
+background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
+reads the file and maps it onto a design through `@extrudo/api`; everything that needs geometry goes through an interface
+the caller supplies (a throwaway kernel worker in the app, a kernel in Node for tests and the CLI). **Rules:** every mapped
+feature is rebuilt and compared with the shape the file stores for it, and **the stored shape wins** where they differ; a
+reference (`EdgeN`/`FaceN`) is the N-th element of the referenced object's **stored** shape, matched by geometry on the
+rebuilt body and written as a persistent reference, never an index, and never guessed when none or several match; stored
+shapes enter a design only as STEP attachments on `import` features (ADR-0084's pattern, no schema change); **B-rep text is
+read only by the import's throwaway kernel**, never by the project's kernel and never stored; `Kernel.readBrep` heals
+nothing and keeps the text's sub-shape order (the references depend on it); readers stay linear in their input (ADR-0083's
+hostile-file amendments), the XML reader has no DTD or entities; **no library file, file name or content in the
+repository** (`FCSTD_SAMPLES=<dir>` runs the private corpus, authored files only in tests).
+
+**ADR-0144, S1 (kernel):** `Kernel.readBrep` (`packages/kernel/src/kernel.ts`) refuses with a `KernelError`, before
+the text reaches the WASM heap: over **`MAX_BREP_BYTES`** (32 MB of UTF-8, exported), a table count (`Locations` …
+`TShapes`) that isn't 0…10 digits or exceeds half the text, a word of 200+ characters, `nan`/`inf` or an exponent over
+308; it keeps the short-form rule for 18+-digit integer parts exactly (never digits after a point). The facade's
+`readBrep` reads through **`CheckedShapeSet`** (a `BRepTools_ShapeSet` whose `ReadGeometry` overrides peek ahead with
+`tellg`/`seekg`): the `TShapes` count, and per shape its flags and sub-shape list, which must end in `*`, every
+reference naming a shape already read, nesting at most `MAX_DEPTH` (256); the root reference the same; the stream
+**throws on failure** (`exceptions(failbit | badbit)`); after the read **`missingGeometry`** refuses an edge without a 3D
+curve (a degenerate edge's null one is allowed), a null pcurve or surface record, a face with neither surface nor
+triangulation. Refusals are plain words (`std::runtime_error` text; any other failure "the text is damaged or cut
+short."). **Not stopped (a second parser would be needed):** a B-spline record's pole count of 10^9 or -1 (OCCT sizes
+the array first and writes past it) — the import's throwaway kernel and time budget bound them;
+`read-brep-hostile.test.ts` keeps them as `it.skip`. Every hostile case there must end in a shape or a `KernelError`
+under 5 s with `liveShapes` unchanged and the good box readable next. A new check must keep all of the library's
+stored shapes reading (S1: all of them, see the amendment).

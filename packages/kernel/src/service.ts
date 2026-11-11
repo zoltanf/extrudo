@@ -43,6 +43,12 @@ import type {
 } from './recompute/types';
 import type { ScadExportOptions } from './scad-export/file';
 import { NO_SCRIPT_HOST, type ScriptHost, type ScriptHostLoader } from './script-host';
+import {
+  type SheetViewProgress,
+  type SheetViewRequest,
+  type SheetViewResult,
+  SheetViewsCancelledError,
+} from './sheets/views';
 import { makeTestPart, type TestPart } from './test-part';
 
 export interface KernelInfo {
@@ -237,6 +243,23 @@ export interface KernelApi {
   checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck>;
   /** Stops a running `checkJoint`. */
   cancelCheck(): Promise<void>;
+  /**
+   * Sheet views of the bodies at the marker of the last finished recompute
+   * (P6-24 S2, ADR-0143's S2 amendment), one at a time in the order asked:
+   * each view is one kernel run that nothing interrupts, and other calls (a
+   * recompute) get their turn between views, so a view after a recompute
+   * draws the new bodies (`versions` tells). `onView` hears each result as it
+   * is done; a `false` from it, or `cancelSheetViews()`, stops the run before
+   * the next view with a `SheetViewsCancelledError` (`isSheetViewsCancelled`).
+   * Results are cached (`RecomputeEngine.sheetView`). A view that fails is an
+   * `error` result; the others still come.
+   */
+  sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+  ): Promise<SheetViewResult[]>;
+  /** Stops every running `sheetViews` before its next view. */
+  cancelSheetViews(): Promise<void>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -338,6 +361,8 @@ export class KernelService implements KernelApi {
   #compiler: ScadCompiler | undefined;
   /** Bumped by every request that stops a running clearance check. */
   #checks = 0;
+  /** Bumped by `cancelSheetViews`. */
+  #sheetRuns = 0;
 
   constructor(load: () => Promise<OcctModule>, options: KernelServiceOptions = {}) {
     this.#load = load;
@@ -609,6 +634,29 @@ export class KernelService implements KernelApi {
 
   async cancelCheck(): Promise<void> {
     this.#checks++;
+  }
+
+  async sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+  ): Promise<SheetViewResult[]> {
+    const run = this.#sheetRuns;
+    const out: SheetViewResult[] = [];
+    for (const [i, request] of requests.entries()) {
+      if (run !== this.#sheetRuns) throw new SheetViewsCancelledError();
+      const result = await this.#run(() => this.#engineOf().sheetView(request));
+      out.push(result);
+      if ((await onView?.(result, i + 1, requests.length)) === false) {
+        if (i < requests.length - 1) throw new SheetViewsCancelledError();
+      }
+      // A recompute, or the caller's cancel, gets its turn between views.
+      if (i < requests.length - 1) await yieldToEvents();
+    }
+    return out;
+  }
+
+  async cancelSheetViews(): Promise<void> {
+    this.#sheetRuns++;
   }
 
   async debugTestPart(): Promise<TestPart> {

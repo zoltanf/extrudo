@@ -42,6 +42,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  Activity,
   type DragEvent,
   type HTMLAttributes,
   type KeyboardEvent,
@@ -287,241 +288,237 @@ export function BrowserPanel({
           </div>
           <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 text-base">
             {sheetTree}
-            {!sheetTree && (
-              <>
+            {/* In the drawing the Sheets tree stands in for the model's folders, which stay
+                mounted but hidden, so the folders open before come back open (P6-24). */}
+            <Activity mode={sheetTree ? 'hidden' : 'visible'}>
+              <Folder label="Document settings" icon={<Settings2 size={14} />} defaultOpen={false}>
+                <DocumentSettings store={store} />
+              </Folder>
+              <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
+                {doc.views.length === 0 ? (
+                  <Leaf muted>No named views yet</Leaf>
+                ) : (
+                  doc.views.map((view) => (
+                    <ViewLeaf key={view.id} view={view} actions={viewActions} />
+                  ))
+                )}
+              </Folder>
+              <Folder
+                label="Origin"
+                icon={<ToolIcon name="axis" category="construct" size={16} />}
+                eye={{
+                  visible: originShown,
+                  onToggle: () => {
+                    for (const { value } of ORIGIN_ITEMS)
+                      viewport.getState().setOrigin(value, !originShown);
+                  },
+                }}
+              >
+                {ORIGIN_ITEMS.map(({ value, label }) => (
+                  <ContextMenu
+                    key={value}
+                    label={`${label} menu`}
+                    trigger={
+                      <Leaf>
+                        {PLANE_SWATCH[value] && (
+                          <span
+                            aria-hidden
+                            data-plane-swatch={value}
+                            className="size-2.5 shrink-0 rounded-sm"
+                            style={{ background: `var(${PLANE_SWATCH[value]})` }}
+                          />
+                        )}
+                        <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
+                        <EyeToggle
+                          name={label}
+                          visible={origin[value]}
+                          onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
+                        />
+                      </Leaf>
+                    }
+                  >
+                    <MenuItem
+                      icon={origin[value] ? <EyeOff size={14} /> : <Eye size={14} />}
+                      onSelect={() => viewport.getState().setOrigin(value, !origin[value])}
+                    >
+                      {origin[value] ? 'Hide' : 'Show'}
+                    </MenuItem>
+                  </ContextMenu>
+                ))}
+              </Folder>
+              <Folder
+                label="Sketches"
+                icon={<ToolIcon name="create-sketch" category="sketch" size={16} />}
+                eye={
+                  sketches.length > 0
+                    ? {
+                        visible: sketchesShown,
+                        onToggle: () =>
+                          actions.setVisible(
+                            sketches.map(({ feature }) => feature.id),
+                            !sketchesShown,
+                          ),
+                      }
+                    : undefined
+                }
+              >
+                {sketches.length === 0 ? (
+                  <Leaf muted>No sketches yet</Leaf>
+                ) : (
+                  sketches.map(({ feature, index }) => (
+                    <SketchLeaf
+                      key={feature.id}
+                      feature={feature}
+                      editable={actions.canEdit(feature, index, doc.timelineMarker)}
+                      rolledBack={index >= doc.timelineMarker}
+                      problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
+                      position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                      active={feature.id === activeSketchId}
+                      actions={actions}
+                      {...(onPickFeature && {
+                        onPick: (toggle: boolean) => onPickFeature(feature.id, toggle),
+                      })}
+                    />
+                  ))
+                )}
+              </Folder>
+              <Folder
+                label="Construction"
+                icon={<ToolIcon name="offset-plane" category="construct" size={16} />}
+                eye={
+                  constructions.length > 0
+                    ? {
+                        visible: constructionShown,
+                        onToggle: () =>
+                          actions.setVisible(
+                            constructions.map(({ feature }) => feature.id),
+                            !constructionShown,
+                          ),
+                      }
+                    : undefined
+                }
+              >
+                {constructions.length === 0 ? (
+                  <Leaf muted>No construction geometry yet</Leaf>
+                ) : (
+                  constructions.map(({ feature, index }) => (
+                    <SketchLeaf
+                      key={feature.id}
+                      feature={feature}
+                      editable={actions.canEdit(feature, index, doc.timelineMarker)}
+                      rolledBack={index >= doc.timelineMarker}
+                      problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
+                      position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                      active={false}
+                      actions={actions}
+                      rowAttribute={{ 'data-construction': feature.id }}
+                      icon={
+                        <ToolIcon
+                          name={toolForFeature(feature.type).icon}
+                          category="construct"
+                          size={14}
+                        />
+                      }
+                    />
+                  ))
+                )}
+              </Folder>
+              {/* The Canvases folder while there is one (P4-06, ADR-0066 §5), as
+                the Analysis folder below: a design with no picture has nothing to
+                show there. */}
+              {canvasFeatures.length > 0 && (
                 <Folder
-                  label="Document settings"
-                  icon={<Settings2 size={14} />}
-                  defaultOpen={false}
-                >
-                  <DocumentSettings store={store} />
-                </Folder>
-                <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
-                  {doc.views.length === 0 ? (
-                    <Leaf muted>No named views yet</Leaf>
-                  ) : (
-                    doc.views.map((view) => (
-                      <ViewLeaf key={view.id} view={view} actions={viewActions} />
-                    ))
-                  )}
-                </Folder>
-                <Folder
-                  label="Origin"
-                  icon={<ToolIcon name="axis" category="construct" size={16} />}
+                  label="Canvases"
+                  icon={<ToolIcon name="canvas" category="insert" size={16} />}
                   eye={{
-                    visible: originShown,
+                    visible: canvasShown,
+                    onToggle: () =>
+                      actions.setVisible(
+                        canvasFeatures.map(({ feature }) => feature.id),
+                        !canvasShown,
+                      ),
+                  }}
+                >
+                  {canvasFeatures.map(({ feature, index }) => (
+                    <SketchLeaf
+                      key={feature.id}
+                      feature={feature}
+                      editable={actions.canEdit(feature, index, doc.timelineMarker)}
+                      rolledBack={index >= doc.timelineMarker}
+                      problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
+                      position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                      active={false}
+                      actions={actions}
+                      rowAttribute={{ 'data-canvas': feature.id }}
+                      icon={
+                        <ToolIcon
+                          name={toolForFeature(feature.type).icon}
+                          category="insert"
+                          size={14}
+                        />
+                      }
+                    />
+                  ))}
+                </Folder>
+              )}
+              {(section || overhang || thickness || jointCheck) && (
+                <Folder
+                  label="Analysis"
+                  icon={<ToolIcon name="section" category="inspect" size={16} />}
+                  eye={{
+                    visible: Boolean(
+                      section?.on || overhang?.on || thickness?.on || jointCheck?.on,
+                    ),
                     onToggle: () => {
-                      for (const { value } of ORIGIN_ITEMS)
-                        viewport.getState().setOrigin(value, !originShown);
+                      const on = Boolean(
+                        section?.on || overhang?.on || thickness?.on || jointCheck?.on,
+                      );
+                      for (const entry of [section, overhang, thickness, jointCheck]) {
+                        if (entry && entry.on === on) entry.onToggle();
+                      }
                     },
                   }}
                 >
-                  {ORIGIN_ITEMS.map(({ value, label }) => (
-                    <ContextMenu
-                      key={value}
-                      label={`${label} menu`}
-                      trigger={
-                        <Leaf>
-                          {PLANE_SWATCH[value] && (
-                            <span
-                              aria-hidden
-                              data-plane-swatch={value}
-                              className="size-2.5 shrink-0 rounded-sm"
-                              style={{ background: `var(${PLANE_SWATCH[value]})` }}
-                            />
-                          )}
-                          <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
-                          <EyeToggle
-                            name={label}
-                            visible={origin[value]}
-                            onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
-                          />
-                        </Leaf>
-                      }
-                    >
-                      <MenuItem
-                        icon={origin[value] ? <EyeOff size={14} /> : <Eye size={14} />}
-                        onSelect={() => viewport.getState().setOrigin(value, !origin[value])}
-                      >
-                        {origin[value] ? 'Hide' : 'Show'}
-                      </MenuItem>
-                    </ContextMenu>
-                  ))}
-                </Folder>
-                <Folder
-                  label="Sketches"
-                  icon={<ToolIcon name="create-sketch" category="sketch" size={16} />}
-                  eye={
-                    sketches.length > 0
-                      ? {
-                          visible: sketchesShown,
-                          onToggle: () =>
-                            actions.setVisible(
-                              sketches.map(({ feature }) => feature.id),
-                              !sketchesShown,
-                            ),
-                        }
-                      : undefined
-                  }
-                >
-                  {sketches.length === 0 ? (
-                    <Leaf muted>No sketches yet</Leaf>
-                  ) : (
-                    sketches.map(({ feature, index }) => (
-                      <SketchLeaf
-                        key={feature.id}
-                        feature={feature}
-                        editable={actions.canEdit(feature, index, doc.timelineMarker)}
-                        rolledBack={index >= doc.timelineMarker}
-                        problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
-                        position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
-                        active={feature.id === activeSketchId}
-                        actions={actions}
-                        {...(onPickFeature && {
-                          onPick: (toggle: boolean) => onPickFeature(feature.id, toggle),
-                        })}
-                      />
-                    ))
+                  {section && (
+                    <AnalysisRow
+                      name="section"
+                      entry={section}
+                      rowAttribute={{ 'data-section-row': section.on ? 'on' : 'off' }}
+                    />
+                  )}
+                  {overhang && (
+                    <AnalysisRow
+                      name="overhang"
+                      entry={overhang}
+                      rowAttribute={{ 'data-overhang-row': overhang.on ? 'on' : 'off' }}
+                    />
+                  )}
+                  {thickness && (
+                    <AnalysisRow
+                      name="wall thickness"
+                      entry={thickness}
+                      rowAttribute={{ 'data-thickness-row': thickness.on ? 'on' : 'off' }}
+                    />
+                  )}
+                  {jointCheck && (
+                    <AnalysisRow
+                      name="clearance"
+                      entry={jointCheck}
+                      rowAttribute={{ 'data-joint-check-row': jointCheck.on ? 'on' : 'off' }}
+                    />
                   )}
                 </Folder>
-                <Folder
-                  label="Construction"
-                  icon={<ToolIcon name="offset-plane" category="construct" size={16} />}
-                  eye={
-                    constructions.length > 0
-                      ? {
-                          visible: constructionShown,
-                          onToggle: () =>
-                            actions.setVisible(
-                              constructions.map(({ feature }) => feature.id),
-                              !constructionShown,
-                            ),
-                        }
-                      : undefined
-                  }
-                >
-                  {constructions.length === 0 ? (
-                    <Leaf muted>No construction geometry yet</Leaf>
-                  ) : (
-                    constructions.map(({ feature, index }) => (
-                      <SketchLeaf
-                        key={feature.id}
-                        feature={feature}
-                        editable={actions.canEdit(feature, index, doc.timelineMarker)}
-                        rolledBack={index >= doc.timelineMarker}
-                        problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
-                        position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
-                        active={false}
-                        actions={actions}
-                        rowAttribute={{ 'data-construction': feature.id }}
-                        icon={
-                          <ToolIcon
-                            name={toolForFeature(feature.type).icon}
-                            category="construct"
-                            size={14}
-                          />
-                        }
-                      />
-                    ))
-                  )}
-                </Folder>
-                {/* The Canvases folder while there is one (P4-06, ADR-0066 §5), as
-                the Analysis folder below: a design with no picture has nothing to
-                show there. */}
-                {canvasFeatures.length > 0 && (
-                  <Folder
-                    label="Canvases"
-                    icon={<ToolIcon name="canvas" category="insert" size={16} />}
-                    eye={{
-                      visible: canvasShown,
-                      onToggle: () =>
-                        actions.setVisible(
-                          canvasFeatures.map(({ feature }) => feature.id),
-                          !canvasShown,
-                        ),
-                    }}
-                  >
-                    {canvasFeatures.map(({ feature, index }) => (
-                      <SketchLeaf
-                        key={feature.id}
-                        feature={feature}
-                        editable={actions.canEdit(feature, index, doc.timelineMarker)}
-                        rolledBack={index >= doc.timelineMarker}
-                        problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
-                        position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
-                        active={false}
-                        actions={actions}
-                        rowAttribute={{ 'data-canvas': feature.id }}
-                        icon={
-                          <ToolIcon
-                            name={toolForFeature(feature.type).icon}
-                            category="insert"
-                            size={14}
-                          />
-                        }
-                      />
-                    ))}
-                  </Folder>
-                )}
-                {(section || overhang || thickness || jointCheck) && (
-                  <Folder
-                    label="Analysis"
-                    icon={<ToolIcon name="section" category="inspect" size={16} />}
-                    eye={{
-                      visible: Boolean(
-                        section?.on || overhang?.on || thickness?.on || jointCheck?.on,
-                      ),
-                      onToggle: () => {
-                        const on = Boolean(
-                          section?.on || overhang?.on || thickness?.on || jointCheck?.on,
-                        );
-                        for (const entry of [section, overhang, thickness, jointCheck]) {
-                          if (entry && entry.on === on) entry.onToggle();
-                        }
-                      },
-                    }}
-                  >
-                    {section && (
-                      <AnalysisRow
-                        name="section"
-                        entry={section}
-                        rowAttribute={{ 'data-section-row': section.on ? 'on' : 'off' }}
-                      />
-                    )}
-                    {overhang && (
-                      <AnalysisRow
-                        name="overhang"
-                        entry={overhang}
-                        rowAttribute={{ 'data-overhang-row': overhang.on ? 'on' : 'off' }}
-                      />
-                    )}
-                    {thickness && (
-                      <AnalysisRow
-                        name="wall thickness"
-                        entry={thickness}
-                        rowAttribute={{ 'data-thickness-row': thickness.on ? 'on' : 'off' }}
-                      />
-                    )}
-                    {jointCheck && (
-                      <AnalysisRow
-                        name="clearance"
-                        entry={jointCheck}
-                        rowAttribute={{ 'data-joint-check-row': jointCheck.on ? 'on' : 'off' }}
-                      />
-                    )}
-                  </Folder>
-                )}
-                {annotations && (doc.annotations ?? []).length > 0 && (
-                  <AnnotationsFolder
-                    notes={doc.annotations ?? []}
-                    viewport={viewport}
-                    actions={annotations}
-                    selected={selectedAnnotations}
-                  />
-                )}
-                {sheetsFolder}
-              </>
-            )}
+              )}
+              {annotations && (doc.annotations ?? []).length > 0 && (
+                <AnnotationsFolder
+                  notes={doc.annotations ?? []}
+                  viewport={viewport}
+                  actions={annotations}
+                  selected={selectedAnnotations}
+                />
+              )}
+              {sheetsFolder}
+            </Activity>
             <Folder
               label="Bodies"
               icon={<Box size={14} />}

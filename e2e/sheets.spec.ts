@@ -24,8 +24,8 @@ test.afterEach(() => {
 const sheet = (page: Page) => page.getByRole('region', { name: 'Sheet', exact: true });
 const setup = (page: Page) => page.getByRole('region', { name: 'Sheet setup' });
 const tabs = (page: Page) => page.getByRole('list', { name: 'Sheet tabs' });
-const drawings = (page: Page) =>
-  page.getByRole('complementary', { name: 'Browser' }).locator('[data-sheet-row]');
+const browser = (page: Page) => page.getByRole('complementary', { name: 'Browser' });
+const drawings = (page: Page) => browser(page).locator('[data-sheet-row]');
 /**
  * The title block's title as the sheet draws it (the invisible text layer): the cell's
  * label ("TITLE") comes first under the same key, its value last.
@@ -57,7 +57,12 @@ async function type(page: Page, field: string, text: string) {
 
 test('enter from Make, set up a sheet, finish, and undo each step', async ({ page }) => {
   const viewport = await openProject(page);
+  // A folder opened in the model's browser (closed by default) is open again afterwards.
+  const settings = browser(page).getByRole('button', { name: 'Document settings' });
+  await settings.click();
+  await expect(settings).toHaveAttribute('aria-expanded', 'true');
   await newDrawing(page);
+  await expect(settings).toBeHidden();
 
   // The mode's chrome: Home and Drawing, the Drawing tab's tools, sheet tabs, the status.
   await expect(toolbarTabs(page).getByRole('tab')).toHaveText(['Home', 'Drawing']);
@@ -91,6 +96,7 @@ test('enter from Make, set up a sheet, finish, and undo each step', async ({ pag
   await expect(sheet(page)).toHaveCount(0);
   await expect(toolbarTabs(page).getByRole('tab', { name: 'Solid' })).toBeVisible();
   await expect(drawings(page)).toHaveText(['1 · AssemblyA4']);
+  await expect(settings).toHaveAttribute('aria-expanded', 'true');
 
   // Finish is no undo step: the first undo takes back the title.
   await drawings(page).first().dblclick();
@@ -104,7 +110,7 @@ test('enter from Make, set up a sheet, finish, and undo each step', async ({ pag
   // Undoing New drawing takes the last sheet away, and the drawing ends with it.
   await page.keyboard.press('Control+z');
   await expect(sheet(page)).toHaveCount(0);
-  await expect(page.getByRole('complementary', { name: 'Browser' })).toContainText('No sheets yet');
+  await expect(browser(page)).toContainText('No sheets yet');
 });
 
 test('sheet tabs: add, switch, rename, duplicate, delete; Fit and the model-only tools', async ({
