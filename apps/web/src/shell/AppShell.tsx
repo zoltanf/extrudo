@@ -187,6 +187,7 @@ import { SheetExportDialog, type SheetExportRequest } from '../sheets/SheetExpor
 import { type SheetRowActions, SheetsFolder, SheetsTree } from '../sheets/SheetsTree';
 import { SheetTabs } from '../sheets/SheetTabs';
 import { deleteTargets, movable, moveTargets, selectedTargets } from '../sheets/selection';
+import type { SheetAnchorsKernel } from '../sheets/sheetAnchors';
 import type { SheetViewsKernel } from '../sheets/viewRunner';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
@@ -398,6 +399,7 @@ export interface AppShellProps {
         | 'sheetViews'
         | 'cancelSheetViews'
         | 'bodyVersions'
+        | 'resolveSheet'
       >
     > &
     Partial<{
@@ -3361,6 +3363,7 @@ function Shell({
                 kernel.bodyVersions && {
                   kernel: kernel as SheetViewsKernel,
                 })}
+              {...(kernel?.resolveSheet && { anchorsKernel: kernel as SheetAnchorsKernel })}
               onMenu={(at) => {
                 const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
                 if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
@@ -3553,6 +3556,7 @@ function Shell({
             views: {
               kernel: kernel as SheetViewsKernel,
               bodies: () => Object.keys(model.getState().bodies) as BodyId[],
+              ...(kernel.resolveSheet && { anchors: kernel as SheetAnchorsKernel }),
             },
           })}
         preferences={platform.preferences}

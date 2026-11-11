@@ -352,6 +352,12 @@ No facade change.
   document, the anchor is `detached` with "The feature this was measured on is deleted."; if one is
   suppressed, `detached` with "<name>, the feature this was measured on, is suppressed. Unsuppress it to
   show the dimension again." (deleted outranks suppressed; `lostFeature` in `kernel/src/sheets/anchors.ts`).
+  **Package 2 carried it one step further:** a named feature still in the document and active whose status
+  was an error in the last recompute detaches the anchor too, with "<name>, the feature this was measured
+  on, has an error. Fix it to show the dimension again." (after deleted and suppressed). The statuses are
+  the recompute's own: the engine keeps the failed feature IDs with the marker's state (`AtMarker.failed`)
+  and passes them to `lostFeature`. Found on B2: the pocket made to cut upwards has nothing to cut and
+  fails; its floor edge's dimension was `moved` by fingerprint onto the box's bottom edge (80 for 74).
   No fingerprint search runs then. Why: the closest match on a drawing is another edge, and its number
   is wrong without looking wrong (B2: 80 for 74); a missing number is safer than a wrong one. A
   suppressed feature makes nothing while suppressed, so the same wrong match can happen. Rolled back
@@ -819,3 +825,41 @@ UI spec §4a describes what a person sees.
   kernel wait notice with a Cancel (ADR-0111 keeps Cancel off kernel waits; this one changes
   no document); the notes in the display list (they would be exported); dimming by colour in
   the list (the display list carries no screen colour).
+
+## Amendment (S3, the Dimension tool), 2026-11-11
+
+Package 2 of S3: dimensions in the app. Part 1 (this part): the open sheet's anchors resolved and
+drawn, the detached and moved states, the browser's Dimensions folder, the export; one kernel rule.
+Files: `apps/web/src/sheets/sheetAnchors.ts`, `SheetWorkspace.tsx`, `SheetCanvas.tsx` (`screenPaint`),
+`SheetsTree.tsx`, `SheetTabs.tsx` (`itemReason`), `exportSheets.ts`, `SheetExportDialog.tsx`; the
+kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached dimension's message.
+
+- **When anchors are resolved**: on a new sheet object (a view or an item changed) and after every
+  finished recompute (the model store's `features`, new each time), never while the model computes;
+  `quiet` (no wait notice: it takes milliseconds). Answers older than the newest request are
+  dropped; each answer goes through `keepLastAnchors` with the last one, so a lost dimension stays
+  where it was drawn.
+- **Waiting for the first answer**: an anchored item the kernel has not been asked about yet (a file
+  just opened, a sheet opened, an item brought back by undo) is left out of the layout until the
+  answer comes (`drawnItems`), so nothing is drawn detached because the kernel has not answered.
+  Without a kernel, or when the first answer fails, every item is drawn (detached).
+- **Nothing stored**: the anchors live in memory; `sheetItemsStore` keeps, per sheet visited, what
+  was drawn (`kept`), each open-sheet item's text, state and reason (`rows`) for the browser and
+  the status bar.
+- **States on screen** (plan §4.6): `detached` in the paper's red (`#d93d3d`, the light theme's
+  error colour, since the paper is white in both themes) with dashed lines (1.6 1 mm); `invalid`
+  in red, solid; `moved` drawn as usual. The browser's row warns ("moved"; red "lost its edge"),
+  and the status text says why while the item is selected, else under the pointer. **A detached
+  dimension's reason is the kernel's** (deleted, suppressed, failed feature) when it gives one,
+  else the plan's "This dimension lost its edge: …" (`measureSheetDimension`); leader notes and
+  centre marks keep their own words.
+- **The export** resolves every chosen sheet's anchors before it writes, keeping the geometry the
+  screen kept (`exportAnchors`), and passes the design's units (it wrote millimetres before). Its
+  dialog resolves as it opens and adds "· n dimensions detached" to the summary.
+- **The browser** (plan §3.1): a Dimensions folder in each sheet's folder when it has dimensions,
+  a row per dimension (its text on the open sheet, else "Dimension"; its view's name), a click
+  selects it on its sheet.
+- **Rejected**: drawing anchored items detached until the first answer (every opening would
+  flash red); keeping the whole sheet bare until then (views would wait on dimensions); the
+  theme's error token on the paper (it is a light red in the dark theme, meant for a dark
+  background); a message for each kind in the browser row (the status text has room for it).

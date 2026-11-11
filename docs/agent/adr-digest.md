@@ -4554,7 +4554,20 @@ object per result, the same one while unchanged). **Part 2:** `useProjectedView.
 moved or rescaled view carries the views projected from it in the same undo step; **layout of new views (Standard views, a
 dropped body, Projected View's place) uses exact bounds**, never the quick ones (stray pieces); Standard views are one base
 view and three projected from it; the view label is centred under the lines' bounds; template goldens fix the template's
-IDs (edge names, and so the curves' order and direction, follow them). e2e: `e2e/sheet-views.spec.ts`.
+IDs (edge names, and so the curves' order and direction, follow them). e2e: `e2e/sheet-views.spec.ts`. **S3 dimensions in the app (package 2):**
+`apps/web/src/sheets/sheetAnchors.ts` (`useSheetAnchors`, `drawnItems`, `detachedDimensions`, `exportAnchors`,
+`sheetItemsStore`), `SheetCanvas.screenPaint`, the Dimensions folder in `SheetsTree.tsx`, `SheetTabs.itemReason`; in the
+kernel, `AtMarker.failed` and `lostFeature`'s `failed`. Rules a change must keep: the open sheet's anchors are resolved
+(`resolveSheet`, `quiet`) on a new sheet object and after every finished recompute, never while the model computes, the
+newest request winning, and kept with `keepLastAnchors`; **an anchored item the kernel has not been asked about is left out
+of the layout** (never drawn detached while it answers; without a kernel, or after a failed first answer, all are drawn);
+nothing of it is stored (memory only, `sheetItemsStore.kept` per sheet for the export); **the export resolves before it
+writes, keeps what the screen kept, and passes the design's `units`**; detached is the paper's red (`PAPER_ERROR`) with dashed
+lines and invalid red, on screen only (the writers ignore `state`); a detached dimension's message is the kernel's when it
+gives one (`measureSheetDimension`), notes keep their own words; **an anchor on a feature whose status was an error in the
+last recompute is detached** ("…, has an error. Fix it to show the dimension again."), after deleted and suppressed, before
+any search. e2e: `e2e/sheet-dimensions.spec.ts` (B2 with stored refs: if the naming changes, stored dimensions stop
+resolving and it fails).
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)

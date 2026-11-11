@@ -620,13 +620,36 @@ const DisplayPath = memo(function DisplayPath({ item }: { item: DisplayItem }) {
   return (
     <path
       d={displayPathData(contours)}
-      {...displayPaint(item)}
+      {...screenPaint(item)}
       data-key={item.key}
       data-state={item.state}
       opacity={item.state === 'stale' ? 0.35 : undefined}
     />
   );
 });
+
+/**
+ * The paper's own error colour (the light theme's: the paper is white in both themes):
+ * what a lost dimension or note is drawn in (plan §4.6).
+ */
+export const PAPER_ERROR = '#d93d3d';
+
+/**
+ * How an item is painted on screen: as the writers paint it, except that a `detached` item
+ * (an anchor lost) is in the error colour with its lines dashed, and an `invalid` one (its
+ * anchors don't make it) in the error colour (plan §4.6). The export ignores `state`.
+ */
+export function screenPaint(item: DisplayItem): ReturnType<typeof displayPaint> {
+  const paint = displayPaint(item);
+  if (item.state !== 'detached' && item.state !== 'invalid') return paint;
+  const out = { ...paint };
+  if (out.fill && out.fill !== 'none') out.fill = PAPER_ERROR;
+  if (out.stroke) {
+    out.stroke = PAPER_ERROR;
+    if (item.state === 'detached') out.strokeDasharray = '1.6 1';
+  }
+  return out;
+}
 
 /**
  * The new view's frame and lines in the accent, from the view's origin (moved with the

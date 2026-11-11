@@ -4,7 +4,8 @@
  * the accent. Click opens, double-click (or F2) renames, a drag onto another tab moves the
  * sheet there, `+` adds one; the right-click menu has Rename, Duplicate, Export This
  * Sheet and Delete. Ctrl+PageUp and Ctrl+PageDown are the shell's commands. The status
- * text and the bell stay on the right.
+ * text and the bell stay on the right; while a lost or moved item is selected (else under
+ * the pointer) the status text says why instead (plan §4.6, `itemReason`).
  *
  * Test hooks: the region "Sheets", the list "Sheet tabs" with a `data-sheet-tab` (the
  * sheet ID) per tab and `aria-current` on the open one, the button "New sheet", the
@@ -24,6 +25,7 @@ import {
 } from '../design-system';
 import { RenameField } from '../shell/FeatureMenu';
 import { sizeLabel } from './defaults';
+import { type SheetItemRow, sheetItemsStore } from './sheetAnchors';
 
 export interface SheetTabActions {
   open(id: SheetId): void;
@@ -44,6 +46,26 @@ export interface SheetTabsProps {
   notifications?: NotificationStore;
   /** The timeline marker rolled back: the features the views show, of how many (plan §3.3). */
   marker?: { at: number; of: number };
+}
+
+/**
+ * What the status bar says about the open sheet's selected item, else the one under the
+ * pointer, when it is not `ok`: its reason (the kernel's when it has one), with its state.
+ */
+export function itemReason(
+  rows: ReadonlyMap<string, SheetItemRow>,
+  selected: readonly string[],
+  hovered: string | undefined,
+): { state: SheetItemRow['state']; text: string } | undefined {
+  const of = (target: string | undefined) => {
+    if (!target?.startsWith('item:')) return undefined;
+    const row = rows.get(target.slice(5));
+    if (!row || row.state === 'ok') return undefined;
+    const text =
+      row.message ?? (row.state === 'moved' ? 'This dimension moved to a matching edge.' : '');
+    return text ? { state: row.state, text } : undefined;
+  };
+  return (selected.length === 1 ? of(selected[0]) : undefined) ?? of(hovered);
 }
 
 /** The type a dragged tab carries: the sheet's ID. */
@@ -86,6 +108,16 @@ export function SheetTabs({
   marker,
 }: SheetTabsProps) {
   const active = useStore(session, (s) => s.activeSheetId);
+  const rows = useStore(sheetItemsStore, (s) => (s.sheet === active ? s.rows : undefined));
+  const picked = useStore(session, (s) => s.selection);
+  const hover = useStore(session, (s) => s.hover);
+  const reason = rows
+    ? itemReason(
+        rows,
+        picked.filter((p) => p.kind === 'sheet').map((p) => p.id),
+        hover?.kind === 'sheet' ? hover.id : undefined,
+      )
+    : undefined;
   const [renaming, setRenaming] = useState<SheetId>();
   const [over, setOver] = useState<SheetId>();
   const accepts = (event: DragEvent) => event.dataTransfer.types.includes(SHEET_MIME);
@@ -202,9 +234,20 @@ export function SheetTabs({
         </li>
       </ol>
       <span className="flex-1" />
-      <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
-        {sheetStatus(sheets, active, units, marker)}
-      </output>
+      {reason ? (
+        <output
+          className={`min-w-0 truncate text-[11px] ${reason.state === 'moved' ? 'text-warning' : 'text-error'}`}
+          aria-label="Status"
+          data-state={reason.state}
+          title={reason.text}
+        >
+          {reason.text}
+        </output>
+      ) : (
+        <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
+          {sheetStatus(sheets, active, units, marker)}
+        </output>
+      )}
       {notifications && <NotificationHistory store={notifications} />}
     </section>
   );

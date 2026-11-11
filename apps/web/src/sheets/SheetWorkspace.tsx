@@ -18,6 +18,7 @@ import {
   type ModelStore,
   type SessionStore,
   type SheetId,
+  type SheetItemId,
   type SheetViewId,
   sheetBaseFrame,
   sheetPaperSize,
@@ -26,7 +27,14 @@ import {
 } from '@extrudo/core';
 import type { DisplayList } from '@extrudo/io';
 import { type BodyMesh, shownBodies } from '@extrudo/kernel';
-import { layoutSheet, SHEET_FONTS, type SheetViewLines, sheetMargin } from '@extrudo/sheets';
+import {
+  layoutSheet,
+  measureSheetDimension,
+  SHEET_FONTS,
+  type SheetViewLines,
+  sheetItemStatus,
+  sheetMargin,
+} from '@extrudo/sheets';
 import { Hand, Maximize, MousePointer2, Trash2, ZoomIn } from 'lucide-react';
 import {
   type RefObject,
@@ -63,6 +71,14 @@ import {
   targetName,
   viewDeltas,
 } from './selection';
+import {
+  drawnItems,
+  isAnchored,
+  type SheetAnchorsKernel,
+  type SheetItemRow,
+  sheetItemsStore,
+  useSheetAnchors,
+} from './sheetAnchors';
 import { useProjectedView } from './useProjectedView';
 import { baseViewOf, sheetViewNotice, sheetViewWant, sheetViewWants } from './viewLines';
 import {
@@ -98,6 +114,8 @@ export interface SheetWorkspaceProps {
   model: ModelStore<BodyMesh>;
   /** The project's kernel; without it the views stay frames. */
   kernel?: SheetViewsKernel;
+  /** The kernel's anchors call; without it dimensions and notes are drawn detached. */
+  anchorsKernel?: SheetAnchorsKernel;
 }
 
 const noSubscribe = () => () => {};
@@ -121,6 +139,7 @@ export default function SheetWorkspace({
   onMenu,
   model,
   kernel,
+  anchorsKernel,
 }: SheetWorkspaceProps) {
   const doc = useStore(store, (s) => s.doc);
   const sheets = doc.sheets ?? [];
@@ -146,6 +165,11 @@ export default function SheetWorkspace({
   // While the model is computed the views wait (the kernel has nothing, or is replacing it).
   const computing = useStore(model, (st) => st.status === 'idle' || st.status === 'computing');
   useEffect(() => runner?.want(wants, computing), [runner, wants, computing]);
+  // The items' anchors (S3): resolved after the model, a view or an item changes, the lost
+  // ones kept where they were drawn; an item not asked about yet waits (`drawnItems`).
+  const recomputed = useStore(model, (st) => st.features);
+  const resolved = useSheetAnchors(anchorsKernel, sheet, recomputed, computing);
+  const { anchors, asked } = resolved;
   // Leaving the drawing: the run stops before the next view (its results stay cached).
   useEffect(() => () => runner?.want([]), [runner]);
   const views = useSyncExternalStore<SheetViewsState>(
@@ -242,12 +266,37 @@ export default function SheetWorkspace({
     if (!sheet) return undefined;
     void fonts;
     try {
-      return layoutSheet(sheet, { name: doc.name, sheets, views: views.lines });
+      return layoutSheet(drawnItems(sheet, asked), {
+        name: doc.name,
+        sheets,
+        views: views.lines,
+        ...(anchors && { anchors }),
+        units: doc.settings.units,
+      });
     } catch {
       // The sheet fonts are still loading: the paper is drawn bare until they are in.
       return undefined;
     }
-  }, [sheet, sheets, doc.name, fonts, views.lines]);
+  }, [sheet, sheets, doc.name, doc.settings.units, fonts, views.lines, anchors, asked]);
+
+  // Each item's text and state for the browser's rows and the status bar (plan §4.6).
+  useEffect(() => {
+    if (!sheet) return;
+    const rows = new Map<SheetItemId, SheetItemRow>();
+    const drawn = drawnItems(sheet, asked);
+    const options = { units: doc.settings.units };
+    for (const item of drawn.items) {
+      if (!isAnchored(item)) continue;
+      const status = sheetItemStatus(sheet, item, anchors, options);
+      const text =
+        item.kind === 'dimension'
+          ? measureSheetDimension(sheet, item, anchors, options).text
+          : undefined;
+      rows.set(item.id, { ...status, ...(text !== undefined && { text }) });
+    }
+    sheetItemsStore.setState({ sheet: sheet.id, rows });
+  }, [sheet, anchors, asked, doc.settings.units]);
+  useEffect(() => () => sheetItemsStore.setState({ sheet: undefined, rows: new Map() }), []);
 
   // What the screen says under a view: being drawn, a body gone, a mesh body (plan §4.6).
   const notices = useMemo(() => {

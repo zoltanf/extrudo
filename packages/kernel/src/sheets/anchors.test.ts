@@ -488,12 +488,11 @@ describe('B2 (the storage box): a dimension follows the model', () => {
       dim('d2', 'linear', [{ ref: height }]),
     ]);
     const pocket = doc.features[3] as Feature;
+    const distance = pocket.inputs.distance;
+    if (distance?.kind !== 'expr') throw new Error('the pocket has no distance');
     const upwards: Feature = {
       ...pocket,
-      inputs: {
-        ...pocket.inputs,
-        distance: { ...(pocket.inputs.distance as object), expr: '10 mm' },
-      } as Feature['inputs'],
+      inputs: { ...pocket.inputs, distance: { ...distance, expr: '10 mm' } },
     };
     const result = await recompute(
       { ...doc, features: doc.features.map((f) => (f.id === pocket.id ? upwards : f)) },

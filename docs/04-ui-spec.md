@@ -963,8 +963,25 @@ Projected View, Standard views and the view card; dimensions and notes come with
   to draw."; these notes are on screen only. A hidden body leaves the views
   that show all shown bodies and stays in a view that names it. With the
   marker rolled back the status text ends "Showing the model at feature 5 of
-  7". Dimensions a file holds are drawn detached (their text with "?") until
-  the Dimension tool (S3).
+  7".
+- **Dimensions** (S3): measured from the model, never driving it. The open
+  sheet's anchors are asked of the kernel after the model, a view or an item
+  changes; a dimension (or note) the kernel has not answered for yet is not
+  drawn, so nothing shows as lost while it answers. A **lost** one (its edge
+  gone, or the feature it was measured on deleted, suppressed or failing) is
+  drawn where it was last, in the paper's red with dashed lines; one the
+  kernel found again by its fingerprint ("moved") is drawn as usual. The
+  sheet's folder in the browser has **Dimensions**: a row per dimension with
+  its text and view ("74 Front"), a click selects it; a moved row has a
+  warning triangle and "moved", a lost row is red with "lost its edge" (its
+  tooltip says why). While a lost or moved dimension is selected (else under
+  the pointer) the status text says why: the kernel's reason ("The feature
+  this was measured on is deleted.", "Pocket, the feature this was measured
+  on, is suppressed. Unsuppress it to show the dimension again.", "…, has an
+  error. Fix it to show the dimension again.") or "This dimension lost its
+  edge: drag an end onto an edge, or delete it.". The export resolves the
+  anchors too and draws what the screen draws, in black; its summary adds
+  "· 1 dimension detached" when some are.
 - **Base View** (`V`): the right column shows its choices (Looking from, Scale,
   Style), a frame with the view's quick lines follows the pointer, a click
   places the view with the middle of its lines there (one undo step, "Base
@@ -1012,7 +1029,8 @@ Projected View, Standard views and the view card; dimensions and notes come with
   landscape"); no sheet chosen can't export. The format is remembered. Export
   first draws every view of the chosen sheets exactly (the summary says
   "Drawing the views · 2 of 4"; closing the dialog stops it and writes
-  nothing), so a file never holds the quick placeholder lines.
+  nothing), so a file never holds the quick placeholder lines. Lengths are
+  written in the design's unit.
 - **Model-only tools** (Import, Canvas, Customizer) say "Finish the drawing to
   use …"; Parameters stays available; camera and named views are not offered.
   An Edit that opens a sketch or a feature dialog (a recompute error's Edit)
