@@ -330,14 +330,16 @@ export function decodeSketch(o: FcObject): DecodedSketch {
   if (g.length > MAX_SKETCH_GEOMETRY)
     return {
       geometry: [],
-      constraints: [],
+      // One empty slot per record, so each still gets an outcome.
+      constraints: new Array<undefined>(c.length).fill(undefined),
       problems,
       overLimit: `${g.length} curves, over the limit of ${MAX_SKETCH_GEOMETRY}`,
     };
   if (c.length > MAX_SKETCH_CONSTRAINTS)
     return {
       geometry: [],
-      constraints: [],
+      // One empty slot per record, so each still gets an outcome.
+      constraints: new Array<undefined>(c.length).fill(undefined),
       problems,
       overLimit: `${c.length} constraints, over the limit of ${MAX_SKETCH_CONSTRAINTS}`,
     };
