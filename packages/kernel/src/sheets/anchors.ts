@@ -7,8 +7,8 @@
  * point, a line's ends, a circle's centre, axis and radius, a cylinder's
  * or cone's outline for the view's direction, or its axis. A whole face
  * stands for what the item takes of it (`faceAs`). Unlike an annotation, an anchor
- * on geometry of a feature that is deleted or suppressed is `detached` before
- * any search (`lostFeature`): a closest match there would be another edge,
+ * on geometry of a feature that is deleted, suppressed or failed is
+ * `detached` before any search (`lostFeature`): a closest match there would be another edge,
  * and a missing number is safer on a drawing than a wrong one. A lost anchor
  * is never an error. Only plain data comes out of the kernel here; no shape
  * is made.
@@ -46,35 +46,49 @@ const LOST_WORDS: Record<SheetAnchoredItem['kind'], { thing: string; verb: strin
 /**
  * An anchor's report when a feature its reference names (`featuresOfName`;
  * a script's generated feature counts as the script) is no longer in
- * `features`, or is suppressed: `detached`, with why, in words for the
- * item's `kind`. A deleted one outranks a suppressed one. `undefined` when
- * every one is there and active: then the anchor is looked for as usual
- * (exact name, related name, fingerprint).
+ * `features`, is suppressed, or failed in the last recompute (`failed`, by
+ * feature ID): `detached`, with why, in words for the item's `kind`. A
+ * deleted one outranks a suppressed one, which outranks a failed one.
+ * `undefined` when every one is there, active and made: then the anchor is
+ * looked for as usual (exact name, related name, fingerprint).
  */
 export function lostFeature(
   ref: GeomRef,
   features: readonly Pick<Feature, 'id' | 'name' | 'suppressed'>[],
   kind: SheetAnchoredItem['kind'] = 'dimension',
+  failed: ReadonlySet<string> = NO_FAILED,
 ): SheetAnchorReport | undefined {
-  const byId = new Map<string, Pick<Feature, 'name' | 'suppressed'>>(
+  const byId = new Map<string, Pick<Feature, 'id' | 'name' | 'suppressed'>>(
     features.map((f) => [f.id, f]),
   );
   const ids = new Set(byId.keys());
   const { thing, verb } = LOST_WORDS[kind];
   let suppressed: string | undefined;
+  let broken: string | undefined;
   for (const token of featuresOfName(ref.id)) {
     const feature = byId.get(scriptOfGenerated(token, ids) ?? token);
     if (!feature) {
       return { status: 'detached', message: `The feature this was ${verb} on is deleted.` };
     }
     if (feature.suppressed) suppressed ??= feature.name;
+    else if (failed.has(feature.id)) broken ??= feature.name;
   }
-  if (suppressed === undefined) return undefined;
-  return {
-    status: 'detached',
-    message: `${suppressed}, the feature this was ${verb} on, is suppressed. Unsuppress it to show the ${thing} again.`,
-  };
+  if (suppressed !== undefined) {
+    return {
+      status: 'detached',
+      message: `${suppressed}, the feature this was ${verb} on, is suppressed. Unsuppress it to show the ${thing} again.`,
+    };
+  }
+  if (broken !== undefined) {
+    return {
+      status: 'detached',
+      message: `${broken}, the feature this was ${verb} on, has an error. Fix it to show the ${thing} again.`,
+    };
+  }
+  return undefined;
 }
+
+const NO_FAILED: ReadonlySet<string> = new Set();
 
 /**
  * What a whole face (no `at`, no outline) stands for in an item: a circle

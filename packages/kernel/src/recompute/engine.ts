@@ -177,6 +177,12 @@ interface AtMarker {
    * References only, kept as the walk passes; nothing is computed for it.
    */
   steps: readonly ScadStep[];
+  /**
+   * The features whose status was an error in that recompute (a script's
+   * own, not its generated ones'): a sheet anchor on their geometry is
+   * detached (P6-24 S3, `lostFeature`).
+   */
+  failed: ReadonlySet<FeatureId>;
 }
 
 export class RecomputeEngine {
@@ -394,8 +400,8 @@ export class RecomputeEngine {
    * marks and lines) against the bodies at the marker of the last finished
    * recompute (P6-24 S3 and S4, ADR-0143's S3 and S4 amendments), resolved
    * like an annotation's (`ok`, `moved`, `detached`), each with the 3D
-   * geometry it stands for, except that an anchor on a deleted or
-   * suppressed feature is `detached` with no search (`lostFeature`).
+   * geometry it stands for, except that an anchor on a deleted, suppressed
+   * or failed feature is `detached` with no search (`lostFeature`).
    * Nothing is evaluated or cached, and nothing throws for a lost anchor:
    * everything is `detached` before the first recompute.
    */
@@ -444,9 +450,9 @@ export class RecomputeEngine {
       (fid) => (position.get(fid) ?? 0) >= doc.timelineMarker,
     );
     if (rolledBack) return { status: 'detached' };
-    // On geometry of a deleted or suppressed feature: detached, never a
-    // closest match (the owner, 2026-11-11; annotations still look for one).
-    const lost = lostFeature(anchor.ref, doc.features, kind);
+    // On geometry of a deleted, suppressed or failed feature: detached, never
+    // a closest match (the owner, 2026-11-11; annotations still look for one).
+    const lost = lostFeature(anchor.ref, doc.features, kind, at.failed);
     if (lost) return lost;
     const { names, resolve } = this.#references(feature, at.bodies);
     return resolveSheetAnchor(
@@ -861,7 +867,18 @@ export class RecomputeEngine {
       for (const [id, p] of passed) {
         if (p.state === 'done' && p.entry.output) outputs.set(id, p.entry.output);
       }
-      this.#atMarker = { doc, bodies, outputs, featureName: (id) => byId.get(id)?.name, steps };
+      const failed = new Set<FeatureId>();
+      for (const [id, status] of Object.entries(features) as [FeatureId, FeatureStatus][]) {
+        if (status.status === 'error') failed.add(id);
+      }
+      this.#atMarker = {
+        doc,
+        bodies,
+        outputs,
+        featureName: (id) => byId.get(id)?.name,
+        steps,
+        failed,
+      };
       joints = {};
       for (const joint of doc.joints ?? []) {
         if (!joint.suppressed) joints[joint.id] = this.#joint(joint, this.#atMarker);
