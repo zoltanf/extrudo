@@ -4,26 +4,14 @@
  * `@extrudo/sheets` (and the text shaper under it) loads here, lazily, so it never reaches
  * the entry chunk (ADR-0058 §4). The names and the summary are pure (`sheetExportPlan`).
  */
-import type {
-  BodyId,
-  ExtrudoDocument,
-  Sheet,
-  SheetAnchors,
-  SheetId,
-  SheetViewId,
-} from '@extrudo/core';
-import type { SheetViewLines } from '@extrudo/sheets';
+import type { BodyId, ExtrudoDocument, Sheet, SheetId, SheetViewId } from '@extrudo/core';
+import type { SheetModel, SheetViewLines } from '@extrudo/sheets';
 import type { FileAccess } from '../platform/files';
 import { safeFileName } from '../platform/files';
 import { ensureUiFonts } from '../sketch/fonts';
-import { sizeLabel } from './defaults';
+import { isoDate, sizeLabel } from './defaults';
 import { exportAnchorsOf, type SheetAnchorsKernel } from './sheetAnchors';
-import {
-  exportPartsOf,
-  type SheetFieldExtras,
-  type SheetPartsKernel,
-  sheetFieldContext,
-} from './sheetParts';
+import { exportPartsOf, type SheetFieldExtras, type SheetPartsKernel } from './sheetParts';
 import type { SheetViewsKernel } from './viewRunner';
 
 /**
@@ -54,15 +42,6 @@ export interface SheetExportOptions {
    * the filament's density, read when the export starts. `{date}` is today's.
    */
   fields?: SheetFieldExtras;
-}
-
-/** The sheet as an export with every sticky note writes it (a copy: nothing is stored). */
-export function withEveryStickyNote(sheet: Sheet): Sheet {
-  if (!sheet.items.some((i) => i.kind === 'sticky' && !i.print)) return sheet;
-  return {
-    ...sheet,
-    items: sheet.items.map((i) => (i.kind === 'sticky' && !i.print ? { ...i, print: true } : i)),
-  };
 }
 
 /** The preference that remembers the export dialog's format. */
@@ -131,40 +110,54 @@ export async function exportSheets(
   options: SheetExportOptions = {},
 ): Promise<string[]> {
   if (plan.sheets.length === 0) throw new Error('Choose at least one sheet to export.');
-  const chosen = options.stickies ? plan.sheets.map(withEveryStickyNote) : plan.sheets;
-  const all = doc.sheets ?? [];
   const sheets = await import('@extrudo/sheets');
   await ensureUiFonts(sheets.SHEET_FONTS);
-  let lines: Map<SheetViewId, SheetViewLines> | undefined;
-  if (views) {
-    const { sheetViewRunner } = await import('./viewRunner');
-    const { sheetViewWants } = await import('./viewLines');
-    const wants = plan.sheets.flatMap((sheet) => sheetViewWants(doc, sheet, views.bodies));
-    lines = await sheetViewRunner(views.kernel).exact(wants, views.onProgress);
-  }
-  // The items' anchors at the model now, nothing kept: a lost dimension is written as "?".
-  const anchors: SheetAnchors | undefined = views?.anchors
-    ? await exportAnchorsOf(views.anchors, plan.sheets)
-    : undefined;
-  // The parts lists' rows from the model now, and the fields filled as of now (S5).
-  const parts = views?.parts ? await exportPartsOf(views.parts, plan.sheets) : undefined;
-  const context = {
-    name: doc.name,
-    sheets: all,
-    units: doc.settings.units,
-    ...(lines && { views: lines }),
-    ...(anchors && { anchors }),
-    ...(parts && { parts: sheets.sheetPartBodies(doc, parts) }),
-    ...sheetFieldContext(doc, options.fields),
-  };
-  if (format === 'pdf') {
-    const bytes = sheets.sheetsToPdf(chosen, context);
-    files.download(new Blob([bytes as BlobPart], { type: 'application/pdf' }), plan.files[0] ?? '');
+  const model = await sheetModelOf(doc, plan.sheets, views);
+  // One way to write the files, shared with the CLI and the agent tools (S6): `sheetFiles`
+  // fills the fields and copies every sticky note when asked. `{date}` is today's.
+  const extras = options.fields ?? {};
+  const written = sheets.sheetFiles(doc, model, {
+    format,
+    sheets: plan.sheets.map((s) => s.id),
+    date: isoDate(extras.today ?? new Date()),
+    ...(extras.version !== undefined && { version: extras.version }),
+    ...(extras.density !== undefined && { density: extras.density }),
+    ...(options.stickies && { stickies: true }),
+  });
+  if (written.format === 'pdf') {
+    files.download(
+      new Blob([written.pdf as BlobPart], { type: 'application/pdf' }),
+      plan.files[0] ?? '',
+    );
   } else {
-    chosen.forEach((sheet, i) => {
-      const svg = sheets.sheetToSvg(sheet, context);
+    written.svgs.forEach((svg, i) => {
       files.download(new Blob([svg], { type: 'image/svg+xml' }), plan.files[i] ?? '');
     });
   }
   return plan.files;
+}
+
+/**
+ * The model's half of an export: every view of `sheets` drawn exactly through the project's
+ * view runner (the canvas's lines when they are current), and the anchors and parts lists
+ * read again; without `views`, nothing of the model (the views are their frames).
+ */
+async function sheetModelOf(
+  doc: ExtrudoDocument,
+  sheets: readonly Sheet[],
+  views: SheetExportViews | undefined,
+): Promise<SheetModel> {
+  if (!views) return { views: new Map(), anchors: {}, parts: { lists: {}, bodies: {} } };
+  const { sheetViewRunner } = await import('./viewRunner');
+  const { sheetViewWants } = await import('./viewLines');
+  const wants = sheets.flatMap((sheet) => sheetViewWants(doc, sheet, views.bodies));
+  const lines: Map<SheetViewId, SheetViewLines> = await sheetViewRunner(views.kernel).exact(
+    wants,
+    views.onProgress,
+  );
+  // The items' anchors at the model now, nothing kept: a lost dimension is written as "?".
+  const anchors = views.anchors ? await exportAnchorsOf(views.anchors, sheets) : {};
+  // The parts lists' rows from the model now (S5).
+  const parts = views.parts ? await exportPartsOf(views.parts, sheets) : { lists: {}, bodies: {} };
+  return { views: lines, anchors, parts };
 }
