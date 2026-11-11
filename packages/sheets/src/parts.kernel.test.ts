@@ -331,6 +331,28 @@ function linesOf(geometry: ViewGeometry): SheetViewLines {
               closed: false,
             };
           }
+          case 'ellipse': {
+            const [c, s] = [Math.cos(p.rotation), Math.sin(p.rotation)];
+            const at = (t: number): [number, number] => {
+              const [x, y] = [p.rx * Math.cos(t), p.ry * Math.sin(t)];
+              return [p.center[0] + x * c - y * s, p.center[1] + x * s + y * c];
+            };
+            return {
+              start: at(p.start),
+              segments: [
+                {
+                  type: 'ellipse',
+                  center: p.center,
+                  rx: p.rx,
+                  ry: p.ry,
+                  rotation: p.rotation,
+                  sweep: p.end - p.start,
+                  to: at(p.end),
+                },
+              ],
+              closed: false,
+            };
+          }
         }
       }),
     })),

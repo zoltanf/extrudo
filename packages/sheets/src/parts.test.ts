@@ -206,10 +206,12 @@ describe('parts list rows (plan §4.5)', () => {
   });
 });
 
-const texts = (items: DisplayItem[]) =>
+const texts = (items: readonly DisplayItem[]) =>
   items.filter((i): i is DisplayText => i.type === 'text').map((t) => t.text);
-const runs = (items: DisplayItem[]) => items.filter((i): i is DisplayText => i.type === 'text');
-const paths = (items: DisplayItem[]) => items.filter((i): i is DisplayPath => i.type === 'path');
+const runs = (items: readonly DisplayItem[]) =>
+  items.filter((i): i is DisplayText => i.type === 'text');
+const paths = (items: readonly DisplayItem[]) =>
+  items.filter((i): i is DisplayPath => i.type === 'path');
 
 describe('parts list layout', () => {
   it('draws a filled header row and one 7 mm row per row, columns as wide as their text', () => {
@@ -462,7 +464,7 @@ describe('golden files', () => {
 
   it('matches the golden file of a parts list', () => {
     const item = list({ rows: { [bid('top:0')]: { material: 'Birch ply' } } });
-    golden('parts-list', sheetOf([item]), { parts: { p1: FRAME }, density: 0.68 });
+    golden('parts-list', sheetOf([item]), { parts: { [iid('p1')]: FRAME }, density: 0.68 });
   });
 
   it('matches the golden file of a table', () => {
@@ -495,7 +497,7 @@ describe('golden files', () => {
       b('b2', [-40, -15], 'face'),
     ]);
     golden('balloon', sheet, {
-      parts: { p1: FRAME },
+      parts: { [iid('p1')]: FRAME },
       anchors: {
         b1: [
           {
