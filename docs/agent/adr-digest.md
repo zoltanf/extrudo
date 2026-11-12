@@ -4815,19 +4815,27 @@ the flip, matched on the rebuilt body and required to bound the matched edge, on
 (`ElementIndex`: a grid of `cellFor(stored points)` cells, 27 per lookup, **exactly one** candidate within
 `MATCH_TOLERANCE` 1e-6 mm + `MATCH_RELATIVE` 1e-9 of the coordinate, faces' area to 1e-6, **never the nearest of
 several**: none or several stops with `reference`; `saneElements`/`saneBodies`/`saneReference`: known keys only,
-indices in range, finite numbers, every asked stored edge present and detailed, exactly the bodies asked, a reference
-of the asked kind whose ID parses in ADR-0005's grammar (`namedFeatures`, depth 32, 4,000 characters) with every
-feature in the document sent and one among the FreeCAD body's mapped features). The walk (`bodies.ts`) runs a dress-up
+indices in range, finite numbers, every asked stored edge present and detailed, exactly the bodies asked;
+`checkReference`: the asked kind, an ID that reads as the kernel's builders write names and `featuresOfName` reads them
+(`checkName`: roles with colons, parenthesised sources that may or may not be names, `#n` read from the end by hand,
+only a name's characters), every feature in the document sent and one among the FreeCAD body's mapped features; the
+fingerprint's `adj` cut to `MAX_FINGERPRINT_ADJ` 64, entries that aren't names of the document dropped).
+**A limit of ours is a clean stop, never a kernel failure:** a reply at a kernel cap (`over` + `limit`: `edges`,
+`faces`, `detail`, `adjacent`) stops with `edges` (stored side) or `limit` (bodies), a well-formed reference over 4,000
+characters or nested past 32 with `reference`; no restart. Only a malformed reply is nonsense. The walk (`bodies.ts`) runs a dress-up
 through the same `hold` as S5's features (transaction, measure, rebuild, check, one stop point) and refuses (`kernel`)
 when the kernel was replaced since the last held feature. New `HistoryStop`s `base`, `element`, `edges`, `reference`,
 worded in the app's `HISTORY_STOP`; `MappedFeature.sketch` is optional, `references` (`ReferenceTally`) is on mapped
 dress-ups and on their stops. `packages/kernel`: `describeElements` (stored-shape.ts) is the one describing code:
 `Kernel.describe` for every element plus `edgeGeometry` ends/centre/radius **only in detail** (asked stored edges, or
 rebuilt edges `near` given points) — never detail every edge (each call remaps the shape: quadratic);
-`MAX_DESCRIBED_EDGES` 20,000 (= fcstd's, kept equal by a test) and `MAX_DETAILED_EDGES` 2,000, past either the reply is
-counts plus `over` (a `limit`/`edges` stop, no restart). `KernelApi.describeStoredShape` is import-kernel only (like
+`describeShapes` **counts before describing and shares the caps across the shapes of one call**: `MAX_DESCRIBED_EDGES`
+20,000 and `MAX_DESCRIBED_FACES` 20,000 in all (= fcstd's, a test keeps the edges equal), `MAX_DETAILED_EDGES` 2,000 in
+detail in all, `MAX_ADJACENT` 20,000 round one element; past one every shape gets its counts, `over` and `limit`
+(worst at the caps 7.7 s, ADR-0144's S6 amendment). A batched detail call would need the facade. `KernelApi.describeStoredShape` is import-kernel only (like
 `measureStoredShape`), `describeBodies(bodies, near?)` reads the last recompute; `importReferences` (`KernelApi.reference`,
 the app's pick call) is shared by the app's `importKernel.ts` and the Node test kernel. Fixtures: `dressup-fixtures.ts`
-(FreeCAD 1.1.4's own stored shapes of ten parts, `dressUpSpec`; made by `packages/fcstd/scripts/make-dressup-fixtures.py`,
+(FreeCAD 1.1.4's own stored shapes of ten parts, `dressUpSpec`; `dressup-limits.test.ts` the clean stops and the
+real-body name forms against `featuresOfName`; made by `packages/fcstd/scripts/make-dressup-fixtures.py`,
 ours); a new shape needs the owner's FreeCAD run. `history-corpus.test.ts` reports references, near misses (test-only
 all-pairs) and describe sizes; keep 100 references found, none missing or several, unless a change explains it.

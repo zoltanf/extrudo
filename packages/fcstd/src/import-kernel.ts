@@ -79,8 +79,10 @@ export interface ShapeElements {
   readonly faceCount: number;
   readonly edges: readonly ElementEdge[];
   readonly faces: readonly ElementFace[];
-  /** Set, with nothing described, when there were more edges to describe than the kernel's cap. */
+  /** Set, with nothing described, when the request ran into one of the kernel's caps: how many there were. */
   readonly over?: number;
+  /** Which cap: the shape's (or the call's) edges, faces, the edges in detail, or one element's neighbours. */
+  readonly limit?: 'edges' | 'faces' | 'detail' | 'adjacent';
 }
 
 /** One sub-shape of a rebuilt body, for `references`. */

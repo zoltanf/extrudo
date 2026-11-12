@@ -7,12 +7,23 @@
 import { type BodyId, type Feature, primitiveInputs } from '@extrudo/core';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { importRebuilder } from './import-rebuild';
+import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
 import { BOX, boxBrep, cylinderBrep, LOCATED_FACE_PLACED } from './read-brep-test-support';
 import { testDocument, testFeature } from './recompute/testing';
 import type { KernelApi } from './service';
 import { KernelService } from './service';
-import { chainMatrix, measureShape, placementMatrix, type ShapePlacement } from './stored-shape';
+import {
+  chainMatrix,
+  describeElements,
+  describeShapes,
+  MAX_DETAILED_EDGES,
+  measureShape,
+  placementMatrix,
+  type ShapePlacement,
+} from './stored-shape';
+
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
 
 let normal: KernelService;
 let importer: KernelService;
@@ -284,6 +295,112 @@ describe('describeStoredShape and describeBodies (S6)', () => {
     expect(ref?.kind).toBe('edge');
     expect(ref?.id).toContain(':B:');
     await expect(importer.describeBodies(['nothing' as BodyId])).rejects.toThrow(/no longer/);
+  });
+});
+
+describe('the caps of a description hold for the whole call (S6 review)', () => {
+  let kernel: Kernel;
+  beforeAll(async () => {
+    kernel = new Kernel(await loadOcct());
+  });
+  /** `n` unit boxes side by side in one compound: 12 edges and 6 faces each. */
+  const boxes = (n: number, x0 = 0) => {
+    const parts = Array.from({ length: n }, (_, i) =>
+      kernel.box([1, 1, 1], [x0 + 2 * (i % 100), 2 * Math.floor(i / 100), 0]),
+    );
+    const c = kernel.compound(parts);
+    kernel.release(...parts);
+    return c;
+  };
+
+  it('answers `detail` at 2,001 edges in detail, stored side and rebuilt side', () => {
+    const c = boxes(167); // 2,004 edges
+    const asked = describeElements(kernel, c, {
+      edges: [...Array(MAX_DETAILED_EDGES + 1).keys()],
+      faces: [],
+    });
+    expect(asked).toMatchObject({ edges: [], faces: [], over: 2_001, limit: 'detail' });
+    const all = kernel.describe(c);
+    const near = describeElements(kernel, c, undefined, {
+      points: all.edges.slice(0, MAX_DETAILED_EDGES + 1).map((e) => e.midpoint),
+      radius: 0.01,
+    });
+    expect(near).toMatchObject({ edges: [], over: 2_001, limit: 'detail' });
+    // At the cap itself it describes.
+    const at = describeElements(kernel, c, {
+      edges: [...Array(MAX_DETAILED_EDGES).keys()],
+      faces: [],
+    });
+    expect(at.over).toBeUndefined();
+    expect(at.edges.filter((e) => e.ends)).toHaveLength(MAX_DETAILED_EDGES);
+    kernel.release(c);
+  });
+
+  it('counts a shape before describing it, and shares the caps across the shapes of a call', () => {
+    const big = boxes(1_700); // 20,400 edges
+    const t = performance.now();
+    expect(describeElements(kernel, big, { edges: [0], faces: [] })).toMatchObject({
+      edges: [],
+      over: 20_400,
+      limit: 'edges',
+    });
+    expect(performance.now() - t).toBeLessThan(2_000);
+    kernel.release(big);
+    // Two bodies of 1,200 edges each, 1,100 near points in each: 2,200 in detail for the call.
+    const a = boxes(100);
+    const b = boxes(100, 1_000);
+    const points = [a, b].flatMap((x) =>
+      kernel
+        .describe(x)
+        .edges.slice(0, 1_100)
+        .map((e) => e.midpoint),
+    );
+    const both = describeShapes(kernel, [a, b], undefined, { points, radius: 0.01 });
+    for (const d of both) expect(d).toMatchObject({ edges: [], over: 2_200, limit: 'detail' });
+    // Each alone is under the cap.
+    expect(
+      describeShapes(kernel, [a], undefined, { points, radius: 0.01 })[0]?.over,
+    ).toBeUndefined();
+    kernel.release(a, b);
+    // Two of 12,000 edges each: 24,000 for the call.
+    const c = boxes(1_000);
+    const d = boxes(1_000, 5_000);
+    for (const x of describeShapes(kernel, [c, d]))
+      expect(x).toMatchObject({ over: 24_000, limit: 'edges' });
+    kernel.release(c, d);
+  });
+
+  // The worst the caps allow, measured (ADR-0144's S6 amendment): `BENCH=1`.
+  it.runIf(env?.BENCH)('measures the worst cases at the caps', { timeout: 900_000 }, () => {
+    const one = boxes(1_666); // 19,992 edges
+    const d = kernel.describe(one);
+    let t = performance.now();
+    describeElements(kernel, one, undefined, {
+      points: d.edges.slice(0, MAX_DETAILED_EDGES).map((e) => e.midpoint),
+      radius: 0.01,
+    });
+    console.log('one body, 2,000 of 19,992 in detail, ms', Math.round(performance.now() - t));
+    t = performance.now();
+    describeElements(kernel, one, { edges: [...Array(MAX_DETAILED_EDGES).keys()], faces: [] });
+    console.log('stored, 2,000 of 19,992 asked, ms', Math.round(performance.now() - t));
+    const parts = Array.from({ length: 10 }, (_, i) => boxes(166, 1_000 * i));
+    const near = parts.flatMap((p) =>
+      kernel
+        .describe(p)
+        .edges.slice(0, 200)
+        .map((e) => e.midpoint),
+    );
+    t = performance.now();
+    describeShapes(kernel, parts, undefined, { points: near, radius: 0.01 });
+    console.log('ten bodies of 1,992, 200 each in detail, ms', Math.round(performance.now() - t));
+    const huge = boxes(16_700); // 200,400 edges
+    t = performance.now();
+    describeElements(kernel, huge, { edges: [0], faces: [] });
+    console.log(
+      'a stored shape of 200,400 edges turned away, ms',
+      Math.round(performance.now() - t),
+    );
+    kernel.release(one, huge, ...parts);
   });
 });
 

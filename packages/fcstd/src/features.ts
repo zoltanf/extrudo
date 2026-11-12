@@ -14,6 +14,11 @@
  * read are in `FORMAT.md`.
  */
 import { linkedObjects } from './final-shapes';
+import { cleanName } from './names';
+
+/** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
+const named = (name: string) => cleanName(name, name);
+
 import { type FcDocument, type FcObject, type FcValue, versionAtLeast } from './model';
 import type { DecodedSketch } from './sketch-decode';
 
@@ -259,7 +264,7 @@ function profileSketch(doc: FcDocument, o: FcObject): string {
   else return refuse('value', 'its profile is not a link');
   if (object === undefined) return refuse('profile', 'it has no profile');
   const target = doc.byName.get(object);
-  if (!target) return refuse('profile', `its profile ${object} isn't in the file`);
+  if (!target) return refuse('profile', `its profile ${named(object)} isn't in the file`);
   if (!target.type.startsWith('Sketcher::SketchObject'))
     return refuse('profile', `its profile is ${subs.length > 0 ? 'a face' : 'not a sketch'}`);
   if (subs.length > 0) return refuse('profile', 'its profile is a part of a sketch');
@@ -408,7 +413,7 @@ function axisOf(
     return refuse('axis', `its axis ${sub || 'the whole sketch'} is not one this importer maps`);
   }
   const target = doc.byName.get(v.object);
-  if (!target) return refuse('axis', `its axis ${v.object} isn't in the file`);
+  if (!target) return refuse('axis', `its axis ${named(v.object)} isn't in the file`);
   if (target.type !== 'App::Line' || subs.length > 0)
     return refuse('axis', 'its axis is an edge or a datum line');
   // An origin axis of this feature's own body.
@@ -478,10 +483,11 @@ function dressUpBase(
   if (v === undefined) return refuse('base', 'it has no base');
   if (v.kind !== 'linkSub') return refuse('value', 'its Base is not a link');
   if (v.object === undefined || v.object === '') return refuse('base', 'it has no base');
-  if (!doc.byName.has(v.object)) return refuse('base', `its base ${v.object} isn't in the file`);
+  if (!doc.byName.has(v.object))
+    return refuse('base', `its base ${named(v.object)} isn't in the file`);
   if (context.previous === undefined) return refuse('no-base', 'there is nothing before it');
   if (v.object !== context.previous)
-    return refuse('base', `its base ${v.object} is not the feature before it`);
+    return refuse('base', `its base ${named(v.object)} is not the feature before it`);
   // Bounded before anything is looked at: a file may name any number.
   if (v.subs.length > MAX_DRESSUP_ELEMENTS)
     return refuse('edges', `it names ${v.subs.length} elements, more than ${MAX_DRESSUP_ELEMENTS}`);
@@ -503,7 +509,8 @@ function dressUpBase(
   return { base: v.object, elements };
 }
 
-const clipName = (name: string) => (name.length > 40 ? `${name.slice(0, 40)}…` : name || 'nothing');
+/** A sub-element name from the file, for a detail: cleaned and cut like any name the import writes. */
+const clipName = (name: string) => cleanName(name, 'nothing');
 
 /** A size of a dress-up: finite, above 0 and at most `MAX_FEATURE_LENGTH`. */
 function size(o: FcObject, name: string): number {

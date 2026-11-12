@@ -20,15 +20,16 @@ import type { DecodedDressUp, DressUpElement } from './features';
 import type { ElementEdge, ElementFace, ShapeElements, SubShapeAt } from './import-kernel';
 import {
   cellFor,
+  checkReference,
   detailRadius,
   ElementIndex,
   type Located,
   type Lookup,
   saneBodies,
   saneElements,
-  saneReference,
 } from './match';
 import type { FcPlacement } from './model';
+import { cleanName } from './names';
 
 /** The most edges one dress-up may round or bevel once its faces are counted out. */
 export const MAX_DRESSUP_EDGES = 1_000;
@@ -64,6 +65,21 @@ export type DressUpAdded =
 
 const callDetail = (o: Exclude<CallOutcome<unknown>, { kind: 'done' }>) =>
   'detail' in o && o.detail ? o.detail : o.kind;
+
+/** What a cap of the kernel's description says, for a stop's detail. */
+function overDetail(d: ShapeElements): string {
+  const n = d.over as number;
+  switch (d.limit) {
+    case 'faces':
+      return `has ${n} faces, more than the importer describes`;
+    case 'detail':
+      return `needs ${n} edges looked at closely, more than the importer does at once`;
+    case 'adjacent':
+      return `has an edge or face with ${n} neighbours, more than the importer describes`;
+    default:
+      return `has ${n} edges, more than the importer describes`;
+  }
+}
 
 const literal = (v: number) => `${Number(v.toPrecision(15))}`;
 
@@ -134,11 +150,7 @@ export async function addDressUp(
   );
   if (described.kind !== 'done') return { stop: described.kind, detail: callDetail(described) };
   const s = stored as ShapeElements;
-  if (s.over !== undefined)
-    return {
-      stop: 'edges',
-      detail: `its faces have ${s.over} edges, more than the importer describes`,
-    };
+  if (s.over !== undefined) return { stop: 'edges', detail: `its base ${overDetail(s)}` };
   const picked = storedEdges(feature.elements, s);
   if ('stop' in picked) return picked;
 
@@ -157,11 +169,7 @@ export async function addDressUp(
   );
   if (rebuilt.kind !== 'done') return { stop: rebuilt.kind, detail: callDetail(rebuilt) };
   for (const [, d] of bodies as Map<string, ShapeElements>)
-    if (d.over !== undefined)
-      return {
-        stop: 'limit',
-        detail: `its body has ${d.over} edges, more than the importer describes`,
-      };
+    if (d.over !== undefined) return { stop: 'limit', detail: `its body ${overDetail(d)}` };
   const index = new ElementIndex(bodies as Map<string, ShapeElements>, cell);
 
   // Each stored edge found exactly once; a chamfer's face too, where its sizes differ.
@@ -191,7 +199,10 @@ export async function addDressUp(
   };
   const matches: { edge: Located; face?: Located }[] = [];
   for (const e of picked.edges) {
-    const at = note(index.edge(e), `its edge ${e.index + 1} of ${feature.base}`);
+    const at = note(
+      index.edge(e),
+      `its edge ${e.index + 1} of ${cleanName(feature.base, feature.base)}`,
+    );
     let face: Located | undefined;
     if (wantsFace && at) {
       // FreeCAD's first face round the edge is the lower in the base's face order.
@@ -224,6 +235,7 @@ export async function addDressUp(
   ]);
   const sent = new Set(design.doc.features.map((f) => f.id as string));
   let refs: GeomRef[] | undefined;
+  let tooLarge: string | undefined;
   const named = await budget.call(
     () => budget.kernel.references(items),
     (reply: unknown): reply is (GeomRef | undefined)[] => {
@@ -231,15 +243,23 @@ export async function addDressUp(
       const out: GeomRef[] = [];
       for (let i = 0; i < items.length; i++) {
         if (reply[i] === undefined) return false;
-        const r = saneReference(reply[i], (items[i] as SubShapeAt).kind, sent, options.own);
-        if (!r) return false;
-        out.push(r);
+        const r = checkReference(reply[i], (items[i] as SubShapeAt).kind, sent, options.own);
+        if (r.ok) out.push(r.ref);
+        // A reference of ours too large to keep: the body stops cleanly, the reply is no nonsense.
+        else if (r.limit !== undefined) tooLarge ??= r.limit;
+        else return false;
       }
       refs = out;
       return true;
     },
   );
   if (named.kind !== 'done') return { stop: named.kind, detail: callDetail(named), references };
+  if (tooLarge !== undefined)
+    return {
+      stop: 'reference',
+      detail: `a reference to one of its edges: ${tooLarge}`,
+      references,
+    };
   const all = refs as GeomRef[];
   let k = 0;
   const pairs = matches.map((m) => {

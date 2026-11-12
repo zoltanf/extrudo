@@ -340,8 +340,21 @@ describe('a kernel that lies', () => {
     ['too few references', refs(() => [])],
     ['a missing reference', refs((r) => r.map(() => undefined))],
     [
-      'a reference ID past its limit',
-      refs((r) => r.map((x) => x && { ...x, id: `e[${'a:b:c|'.repeat(1000)}]` })),
+      'an over-limit count with no cap named',
+      bodies((d) =>
+        Object.fromEntries(
+          Object.entries(d).map(([k, v]) => [k, { ...v, edges: [], faces: [], over: 30_000 }]),
+        ),
+      ),
+    ],
+    ['a cap with things described anyway', stored((d) => ({ ...d, over: 3, limit: 'detail' }))],
+    [
+      'a cap that is not one',
+      stored((d) => ({ ...d, edges: [], faces: [], over: 3, limit: 'everything' })),
+    ],
+    [
+      'a reference of characters no name has',
+      refs((r) => r.map((x) => x && { ...x, id: `${x.id}<script>` })),
     ],
   ];
 
@@ -351,7 +364,14 @@ describe('a kernel that lies', () => {
       Object.fromEntries(
         Object.entries(d).map(([k, v]) => [
           k,
-          { edgeCount: 30_000, faceCount: v.faceCount, edges: [], faces: [], over: 30_000 },
+          {
+            edgeCount: 30_000,
+            faceCount: v.faceCount,
+            edges: [],
+            faces: [],
+            over: 30_000,
+            limit: 'edges',
+          },
         ]),
       ),
     );

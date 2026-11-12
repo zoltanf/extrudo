@@ -25,10 +25,13 @@ export const MATCH_AREA_TOLERANCE = 1e-6;
 /** The grid's smallest cell (mm): candidates are looked for in a point's cell and its neighbours. */
 const CELL = 0.01;
 
-/** The most edges or faces one shape's description may hold here (the kernel's own cap, kept equal by a test). */
+/** The most edges one call's description may hold (the kernel's own cap, kept equal by a test). */
 export const MAX_DESCRIBED_EDGES = 20_000;
-/** The most faces an edge may bound, or edges a face may have, in a reply. */
-const MAX_ADJACENT = 100_000;
+/** The most faces (the kernel's `MAX_DESCRIBED_FACES`). */
+export const MAX_DESCRIBED_FACES = 20_000;
+/** The most faces an edge may bound, or edges a face may have, in a reply (the kernel's `MAX_ADJACENT`). */
+export const MAX_ADJACENT = 20_000;
+const LIMITS = ['edges', 'faces', 'detail', 'adjacent'] as const;
 /** The most elements a shape may count. */
 const MAX_COUNT = 10_000_000;
 
@@ -173,6 +176,7 @@ export class ElementIndex {
   readonly #edges: Grid<ElementEdge>;
   readonly #faces: Grid<ElementFace>;
   readonly #bodies: ReadonlyMap<string, ShapeElements>;
+  readonly #edgeFaces = new Map<string, Map<number, readonly number[]>>();
 
   constructor(bodies: ReadonlyMap<string, ShapeElements>, cell: number) {
     this.#bodies = bodies;
@@ -206,7 +210,13 @@ export class ElementIndex {
 
   /** The faces a rebuilt edge bounds. */
   facesOf(at: Located): readonly number[] {
-    return this.#bodies.get(at.body)?.edges.find((e) => e.index === at.index)?.faces ?? [];
+    let byIndex = this.#edgeFaces.get(at.body);
+    if (!byIndex) {
+      // Built once per body, on its first lookup.
+      byIndex = new Map((this.#bodies.get(at.body)?.edges ?? []).map((e) => [e.index, e.faces]));
+      this.#edgeFaces.set(at.body, byIndex);
+    }
+    return byIndex.get(at.index) ?? [];
   }
 }
 
@@ -231,7 +241,7 @@ const EDGE_KEYS = [
   'faces',
 ];
 const FACE_KEYS = ['index', 'type', 'area', 'centroid', 'direction', 'edges'];
-const SHAPE_KEYS = ['edgeCount', 'faceCount', 'edges', 'faces', 'over'];
+const SHAPE_KEYS = ['edgeCount', 'faceCount', 'edges', 'faces', 'over', 'limit'];
 
 function vec(v: unknown): Vec3 | undefined {
   if (!Array.isArray(v) || v.length !== 3 || !v.every(Number.isFinite)) return undefined;
@@ -338,13 +348,21 @@ export function saneElements(
     Number.isInteger(n) && (n as number) >= 0 && (n as number) <= MAX_COUNT;
   if (!count(edgeCount) || !count(faceCount)) return undefined;
   if (!Array.isArray(edgesIn) || !Array.isArray(facesIn)) return undefined;
-  if (edgesIn.length > MAX_DESCRIBED_EDGES || facesIn.length > MAX_DESCRIBED_EDGES)
+  if (edgesIn.length > MAX_DESCRIBED_EDGES || facesIn.length > MAX_DESCRIBED_FACES)
     return undefined;
-  if (over !== undefined) {
-    // Too much to describe: the counts only, and the kernel says how many it would have been.
-    if (!count(over) || over <= MAX_DESCRIBED_EDGES || edgesIn.length > 0 || facesIn.length > 0)
-      return undefined;
-    return { edgeCount, faceCount, edges: [], faces: [], over };
+  const limit = own(reply, 'limit');
+  if (over !== undefined || limit !== undefined) {
+    // One of the kernel's caps: the counts only, how many there were and which cap. A clean stop, not nonsense.
+    if (!count(over) || over < 1 || edgesIn.length > 0 || facesIn.length > 0) return undefined;
+    if (!LIMITS.includes(limit as (typeof LIMITS)[number])) return undefined;
+    return {
+      edgeCount,
+      faceCount,
+      edges: [],
+      faces: [],
+      over,
+      limit: limit as (typeof LIMITS)[number],
+    };
   }
   const edges: ElementEdge[] = [];
   const faces: ElementFace[] = [];
@@ -393,70 +411,168 @@ export function saneBodies(
 
 // --- References ------------------------------------------------------------
 
-/** The longest reference ID taken from the kernel. */
+/** The longest reference ID the importer stores; a longer one, well formed, is a `reference` stop. */
 export const MAX_REFERENCE_ID_LENGTH = 4_000;
-/** How deep a reference's names may nest. */
-const MAX_NAME_DEPTH = 32;
+/** How deep a reference's names may nest; deeper, well formed, is a `reference` stop. */
+export const MAX_NAME_DEPTH = 32;
+/** The most adjacent-face names a fingerprint keeps (they only help a lost reference along). */
+export const MAX_FINGERPRINT_ADJ = 64;
 const TOKEN = /^[A-Za-z0-9_.~-]+$/;
+const OP = /^[A-Za-z0-9_.~/-]+$/;
+/** Every character a persistent name can hold: a token's, the grammar's, and `/` of a `sketch/curve` source. */
+const NAME_CHARS = /^[A-Za-z0-9_.~\-:|()[\]#@/]*$/;
 
-/** `s` split at `sep` where no parenthesis or bracket is open, or `undefined` when they don't balance. */
-function splitTop(s: string, sep: string): string[] | undefined {
+/** The index of the bracket closing the one at `open` (pairs must match), or -1. */
+function closing(text: string, open: number): number {
+  const stack: string[] = [];
+  for (let i = open; i < text.length; i++) {
+    const c = text[i];
+    if (c === '(' || c === '[') stack.push(c === '(' ? ')' : ']');
+    else if (c === ')' || c === ']') {
+      if (stack.pop() !== c) return -1;
+      if (stack.length === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** Brackets that pair up, in a linear pass: what a well-formed name over a size limit must still have. */
+function balanced(text: string): boolean {
+  const stack: string[] = [];
+  for (const c of text) {
+    if (c === '(' || c === '[') stack.push(c === '(' ? ')' : ']');
+    else if ((c === ')' || c === ']') && stack.pop() !== c) return false;
+  }
+  return stack.length === 0;
+}
+
+/** `s` split at `sep` where no parenthesis or bracket is open. */
+function splitTop(s: string, sep: string): string[] {
   const parts: string[] = [];
   let depth = 0;
   let start = 0;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (c === '(' || c === '[') depth++;
-    else if (c === ')' || c === ']') {
-      depth--;
-      if (depth < 0) return undefined;
-    } else if (c === sep && depth === 0) {
+    else if (c === ')' || c === ']') depth--;
+    else if (c === sep && depth === 0) {
       parts.push(s.slice(start, i));
       start = i + 1;
     }
   }
-  if (depth !== 0) return undefined;
   parts.push(s.slice(start));
   return parts;
 }
 
-/**
- * The feature IDs a persistent name names (ADR-0005's grammar, `topo-id.ts`),
- * or `undefined` when it isn't one: a face `op:feature:role[:source]` with
- * `#n` splits, an edge or vertex `e[face|…]` / `v[face|…]` with `@n`, a
- * source a token or a nested name in parentheses.
- */
-export function namedFeatures(
-  name: string,
-  depth = 0,
-  out = new Set<string>(),
-): Set<string> | undefined {
-  if (depth > MAX_NAME_DEPTH || name === '') return undefined;
-  const bracket = /^[ev]\[(.*)\](?:@\d{1,9})?$/s.exec(name);
-  if (bracket) {
-    const faces = splitTop(bracket[1] as string, '|');
-    if (!faces || faces.length === 0) return undefined;
-    for (const f of faces) if (!namedFeatures(f, depth + 1, out)) return undefined;
-    return out;
+/** A face name without its trailing `#n` splits (after the last parenthesis), scanned from the end by hand. */
+function faceStem(name: string): string {
+  const floor = name.lastIndexOf(')') + 1;
+  let end = name.length;
+  for (;;) {
+    let j = end;
+    while (j > floor && name.charCodeAt(j - 1) >= 48 && name.charCodeAt(j - 1) <= 57) j--;
+    if (j === end || j - 1 < floor || name[j - 1] !== '#' || end - j > 9) return name.slice(0, end);
+    end = j - 1;
   }
-  // A face: its stem without the `#n` splits after the last parenthesis.
-  const tail = name.slice(name.lastIndexOf(')') + 1);
-  const splits = /(?:#\d{1,9})+$/.exec(tail);
-  const stem = splits ? name.slice(0, name.length - splits[0].length) : name;
-  const parts = splitTop(stem, ':');
-  if (!parts || parts.length < 3 || parts.length > 4) return undefined;
-  const [op, feature, role, source] = parts as [string, string, string, string | undefined];
-  if (!TOKEN.test(op) || !TOKEN.test(feature) || !TOKEN.test(role)) return undefined;
+}
+
+const DEEP = Symbol('deep');
+
+/**
+ * Collects the features `name` names, as the kernel's builders make names
+ * (`topo-id.ts`, `featuresOfName`): an edge or vertex `e[face|…]` /
+ * `v[face|…]` with `@n`; a face `op:feature:role…` with `#n` splits, whose
+ * role may have colons of its own (`cap:start`, `clip:2`) and whose parts
+ * after the feature are tokens or a parenthesised source; a source that
+ * parses as a name has its features collected, one that doesn't (a
+ * `sketch/curve` source) names none. `false` for anything else, `DEEP` past
+ * `MAX_NAME_DEPTH`.
+ */
+function collect(name: string, depth: number, out: Set<string>): boolean | typeof DEEP {
+  if (depth > MAX_NAME_DEPTH) return DEEP;
+  if (name === '') return false;
+  if (name.startsWith('e[') || name.startsWith('v[')) {
+    const close = closing(name, 1);
+    if (close < 0) return false;
+    const rest = name.slice(close + 1);
+    if (rest !== '' && !/^@\d{1,9}$/.test(rest)) return false;
+    const inner = name.slice(2, close);
+    if (inner === '') return false;
+    for (const face of splitTop(inner, '|')) {
+      if (face.startsWith('e[') || face.startsWith('v[')) return false;
+      const r = collect(face, depth + 1, out);
+      if (r !== true) return r;
+    }
+    return true;
+  }
+  const parts = splitTop(faceStem(name), ':');
+  if (parts.length < 3) return false;
+  const [op, feature, ...rest] = parts as [string, string, ...string[]];
+  // `op` is the feature's type (a plugin's may hold a `/`); `feature` its ID, a token.
+  if (!OP.test(op) || !TOKEN.test(feature)) return false;
   out.add(feature);
-  if (source !== undefined) {
-    if (TOKEN.test(source)) return out;
-    const nested = /^\((.*)\)$/s.exec(source);
-    if (!nested || !namedFeatures(nested[1] as string, depth + 1, out)) return undefined;
+  for (const part of rest) {
+    if (TOKEN.test(part)) continue;
+    if (!part.startsWith('(') || closing(part, 0) !== part.length - 1) return false;
+    const inner = part.slice(1, -1);
+    if (inner === '') return false;
+    // A nested name has its features counted; anything else is a source that names none.
+    const nested = new Set<string>();
+    const r = collect(inner, depth + 1, nested);
+    if (r === DEEP) return DEEP;
+    if (r === true) for (const f of nested) out.add(f);
+  }
+  return true;
+}
+
+/** What checking a persistent name came to. */
+export type NameCheck =
+  | { readonly ok: true; readonly features: ReadonlySet<string> }
+  /** Well formed as far as could be told, but over a size limit of ours. */
+  | { readonly ok: false; readonly limit: string }
+  /** Not a name. */
+  | { readonly ok: false; readonly limit?: undefined };
+
+/**
+ * The feature IDs a persistent name names (ADR-0005's grammar, as the
+ * kernel's `featuresOfName` reads it), or why not: a name over
+ * `MAX_REFERENCE_ID_LENGTH` or nested past `MAX_NAME_DEPTH` whose characters
+ * and brackets are a name's is over a limit, anything else is not a name.
+ * Linear in the name's length but for the nesting.
+ */
+export function checkName(name: string): NameCheck {
+  if (!NAME_CHARS.test(name) || !balanced(name)) return { ok: false };
+  if (name.length > MAX_REFERENCE_ID_LENGTH)
+    return {
+      ok: false,
+      limit: `its name has ${name.length} characters, more than ${MAX_REFERENCE_ID_LENGTH}`,
+    };
+  const features = new Set<string>();
+  const r = collect(name, 0, features);
+  if (r === DEEP)
+    return { ok: false, limit: `its name nests deeper than ${MAX_NAME_DEPTH} levels` };
+  return r ? { ok: true, features } : { ok: false };
+}
+
+/** The feature IDs a persistent name names, or `undefined` when it isn't one or is over a limit. */
+export function namedFeatures(name: string): Set<string> | undefined {
+  const c = checkName(name);
+  return c.ok ? new Set(c.features) : undefined;
+}
+
+/** A fingerprint's adjacent names kept: those that are names of the document sent, at most `MAX_FINGERPRINT_ADJ`. */
+function keptAdj(adj: unknown[], sent: ReadonlySet<string>): string[] {
+  const out: string[] = [];
+  for (const a of adj) {
+    if (out.length >= MAX_FINGERPRINT_ADJ) break;
+    if (typeof a !== 'string') continue;
+    const c = checkName(a);
+    if (c.ok && [...c.features].every((f) => sent.has(f))) out.push(a);
   }
   return out;
 }
 
-function saneFingerprint(v: unknown): GeomRef['fingerprint'] | false {
+function saneFingerprint(v: unknown, sent: ReadonlySet<string>): GeomRef['fingerprint'] | false {
   if (v === undefined) return undefined;
   if (!isObject(v)) return false;
   if (!only(v, ['type', 'at', 'dir', 'size', 'adj'])) return false;
@@ -469,46 +585,69 @@ function saneFingerprint(v: unknown): GeomRef['fingerprint'] | false {
   if (typeof type !== 'string' || !TYPE.test(type) || !at) return false;
   if (d !== undefined && !dir) return false;
   if (size !== undefined && (!Number.isFinite(size) || (size as number) < 0)) return false;
-  if (
-    adj !== undefined &&
-    (!Array.isArray(adj) ||
-      adj.length > 64 ||
-      !adj.every((a) => typeof a === 'string' && a.length <= MAX_REFERENCE_ID_LENGTH))
-  )
-    return false;
+  if (adj !== undefined && !Array.isArray(adj)) return false;
+  // Advisory (they help a lost reference find its way): cut to the cap, the ones that aren't names dropped.
+  const kept = Array.isArray(adj) ? keptAdj(adj, sent) : undefined;
   return {
     type,
     at: [...at],
     ...(dir ? { dir: [...dir] } : {}),
     ...(size !== undefined ? { size: size as number } : {}),
-    ...(adj !== undefined ? { adj: [...(adj as string[])] } : {}),
+    ...(kept !== undefined ? { adj: kept } : {}),
   };
 }
 
+/** What checking a reference from the kernel came to. */
+export type ReferenceCheck =
+  | { readonly ok: true; readonly ref: GeomRef }
+  /** A name of ours too large to store: a clean stop of the body (`reference`), not a kernel failure. */
+  | { readonly ok: false; readonly limit: string }
+  /** Malformed: the kernel's answer makes no sense. */
+  | { readonly ok: false; readonly limit?: undefined };
+
 /**
- * A reference from the kernel checked and copied, or `undefined` when it
- * makes no sense: own keys only, the `kind` asked for, an ID in the naming
- * grammar no longer than `MAX_REFERENCE_ID_LENGTH` whose every feature is
+ * A reference from the kernel checked and copied: own keys only, the `kind`
+ * asked for, an ID in the naming grammar (`checkName`) whose every feature is
  * one of the document sent and at least one of `body`'s own (the features
- * that made the FreeCAD body so far), a fingerprint of finite numbers.
+ * that made the FreeCAD body so far), a fingerprint of finite numbers whose
+ * adjacent names are kept only where they are names of the document sent,
+ * at most `MAX_FINGERPRINT_ADJ`. A well-formed name over a size limit is
+ * `limit`; anything else wrong is malformed.
  */
+export function checkReference(
+  v: unknown,
+  kind: 'edge' | 'face',
+  sent: ReadonlySet<string>,
+  body: ReadonlySet<string>,
+): ReferenceCheck {
+  const bad = { ok: false } as const;
+  if (!isObject(v)) return bad;
+  if (!only(v, ['kind', 'id', 'fingerprint'])) return bad;
+  const id = own(v, 'id');
+  if (own(v, 'kind') !== kind || typeof id !== 'string') return bad;
+  const compound = id.startsWith('e[') || id.startsWith('v[');
+  if (kind === 'edge' ? !id.startsWith('e[') : compound) return bad;
+  const name = checkName(id);
+  if (!name.ok) return name.limit ? { ok: false, limit: name.limit } : bad;
+  const features = [...name.features];
+  if (
+    features.length === 0 ||
+    !features.every((f) => sent.has(f)) ||
+    !features.some((f) => body.has(f))
+  )
+    return bad;
+  const fingerprint = saneFingerprint(own(v, 'fingerprint'), sent);
+  if (fingerprint === false) return bad;
+  return { ok: true, ref: { kind, id, ...(fingerprint ? { fingerprint } : {}) } };
+}
+
+/** `checkReference`'s reference, or `undefined` for anything but a usable one. */
 export function saneReference(
   v: unknown,
   kind: 'edge' | 'face',
   sent: ReadonlySet<string>,
   body: ReadonlySet<string>,
 ): GeomRef | undefined {
-  if (!isObject(v)) return undefined;
-  if (!only(v, ['kind', 'id', 'fingerprint'])) return undefined;
-  const id = own(v, 'id');
-  if (own(v, 'kind') !== kind || typeof id !== 'string' || id.length > MAX_REFERENCE_ID_LENGTH)
-    return undefined;
-  if (kind === 'edge' ? !id.startsWith('e[') : /^[ev]\[/.test(id)) return undefined;
-  const features = namedFeatures(id);
-  if (!features || features.size === 0) return undefined;
-  if (![...features].every((f) => sent.has(f)) || ![...features].some((f) => body.has(f)))
-    return undefined;
-  const fingerprint = saneFingerprint(own(v, 'fingerprint'));
-  if (fingerprint === false) return undefined;
-  return { kind, id, ...(fingerprint ? { fingerprint } : {}) };
+  const c = checkReference(v, kind, sent, body);
+  return c.ok ? c.ref : undefined;
 }

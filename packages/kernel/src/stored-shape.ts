@@ -201,11 +201,12 @@ export interface ShapeElements {
   edges: ElementEdge[];
   faces: ElementFace[];
   /**
-   * Set, with nothing described, when the request would describe more than
-   * `MAX_DESCRIBED_EDGES` edges: how many. An answer, not an error, so a
-   * large body costs the import no kernel restart.
+   * Set, with nothing described, when the request ran into a cap: how many
+   * there were (`limit` says of what). An answer, not an error, so a large
+   * shape costs the import no kernel restart.
    */
   over?: number;
+  limit?: ElementLimit;
 }
 
 /**
@@ -236,14 +237,31 @@ export interface ElementRequest {
   faces: readonly number[];
 }
 
+/** Which cap a description ran into (`ShapeElements.limit`). */
+export type ElementLimit =
+  /** More edges in the shape (or the bodies of one call) than `MAX_DESCRIBED_EDGES`. */
+  | 'edges'
+  /** More faces than `MAX_DESCRIBED_FACES`. */
+  | 'faces'
+  /** More edges to describe in detail than `MAX_DETAILED_EDGES`. */
+  | 'detail'
+  /** A face with more edges, or an edge bounding more faces, than `MAX_ADJACENT`. */
+  | 'adjacent';
+
+/** The most faces one description (or one call's bodies) may have. */
+export const MAX_DESCRIBED_FACES = 20_000;
+/** The most edges a described face may list, or faces a described edge. */
+export const MAX_ADJACENT = 20_000;
+
+const over = (
+  edgeCount: number,
+  faceCount: number,
+  limit: ElementLimit,
+  count: number,
+): ShapeElements => ({ edgeCount, faceCount, edges: [], faces: [], over: count, limit });
+
 /**
- * Describes edges and faces of `shape` (`Kernel.describe`, linear in the
- * shape): with `ask`, the edges and faces asked for, the faces each asked
- * edge bounds and the edges of each asked face, every edge in detail (its
- * ends and circle, `Kernel.edgeGeometry`); without, every edge and face, in
- * detail only the edges whose midpoints are `near` a point. Indices out of
- * range are left out (the counts say why). Past `MAX_DESCRIBED_EDGES` edges,
- * or `MAX_DETAILED_EDGES` in detail, it describes none and says so (`over`).
+ * Describes edges and faces of `shape`: `describeShapes` for one shape.
  */
 export function describeElements(
   kernel: Kernel,
@@ -251,72 +269,119 @@ export function describeElements(
   ask?: ElementRequest,
   near?: DetailNear,
 ): ShapeElements {
-  const d = kernel.describe(shape);
-  const edgeCount = d.edges.length;
-  const faceCount = d.faces.length;
-  const faceEdges: number[][] = d.faces.map(() => []);
-  d.edges.forEach((e, i) => {
-    for (const f of e.faces) faceEdges[f]?.push(i);
+  return describeShapes(kernel, [shape], ask, near)[0] as ShapeElements;
+}
+
+/**
+ * Describes edges and faces of `shapes` (`Kernel.describe`, linear in each
+ * shape): with `ask` (one shape), the edges and faces asked for, the faces
+ * each asked edge bounds and the edges of each asked face, every edge in
+ * detail (its ends and circle, `Kernel.edgeGeometry`); without, every edge
+ * and face, in detail only the edges whose midpoints are `near` a point.
+ * Indices out of range are left out (the counts say why).
+ *
+ * The caps hold for the whole call: the shapes' edges and faces are counted
+ * before any is described, and past `MAX_DESCRIBED_EDGES` edges or
+ * `MAX_DESCRIBED_FACES` faces in all, `MAX_DETAILED_EDGES` in detail in all,
+ * or `MAX_ADJACENT` round one element, every shape comes back with its counts
+ * only, `over` (how many) and `limit` (which cap). So one call costs at most
+ * a description of `MAX_DESCRIBED_EDGES` edges and `MAX_DETAILED_EDGES`
+ * `edgeGeometry` calls on shapes of at most that size, however many shapes.
+ */
+export function describeShapes(
+  kernel: Kernel,
+  shapes: readonly ShapeHandle[],
+  ask?: ElementRequest,
+  near?: DetailNear,
+): ShapeElements[] {
+  // Counted first: a huge shape is turned away before it is described.
+  const counts = shapes.map((shape) => ({
+    edges: kernel.count(shape, 'edge'),
+    faces: kernel.count(shape, 'face'),
+  }));
+  const all = (limit: ElementLimit, count: number) =>
+    counts.map((c) => over(c.edges, c.faces, limit, count));
+  const edgeTotal = counts.reduce((t, c) => t + c.edges, 0);
+  const faceTotal = counts.reduce((t, c) => t + c.faces, 0);
+  if (edgeTotal > MAX_DESCRIBED_EDGES) return all('edges', edgeTotal);
+  if (faceTotal > MAX_DESCRIBED_FACES) return all('faces', faceTotal);
+  const plans = shapes.map((shape) => {
+    const d = kernel.describe(shape);
+    const faceEdges: number[][] = d.faces.map(() => []);
+    d.edges.forEach((e, i) => {
+      for (const f of e.faces) faceEdges[f]?.push(i);
+    });
+    let edgeSet: Set<number>;
+    let faceSet: Set<number>;
+    if (ask) {
+      const inRange = (n: number, count: number) => Number.isInteger(n) && n >= 0 && n < count;
+      edgeSet = new Set(ask.edges.filter((n) => inRange(n, d.edges.length)));
+      faceSet = new Set(ask.faces.filter((n) => inRange(n, d.faces.length)));
+      for (const e of [...edgeSet]) for (const f of d.edges[e]?.faces ?? []) faceSet.add(f);
+      for (const f of ask.faces)
+        if (inRange(f, d.faces.length)) for (const e of faceEdges[f] ?? []) edgeSet.add(e);
+    } else {
+      edgeSet = new Set(d.edges.keys());
+      faceSet = new Set(d.faces.keys());
+    }
+    const detailed = ask ? edgeSet : nearEdges(d, near);
+    return { shape, d, faceEdges, edgeSet, faceSet, detailed };
   });
-  let edgeSet: Set<number>;
-  let faceSet: Set<number>;
-  if (ask) {
-    const inRange = (n: number, count: number) => Number.isInteger(n) && n >= 0 && n < count;
-    edgeSet = new Set(ask.edges.filter((n) => inRange(n, edgeCount)));
-    faceSet = new Set(ask.faces.filter((n) => inRange(n, faceCount)));
-    for (const e of [...edgeSet]) for (const f of d.edges[e]?.faces ?? []) faceSet.add(f);
-    for (const f of ask.faces)
-      if (inRange(f, faceCount)) for (const e of faceEdges[f] ?? []) edgeSet.add(e);
-  } else {
-    edgeSet = new Set(d.edges.keys());
-    faceSet = new Set(d.faces.keys());
+  const detailTotal = plans.reduce((t, p) => t + p.detailed.size, 0);
+  if (detailTotal > MAX_DETAILED_EDGES) return all('detail', detailTotal);
+  for (const p of plans) {
+    for (const e of p.edgeSet) {
+      const n = p.d.edges[e]?.faces.length ?? 0;
+      if (n > MAX_ADJACENT) return all('adjacent', n);
+    }
+    for (const f of p.faceSet) {
+      const n = p.faceEdges[f]?.length ?? 0;
+      if (n > MAX_ADJACENT) return all('adjacent', n);
+    }
   }
-  if (edgeSet.size > MAX_DESCRIBED_EDGES)
-    return { edgeCount, faceCount, edges: [], faces: [], over: edgeSet.size };
-  const detailed = ask ? edgeSet : nearEdges(d, near);
-  if (detailed.size > MAX_DETAILED_EDGES)
-    return { edgeCount, faceCount, edges: [], faces: [], over: detailed.size };
-  const edges: ElementEdge[] = [];
-  for (const index of [...edgeSet].sort((a, b) => a - b)) {
-    const e = d.edges[index] as ShapeDescription['edges'][number];
-    const out: ElementEdge = {
-      index,
-      type: e.type,
-      length: e.length,
-      midpoint: e.midpoint,
-      faces: [...e.faces],
-    };
-    if (e.direction) out.direction = e.direction;
-    if (detailed.has(index)) out.ends = [];
-    if (detailed.has(index) && e.type !== 'degenerate') {
-      const g = kernel.edgeGeometry(shape, index, 2);
-      if (g.type !== 'degenerate') {
-        const first = g.points[0];
-        const last = g.points.at(-1);
-        if (first && last) out.ends = [first, last];
-        if (g.conic) {
-          out.centre = g.conic.center;
-          out.radius = g.conic.radius;
+  return plans.map(({ shape, d, faceEdges, edgeSet, faceSet, detailed }) => {
+    const edges: ElementEdge[] = [];
+    for (const index of [...edgeSet].sort((a, b) => a - b)) {
+      const e = d.edges[index] as ShapeDescription['edges'][number];
+      const out: ElementEdge = {
+        index,
+        type: e.type,
+        length: e.length,
+        midpoint: e.midpoint,
+        faces: [...e.faces],
+      };
+      if (e.direction) out.direction = e.direction;
+      if (detailed.has(index)) out.ends = [];
+      if (detailed.has(index) && e.type !== 'degenerate') {
+        const g = kernel.edgeGeometry(shape, index, 2);
+        if (g.type !== 'degenerate') {
+          const first = g.points[0];
+          const last = g.points.at(-1);
+          if (first && last) out.ends = [first, last];
+          if (g.conic) {
+            out.centre = g.conic.center;
+            out.radius = g.conic.radius;
+          }
         }
       }
+      edges.push(out);
     }
-    edges.push(out);
-  }
-  const faces: ElementFace[] = [...faceSet]
-    .sort((a, b) => a - b)
-    .map((index) => {
-      const f = d.faces[index] as ShapeDescription['faces'][number];
-      const out: ElementFace = {
-        index,
-        type: f.type,
-        area: f.area,
-        centroid: f.centroid,
-        edges: faceEdges[index] ?? [],
-      };
-      if (f.direction) out.direction = f.direction;
-      return out;
-    });
-  return { edgeCount, faceCount, edges, faces };
+    const faces: ElementFace[] = [...faceSet]
+      .sort((a, b) => a - b)
+      .map((index) => {
+        const f = d.faces[index] as ShapeDescription['faces'][number];
+        const out: ElementFace = {
+          index,
+          type: f.type,
+          area: f.area,
+          centroid: f.centroid,
+          edges: faceEdges[index] ?? [],
+        };
+        if (f.direction) out.direction = f.direction;
+        return out;
+      });
+    return { edgeCount: d.edges.length, faceCount: d.faces.length, edges, faces };
+  });
 }
 
 /** The edges whose midpoints lie within `near.radius` of one of its points, through a grid of that cell. */

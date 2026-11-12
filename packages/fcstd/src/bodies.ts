@@ -52,6 +52,9 @@ import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import { containerChain, forgetRemovedPlanes } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
 
+/** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
+const named = (name: string) => cleanName(name, name);
+
 /** The most features one body's history walks (the library's longest chain is in ADR-0144's S5 amendment). */
 export const MAX_BODY_FEATURES = 500;
 /** The most features the walk takes over a whole file. */
@@ -182,12 +185,12 @@ export function bodyChain(
     if (seen.has(name)) return { broken: 'its features lead back to themselves' };
     seen.add(name);
     const o = doc.byName.get(name);
-    if (!o) return { broken: `its feature ${name} isn't in the file` };
-    if (!members.has(name)) return { broken: `its feature ${name} is not in the body` };
+    if (!o) return { broken: `its feature ${named(name)} isn't in the file` };
+    if (!members.has(name)) return { broken: `its feature ${named(name)} is not in the body` };
     out.push(o);
     const base = o.properties.BaseFeature?.value;
     if (base !== undefined && base.kind !== 'link')
-      return { broken: `the feature before ${name} can't be read` };
+      return { broken: `the feature before ${named(name)} can't be read` };
     name = base?.object;
   }
   return { features: out.reverse(), ...(startsFrom ? { startsFrom } : {}) };
@@ -480,7 +483,11 @@ export async function importBodies(
       // A sketch is imported for one body only: another body's sketch is not tried again.
       const of = owner.get(feature.sketch);
       if (of !== undefined && of !== body.name) {
-        stop(f, 'chain', `its sketch ${feature.sketch} belongs to another body, ${of}`);
+        stop(
+          f,
+          'chain',
+          `its sketch ${named(feature.sketch)} belongs to another body, ${named(of)}`,
+        );
         return;
       }
       owner.set(feature.sketch, body.name);
@@ -496,7 +503,7 @@ export async function importBodies(
         return;
       }
       if (i === 0 && 'startsFrom' in chain && chain.startsFrom) {
-        stop(f, 'chain', `it builds on ${chain.startsFrom}, a solid outside the body`);
+        stop(f, 'chain', `it builds on ${named(chain.startsFrom)}, a solid outside the body`);
         return;
       }
       const additive = feature.kind === 'pad' || feature.kind === 'revolution';
@@ -661,7 +668,7 @@ export async function importBodies(
       // A feature of another body (a chain that crosses bodies) is never mapped twice.
       const other = owner.get(f.name);
       if (other !== undefined && other !== body.name) {
-        stop(f, 'chain', `it is a feature of another body, ${other}`);
+        stop(f, 'chain', `it is a feature of another body, ${named(other)}`);
         break;
       }
       owner.set(f.name, body.name);

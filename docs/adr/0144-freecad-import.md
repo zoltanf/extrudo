@@ -885,26 +885,61 @@ kernel share `importReferences`.
   midpoints lie within 4 grid cells of a stored edge's (`describeBodies`'
   `near`): every candidate of a lookup, nothing else. The first version
   detailed every rebuilt edge and was quadratic: 2,400 edges took 1 s, 9,600
-  took 15 s. Now, measured on a loaded machine: a 9,600-edge body in 0.28 s,
-  and the worst the caps allow, **2,000 edges in detail
-  (`MAX_DETAILED_EDGES`) of a body of 19,992**, 7.7 s; 1,000 stored edges of a
-  shape of 19,992, 3.9 s; both inside S3's 60 s per call. **`MAX_DESCRIBED_EDGES`
-  (20,000)** edges per description: the library's largest body a dress-up
-  describes has 90 (220 times that), the slowest description took 7 ms. Past
-  either cap the kernel answers with the counts only (`over`), which stops the
-  history with `limit` (a body) or `edges` (a stored face) and costs no
-  restart. A dress-up names at most `MAX_DRESSUP_ELEMENTS` (1,000; the
-  library's most is 12), checked before any is looked at, and works on at most
-  `MAX_DRESSUP_EDGES` (1,000) once its faces are counted out.
-- **Every reply checked** (`saneElements`, `saneBodies`, `saneReference`):
+  took 15 s; now a 9,600-edge body takes 0.28 s.
+- **The caps hold per call, counted first** (`describeShapes`, review of
+  2026-11-12): the shapes' edges and faces are counted (`Kernel.count`) before
+  any is described, and the caps are shared by every shape of one call:
+  **`MAX_DESCRIBED_EDGES` (20,000) edges and `MAX_DESCRIBED_FACES` (20,000)
+  faces in all, `MAX_DETAILED_EDGES` (2,000) in detail in all, `MAX_ADJACENT`
+  (20,000) faces round an edge or edges round a face**. Past one, every shape
+  of the call comes back with its counts only, `over` (how many) and `limit`
+  (which cap). So one call costs at most a description of 20,000 edges and
+  2,000 `edgeGeometry` calls on shapes of at most 20,000 edges, however many
+  bodies it asks for. Measured at the caps on a loaded machine
+  (`stored-shape.test.ts`, `BENCH=1`): one body, 2,000 of 19,992 edges in
+  detail, **7.7 s**; a stored shape, 2,000 of 19,992 asked, **7.5 s**; ten
+  bodies of 1,992 edges, 200 each in detail, 1.2 s; a stored shape of 200,400
+  edges turned away by the count in 84 ms. All inside S3's 60 s per call; the
+  stored text's read is S1's (32 MB at most). The library's largest body a
+  dress-up describes has 90 edges, the slowest description took 6 ms. Batching
+  the detail into one pass over the shape needs a facade call (a new
+  `edgeGeometry` over many edges): not this round.
+- **A cap is a clean stop, never a kernel failure:** a reply at a cap stops
+  that body's history with `edges` (the stored side) or `limit` (the rebuilt
+  bodies), with a detail that says which cap, and costs no restart. A dress-up
+  names at most `MAX_DRESSUP_ELEMENTS` (1,000; the library's most is 12),
+  checked before any is looked at, and works on at most `MAX_DRESSUP_EDGES`
+  (1,000) once its faces are counted out.
+- **Every reply checked** (`saneElements`, `saneBodies`, `checkReference`):
   whole counts in range, every index and adjacency in range and each element
   once, every asked element present (stored side) or every element in order
   (rebuilt side), finite numbers, no key but the known ones (a `__proto__` key
-  refuses the reply), exactly the bodies asked for. A reference must have the
-  asked kind and an ID in the naming grammar (ADR-0005's, nesting at most 32
-  deep, at most 4,000 characters) whose every feature is one of the document
-  sent and at least one is the FreeCAD body's own mapped feature. Anything else
-  is "the kernel's answer makes no sense": a restart and a stop, as in S5.
+  refuses the reply), exactly the bodies asked for, a cap only with nothing
+  described and a cap of the four. Anything else is "the kernel's answer makes
+  no sense": a restart and a stop, as in S5.
+- **References** (`checkName`, `checkReference`): the ID must be a name as the
+  kernel's builders make them, read as the kernel's `featuresOfName` reads it:
+  an edge or vertex `e[face|…]` / `v[face|…]` with `@n`; a face
+  `op:feature:role…` with `#n` splits, whose role may have colons of its own
+  (`cap:start`, `clip:2`) and whose parts after the feature are tokens or a
+  parenthesised source; a source that is itself a name has its features
+  counted, one that is not (a `sketch/curve`) names none. Only a name's
+  characters (a token's, `: | ( ) [ ] # @ /`) and brackets that pair up. Every
+  feature it names must be one of the document sent, and at least one the
+  FreeCAD body's own mapped feature, and its kind the one asked. Core has no
+  name parser (`@extrudo/api` only builds names) and the importer may not use
+  the kernel outside tests, so this is a second reader of the grammar; a test
+  takes every face and edge reference of real bodies (a plate with holes,
+  split, patterned, then filleted, 334 names: roles with colons, nested names,
+  splits, split cut faces, `@n`) and requires the same features as
+  `featuresOfName` for each. A well-formed ID **over 4,000 characters or
+  nested past 32 levels** is a `reference` stop with a detail, not a failure.
+  The split suffixes are read from the end by hand (a regular expression there
+  was quadratic on `#1#1…x`); the worst case at the length cap reads in well
+  under a millisecond. The fingerprint's adjacent faces are advisory: they are
+  cut to **64** (`MAX_FINGERPRINT_ADJ`; the kernel lists every adjacent face,
+  and a top face with 65 holes has more), and an entry that is not a name of
+  the document sent is dropped, never a reason to refuse.
 - **The last rebuild is the body so far:** a dress-up is reached only after the
   feature before it held, whose rebuild was the kernel's last; the walk also
   refuses (`kernel`) if the kernel was replaced since that rebuild.
@@ -939,10 +974,13 @@ The same element named twice is taken once.
   area, 6.4e-11 of the diagonal in centre (8 features: FreeCAD's OCCT and ours
   agree on the blends to rounding); chamfers 5.7e-16 (4). No fillet or chamfer
   differs, so no tolerance of their own is needed: S5's 1e-6 stays for all.
-- **The two `failed`:** both fillets of one file (the two halves of a small
-  part), 0.45 mm on seven short sharp edges that meet in corners; Extrudo's
-  fillet can't build the corner blends ("radii up to about 0.33 mm"), FreeCAD's
-  older OCCT built them. Their edges were all found; the stored shape stands in.
+- **The two `failed`:** fillets of several short sharp edges that meet in
+  corners, where rounds of three edges must blend into one corner patch. Each
+  edge rounds alone; all together, our OCCT refuses the radius (its diagnosis
+  says how much smaller would build), and it refuses it on the file's own
+  stored base shape too, so it is the fillet's limit, not the mapping: every
+  edge was found. FreeCAD's older OCCT built the corners. The stored shape
+  stands in.
 - **Bodies (35):** **15 with their whole history** (9 before), 16 from the
   file's shape, 4 empty left out. **276 `import`s** (282 before); the 348
   shapes that aren't bodies come in exactly as in S3. Time per file: median

@@ -54,7 +54,7 @@ import {
 } from './sheets/views';
 import {
   type DetailNear,
-  describeElements,
+  describeShapes,
   describeStoredShape,
   type ElementRequest,
   measureShape,
@@ -265,8 +265,8 @@ export interface KernelApi {
    * ID, in detail the edges `near` the points given (P6-25 S6): an import
    * looks a file's edges up among them, then takes
    * `reference` of the one it found. Rejects if a body is no longer in the
-   * model; a body of more than `MAX_DESCRIBED_EDGES` edges comes back with
-   * its counts only (`over`).
+   * model; past a cap (shared by the bodies of one call: `describeShapes`)
+   * every body comes back with its counts only (`over`, `limit`).
    */
   describeBodies(
     bodies: readonly BodyId[],
@@ -705,8 +705,17 @@ export class KernelService implements KernelApi {
     return this.#run((kernel) => {
       // No prototype: the IDs are the caller's strings.
       const out = Object.create(null) as Record<BodyId, ShapeElements>;
-      for (const id of bodies)
-        out[id] = describeElements(kernel, this.#bodyShape(id, 'measure'), undefined, near);
+      // One call, one set of caps: the bodies share them (`describeShapes`).
+      const unique = [...new Set(bodies)];
+      const described = describeShapes(
+        kernel,
+        unique.map((id) => this.#bodyShape(id, 'measure')),
+        undefined,
+        near,
+      );
+      unique.forEach((id, i) => {
+        out[id] = described[i] as ShapeElements;
+      });
       return out;
     });
   }

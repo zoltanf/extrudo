@@ -158,6 +158,7 @@ export {
   FINGERPRINT_THRESHOLD,
   faceEdgeSources,
   faceRelation,
+  featuresOfName,
   fingerprintOf,
   fingerprintScore,
   indexOfName,
@@ -295,6 +296,7 @@ export type {
   DetailNear,
   ElementEdge,
   ElementFace,
+  ElementLimit,
   ElementRequest,
   ShapeElements,
   ShapePlacement,
@@ -302,5 +304,10 @@ export type {
   StoredShapeOptions,
   StoredShapeStep,
 } from './stored-shape';
-export { MAX_DESCRIBED_EDGES, MAX_DETAILED_EDGES } from './stored-shape';
+export {
+  MAX_ADJACENT,
+  MAX_DESCRIBED_EDGES,
+  MAX_DESCRIBED_FACES,
+  MAX_DETAILED_EDGES,
+} from './stored-shape';
 export { TEST_PART, type TestPart } from './test-part';
