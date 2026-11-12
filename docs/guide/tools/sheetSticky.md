@@ -13,5 +13,7 @@ A coloured note for yourself: on screen only until its Print switch is on.
 |---|---|
 | Drawing › Notes | None |
 
+<video src="demo:sheetSticky" muted loop autoplay playsinline aria-label="Sticky Note demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

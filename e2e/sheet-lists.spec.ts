@@ -247,7 +247,7 @@ async function frameFile(path: string) {
 }
 
 /** Opens the base frame and starts its drawing with New drawing's Standard views. */
-async function frameDrawing(page: Page, file: string) {
+async function frameSheet(page: Page, file: string) {
   await frameFile(file);
   await page.goto('./');
   const [chooser] = await Promise.all([
@@ -273,7 +273,7 @@ async function frameDrawing(page: Page, file: string) {
 test('the list tools rebuild the base-frame sheet: parts list, balloons, table, fields, each one undo step, exported', async ({
   page,
 }, info) => {
-  const { front } = await frameDrawing(page, info.outputPath('base-frame.extrudo'));
+  const { front } = await frameSheet(page, info.outputPath('base-frame.extrudo'));
   // The front view: x right (the top from -300 to 300), z up (0 to 718 at the top's face).
   const [fx0, fy0, fx1, fy1] = await viewBox(page, front);
   const k = (fx1 - fx0) / 600;

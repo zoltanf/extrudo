@@ -4,7 +4,15 @@
  * (`z.toJSONSchema`). Descriptions are what an agent reads, so they say what
  * the tool does and what it answers, in the app's own words.
  */
-import { z } from '@extrudo/core';
+import {
+  SHEET_ANCHOR_POINTS,
+  SHEET_DIMENSION_DIRECTIONS,
+  SHEET_DIMENSION_TYPES,
+  SHEET_PAPER_SIZES,
+  SHEET_STANDARD_VIEWS,
+  SHEET_VIEW_SIDES,
+  z,
+} from '@extrudo/core';
 import type { AgentToolDefinition } from '../platform/agent';
 import { SNAPSHOT_VIEWS } from '../viewport/snapshotView';
 
@@ -124,6 +132,75 @@ const shape = z.discriminatedUnion('shape', [
 
 export type SketchShape = z.infer<typeof shape>;
 
+// --- Sheets (P6-24 S6) ---------------------------------------------------------
+
+const sheetName = z.string().min(1).describe("The sheet's name or id, as list_sheets gives them.");
+const sheetPoint = (what: string) => z.tuple([z.number(), z.number()]).describe(what);
+const sheetScale = z
+  .string()
+  .regex(/^\s*\d+(\.\d+)?\s*:\s*\d+(\.\d+)?\s*$/, "A scale is '1:2', '2:1' or '1:1'.")
+  .describe("A scale: '1:2' draws the model at half its size, '2:1' at twice.");
+const bodyOnSheet = z
+  .string()
+  .min(1)
+  .optional()
+  .describe(
+    "The body it is on ('<feature id>:<n>' from get_bodies); absent: whichever of the view's bodies has it.",
+  );
+
+/** What a dimension or a leader note is on, as an agent names it in a view. */
+const sheetAnchor = z
+  .union([
+    z.strictObject({
+      edge: name("An edge's persistent name ('e[…]')."),
+      at: z
+        .enum(SHEET_ANCHOR_POINTS)
+        .optional()
+        .describe(
+          "One point of it: start, end, middle or a circle's centre; absent: the whole edge.",
+        ),
+      body: bodyOnSheet,
+    }),
+    z.strictObject({
+      edgeBetween: z
+        .array(z.string().min(1))
+        .min(2)
+        .describe('The edge between two faces, by their persistent names.'),
+      at: z
+        .enum(SHEET_ANCHOR_POINTS)
+        .optional()
+        .describe(
+          "One point of it: start, end, middle or a circle's centre; absent: the whole edge.",
+        ),
+      body: bodyOnSheet,
+    }),
+    z.strictObject({
+      face: name("A face's persistent name."),
+      silhouette: z
+        .union([z.literal(1), z.literal(-1)])
+        .optional()
+        .describe(
+          "One of a cylinder's or cone's two outlines in the view; absent: the face whole.",
+        ),
+      body: bodyOnSheet,
+    }),
+    z.strictObject({ vertex: name("A vertex's persistent name."), body: bodyOnSheet }),
+    z.strictObject({
+      free: sheetPoint("A point of the view not on the model, in the view's mm."),
+    }),
+  ])
+  .describe(
+    'An edge (or edgeBetween two faces), a face or a vertex by its persistent name, as get_feature and the API reference name them; or a free point { free: [x, y] } in view mm.',
+  );
+
+const viewPlace = sheetPoint(
+  "Where the view's origin (the model's origin, projected) goes: sheet mm from the paper's top-left corner, y down.",
+);
+const viewMm = (what: string) =>
+  sheetPoint(
+    `${what}: view mm, at model size from the view's origin, x along the view's right and y along its up (list_sheets gives both as world directions).`,
+  );
+
 const empty = z.object({});
 
 /** Every tool: name, description, input schema, and whether it changes the design. */
@@ -192,7 +269,7 @@ export const TOOL_SCHEMAS = {
   },
   screenshot: {
     description:
-      "A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), the annotations' numbered badges, and the size. Sizes come from get_bodies, not pictures. At most one per second.",
+      "A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), the annotations' numbered badges, and the size. Sizes come from get_bodies, not pictures. An open drawing is finished first (back to the model). At most one per second.",
     input: z.object({
       view: z
         .union([z.enum(SNAPSHOT_VIEWS), z.tuple([z.number(), z.number(), z.number()])])
@@ -235,6 +312,180 @@ export const TOOL_SCHEMAS = {
         .max(1536)
         .optional()
         .describe('Width and height in px; default 768.'),
+    }),
+  },
+  list_sheets: {
+    description:
+      "The design's drawing sheets and which one is open in the app: { open, sheets: [{ id, name, paper { size, orientation, width, height } (mm), scale, projection, decimals, titleBlock?, views: [{ id, name, at (sheet mm from the top-left, y down), from ('front', … | { direction, up } | { parent, side }), scale, right, up (world directions of the view's x and y), bodies? }], items: [{ id, kind, view?, text?, type?, value? (mm or degrees, measured now), state, message? }] }] }. state: ok, moved (found again by its fingerprint: check it), detached (its geometry is gone; the message says why; the export writes ?), invalid (the geometry doesn't make it). Changes nothing.",
+    input: empty,
+  },
+  add_sheet: {
+    description:
+      "Adds a drawing sheet and answers it as list_sheets does. start 'standard' (the default) puts the Front view and the Top, side and Isometric views projected from it on the sheet, laid out and scaled to fit as the app's New drawing does; 'empty' adds none. Doesn't open the drawing. One undo step.",
+    input: z.object({
+      name: z
+        .string()
+        .trim()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("The sheet's name; default 'Sheet <n>'."),
+      size: z
+        .union([
+          z.enum(SHEET_PAPER_SIZES),
+          z.tuple([z.number().min(10).max(10000), z.number().min(10).max(10000)]),
+        ])
+        .optional()
+        .describe("A paper (default 'A3') or [width, height] in mm."),
+      orientation: z.enum(['landscape', 'portrait']).optional().describe('Default landscape.'),
+      projection: z
+        .enum(['first', 'third'])
+        .optional()
+        .describe("The projection angle projected views follow; default 'first'."),
+      scale: sheetScale
+        .optional()
+        .describe(
+          "The sheet's scale; default: the largest standard one that fits ('standard'), else 1:1.",
+        ),
+      start: z
+        .enum(['standard', 'empty'])
+        .default('standard')
+        .describe("'standard': the four standard views, fitted; 'empty': none."),
+      bodies: z
+        .array(z.string().min(1))
+        .optional()
+        .describe("The bodies the views draw ('<feature id>:<n>'); default: every shown body."),
+      titleBlock: z.enum(['simple', 'full', 'none']).optional().describe("Default 'simple'."),
+      fields: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe(
+          "The title block's fields (title, drawnBy, …); default: the design's name as title and its units. '{date}', '{version}' and '{= width}' are filled when it is drawn. Never put a person's name in unasked.",
+        ),
+    }),
+  },
+  add_view: {
+    description:
+      "Adds a view to a sheet: a base view looking along a standard direction (from: 'front', 'top', …) or { direction, up }, or a view projected from another (parent and side), which stays lined up with it. Answers { id, name }. One undo step.",
+    input: z.object({
+      sheet: sheetName,
+      at: viewPlace,
+      from: z
+        .union([
+          z.enum(Object.keys(SHEET_STANDARD_VIEWS) as [string, ...string[]]),
+          z.strictObject({
+            direction: z
+              .tuple([z.number(), z.number(), z.number()])
+              .describe('Where the view looks, world.'),
+            up: z
+              .tuple([z.number(), z.number(), z.number()])
+              .describe('The world direction up the sheet.'),
+          }),
+        ])
+        .optional()
+        .describe("A base view's direction; default 'front'."),
+      parent: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('A projected view: the view (name or id) it is projected from.'),
+      side: z
+        .enum(SHEET_VIEW_SIDES)
+        .optional()
+        .describe(
+          "A projected view: where it sits from its parent; the 'iso-…' ones are isometric.",
+        ),
+      name: z
+        .string()
+        .trim()
+        .min(1)
+        .max(100)
+        .optional()
+        .describe("The view's name; default as the app names it."),
+      scale: sheetScale.optional().describe("A base view's own scale; default the sheet's."),
+      style: z
+        .enum(['visible', 'hidden'])
+        .optional()
+        .describe(
+          "A base view's lines: 'visible' edges only, or 'hidden' (the default): and hidden edges dashed.",
+        ),
+      bodies: z
+        .array(z.string().min(1))
+        .optional()
+        .describe("A base view's bodies ('<feature id>:<n>'); default every shown body."),
+    }),
+  },
+  add_dimension: {
+    description:
+      "Adds a dimension to a view, measured from the model each time it is drawn, and answers { id, value (model mm, degrees for an angle), text (as printed), state }: read it to check the model's sizes. linear: two anchors (vertices or edge points), or one straight edge (its length); radius and diameter: one circular edge; angle: two straight edges. A name not in the view's bodies, or anchors that measure nothing, are refused and nothing changes. One undo step.",
+    input: z.object({
+      sheet: sheetName,
+      view: z.string().min(1).describe('The view (name or id).'),
+      type: z.enum(SHEET_DIMENSION_TYPES).describe('What it measures.'),
+      anchors: z
+        .array(sheetAnchor)
+        .min(1)
+        .max(2)
+        .describe('What it measures from: one or two anchors, as the type takes them.'),
+      at: viewMm("Where its text goes (off the part, so it doesn't sit on the lines)"),
+      direction: z
+        .enum(SHEET_DIMENSION_DIRECTIONS)
+        .optional()
+        .describe(
+          'A linear one: measured horizontally, vertically or along the anchors; default from where the text is.',
+        ),
+      decimals: z.int().min(0).max(4).optional().describe("Decimals shown; default the sheet's."),
+      before: z.string().max(100).optional().describe("Text before the value, e.g. '4× '."),
+      after: z.string().max(100).optional().describe('Text after the value.'),
+    }),
+  },
+  add_note: {
+    description:
+      "Adds a note to a sheet: a text at a place on the sheet, or, with view and anchor, a leader note whose arrow points at the model. Fields in braces ('{date}', '{= width}') are filled when it is drawn. Answers { id }. One undo step.",
+    input: z.object({
+      sheet: sheetName,
+      text: z.string().trim().min(1).max(2000).describe('The note, plain text; new lines allowed.'),
+      at: sheetPoint(
+        "A text's top-left corner in sheet mm (from the paper's top-left, y down); a leader note's text in view mm, as add_dimension's at.",
+      ),
+      view: z
+        .string()
+        .min(1)
+        .optional()
+        .describe('A leader note: the view (name or id) it points into.'),
+      anchor: sheetAnchor.optional().describe('A leader note: what its arrow points at.'),
+      size: z
+        .number()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("A text's letter height, mm; default 3.5."),
+    }),
+  },
+  export_sheet: {
+    description:
+      "Exports sheets as the app's Export drawing does, every view drawn exactly and every dimension measured now (a detached one is written as its text with ?): format 'pdf' writes one PDF (a page per sheet) and answers its path; 'png' answers a picture of each sheet to look at. At most one export every 2 s. Changes nothing.",
+    input: z.object({
+      format: z
+        .enum(['pdf', 'png'])
+        .describe("'pdf': a file, its path answered; 'png': a picture of each sheet."),
+      sheets: z
+        .array(z.string().min(1))
+        .min(1)
+        .optional()
+        .describe(
+          "The sheets (names or ids), written in the design's order; default: the open one (else the first) for png, every sheet for pdf.",
+        ),
+      size: z
+        .int()
+        .min(512)
+        .max(2400)
+        .optional()
+        .describe("png: the picture's longer side in px; default 1600."),
+      stickies: z
+        .boolean()
+        .optional()
+        .describe('Also the sticky notes on screen only; default: only those switched to Print.'),
     }),
   },
   list_commands: {
@@ -384,6 +635,10 @@ export const CHANGE_TOOLS: ReadonlySet<ToolName> = new Set([
   'add_annotation',
   'edit_annotation',
   'remove_annotation',
+  'add_sheet',
+  'add_view',
+  'add_dimension',
+  'add_note',
   'run_command',
   'undo',
   'redo',

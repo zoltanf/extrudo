@@ -1,8 +1,8 @@
 # ADR-0143: Drawings: 2D sheets made from the model
 
 - **Status:** Accepted, 2026-11-10 (the owner: the 14 decisions of the plan's §12, all as
-  proposed). S1a (modes) and S0 (spikes) are done, and S1's document and its layout and
-  output (no UI yet), see the amendments at the end. Each slice lands with an amendment here.
+  proposed). All slices, S0 to S6, are done (2026-11-11). Each slice landed with one or more
+  amendments at the end, in slice order.
 - **Task:** P6-24 (`docs/03-roadmap.md`); FR-DR-01 to FR-DR-08.
 - **Specification and mock-ups:** `docs/plans/drawings-2026-11-10.md` and the five
   `docs/plans/drawings-mock-*.html` pages beside it. This ADR records what was decided and
@@ -212,336 +212,6 @@ The spikes' numbers, drawings and readers are in the plan's §13.
 - The WASM build with the walk's last fixes (`occt-f40f666098be`) passes `hlr-spans.test.ts`,
   and views drawn from it match the polygonal ones. What S0 left unmeasured is in the plan's
   §13.4.
-
-## Amendment (S2, kernel views), 2026-11-11
-
-Package 1 of S2: the kernel turns a sheet view into 2D lines; no UI. Files:
-`packages/core/src/sheet-frame.ts` (the frame math only), `packages/kernel/src/sheets/`
-(`geometry.ts`, `evaluate.ts`, `views.ts`), `RecomputeEngine.sheetView`,
-`KernelApi.sheetViews` and `cancelSheetViews`, `Recomputer.sheetViews`. No facade change.
-
-- **The frame** (`SheetViewFrame`: `direction`, `up`, `right = direction × up`, unit and
-  square). A view's own coordinates are mm at model scale, x right, y up, the world origin
-  at (0, 0) (`toSheetView`); the app applies scale and position and flips y for the sheet.
-  `sheetBaseFrame(direction, up)` turns `up` square to the direction.
-  `sheetProjectedFrame(parent, projection, side)`: in third angle a view shows the side it
-  is placed on, in first angle the opposite side; a view above or below keeps the parent's
-  `right`, one left or right keeps its `up`, so the views line up. **Isometric sides are
-  pictorial and the same in both angles**: `iso-above-right` looks from above, from the
-  right and from the parent's viewer (the parent's direction plus the third-angle
-  directions of those two neighbours: a true isometric of the parent's axes), with the
-  parent's up kept as close as it can be. `sheetViewFrame(sheet, id)` walks the parents;
-  `SHEET_STANDARD_VIEWS` and `sheetStandardFrom(name)` give the six standard base views
-  (Z up, the front faces −Y).
-- **`ViewGeometry`** (plan §6.2): curves `{ kind, body, edge?, face?, pieces }`. Kinds:
-  `visible` (a sharp edge seen), `hidden` (any edge or outline behind the model; an
-  outline's has `face`), `outline` (a silhouette seen), `tangent` (a smooth edge seen);
-  hidden tangent edges and seams are left out. Pieces: `line`, `arc`, `ellipse` (angles
-  counter-clockwise in view coordinates), exact for lines, circles and ellipses (a tilted
-  circle is an ellipse arc, one seen edge-on a line) and `polyline` otherwise (64 samples
-  per curve). `edge` and `face` are topological names (ADR-0005); an outline that lies on a
-  seam keeps the seam's edge name too. Then `bounds`, `status` (`partial` when a body was
-  skipped: `skipped` lists `{ body, reason: 'mesh' | 'missing' }`), and `exact`.
-- **Every kind comes back**: the view's style and its tangent-edge switch are filters the
-  app applies (`shownCurves`), so they are in no key and changing them computes nothing.
-- **In the evaluator** the bodies go through hidden-line removal as one compound, so one
-  body hides another; each entry maps back through `Kernel.locate` to its body and that
-  body's own edge or face index, then to the name. Raw indices never leave
-  `sheets/evaluate.ts`. A hidden stretch lying under a drawn line, or under a drawn arc of
-  the same circle, is taken out (a box's back edges behind its front ones); pieces of one
-  edge that continue each other are joined (HLR splits an edge at outline points; two
-  halves of a circle seen edge-on lie on one line and join into it).
-- **The quick view** (`quick: true`) is `hlrPolySpans` chained into polylines, with no
-  names and `exact: false`; a quick request is given the exact result when the cache has
-  it. **What it does to the display mesh**: `hlrPolySpans` meshes a face that has no
-  triangulation and leaves that mesh on it, and the display mesher keeps a mesh at least as
-  fine as it asks for. Measured on a box with a round boss at the display tessellation
-  (0.05 mm, 0.3 rad): 204 triangles; after a polygonal run at 0.005 mm first, 462; at
-  0.05 mm and 0.5 rad first, 156 (coarser than asked); display mesh first and the
-  polygonal run after it, 204. So the engine gives a body it has not meshed for display
-  (`#meshed`; after a kernel restart the app already holds every mesh and `have` skips
-  them) its display mesh, at the last recompute's tessellation, before a quick view.
-- **The cache** is in the engine: up to 64 views, keyed by the drawn bodies' versions, the
-  skipped bodies, the frame's direction and up, and exact or quick; plain data, no shapes
-  held; emptied with the engine. Scale, position and style are not in the key.
-- **`sheetViews(requests, onView?)`** computes one view at a time in the order asked,
-  each one synchronous engine run, and yields between views: `onView(result, done,
-  total)` hears each result; a `false` from it, or `cancelSheetViews()`, stops the run
-  before the next view with `SheetViewsCancelledError`. A recompute may run between two
-  views, and the later view then draws the new bodies (each result carries the `versions`
-  it was drawn from). A view that fails is `{ id, error }`; the others still come.
-  `Recomputer.sheetViews` goes through `#wait` ("Computing the sheet views…", ADR-0105).
-  A request without `bodies` draws the bodies at the marker that are shown (not hidden,
-  not ghosts: `effectiveBodyDisplay`).
-- **Times** on the Arch ARM VM, under load from other work, per view (front, right, top,
-  iso, first angle): exact B2 1.5–10 ms, B4 6–18 ms, B5 4–11 ms, B10 10–36 ms, B7 3.5 and
-  3.7 s for front and right (the knurl side views) and 4.5 and 22 ms for top and iso;
-  quick 0.3–7 ms each.
-- **Tests**: `sheet-frame.test.ts` (third angle first, then first angle and the isometric
-  sides), `sheets/geometry.test.ts` (the 2D math), `sheets/views.test.ts` (a box, a holed
-  box and a cylinder from the standard directions in both angles, names, cache hit and
-  miss, shown bodies, a mesh body, the display mesh), `sheets/service.test.ts` (order,
-  progress, both cancels, a recompute between views) and `sheets/golden.test.ts` (the four
-  standard views of B2, B4, B5, B7 and B10 as golden SVGs, `--update` after the path rewrites them,
-  `SHEET_TIMES=1` prints times, `SHEET_QUICK=<dir>` writes the quick views beside them).
-- **Rejected**: filtering by style in the kernel (the style would join the key and a
-  switch would recompute); stopping a run when a newer `sheetViews` call comes (adding
-  one view would stop the exact runs of the others); stopping a run on every recompute
-  (every sheet edit sends one); isometric sides that follow the projection angle (in first
-  angle, `iso-above-right` would look from below and the left).
-
-## Amendment (S3, dimensions: document, anchors, layout), 2026-11-11
-
-Package 1 of S3: dimensions without UI. Files: `packages/core/src/sheet-schema.ts`
-(`SheetDimensionItemSchema`, `SheetAnchorSchema`, `dimensionProblems`), `packages/core/src/sheet-anchors.ts`
-(the report types, `sheetSilhouetteSide`, `keepLastAnchors`), `remintSheets`,
-`packages/kernel/src/sheets/anchors.ts`, `RecomputeEngine.resolveSheet`, `KernelApi.resolveSheet`,
-`Recomputer.resolveSheet`, `packages/sheets/src/dimensions.ts`, a `state` field on io's display items.
-No facade change.
-
-- **The item** follows plan §5.1: `view`, `type` (`linear`, `radius`, `diameter`, `angle`), `direction`
-  (linear only), `anchors` (one or two), `at`, `decimals`, `before`, `after`, `reference`.
-  **`at` is in the view's own mm** (model size, y up), like a free anchor, so a dimension moves and
-  scales with its view and needs no rewrite when the view is moved.
-- **Anchors** are one of three shapes told apart by their keys: `{ ref, at? }` (a vertex; an edge whole
-  or its `start`, `end`, `middle`, `centre`; a cylinder's face whole), `{ ref, silhouette: 1 | -1 }` (a
-  cylinder's or cone's outline in the dimension's view; `1` is on the side of `axis × direction`, the
-  face's axis with its canonical sign) and `{ free }`. Refs name a vertex, edge or face, **carry their
-  fingerprint** (required in the schema, stricter than an annotation's) and are never `index:` refs.
-- **What fits a type** (`dimensionProblems`, applied by `sheetProblems`): linear takes one whole edge or
-  outline or two points or lines; radius one circle; diameter one circle or two outlines; angle two
-  lines. Whether a whole edge is a line or a circle is the model's to say at resolve time.
-- **`resolveSheet(sheet)`** resolves every anchor against all bodies at the marker as the annotation
-  pass does (`#references`; rolled back → `detached`; on a deleted or suppressed feature → `detached`,
-  below; exact name `ok`; related name or fingerprint `moved`; nothing → `detached`) and returns, per dimension and anchor, `{ status, geometry?, resolved?,
-  message? }`. Geometry: a `point`; a `line`'s ends; a `circle`'s centre, axis, x direction and radius (a
-  cylinder face's centre on the axis, level with the face's middle); a `curve`'s ends; a `silhouette`
-  (the named side's line from `faceSilhouettes`, the longest piece, and the opposite one). Plain data
-  only, no shape made. Anything that throws leaves that anchor `detached`. Evaluates nothing, cached
-  nowhere.
-- **Measuring** (`@extrudo/sheets`, so app and CLI agree): **linear and angle in the view's plane at
-  model size, radius and diameter on the circle itself**. A whole circular edge in a linear dimension
-  stands for its centre; point to line is square to the line; two lines must be parallel (else
-  `invalid`); an unset direction is horizontal when the text is above or below the two points, vertical
-  beside them, else aligned. Text: the item's decimals or the sheet's, the design's unit without the
-  unit, `R`/`Ø` prefixes, `°`, `before`/`after`, brackets for a reference.
-- **Layout**: lines 0.18 mm, filled 3 × 1 mm arrowheads (outside on stubs when there is no room), 1 mm
-  gap and 2 mm overshoot on extension lines, 3.5 mm text above the line along it (reading from below or
-  the right); radius and diameter on a leader with a shelf; angles as an arc with level text outside
-  it. Items are keyed `item:<id>` and carry `state` (`moved`, `detached`, `invalid`) when not `ok`; the
-  writers ignore it, so the export never gets a screen colour.
-- **Following the model**: the text's place is `at` plus the mean move of the ref anchors' fingerprint
-  points (stored → now) in the view, as an annotation's point follows its geometry.
-- **Lost anchors, as proposed**: nothing derived is stored. A `detached` dimension draws from the
-  geometry the caller kept in memory (`keepLastAnchors(previous, next)`), still marked detached; with
-  none (a file just opened) it is its text alone at `at`, `?` for the value, no extension lines.
-- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, commands, remint);
-  `kernel/src/sheets/anchors.test.ts` (a box, a cylinder, B2 following `height`, a drain hole deleted,
-  rolled back and back again; the pocket deleted, suppressed and made a through cut, below); `sheets/src/dimensions.test.ts` (values,
-  positions, text, states, a golden SVG); `sheets/src/dimensions.kernel.test.ts` (every type measured to
-  known sizes on a part the kernel builds; `SHEETS_OUT=<dir>` writes a sample PDF, checked with
-  `pdftoppm`).
-- **Found:** the naming service's fingerprint fallback re-finds a close edge after its feature is
-  deleted: deleting B2's pocket made a dimension on the pocket floor's edge `moved` onto the box's
-  bottom edge (74 → 80), not `detached`. Annotations and features behave the same and keep doing so;
-  for sheet anchors the owner chose to detach instead (next point).
-- **Deleted and suppressed features (the owner, 2026-11-11)**: before an anchor is looked for by a
-  related name or its fingerprint, the features its persistent name names are read from the name's
-  grammar (`featuresOfName` in `kernel/src/naming/topo-id.ts`: each created face's `feature`, nested
-  sources too; a script's generated feature counts as the script). If one is no longer in the
-  document, the anchor is `detached` with "The feature this was measured on is deleted."; if one is
-  suppressed, `detached` with "<name>, the feature this was measured on, is suppressed. Unsuppress it to
-  show the dimension again." (deleted outranks suppressed; `lostFeature` in `kernel/src/sheets/anchors.ts`).
-  **Package 2 carried it one step further:** a named feature still in the document and active whose status
-  was an error in the last recompute detaches the anchor too, with "<name>, the feature this was measured
-  on, has an error. Fix it to show the dimension again." (after deleted and suppressed). The statuses are
-  the recompute's own: the engine keeps the failed feature IDs with the marker's state (`AtMarker.failed`)
-  and passes them to `lostFeature`. Found on B2: the pocket made to cut upwards has nothing to cut and
-  fails; its floor edge's dimension was `moved` by fingerprint onto the box's bottom edge (80 for 74).
-  No fingerprint search runs then. Why: the closest match on a drawing is another edge, and its number
-  is wrong without looking wrong (B2: 80 for 74); a missing number is safer than a wrong one. A
-  suppressed feature makes nothing while suppressed, so the same wrong match can happen. Rolled back
-  past the marker stays `detached` with no message, checked first. With every named feature there and
-  active nothing changes: exact name `ok`, related name or fingerprint `moved`, even when the
-  fingerprint finds another edge (B2 with `bottom` 0, the pocket a through cut: the floor edge's
-  dimension is `moved` onto the pocket's bottom edge at z = 0, still 74). `keepLastAnchors` keeps the
-  detached report's `message`. Annotations are unchanged: their pass still takes the closest match.
-- **Rejected**: `at` in sheet mm (moving a view would leave its dimensions behind); storing the last
-  measured value or position for a detached dimension (derived data in the document); resolving only
-  among the view's bodies (projected views would need the app's body rules in the kernel; annotations
-  resolve among all bodies); screen colours or dashes in the display list for a detached dimension.
-
-## Amendment (S4, notes: document, anchors, layout), 2026-11-11
-
-Package 1 of S4: leader notes, sticky notes, centre marks and centre lines without UI (no
-tools, no snapping rows). Files: `packages/core/src/sheet-schema.ts` (four item schemas,
-`SHEET_STICKY_COLORS`, `sheetItemAnchors`, `mapSheetItemAnchors`, `sheetItemProblems`),
-`remintSheets`, the `axis` geometry in `core/src/sheet-anchors.ts`,
-`packages/kernel/src/sheets/anchors.ts` (`faceAs`, `lostFeature`'s words per kind),
-`RecomputeEngine.resolveSheet`, and in `@extrudo/sheets` the new `anchored.ts` (what every
-anchored item shares, moved out of `dimensions.ts` unchanged) and `notes.ts`. No facade
-change.
-
-- **The items** follow plan §5.1. `leader`: `view`, one `anchor`, `at`, `text` (not blank,
-  newlines kept). `sticky`: `at`, `size` (5 to 1000 mm a side), `text` (not blank),
-  `color` (`yellow`, `orange`, `pink`, `blue`, `green`; absent: yellow), `print` (only as
-  `true`). `centreMark` and `centreLine`: `view`, `anchors` (one or two in the schema; the
-  rule decides). Frames as S3 settled them: a leader's `at` and every anchor are in the
-  view's own mm; a sticky note belongs to the sheet and has sheet mm.
-- **What fits a kind** (`sheetItemProblems`, applied by `sheetProblems` with the dimension's
-  rule): a leader takes any one anchor; a centre mark one whole edge (a circle, told when it
-  resolves) or a cylinder's face; a centre line two whole edges or outlines (parallel in the
-  view, told at layout) or one cylinder's or cone's face. Every item with a `view` must name
-  a view of its own sheet; `removeSheetView` already removes them by `view`.
-- **One place says which items have anchors**: `sheetItemAnchors(item)` (a leader's anchor
-  as a list of one). The kernel resolves those, `remintSheets` rewrites them through
-  `mapSheetItemAnchors`, and layout reads their reports by that index; a new anchored kind is
-  added there and nowhere else.
-- **Resolving** is the S3 pass for every anchored item, the deleted and suppressed rule
-  included, with the message in the item's words ("The feature this was drawn on is
-  deleted.", "Unsuppress it to show the note / centre mark / centre line again."; a
-  dimension's words are unchanged). **A whole face stands for what the item takes of it**
-  (`faceAs`): a circle for a dimension and a centre mark (a cylinder's), the **axis** for a
-  centre line (a cylinder's or cone's: the stretch of the axis between the lowest and highest
-  points of the face's edges along it, `{ type: 'axis', start, end }`, world mm), and a
-  point for a leader (the face's centroid, where its dot goes).
-- **Layout** (`notes.ts`; lines 0.18 mm, text 3.5 mm, keys `item:<id>`, `state` as a
-  dimension's): a **leader** is a filled 3 × 1 mm arrowhead on the anchor (a 0.75 mm dot on
-  a face), the line to `at`, a 3 mm level shoulder away from the arrow and the text 1 mm past
-  it, its first line's capitals centred on the shoulder, further lines below (left of the
-  arrow the lines end there). On a whole edge the arrow lands on the edge's nearest point to
-  the text, on a circle on its rim towards the text. `at` follows the anchor as a
-  dimension's text does. A detached leader draws from kept geometry, else it is its text
-  alone at `at`, marked. A **centre mark** is a level and an upright line through the
-  centre, each a 1.5 mm cross arm, a 1 mm gap and a long dash out to 3 mm past the circle
-  (on an ellipse, past its reach each way; one plain line on a small circle); a circle seen
-  edge-on is `invalid`. A **centre line** runs midway between its two lines, or along the
-  axis, from the first end to the last plus 3 mm each way, **dash-dot built as segments**
-  (long dashes near 8 mm stretched so both ends are long, 1.5 mm gaps, 1 mm dots), not a dash
-  pattern, so it never starts or ends on a gap; lines not parallel, or an axis seen end-on,
-  are `invalid`. A centre mark or line that is lost with no geometry kept, or invalid, draws
-  nothing: the browser row says why (`sheetItemStatus`). **A sticky note** is a filled note
-  with 1.5 mm rounded corners in its colour (`SHEET_STICKY`: a paper and an ink colour each),
-  its text wrapped inside a 3 mm padding (lines past the bottom left out, the last shown one
-  ending in "…").
-- **Screen or export**: `layoutSheet`'s context takes `output` (`screen` by default for
-  `layoutSheet`, `export` by default for `sheetsToPdf` and `sheetToSvg`). On screen every
-  sticky note is drawn and one without `print` carries "On screen only" in its ink colour;
-  for an export it is left out. `sheetStickiesLeftOut(sheets)` counts those for the export
-  dialog's summary. A view's `centreLines: false` leaves out its centre marks and centre
-  lines (`sheetItemShown`).
-- **Nothing is generated**: this package makes no centre mark or centre line for a view by
-  itself; each one is an item someone placed. Automatic centre marks on a view's holes would
-  be a later decision.
-- **For the tools**: `layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`,
-  `sheetItemStatus` (any item's state and message), `sheetItemShown`,
-  `sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`, `SHEET_STICKY_SCREEN_ONLY`, and
-  `SheetItemState` (what `SheetDimensionState` now aliases).
-- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, remint, the view
-  cascade); `kernel/src/sheets/anchors.test.ts` (a plate with a hole: each kind resolved, a
-  leader following its edge, the hole deleted and suppressed, back again; a flat face has no
-  axis); `sheets/src/notes.test.ts` (positions, states, export rules, a golden SVG per kind);
-  `dimensions.kernel.test.ts` (the same items on the part the kernel builds, through layout;
-  `SHEETS_OUT=<dir>` also writes `items.pdf` and `items-screen.pdf`, checked with
-  `pdftoppm`).
-- **Rejected**: a leader's tip stored as a parameter on its edge (a new anchor shape; the
-  nearest point to the text follows a moved text naturally, and `at: 'middle'` pins it);
-  an axis anchor of its own (`{ ref, axis: true }`: a whole face already says it, the kind
-  decides what a face stands for); the dash-dot as a stroke dash pattern (the ends would
-  fall anywhere); a sticky note's "On screen only" left to the screen (the screen draws the
-  list as it is and derives nothing, S1's rule).
-
-## Amendment (S5, lists: document, rows, fields, layout), 2026-11-11
-
-Package 1 of S5: parts lists, balloons, free tables and text fields without UI (no tools,
-no API, CLI or MCP tools). Files: `packages/core/src/sheet-schema.ts` (three item schemas,
-`SHEET_PARTS_COLUMNS`, the rules), the new `core/src/sheet-fields.ts`, `SheetParts` and
-`SheetAnchorReport.body` in `core/src/sheet-anchors.ts`, `remintSheets`, the balloon
-cascade in `core/src/sheets.ts`, `rewriteReferences` in `core/src/document-commands.ts`,
-`sheetListBodies` in `kernel/src/sheets/views.ts`, `RecomputeEngine.sheetParts`,
-`KernelApi.sheetParts`, `Recomputer.sheetParts`, and in `@extrudo/sheets` the new `parts.ts`
-and `sheetFieldValues` in `layout.ts`. No facade change: the measure is `Kernel.properties`,
-Print Info's.
-
-- **The items** follow plan §5.1. `partsList`: `view`, `at` (sheet mm, top-left),
-  `columns` (from `item`, `qty`, `name`, `material`, `size`, `mass`, each once, **shown in
-  the order listed**; absent: all six) and `rows`, a record from a body ID to what was typed
-  over that row (`name`, `material`, free text up to 200 characters each, decision 11).
-  `balloon`: `view`, one `anchor`, `at` (the circle's centre, view mm, as a leader's) and
-  `list`. `table`: `at` (sheet mm), `columns` (widths, 1 to 1000 mm, 1 to 50 of them) and
-  `rows` (1 to 500, cell texts that may be empty). Rules in `sheetProblems` and
-  `sheetItemProblems`: an item's `view` on its sheet (as before); a balloon's `list` a
-  **parts list of the same sheet**, its anchor on geometry (never `free`: it numbers a
-  body); a parts list names each column once; every table row has one cell per column.
-  **Deleting a parts list deletes its balloons** in the same step (`removeSheetItems`, and
-  `removeSheetView` when the list belongs to the view), so the rule never refuses a delete.
-  `sheetItemAnchors`/`mapSheetItemAnchors` cover the balloon; `remintSheets` also renames the
-  body IDs a parts list's `rows` are keyed by.
-- **Rows from the model** (nothing derived is stored). `KernelApi.sheetParts(sheet)` gives,
-  per parts list, its view's bodies at the marker in order (`sheetListBodies`: the base
-  view's `bodies` as listed, else every shown body **in timeline order**, the order of the
-  features that made them, then the body number) and each one's volume and tight
-  axis-aligned box (`Kernel.properties`, as Print Info); a body whose measure fails has none.
-  `sheetPartBodies(doc, report)` adds the names and component names the document holds;
-  `sheetPartsRows(list, bodies)` merges: a body joins the first earlier row whose first body
-  has an **equal volume (to a millionth) and box (its three sides sorted, to 0.001 mm, so a
-  quarter-turned copy merges) and either the same component name or the same name stem**
-  (`sheetNameStem`: the name without a trailing number and its separator, compared without
-  case). A body never measured never merges. Rows keep the order of their first bodies and
-  are numbered from 1. A row's name is what was typed over it (under any of its bodies, the
-  first in order), else its one body's name, else the merged bodies' shared stem
-  ("Leg 1" + "Leg 2" → "Leg"), else their component's name; typing never splits a row.
-  Size is the box's sides, longest first, in the design's unit at the sheet's decimals, the
-  unit in the header ("SIZE (MM)"). **Mass** is one piece's, from `context.density` (g/cm³,
-  the app's filament preference); without it the cells are empty. A balloon's number is the
-  item of the row holding the body its anchor resolved on (`SheetAnchorReport.body`, kept
-  by `keepLastAnchors`).
-- **Text fields** (plan §5.3; `sheet-fields.ts`): `{name}`, `{sheet}`, `{sheets}`, `{scale}`,
-  `{date}`, `{version}` and `{= expr}`. **`mapSheetFieldTexts` is the one place that says
-  which texts take fields**: text items, leader notes, table cells and the title block's
-  typed fields (not sticky notes, dimensions' before/after or parts list cells). Layout fills
-  them before drawing (`sheetFieldValues(sheet, context)`): the design's name, page and count
-  from `context.sheets`, the sheet's scale, and from the context `date`, `version` and
-  `evaluate` (core's `evaluateParameters(doc).evaluate`), an expression written with its unit
-  at the sheet's decimals (`formatQuantity`). A field with no value, an unknown field and an
-  expression that doesn't evaluate are left as typed. `rewriteReferences` renames a parameter
-  inside `{= …}` only, through the same map, in the rename's undo step. Deleting a parameter
-  a field uses is not refused: the field shows as typed.
-- **Layout** (`parts.ts`, keys `item:<id>`). A **parts list**: a header row filled
-  `#eef1f5` with 2.2 mm capitals in the muted colour, then one 7 mm row per row, 3.5 mm
-  text, 2 mm padding, grid 0.25 mm and outline 0.5 mm as the title block; **one line per
-  cell, fitted**: a column is as wide as its widest text (at least 8 mm), a name or material
-  at most 60 mm, a longer one shrinking to 2.5 mm and then cut with "…" (`fitLine`). With no
-  bodies known yet it is its header alone. A **free table**: its stored widths, **each cell
-  wrapped** inside its column (`wrapText`), a row as tall as its tallest cell (7 mm plus a
-  line spacing per extra line), no header row. A **balloon**: a 0.18 mm circle of 4 mm
-  radius (more for a long number) round `at`, its number centred, and a leader from the
-  circle's edge to the anchor's nearest point (a leader note's rule), ending in a 3 × 1 mm
-  arrowhead on an edge or a point and a 0.75 mm dot on a face. Its state follows its anchor
-  as a leader's (`moved`, `detached`; lost with nothing kept, the circle alone); its number
-  is `?` until the list's bodies are known, and `invalid` with "This balloon points at a
-  body that isn't in its parts list." when the row isn't there. `layoutSheet` takes the rows'
-  data through `context.parts` as it takes anchors.
-- **For the tools**: `sheetParts` (kernel), `sheetPartBodies`, `sheetPartsRows`,
-  `sheetPartsCells`, `sheetPartsHeader`, `sheetNameStem`, `sheetBalloonStatus`,
-  `layoutSheetPartsList`, `layoutSheetTable`, `layoutSheetBalloon`, `SHEET_TABLE`,
-  `sheetFieldValues`; core's `fillSheetFields`, `mapSheetFieldTexts`,
-  `renameSheetFieldReferences`, `sheetFieldExpressions`, `SHEET_FIELDS`;
-  `sheetItemStatus(…, { parts })` for a balloon's browser row.
-- **Tests**: `sheet-schema.test.ts`, `sheets.test.ts` (shapes, rules, the balloon cascade,
-  remint), `sheet-fields.test.ts` (filling, what stays typed, a parameter rename through
-  `updateParameter` and its undo); `sheets/src/parts.test.ts` (merging and numbering: two
-  identical bodies, a quarter-turned copy, a component, a typed name and material; cells in
-  mm and inches, mass; positions of each kind; fields through `layoutSheet`; a golden SVG
-  per kind); `sheets/src/parts.kernel.test.ts` (a base frame the kernel builds: sizes and
-  quantities, balloons on their bodies, taller legs; `SHEETS_OUT=<dir>` writes `lists.pdf`,
-  checked with `pdftoppm`).
-- **Rejected**: storing a parts list's rows or numbers (derived data, which a sheet never
-  stores); `BodyMeta.material` (decision 11, not now); the box in the body's own frame
-  (none exists for a body; a copy turned by other than a quarter keeps its own row);
-  wrapping parts list cells (rows of one height read as a list; a table's cells are prose and
-  wrap); a balloon on a free point (it numbers a body); a balloon left on the sheet with its
-  list gone (the rule would refuse the delete, and a number from no list means nothing).
 
 ## Amendment (S1a, 2026-11-10): one `EditMode` and a table per mode
 
@@ -787,6 +457,83 @@ is the lazy `sheets/SheetWorkspace.tsx` chunk; UI spec §4a describes what a per
 - **Selection by item kind.** S3 to S5 add dimensions, notes and tables; keys keep the
   selection layer unchanged for them.
 
+## Amendment (S2, kernel views), 2026-11-11
+
+Package 1 of S2: the kernel turns a sheet view into 2D lines; no UI. Files:
+`packages/core/src/sheet-frame.ts` (the frame math only), `packages/kernel/src/sheets/`
+(`geometry.ts`, `evaluate.ts`, `views.ts`), `RecomputeEngine.sheetView`,
+`KernelApi.sheetViews` and `cancelSheetViews`, `Recomputer.sheetViews`. No facade change.
+
+- **The frame** (`SheetViewFrame`: `direction`, `up`, `right = direction × up`, unit and
+  square). A view's own coordinates are mm at model scale, x right, y up, the world origin
+  at (0, 0) (`toSheetView`); the app applies scale and position and flips y for the sheet.
+  `sheetBaseFrame(direction, up)` turns `up` square to the direction.
+  `sheetProjectedFrame(parent, projection, side)`: in third angle a view shows the side it
+  is placed on, in first angle the opposite side; a view above or below keeps the parent's
+  `right`, one left or right keeps its `up`, so the views line up. **Isometric sides are
+  pictorial and the same in both angles**: `iso-above-right` looks from above, from the
+  right and from the parent's viewer (the parent's direction plus the third-angle
+  directions of those two neighbours: a true isometric of the parent's axes), with the
+  parent's up kept as close as it can be. `sheetViewFrame(sheet, id)` walks the parents;
+  `SHEET_STANDARD_VIEWS` and `sheetStandardFrom(name)` give the six standard base views
+  (Z up, the front faces −Y).
+- **`ViewGeometry`** (plan §6.2): curves `{ kind, body, edge?, face?, pieces }`. Kinds:
+  `visible` (a sharp edge seen), `hidden` (any edge or outline behind the model; an
+  outline's has `face`), `outline` (a silhouette seen), `tangent` (a smooth edge seen);
+  hidden tangent edges and seams are left out. Pieces: `line`, `arc`, `ellipse` (angles
+  counter-clockwise in view coordinates), exact for lines, circles and ellipses (a tilted
+  circle is an ellipse arc, one seen edge-on a line) and `polyline` otherwise (64 samples
+  per curve). `edge` and `face` are topological names (ADR-0005); an outline that lies on a
+  seam keeps the seam's edge name too. Then `bounds`, `status` (`partial` when a body was
+  skipped: `skipped` lists `{ body, reason: 'mesh' | 'missing' }`), and `exact`.
+- **Every kind comes back**: the view's style and its tangent-edge switch are filters the
+  app applies (`shownCurves`), so they are in no key and changing them computes nothing.
+- **In the evaluator** the bodies go through hidden-line removal as one compound, so one
+  body hides another; each entry maps back through `Kernel.locate` to its body and that
+  body's own edge or face index, then to the name. Raw indices never leave
+  `sheets/evaluate.ts`. A hidden stretch lying under a drawn line, or under a drawn arc of
+  the same circle, is taken out (a box's back edges behind its front ones); pieces of one
+  edge that continue each other are joined (HLR splits an edge at outline points; two
+  halves of a circle seen edge-on lie on one line and join into it).
+- **The quick view** (`quick: true`) is `hlrPolySpans` chained into polylines, with no
+  names and `exact: false`; a quick request is given the exact result when the cache has
+  it. **What it does to the display mesh**: `hlrPolySpans` meshes a face that has no
+  triangulation and leaves that mesh on it, and the display mesher keeps a mesh at least as
+  fine as it asks for. Measured on a box with a round boss at the display tessellation
+  (0.05 mm, 0.3 rad): 204 triangles; after a polygonal run at 0.005 mm first, 462; at
+  0.05 mm and 0.5 rad first, 156 (coarser than asked); display mesh first and the
+  polygonal run after it, 204. So the engine gives a body it has not meshed for display
+  (`#meshed`; after a kernel restart the app already holds every mesh and `have` skips
+  them) its display mesh, at the last recompute's tessellation, before a quick view.
+- **The cache** is in the engine: up to 64 views, keyed by the drawn bodies' versions, the
+  skipped bodies, the frame's direction and up, and exact or quick; plain data, no shapes
+  held; emptied with the engine. Scale, position and style are not in the key.
+- **`sheetViews(requests, onView?)`** computes one view at a time in the order asked,
+  each one synchronous engine run, and yields between views: `onView(result, done,
+  total)` hears each result; a `false` from it, or `cancelSheetViews()`, stops the run
+  before the next view with `SheetViewsCancelledError`. A recompute may run between two
+  views, and the later view then draws the new bodies (each result carries the `versions`
+  it was drawn from). A view that fails is `{ id, error }`; the others still come.
+  `Recomputer.sheetViews` goes through `#wait` ("Computing the sheet views…", ADR-0105).
+  A request without `bodies` draws the bodies at the marker that are shown (not hidden,
+  not ghosts: `effectiveBodyDisplay`).
+- **Times** on the Arch ARM VM, under load from other work, per view (front, right, top,
+  iso, first angle): exact B2 1.5–10 ms, B4 6–18 ms, B5 4–11 ms, B10 10–36 ms, B7 3.5 and
+  3.7 s for front and right (the knurl side views) and 4.5 and 22 ms for top and iso;
+  quick 0.3–7 ms each.
+- **Tests**: `sheet-frame.test.ts` (third angle first, then first angle and the isometric
+  sides), `sheets/geometry.test.ts` (the 2D math), `sheets/views.test.ts` (a box, a holed
+  box and a cylinder from the standard directions in both angles, names, cache hit and
+  miss, shown bodies, a mesh body, the display mesh), `sheets/service.test.ts` (order,
+  progress, both cancels, a recompute between views) and `sheets/golden.test.ts` (the four
+  standard views of B2, B4, B5, B7 and B10 as golden SVGs, `--update` after the path rewrites them,
+  `SHEET_TIMES=1` prints times, `SHEET_QUICK=<dir>` writes the quick views beside them).
+- **Rejected**: filtering by style in the kernel (the style would join the key and a
+  switch would recompute); stopping a run when a newer `sheetViews` call comes (adding
+  one view would stop the exact runs of the others); stopping a run on every recompute
+  (every sheet edit sends one); isometric sides that follow the projection angle (in first
+  angle, `iso-above-right` would look from below and the left).
+
 ## Amendment (S2, the view tools), 2026-11-11
 
 Package 2 of S2: the views drawn from the model in the app, Base View, the view card and an
@@ -918,6 +665,87 @@ UI spec §4a describes what a person sees.
   no document); the notes in the display list (they would be exported); dimming by colour in
   the list (the display list carries no screen colour).
 
+## Amendment (S3, dimensions: document, anchors, layout), 2026-11-11
+
+Package 1 of S3: dimensions without UI. Files: `packages/core/src/sheet-schema.ts`
+(`SheetDimensionItemSchema`, `SheetAnchorSchema`, `dimensionProblems`), `packages/core/src/sheet-anchors.ts`
+(the report types, `sheetSilhouetteSide`, `keepLastAnchors`), `remintSheets`,
+`packages/kernel/src/sheets/anchors.ts`, `RecomputeEngine.resolveSheet`, `KernelApi.resolveSheet`,
+`Recomputer.resolveSheet`, `packages/sheets/src/dimensions.ts`, a `state` field on io's display items.
+No facade change.
+
+- **The item** follows plan §5.1: `view`, `type` (`linear`, `radius`, `diameter`, `angle`), `direction`
+  (linear only), `anchors` (one or two), `at`, `decimals`, `before`, `after`, `reference`.
+  **`at` is in the view's own mm** (model size, y up), like a free anchor, so a dimension moves and
+  scales with its view and needs no rewrite when the view is moved.
+- **Anchors** are one of three shapes told apart by their keys: `{ ref, at? }` (a vertex; an edge whole
+  or its `start`, `end`, `middle`, `centre`; a cylinder's face whole), `{ ref, silhouette: 1 | -1 }` (a
+  cylinder's or cone's outline in the dimension's view; `1` is on the side of `axis × direction`, the
+  face's axis with its canonical sign) and `{ free }`. Refs name a vertex, edge or face, **carry their
+  fingerprint** (required in the schema, stricter than an annotation's) and are never `index:` refs.
+- **What fits a type** (`dimensionProblems`, applied by `sheetProblems`): linear takes one whole edge or
+  outline or two points or lines; radius one circle; diameter one circle or two outlines; angle two
+  lines. Whether a whole edge is a line or a circle is the model's to say at resolve time.
+- **`resolveSheet(sheet)`** resolves every anchor against all bodies at the marker as the annotation
+  pass does (`#references`; rolled back → `detached`; on a deleted or suppressed feature → `detached`,
+  below; exact name `ok`; related name or fingerprint `moved`; nothing → `detached`) and returns, per dimension and anchor, `{ status, geometry?, resolved?,
+  message? }`. Geometry: a `point`; a `line`'s ends; a `circle`'s centre, axis, x direction and radius (a
+  cylinder face's centre on the axis, level with the face's middle); a `curve`'s ends; a `silhouette`
+  (the named side's line from `faceSilhouettes`, the longest piece, and the opposite one). Plain data
+  only, no shape made. Anything that throws leaves that anchor `detached`. Evaluates nothing, cached
+  nowhere.
+- **Measuring** (`@extrudo/sheets`, so app and CLI agree): **linear and angle in the view's plane at
+  model size, radius and diameter on the circle itself**. A whole circular edge in a linear dimension
+  stands for its centre; point to line is square to the line; two lines must be parallel (else
+  `invalid`); an unset direction is horizontal when the text is above or below the two points, vertical
+  beside them, else aligned. Text: the item's decimals or the sheet's, the design's unit without the
+  unit, `R`/`Ø` prefixes, `°`, `before`/`after`, brackets for a reference.
+- **Layout**: lines 0.18 mm, filled 3 × 1 mm arrowheads (outside on stubs when there is no room), 1 mm
+  gap and 2 mm overshoot on extension lines, 3.5 mm text above the line along it (reading from below or
+  the right); radius and diameter on a leader with a shelf; angles as an arc with level text outside
+  it. Items are keyed `item:<id>` and carry `state` (`moved`, `detached`, `invalid`) when not `ok`; the
+  writers ignore it, so the export never gets a screen colour.
+- **Following the model**: the text's place is `at` plus the mean move of the ref anchors' fingerprint
+  points (stored → now) in the view, as an annotation's point follows its geometry.
+- **Lost anchors, as proposed**: nothing derived is stored. A `detached` dimension draws from the
+  geometry the caller kept in memory (`keepLastAnchors(previous, next)`), still marked detached; with
+  none (a file just opened) it is its text alone at `at`, `?` for the value, no extension lines.
+- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, commands, remint);
+  `kernel/src/sheets/anchors.test.ts` (a box, a cylinder, B2 following `height`, a drain hole deleted,
+  rolled back and back again; the pocket deleted, suppressed and made a through cut, below); `sheets/src/dimensions.test.ts` (values,
+  positions, text, states, a golden SVG); `sheets/src/dimensions.kernel.test.ts` (every type measured to
+  known sizes on a part the kernel builds; `SHEETS_OUT=<dir>` writes a sample PDF, checked with
+  `pdftoppm`).
+- **Found:** the naming service's fingerprint fallback re-finds a close edge after its feature is
+  deleted: deleting B2's pocket made a dimension on the pocket floor's edge `moved` onto the box's
+  bottom edge (74 → 80), not `detached`. Annotations and features behave the same and keep doing so;
+  for sheet anchors the owner chose to detach instead (next point).
+- **Deleted and suppressed features (the owner, 2026-11-11)**: before an anchor is looked for by a
+  related name or its fingerprint, the features its persistent name names are read from the name's
+  grammar (`featuresOfName` in `kernel/src/naming/topo-id.ts`: each created face's `feature`, nested
+  sources too; a script's generated feature counts as the script). If one is no longer in the
+  document, the anchor is `detached` with "The feature this was measured on is deleted."; if one is
+  suppressed, `detached` with "<name>, the feature this was measured on, is suppressed. Unsuppress it to
+  show the dimension again." (deleted outranks suppressed; `lostFeature` in `kernel/src/sheets/anchors.ts`).
+  **Package 2 carried it one step further:** a named feature still in the document and active whose status
+  was an error in the last recompute detaches the anchor too, with "<name>, the feature this was measured
+  on, has an error. Fix it to show the dimension again." (after deleted and suppressed). The statuses are
+  the recompute's own: the engine keeps the failed feature IDs with the marker's state (`AtMarker.failed`)
+  and passes them to `lostFeature`. Found on B2: the pocket made to cut upwards has nothing to cut and
+  fails; its floor edge's dimension was `moved` by fingerprint onto the box's bottom edge (80 for 74).
+  No fingerprint search runs then. Why: the closest match on a drawing is another edge, and its number
+  is wrong without looking wrong (B2: 80 for 74); a missing number is safer than a wrong one. A
+  suppressed feature makes nothing while suppressed, so the same wrong match can happen. Rolled back
+  past the marker stays `detached` with no message, checked first. With every named feature there and
+  active nothing changes: exact name `ok`, related name or fingerprint `moved`, even when the
+  fingerprint finds another edge (B2 with `bottom` 0, the pocket a through cut: the floor edge's
+  dimension is `moved` onto the pocket's bottom edge at z = 0, still 74). `keepLastAnchors` keeps the
+  detached report's `message`. Annotations are unchanged: their pass still takes the closest match.
+- **Rejected**: `at` in sheet mm (moving a view would leave its dimensions behind); storing the last
+  measured value or position for a detached dimension (derived data in the document); resolving only
+  among the view's bodies (projected views would need the app's body rules in the kernel; annotations
+  resolve among all bodies); screen colours or dashes in the display list for a detached dimension.
+
 ## Amendment (S3, the Dimension tool), 2026-11-11
 
 Package 2 of S3: dimensions in the app. Part 1 (this part): the open sheet's anchors resolved and
@@ -1014,6 +842,86 @@ kernel's `AtMarker.failed` and `lostFeature`; in `@extrudo/sheets`, a detached d
   through the same edge); a separate kernel call for an end or a side (one `resolveSheet` of a
   probe answers both); "Show the unit" and arrows inside or outside on the panel and card (no field;
   left for a later schema change, above).
+
+## Amendment (S4, notes: document, anchors, layout), 2026-11-11
+
+Package 1 of S4: leader notes, sticky notes, centre marks and centre lines without UI (no
+tools, no snapping rows). Files: `packages/core/src/sheet-schema.ts` (four item schemas,
+`SHEET_STICKY_COLORS`, `sheetItemAnchors`, `mapSheetItemAnchors`, `sheetItemProblems`),
+`remintSheets`, the `axis` geometry in `core/src/sheet-anchors.ts`,
+`packages/kernel/src/sheets/anchors.ts` (`faceAs`, `lostFeature`'s words per kind),
+`RecomputeEngine.resolveSheet`, and in `@extrudo/sheets` the new `anchored.ts` (what every
+anchored item shares, moved out of `dimensions.ts` unchanged) and `notes.ts`. No facade
+change.
+
+- **The items** follow plan §5.1. `leader`: `view`, one `anchor`, `at`, `text` (not blank,
+  newlines kept). `sticky`: `at`, `size` (5 to 1000 mm a side), `text` (not blank),
+  `color` (`yellow`, `orange`, `pink`, `blue`, `green`; absent: yellow), `print` (only as
+  `true`). `centreMark` and `centreLine`: `view`, `anchors` (one or two in the schema; the
+  rule decides). Frames as S3 settled them: a leader's `at` and every anchor are in the
+  view's own mm; a sticky note belongs to the sheet and has sheet mm.
+- **What fits a kind** (`sheetItemProblems`, applied by `sheetProblems` with the dimension's
+  rule): a leader takes any one anchor; a centre mark one whole edge (a circle, told when it
+  resolves) or a cylinder's face; a centre line two whole edges or outlines (parallel in the
+  view, told at layout) or one cylinder's or cone's face. Every item with a `view` must name
+  a view of its own sheet; `removeSheetView` already removes them by `view`.
+- **One place says which items have anchors**: `sheetItemAnchors(item)` (a leader's anchor
+  as a list of one). The kernel resolves those, `remintSheets` rewrites them through
+  `mapSheetItemAnchors`, and layout reads their reports by that index; a new anchored kind is
+  added there and nowhere else.
+- **Resolving** is the S3 pass for every anchored item, the deleted and suppressed rule
+  included, with the message in the item's words ("The feature this was drawn on is
+  deleted.", "Unsuppress it to show the note / centre mark / centre line again."; a
+  dimension's words are unchanged). **A whole face stands for what the item takes of it**
+  (`faceAs`): a circle for a dimension and a centre mark (a cylinder's), the **axis** for a
+  centre line (a cylinder's or cone's: the stretch of the axis between the lowest and highest
+  points of the face's edges along it, `{ type: 'axis', start, end }`, world mm), and a
+  point for a leader (the face's centroid, where its dot goes).
+- **Layout** (`notes.ts`; lines 0.18 mm, text 3.5 mm, keys `item:<id>`, `state` as a
+  dimension's): a **leader** is a filled 3 × 1 mm arrowhead on the anchor (a 0.75 mm dot on
+  a face), the line to `at`, a 3 mm level shoulder away from the arrow and the text 1 mm past
+  it, its first line's capitals centred on the shoulder, further lines below (left of the
+  arrow the lines end there). On a whole edge the arrow lands on the edge's nearest point to
+  the text, on a circle on its rim towards the text. `at` follows the anchor as a
+  dimension's text does. A detached leader draws from kept geometry, else it is its text
+  alone at `at`, marked. A **centre mark** is a level and an upright line through the
+  centre, each a 1.5 mm cross arm, a 1 mm gap and a long dash out to 3 mm past the circle
+  (on an ellipse, past its reach each way; one plain line on a small circle); a circle seen
+  edge-on is `invalid`. A **centre line** runs midway between its two lines, or along the
+  axis, from the first end to the last plus 3 mm each way, **dash-dot built as segments**
+  (long dashes near 8 mm stretched so both ends are long, 1.5 mm gaps, 1 mm dots), not a dash
+  pattern, so it never starts or ends on a gap; lines not parallel, or an axis seen end-on,
+  are `invalid`. A centre mark or line that is lost with no geometry kept, or invalid, draws
+  nothing: the browser row says why (`sheetItemStatus`). **A sticky note** is a filled note
+  with 1.5 mm rounded corners in its colour (`SHEET_STICKY`: a paper and an ink colour each),
+  its text wrapped inside a 3 mm padding (lines past the bottom left out, the last shown one
+  ending in "…").
+- **Screen or export**: `layoutSheet`'s context takes `output` (`screen` by default for
+  `layoutSheet`, `export` by default for `sheetsToPdf` and `sheetToSvg`). On screen every
+  sticky note is drawn and one without `print` carries "On screen only" in its ink colour;
+  for an export it is left out. `sheetStickiesLeftOut(sheets)` counts those for the export
+  dialog's summary. A view's `centreLines: false` leaves out its centre marks and centre
+  lines (`sheetItemShown`).
+- **Nothing is generated**: this package makes no centre mark or centre line for a view by
+  itself; each one is an item someone placed. Automatic centre marks on a view's holes would
+  be a later decision.
+- **For the tools**: `layoutSheetLeader`, `layoutSheetCentre`, `layoutSheetSticky`,
+  `sheetItemStatus` (any item's state and message), `sheetItemShown`,
+  `sheetStickiesLeftOut`, `SHEET_NOTE`, `SHEET_STICKY`, `SHEET_STICKY_SCREEN_ONLY`, and
+  `SheetItemState` (what `SheetDimensionState` now aliases).
+- **Tests**: `sheet-schema.test.ts` and `sheets.test.ts` (shapes, rules, remint, the view
+  cascade); `kernel/src/sheets/anchors.test.ts` (a plate with a hole: each kind resolved, a
+  leader following its edge, the hole deleted and suppressed, back again; a flat face has no
+  axis); `sheets/src/notes.test.ts` (positions, states, export rules, a golden SVG per kind);
+  `dimensions.kernel.test.ts` (the same items on the part the kernel builds, through layout;
+  `SHEETS_OUT=<dir>` also writes `items.pdf` and `items-screen.pdf`, checked with
+  `pdftoppm`).
+- **Rejected**: a leader's tip stored as a parameter on its edge (a new anchor shape; the
+  nearest point to the text follows a moved text naturally, and `at: 'middle'` pins it);
+  an axis anchor of its own (`{ ref, axis: true }`: a whole face already says it, the kind
+  decides what a face stands for); the dash-dot as a stroke dash pattern (the ends would
+  fall anywhere); a sticky note's "On screen only" left to the screen (the screen draws the
+  list as it is and derives nothing, S1's rule).
 
 ## Amendment (S4, the notes tools), 2026-11-11
 
@@ -1114,6 +1022,98 @@ No schema change, no kernel change.
   a placeholder would be one more to undo); a fixed time after typing in which clicks are
   ignored (it swallowed a real pick made soon after); snapping in the document's commands
   (the commands store what the person did; snapping is how the pointer is read).
+
+## Amendment (S5, lists: document, rows, fields, layout), 2026-11-11
+
+Package 1 of S5: parts lists, balloons, free tables and text fields without UI (no tools,
+no API, CLI or MCP tools). Files: `packages/core/src/sheet-schema.ts` (three item schemas,
+`SHEET_PARTS_COLUMNS`, the rules), the new `core/src/sheet-fields.ts`, `SheetParts` and
+`SheetAnchorReport.body` in `core/src/sheet-anchors.ts`, `remintSheets`, the balloon
+cascade in `core/src/sheets.ts`, `rewriteReferences` in `core/src/document-commands.ts`,
+`sheetListBodies` in `kernel/src/sheets/views.ts`, `RecomputeEngine.sheetParts`,
+`KernelApi.sheetParts`, `Recomputer.sheetParts`, and in `@extrudo/sheets` the new `parts.ts`
+and `sheetFieldValues` in `layout.ts`. No facade change: the measure is `Kernel.properties`,
+Print Info's.
+
+- **The items** follow plan §5.1. `partsList`: `view`, `at` (sheet mm, top-left),
+  `columns` (from `item`, `qty`, `name`, `material`, `size`, `mass`, each once, **shown in
+  the order listed**; absent: all six) and `rows`, a record from a body ID to what was typed
+  over that row (`name`, `material`, free text up to 200 characters each, decision 11).
+  `balloon`: `view`, one `anchor`, `at` (the circle's centre, view mm, as a leader's) and
+  `list`. `table`: `at` (sheet mm), `columns` (widths, 1 to 1000 mm, 1 to 50 of them) and
+  `rows` (1 to 500, cell texts that may be empty). Rules in `sheetProblems` and
+  `sheetItemProblems`: an item's `view` on its sheet (as before); a balloon's `list` a
+  **parts list of the same sheet**, its anchor on geometry (never `free`: it numbers a
+  body); a parts list names each column once; every table row has one cell per column.
+  **Deleting a parts list deletes its balloons** in the same step (`removeSheetItems`, and
+  `removeSheetView` when the list belongs to the view), so the rule never refuses a delete.
+  `sheetItemAnchors`/`mapSheetItemAnchors` cover the balloon; `remintSheets` also renames the
+  body IDs a parts list's `rows` are keyed by.
+- **Rows from the model** (nothing derived is stored). `KernelApi.sheetParts(sheet)` gives,
+  per parts list, its view's bodies at the marker in order (`sheetListBodies`: the base
+  view's `bodies` as listed, else every shown body **in timeline order**, the order of the
+  features that made them, then the body number) and each one's volume and tight
+  axis-aligned box (`Kernel.properties`, as Print Info); a body whose measure fails has none.
+  `sheetPartBodies(doc, report)` adds the names and component names the document holds;
+  `sheetPartsRows(list, bodies)` merges: a body joins the first earlier row whose first body
+  has an **equal volume (to a millionth) and box (its three sides sorted, to 0.001 mm, so a
+  quarter-turned copy merges) and either the same component name or the same name stem**
+  (`sheetNameStem`: the name without a trailing number and its separator, compared without
+  case). A body never measured never merges. Rows keep the order of their first bodies and
+  are numbered from 1. A row's name is what was typed over it (under any of its bodies, the
+  first in order), else its one body's name, else the merged bodies' shared stem
+  ("Leg 1" + "Leg 2" → "Leg"), else their component's name; typing never splits a row.
+  Size is the box's sides, longest first, in the design's unit at the sheet's decimals, the
+  unit in the header ("SIZE (MM)"). **Mass** is one piece's, from `context.density` (g/cm³,
+  the app's filament preference); without it the cells are empty. A balloon's number is the
+  item of the row holding the body its anchor resolved on (`SheetAnchorReport.body`, kept
+  by `keepLastAnchors`).
+- **Text fields** (plan §5.3; `sheet-fields.ts`): `{name}`, `{sheet}`, `{sheets}`, `{scale}`,
+  `{date}`, `{version}` and `{= expr}`. **`mapSheetFieldTexts` is the one place that says
+  which texts take fields**: text items, leader notes, table cells and the title block's
+  typed fields (not sticky notes, dimensions' before/after or parts list cells). Layout fills
+  them before drawing (`sheetFieldValues(sheet, context)`): the design's name, page and count
+  from `context.sheets`, the sheet's scale, and from the context `date`, `version` and
+  `evaluate` (core's `evaluateParameters(doc).evaluate`), an expression written with its unit
+  at the sheet's decimals (`formatQuantity`). A field with no value, an unknown field and an
+  expression that doesn't evaluate are left as typed. `rewriteReferences` renames a parameter
+  inside `{= …}` only, through the same map, in the rename's undo step. Deleting a parameter
+  a field uses is not refused: the field shows as typed.
+- **Layout** (`parts.ts`, keys `item:<id>`). A **parts list**: a header row filled
+  `#eef1f5` with 2.2 mm capitals in the muted colour, then one 7 mm row per row, 3.5 mm
+  text, 2 mm padding, grid 0.25 mm and outline 0.5 mm as the title block; **one line per
+  cell, fitted**: a column is as wide as its widest text (at least 8 mm), a name or material
+  at most 60 mm, a longer one shrinking to 2.5 mm and then cut with "…" (`fitLine`). With no
+  bodies known yet it is its header alone. A **free table**: its stored widths, **each cell
+  wrapped** inside its column (`wrapText`), a row as tall as its tallest cell (7 mm plus a
+  line spacing per extra line), no header row. A **balloon**: a 0.18 mm circle of 4 mm
+  radius (more for a long number) round `at`, its number centred, and a leader from the
+  circle's edge to the anchor's nearest point (a leader note's rule), ending in a 3 × 1 mm
+  arrowhead on an edge or a point and a 0.75 mm dot on a face. Its state follows its anchor
+  as a leader's (`moved`, `detached`; lost with nothing kept, the circle alone); its number
+  is `?` until the list's bodies are known, and `invalid` with "This balloon points at a
+  body that isn't in its parts list." when the row isn't there. `layoutSheet` takes the rows'
+  data through `context.parts` as it takes anchors.
+- **For the tools**: `sheetParts` (kernel), `sheetPartBodies`, `sheetPartsRows`,
+  `sheetPartsCells`, `sheetPartsHeader`, `sheetNameStem`, `sheetBalloonStatus`,
+  `layoutSheetPartsList`, `layoutSheetTable`, `layoutSheetBalloon`, `SHEET_TABLE`,
+  `sheetFieldValues`; core's `fillSheetFields`, `mapSheetFieldTexts`,
+  `renameSheetFieldReferences`, `sheetFieldExpressions`, `SHEET_FIELDS`;
+  `sheetItemStatus(…, { parts })` for a balloon's browser row.
+- **Tests**: `sheet-schema.test.ts`, `sheets.test.ts` (shapes, rules, the balloon cascade,
+  remint), `sheet-fields.test.ts` (filling, what stays typed, a parameter rename through
+  `updateParameter` and its undo); `sheets/src/parts.test.ts` (merging and numbering: two
+  identical bodies, a quarter-turned copy, a component, a typed name and material; cells in
+  mm and inches, mass; positions of each kind; fields through `layoutSheet`; a golden SVG
+  per kind); `sheets/src/parts.kernel.test.ts` (a base frame the kernel builds: sizes and
+  quantities, balloons on their bodies, taller legs; `SHEETS_OUT=<dir>` writes `lists.pdf`,
+  checked with `pdftoppm`).
+- **Rejected**: storing a parts list's rows or numbers (derived data, which a sheet never
+  stores); `BodyMeta.material` (decision 11, not now); the box in the body's own frame
+  (none exists for a body; a copy turned by other than a quarter keeps its own row);
+  wrapping parts list cells (rows of one height read as a list; a table's cells are prose and
+  wrap); a balloon on a free point (it numbers a body); a balloon left on the sheet with its
+  list gone (the rule would refuse the delete, and a number from no list means nothing).
 
 ## Amendment (S5, the list tools), 2026-11-11
 
@@ -1302,3 +1302,100 @@ change, no kernel facade change, no new dependency (one new workspace edge: `@ex
   PDF pages and text, the same bytes twice, `--date`/`--stickies`/`--sheet`, SVG per
   sheet, `check --sheets` passing and failing on a suppressed feature, a detached
   diameter written as `Ø?`).
+
+## Amendment (S6, the agent tools), 2026-11-11
+
+Package 2 of S6 (plan §9's MCP bullet). No schema change, no kernel facade change, no new
+dependency, no change to the CSP.
+
+- **Six tools** (`apps/web/src/agent/sheetTools.ts`, schemas in `schemas.ts`, listed and
+  stale-checked in the skill's `references/tools.md`):
+  - `list_sheets` `{}` → `{ open, sheets }`: each sheet's name, paper (size, orientation,
+    mm), scale, projection, decimals, title block; its views (`at` on the sheet, `from` as a
+    standard name, a direction or `{ parent, side }`, the scale it is drawn at, and `right`
+    and `up`, the world directions of the view's x and y, so an agent can work out view mm);
+    its items (kind, view, text, a dimension's `type`, measured `value` and printed `text`,
+    `state` ok, moved, detached or invalid with the kernel's `message`; `pending` while the
+    kernel can't say). `open` is the sheet open in the app, or null.
+  - `add_sheet` `{ name?, size?, orientation?, projection?, scale?, start ('standard' |
+    'empty'), bodies?, titleBlock?, fields? }` → the sheet as `list_sheets` gives it. The
+    standard start is fitted as New drawing fits it: the app's `planSheetStart` measures the
+    views and lays them out, and its scale and places go to `d.addSheet` as `scale` and `at`
+    (the API alone puts them on a paper grid). Title-block fields are the API's defaults (the
+    design's name and units: no date, no author) unless given.
+  - `add_view` `{ sheet, at, from? | parent + side, name?, scale?, style?, bodies? }` → `{ id,
+    name }`: a base view (`sheet.addView`) or a projected one (`view.project`); a projected
+    view given a direction, scale, style or bodies is refused (they are its parent's).
+    `style` offers `visible` and `hidden` only (shaded views are a later decision).
+  - `add_dimension` `{ sheet, view, type, anchors, at, direction?, decimals?, before?, after? }`
+    → `{ id, value, text, state }`. Anchors are named as the other tools name geometry: `{ face
+    }`, `{ edge }`, `{ edgeBetween: [face, face] }`, `{ vertex }` (each with `body?`, an edge with
+    `at?`, a face with `silhouette?`) or `{ free: [x, y] }`. **The fingerprint comes from the
+    kernel's `reference(body, kind, name)`**, asked of the view's bodies in turn (its base view's
+    own, else the shown ones), before the API is called; a name in none of them is refused with
+    its input path. **The dimension is measured on the scratch sheet before it goes in**
+    (`resolveSheet` of that sheet, `measureSheetDimension`): `detached` or `invalid` is refused
+    and nothing changes, so the answer's value is always one the model gives.
+  - `add_note` `{ sheet, text, at, size? }` (a text, sheet mm) or `{ sheet, text, at, view, anchor }`
+    (a leader note, view mm; measured first like a dimension) → `{ id, kind }`. It is the one tool
+    beyond the plan's five: without it a sheet an agent makes has no notes, and a drawing to hand
+    over usually needs one ("Deburr all edges"). Moving or deleting items is left out: `undo`
+    takes back an agent's last step, and the person edits sheets in the app.
+  - `export_sheet` `{ format ('pdf' | 'png'), sheets?, size?, stickies? }`, paced with `export`
+    (one per 2 s): **the kernel's `sheetModelNow` then `@extrudo/sheets`' `sheetFiles`**, with the
+    fields the app's Export drawing fills (today, the newest version, the filament's density:
+    `AgentHost.sheetFields`, the shell's `sheetFields`). A PDF goes to main as the reply's file
+    (`format: 'pdf'`, added to `AGENT_EXPORT_FORMATS`; written under `userData/agent-exports`,
+    its path answered). **A PNG is the sheet's SVG drawn onto a canvas through a `blob:` image**
+    (`sheetSvgSnapshot`, beside Report a Bug's `sheetSnapshot`; the text is outlined in that SVG,
+    so no font is needed to draw it), longer side 512–2400 px (default 1600), at most four sheets,
+    one image each. The answer's text lists what the file can't show as the screen does: each
+    sheet's detached items (written with "?"), views that couldn't be drawn, sticky notes left out.
+- **One transaction per change**: each tool builds its change with the API on
+  `Design.from(doc, { ids: newId })` and dispatches the same core command (`addSheet`,
+  `addSheetView`, `addSheetItem`) inside the agent tools' `change`, so it is one step `Agent: …`,
+  refused with `BUSY` while a sketch or a dialog is open, and answers `problems`. `change`, the
+  replies and the body-reference helpers moved from `tools.ts` to `agent/change.ts`, so both tool
+  files share them without an import cycle.
+- **The mode**: the sheet tools work with the drawing open or closed and never open or close it
+  (a change to the open sheet shows at once; New drawing in the app opens the sheet, `add_sheet`
+  doesn't). **`screenshot` finishes an open drawing first** (`AgentHost.finishDrawing`, the app's
+  `finishDrawing`, plan §8) and adds a line saying so. No other tool needs the 3D view.
+- **The app's export uses the shared path**: `exportSheets.ts` writes through `sheetFiles` (the
+  fields and the every-sticky-note copy were its own); its views still come from the project's
+  view runner (its cache serves the canvas's current lines), its anchors and parts lists from
+  `exportAnchorsOf`/`exportPartsOf` as before. `withEveryStickyNote` is `@extrudo/sheets`' only.
+- **Main's 60 s answer limit** applies: a sheet whose views take longer to draw exactly (or to
+  fit, for `add_sheet`) answers the timeout. The kernel tests' small designs answer well inside
+  it; large designs were not measured.
+- **Tests**: `agent/sheetTools.kernel.test.ts` on the real kernel (a fitted standard sheet and its
+  undo; a linear and a diameter dimension answering 40 and 16, following a parameter to 50; an
+  unknown edge and a radius on a straight edge refused with nothing changed; base and projected
+  views, a text and a leader note, each one step; a PDF with the value, the fields filled, then
+  the plate suppressed: `list_sheets` says detached, the PDF and the PNG's SVG write "?"), and in
+  `tools.test.ts` an empty sheet's call, stored shape and undo, refusals (a name in use, no kernel,
+  an unknown sheet), the mode rule and `BUSY`.
+
+## Amendment (S6, the guide, clips and example), 2026-11-11
+
+What a person reads and sees about drawings: `docs/guide/drawings.md` (pictures recorded by
+`e2e/guide-shots.spec.ts`, dark theme like the other concept pages), a clip for every tile of
+the Drawing tab, Finish Drawing and Make › Drawing (`e2e/record-assets.spec.ts`), the Spool
+holder example (`fixtures/benchmarks/spool-holder.extrudo`, built and checked by
+`packages/cli/src/example-sheet.test.ts`), and a README scene. Decided here:
+
+- **One model for the example and the clips.** `packages/cli/src/spool-holder.ts` builds the
+  spool holder (a bracket with a bore and two screw holes, an axle with a flange) and holds
+  its A4 view places; the example adds the finished sheet with fingerprints from a real
+  recompute, and the clips' designs (`fixtures/demos/sheetEmpty`, `sheetBase`, `sheetViews`,
+  `sheetList`) add only views and a parts list, which need no fingerprint. A change to the
+  model changes both, so both tests must be re-run with `WRITE_FIXTURES=1` and the clips
+  recorded again.
+- **The clips zoom the paper, not the 3D view**, round a region of the sheet; Export PDF's
+  clip is its dialog, as Export's is. The 16 clips are 0.69 MB (10.6 to 79 kB each); all
+  126 clips are 5.87 MB of `demos.test.ts`'s 6 MB, so the next batch of clips needs that
+  limit raised or older clips re-encoded smaller. `DEMO_CLIPS_PENDING` is gone and
+  `WHOLE_TABS` includes the Drawing tab.
+- **The README scene is named `sheet`**: `drawing` is the older scene of a dimensioned
+  sketch. Renaming that one would rewrite existing pictures, which wait for the re-recording
+  before the release (the owner, 2026-11-11, "Leave for release").

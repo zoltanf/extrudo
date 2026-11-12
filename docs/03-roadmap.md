@@ -1698,7 +1698,7 @@ end to end, faster than in established desktop CAD.
   - [x] S3 Sketch mode.
   - [x] S4 Polish: re-anchor by drag, `screenshot { annotations }`, example file.
 
-- [ ] **P6-24 Drawings: 2D sheets made from the model** (owner, 2026-11-10; FR-DR-01 to
+- [x] **P6-24 Drawings: 2D sheets made from the model** (owner, 2026-11-10; FR-DR-01 to
   FR-DR-08; ADR-0143). A drawing mode that works like sketch mode (tabs Home + Drawing, the
   sheet in place of the 3D view, sheet tabs in place of the timeline, Finish Drawing):
   sheets with a border and title block, views of chosen bodies with exact visible and
@@ -1732,8 +1732,11 @@ end to end, faster than in established desktop CAD.
     fields. Done 2026-11-11: the document, rows and layout (package 1) and the Parts List,
     Balloon and Table tools with their cards, fields in the app and the export
     (`e2e/sheet-lists.spec.ts` rebuilds the base-frame sheet; ADR-0143's S5 amendments).
-  - [ ] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;
-    an example design with a sheet.
+  - [x] S6 Outside: API, emitter, CLI, MCP tools and skill text; guide page; tooltip clips;
+    an example design with a sheet. Done 2026-11-11: sheets in the document API, Export as
+    Script and the CLI (CI exports a fixture's sheets with `extrudo export --format pdf`);
+    the desktop agent tools and their skill text; the Drawings guide page, a clip for every
+    tile of the Drawing tab and the Spool holder example (ADR-0143's three S6 amendments).
 
 - [ ] **P6-25 FreeCAD file import, with history** (owner, 2026-11-11; ADR-0144). Extrudo
   opens `.FCStd` files itself, in the browser and the desktop app: sketches with their

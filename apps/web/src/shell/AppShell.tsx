@@ -1778,6 +1778,7 @@ function Shell({
     },
     toolHost: host,
     openSketch: () => openSketchRef.current,
+    sheetFields,
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const markingCommands = useMemo(

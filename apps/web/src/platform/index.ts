@@ -278,6 +278,7 @@ export type {
   AgentConfig,
   AgentContent,
   AgentExportFormat,
+  AgentFileFormat,
   AgentReply,
   AgentSkillTarget,
   AgentStatus,

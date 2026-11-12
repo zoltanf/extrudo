@@ -13,5 +13,7 @@ A free table: click where it goes, then double-click a cell to type in it.
 |---|---|
 | Drawing › Tables | None |
 
+<video src="demo:sheetTable" muted loop autoplay playsinline aria-label="Table demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

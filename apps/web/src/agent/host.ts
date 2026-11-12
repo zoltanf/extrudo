@@ -7,14 +7,19 @@
 import type {
   Annotation,
   AnnotationReport,
+  BodyId,
   Command,
   DocumentStore,
+  GeomRef,
   ModelStore,
   SessionStore,
 } from '@extrudo/core';
+import type { SheetModelKernel } from '@extrudo/kernel';
 import { createStore } from 'zustand/vanilla';
 import type { OpenSketch } from '../annotations/anchor';
 import type { AgentExportFormat } from '../platform/agent';
+import type { SheetFieldExtras } from '../sheets/sheetParts';
+import type { SheetViewsKernel } from '../sheets/viewRunner';
 import type { SnapshotOptions } from '../viewport/snapshotView';
 
 /** A body as `get_bodies` answers it. */
@@ -51,6 +56,19 @@ export interface AgentCommand {
   run(): void;
 }
 
+/**
+ * What the sheet tools ask of the kernel (P6-24 S6): the project's `Recomputer`, which
+ * draws views, resolves anchors, reads parts lists and gives a reference with its
+ * fingerprint by its persistent name.
+ */
+export interface AgentSheetKernel extends SheetModelKernel, SheetViewsKernel {
+  reference(
+    body: BodyId,
+    kind: 'vertex' | 'edge' | 'face',
+    name: string,
+  ): Promise<GeomRef | undefined>;
+}
+
 export interface AgentHost {
   /** The open design's project id. */
   readonly designId: string;
@@ -85,6 +103,18 @@ export interface AgentHost {
   save(): Promise<void>;
   /** The visible bodies (or all) as a file's bytes. */
   exportModel(format: AgentExportFormat): Promise<Uint8Array>;
+  /** The kernel the sheet tools use; undefined while it isn't there. */
+  sheetKernel(): AgentSheetKernel | undefined;
+  /** What the export dialog fills fields with: the newest version, the filament's density. */
+  sheetFields(): Promise<SheetFieldExtras>;
+  /** Finish Drawing, the app's way, when the drawing is open: back to the model. */
+  finishDrawing(): void;
+  /** An SVG of a sheet (`paper` mm) as a PNG, its longer side `size` px; null if it fails. */
+  sheetPng(
+    svg: string,
+    paper: { width: number; height: number },
+    size: number,
+  ): Promise<Blob | null>;
 }
 
 /** The open design's host, while one is open. */

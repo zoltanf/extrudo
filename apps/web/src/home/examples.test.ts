@@ -62,8 +62,8 @@ describe('example registry (P6-06 S3)', () => {
   });
 
   // Kept in sync with the checked-in fixtures: the examples the app ships, in the registry's
-  // own order (the annotated plate came with ADR-0126 S4).
-  it('lists the twelve examples in order', () => {
+  // own order (the annotated plate came with ADR-0126 S4, the spool holder with ADR-0143 S6).
+  it('lists the thirteen examples in order', () => {
     expect(EXAMPLES.map((e) => e.id)).toEqual([
       'plate',
       'storage-box',
@@ -77,6 +77,7 @@ describe('example registry (P6-06 S3)', () => {
       'chain-link',
       'sweep-loft-coil',
       'annotated-plate',
+      'spool-holder',
     ]);
   });
 });

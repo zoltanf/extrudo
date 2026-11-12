@@ -13,5 +13,7 @@ A dash-dot line midway between two parallel edges, or along the axis of a cylind
 |---|---|
 | Drawing › Dimensions | None |
 
+<video src="demo:sheetCentreLine" muted loop autoplay playsinline aria-label="Centreline demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

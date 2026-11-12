@@ -1098,7 +1098,8 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
 network); `DEMO_TOOLS` in `demos.ts` lists the tools that have one (every tile of the Solid, Modify, Construct, Make and
-Sketch tabs since the owner's UI review 3, R3-16; `WHOLE_TABS` in `demos.test.ts` checks it per
+Sketch tabs since the owner's UI review 3, R3-16, and of the Drawing tab with Finish Drawing since P6-24 S6;
+`WHOLE_TABS` in `demos.test.ts` checks it per
 tab; and every tool of the Sketch tab's ▾ menus but Import Drawing since ADR-0116's batch 5) and `demos.test.ts` checks it against the files (150 kB each, 6 MB in all). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
 without `RECORD_ASSETS=1`; `-g "demo: extrude$"` records one) records the clips and the template pictures through
@@ -2727,7 +2728,9 @@ polyline gets a closing coincident. **The API's `arc(start, end, through)`
 runs on `through`'s side** (stored reversed when that is clockwise). New tool
 `rename_design` (one step, then `save`). `kernelTesting.ts`'s `apply`
 re-solves sketches as the shell's does (`settleSketches`), so a kernel test
-can change a parameter and see the geometry follow.
+can change a parameter and see the geometry follow. ADR-0143's S6 agent tools (2026-11-11) add the
+sheet tools (`agent/sheetTools.ts`) over the same `change` (now in `agent/change.ts`); main's export
+writer takes `pdf` too (`AGENT_EXPORT_FORMATS`); and **a model screenshot ends drawing mode first**.
 
 ADR-0088 (P6-09, slice 1 2026-10-15) added **the OpenSCAD export**:
 `packages/kernel/src/scad-export/` (`ir.ts`, `print.ts`, `context.ts`,
@@ -4401,7 +4404,7 @@ user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows 
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.
 
-ADR-0143 (the owner, 2026-11-10; **accepted; S0, S1a, S1, S2, S3, S4 and S5 done**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
+ADR-0143 (the owner, 2026-11-10; **accepted; done: S0, S1a and S1 to S6**): **Drawings** (P6-24, FR-DR-01 to -08), 2D sheets
 made from the model. The detailed spec is `docs/plans/drawings-2026-11-10.md` (mock-ups: `docs/plans/drawings-mock-*.html`);
 each slice (S0 spikes, S1a modes, S1 sheets, S2 views, S3 dimensions, S4 notes, S5 lists, S6 outside) amends the ADR and
 adds its files and rules to this paragraph. Rules already fixed: **words:** the interface says "Drawing" (mode, tab) and
@@ -4597,7 +4600,7 @@ one undo step; "Show the unit" and arrows inside/outside are not offered until t
 fails; the wall bracket template for the tool). **S4 notes in the app (package 2):** `usePickTool.ts` (`usePickTool`,
 `PickToolSpec`, `pickOf`, `PickKernel`), `noteTools.ts` (`noteAccepts`, `noteWhole`, `noteItem`, `noteStep`, `noteRepick`,
 `repickAccepts`, `repickWhole`), `faceHit.ts`, `SheetTextEditor.tsx`, `SheetNoteCard.tsx`, `snap.ts` (`snapMove`,
-`snapPoint`, `dimensionRows`, `ROW_STEP`), `RepickHandles.itemRepick`, `exportSheets.withEveryStickyNote`,
+`snapPoint`, `dimensionRows`, `ROW_STEP`), `RepickHandles.itemRepick`, `withEveryStickyNote` (now `@extrudo/sheets`'),
 `controls.CommitArea`, `selection/pick.faceAlong`; tools `sheetText` (`T`), `sheetLeader` (`N`), `sheetSticky`,
 `sheetCentreMark`, `sheetCentreLine`. Rules a change must keep: **every tool that anchors an item picks through
 `usePickTool` with its own spec** (S5's balloon too), never a copy of the hook; **a candidate whose resolved anchors make
@@ -4640,7 +4643,21 @@ anchors and parts lists now, never kept), the sheets half is pure and kernel-fre
 structurally; neither package imports the other); the CLI's `{date}` defaults to the design's `meta.modified` day,
 `{version}` to the newest version in the file, Mass to none (`--date`, `--version-name`, `--density` change them), so a
 file and its flags always write the same bytes; `check --sheets` fails on a detached anchor only. The fixture is built
-through the API with fingerprints from a real recompute (`UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets`).
+through the API with fingerprints from a real recompute (`UPDATE_FIXTURE=1 pnpm vitest run packages/cli/src/sheets`). **S6 the agent tools (package 2):** `apps/web/src/agent/sheetTools.ts` (`SHEET_HANDLERS`: `list_sheets`,
+`add_sheet`, `add_view`, `add_dimension`, `add_note`, `export_sheet`), `agent/change.ts` (`change`, the replies, `liveBodies`,
+`resolveBodyRefs`, moved from `tools.ts`, which re-exports what tests use), `AgentHost.sheetKernel`/`sheetFields`/
+`finishDrawing`/`sheetPng` (`AgentSheetKernel`: `SheetModelKernel` and `SheetViewsKernel` with `reference` by name),
+`sheets/snapshot.sheetSvgSnapshot`, `kernelTesting`'s engine-backed sheet kernel, `sheetTools.kernel.test.ts`; the app's
+`exportSheets` now writes through `sheetFiles` (its views still from the project's runner). Rules a change must keep:
+**a sheet tool builds its change with the API on `Design.from(doc, { ids: newId })` and dispatches the same core command**
+inside `change` (one `Agent: …` step); **an anchor's fingerprint comes from `reference(body, kind, name)` over the view's
+bodies** (its base view's, else the shown ones), never an index or a guess, and a name in none of them is refused with its
+input path; **a dimension or leader note is measured on the scratch sheet before it goes in** and refused when `detached`
+or `invalid`; `add_sheet`'s standard start is `planSheetStart` (the app's fit) passed to the API as `scale` and `at`; the
+sheet tools never change the mode, **`screenshot` finishes an open drawing first** (and says so); `export_sheet` is
+`sheetModelNow` then `sheetFiles` with the app export's fields (today, the newest version, the filament), a PDF goes to
+main as a file (`format: 'pdf'`), a PNG is the SVG drawn through a `blob:` image (no new dependency, CSP unchanged);
+`@extrudo/sheets` and `standardViews` load lazily in the agent code, as in the shell.
 
 ADR-0144 (the owner, 2026-11-11): **FreeCAD file import (`.FCStd`), with history** (P6-25; slices S1–S13 in the ADR,
 background in `docs/plans/freecad-import-2026-11-10.md`). `packages/fcstd` (`@extrudo/fcstd`, pure TS; kernel test-only)
