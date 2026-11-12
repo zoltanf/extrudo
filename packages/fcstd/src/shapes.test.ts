@@ -9,7 +9,7 @@ import { loadOcct } from '@extrudo/kernel/node';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { finalShapes, linkArrayProblem } from './final-shapes';
-import { documentXml, fcstd, label, links, placement, shape } from './fixtures';
+import { documentXml, fcstd, label, links, NO_HISTORY, placement, shape } from './fixtures';
 import { importFcstd } from './import';
 import type { ImportKernel, StoredShapeStep } from './import-kernel';
 import { binaryFormProblem, readFcstd } from './model';
@@ -58,7 +58,8 @@ describe('importFcstd with a kernel in Node', () => {
     const doc = design.toJSON();
     expect(doc.name).toBe('Shapes');
     expect(report.finalShapes).toBe(11);
-    expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    // The body's one feature is walked first (S5), then the eleven shapes.
+    expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     expect(report.shapes.map((s) => [s.name, s.solids])).toEqual([
       ['Bracket', 1],
       ['Holed box', 1],
@@ -190,6 +191,7 @@ function scripted(behaviours: Behaviour[]) {
           return { ...good, step: `ISO-10303-21; ${k.calls}` };
       }
     },
+    ...NO_HISTORY,
     restart: async () => {
       k.restarts++;
       generation++;
@@ -229,6 +231,7 @@ describe('importFcstd: failures, budgets and limits', () => {
     let restarts = 0;
     const kernel: ImportKernel = {
       storedShapeToStep: async () => replies.shift() as StoredShapeStep,
+      ...NO_HISTORY,
       restart: async () => {
         restarts++;
       },
@@ -248,6 +251,7 @@ describe('importFcstd: failures, budgets and limits', () => {
       storedShapeToStep: async () => {
         throw new Error('x'.repeat(5000));
       },
+      ...NO_HISTORY,
       restart: async () => {},
     };
     const { report } = await importFcstd(boxes(1), 'X', { kernel });
@@ -288,6 +292,7 @@ describe('importFcstd: failures, budgets and limits', () => {
         clock += 600;
         return kernel.storedShapeToStep();
       },
+      ...NO_HISTORY,
       restart: () => kernel.restart(),
     };
     const { report } = await importFcstd(boxes(4), 'X', {
@@ -310,6 +315,7 @@ describe('importFcstd: failures, budgets and limits', () => {
         const size = n === 1 ? 26 : 20;
         return { ...good, step: `${n}`.padEnd(size * 1024 * 1024, ' ') };
       },
+      ...NO_HISTORY,
       restart: async () => {},
     };
     const { report, files } = await importFcstd(boxes(7), 'X', { kernel });
@@ -330,6 +336,7 @@ describe('importFcstd: failures, budgets and limits', () => {
         const id = n % 3 === 0 ? 1 : n;
         return { ...good, step: `${id}`.padEnd(20 * MB, ' ') };
       },
+      ...NO_HISTORY,
       restart: async () => {},
     };
     const doc = readFcstd(boxes(18));

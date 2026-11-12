@@ -43,6 +43,7 @@ const report: FcstdImportReport = {
   problems: [],
   linkArrays: [],
   restarts: 0,
+  bodies: [],
 };
 
 describe('the FreeCAD import worker client (ADR-0144 decision 9)', () => {

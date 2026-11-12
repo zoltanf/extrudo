@@ -149,6 +149,10 @@ export interface SketchMapResult {
   readonly maxDisplacement: number;
   /** Degrees of freedom left after the final solve; `undefined` without a solve. */
   readonly dof?: number;
+  /** The Extrudo line each FreeCAD line became, by geometry index (`undefined` for anything else). */
+  readonly lines: readonly (string | undefined)[];
+  /** The sketch axes drawn as fixed construction lines and kept (`SketchMapOptions.axes`, or a kept constraint's). */
+  readonly axes: { readonly h?: string; readonly v?: string };
 }
 
 export interface SketchMapOptions {
@@ -156,6 +160,11 @@ export interface SketchMapOptions {
   readonly solver?: SketchSolver;
   /** Parameter names already taken in the design; a FreeCAD name kept for a dimension is added. */
   readonly taken: Set<string>;
+  /**
+   * Sketch axes to draw as fixed construction lines and keep whether or not
+   * a constraint names them (a revolve's axis, S5; decision 8).
+   */
+  readonly axes?: readonly ('h' | 'v')[];
 }
 
 class Leave extends Error {
@@ -399,6 +408,8 @@ export function mapSketch(
     }
     return id;
   };
+
+  for (const which of options.axes ?? []) axis(which);
 
   // Reading the drawn geometry -------------------------------------------------
   const pointAt = (id: string): Vec2 => [entities[id]?.x as number, entities[id]?.y as number];
@@ -808,7 +819,9 @@ export function mapSketch(
 
   const byIndex = new Map(candidates.map((c) => [c.index, c]));
   // Datums no kept constraint names come out again.
-  const used = new Set<string>();
+  const used = new Set<string>(
+    (options.axes ?? []).map((which) => datums[which]).filter((id) => id !== undefined),
+  );
   for (const c of candidates)
     for (const id of c.ids) for (const e of refsOf(k.data, id)) used.add(e);
   for (const [id, parts] of datumParts) {
@@ -833,6 +846,14 @@ export function mapSketch(
     }),
     maxDisplacement,
     ...(dof !== undefined ? { dof } : {}),
+    lines: sketch.geometry.map((_, i) => {
+      const d = drawn[i];
+      return d?.kind === 'line' ? d.id : undefined;
+    }),
+    axes: {
+      ...(datums.h && used.has(datums.h) ? { h: datums.h } : {}),
+      ...(datums.v && used.has(datums.v) ? { v: datums.v } : {}),
+    },
   };
 }
 

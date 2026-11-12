@@ -53,6 +53,47 @@ describe("the FreeCAD import's kernel worker (ADR-0144 decision 5)", () => {
     expect(made[1]?.terminated).toBe(true);
   });
 
+  it('rebuilds and measures through the same worker, and a restarted kernel is sent its files again', async () => {
+    const made: { files: string[]; measured: number }[] = [];
+    const kernel = workerImportKernel(() => {
+      const seen = { files: [] as string[], measured: 0 };
+      made.push(seen);
+      return {
+        api: {
+          addFile: async (id: string) => {
+            seen.files.push(id);
+          },
+          recompute: async () => ({
+            status: 'done',
+            features: {},
+            bodies: [{ id: 'A:0', version: 'v' }],
+          }),
+          measureBodies: async (ids: string[]) =>
+            Object.fromEntries(ids.map((id) => [id, { solids: 1 }])),
+          measureStoredShape: async () => {
+            seen.measured++;
+            return { solids: 1 };
+          },
+        } as unknown as KernelApi,
+        terminate: () => {},
+        onFatal: () => {},
+      };
+    });
+    const doc = {
+      attachments: {
+        F: { name: 'f', fileName: 'f.step', mediaType: 'model/step', sha256: 'x', size: 1 },
+      },
+    } as never;
+    const files = new Map([['F' as never, new Uint8Array([1])]]);
+    await expect(kernel.rebuild(doc, files)).resolves.toMatchObject({ ids: ['A:0'] });
+    await kernel.rebuild(doc, files);
+    await expect(kernel.measureStoredShape('text', [])).resolves.toEqual({ solids: 1 });
+    expect(made).toEqual([{ files: ['F'], measured: 1 }]);
+    await kernel.restart();
+    await kernel.rebuild(doc, files);
+    expect(made[1]?.files).toEqual(['F']);
+  });
+
   it('fails the call in progress at once when the kernel worker dies', async () => {
     const c = fakeConnection();
     const kernel = workerImportKernel(() => c.connection);

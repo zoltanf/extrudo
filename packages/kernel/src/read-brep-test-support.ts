@@ -781,3 +781,85 @@ export function hostileBrepCases(): { name: string; text: string }[] {
   cases.push({ name: '100000 nested compounds', text: nested(100_000) });
   return cases;
 }
+
+/** A location record that moves by `[x, y, z]`, as the B-rep writer prints one. */
+const moveRecord = ([x, y, z]: readonly [number, number, number]) =>
+  ['1', `1 0 0 ${x}`, `0 1 0 ${y}`, `0 0 1 ${z}`].join('\n');
+
+/**
+ * An axis-aligned box from `min` to `max` as B-rep text: `BOX` (10 × 20 × 30
+ * at the origin) with its sizes put in and moved to `min` by a location on
+ * its root. `BOX`'s three sizes differ, so each number's size says which axis
+ * it measures: every coordinate and parameter of 10, 20 or 30 (either sign)
+ * becomes the new size of that axis. Points, curve and surface records and the
+ * last two numbers of an edge's representation lines (its parameter range)
+ * are rewritten; flags and indices are not.
+ */
+export function boxBrep(
+  min: readonly [number, number, number],
+  max: readonly [number, number, number],
+): string {
+  const size = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  if (!size.every((s) => s > 0)) throw new Error('A box needs a positive size on every axis.');
+  const swap = (token: string) => {
+    const v = Number(token);
+    const axis = [10, 20, 30].indexOf(Math.abs(v));
+    return axis < 0 ? token : String(Math.sign(v) * (size[axis] as number));
+  };
+  const lines = BOX.split('\n');
+  let section = '';
+  let record = '';
+  let row = 0;
+  const out = lines.map((line) => {
+    const head =
+      /^(Curve2ds|Curves|Polygon3D|PolygonOnTriangulations|Surfaces|Triangulations|TShapes) /.exec(
+        line,
+      );
+    if (head) {
+      section = head[1] as string;
+      return line;
+    }
+    const tokens = line.trim().split(/\s+/);
+    if (section === 'Curve2ds' || section === 'Curves' || section === 'Surfaces')
+      return [tokens[0], ...tokens.slice(1).map(swap)].join(' ');
+    if (section !== 'TShapes') return line;
+    if (line === 'Ve' || line === 'Ed') {
+      record = line;
+      row = 0;
+      return line;
+    }
+    row++;
+    if (record === 'Ve' && row === 2) return tokens.map(swap).join(' ');
+    if (record === 'Ed' && row >= 2 && /^[123] /.test(line))
+      return [...tokens.slice(0, -2), ...tokens.slice(-2).map(swap)].join(' ');
+    return line;
+  });
+  return out
+    .join('\n')
+    .replace('Locations 0', `Locations 1\n${moveRecord(min)}`)
+    .replace(/\n\+1 0 $/, '\n+1 1 ');
+}
+
+/**
+ * `LOCATED_FACE`'s cylinder (radius 10 about the vertical line through
+ * (-59.16, 59.16), from z = 0) with its height `height` instead of 100, moved
+ * by `move` through one more location on its root.
+ */
+export function cylinderBrep(
+  height: number,
+  move: readonly [number, number, number] = [0, 0, 0],
+): string {
+  if (!(height > 0)) throw new Error('A cylinder needs a positive height.');
+  const tall = LOCATED_FACE.split('\n')
+    .map((line) =>
+      line
+        .split(/( +)/)
+        .map((t) => (t === '100' ? String(height) : t === '-100' ? String(-height) : t))
+        .join(''),
+    )
+    .join('\n');
+  return tall
+    .replace('Locations 7', 'Locations 8')
+    .replace('\nCurve2ds ', `\n${moveRecord(move)}\nCurve2ds `)
+    .replace(/\n\+1 0 $/, '\n+1 8 ');
+}

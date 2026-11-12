@@ -556,3 +556,227 @@ Written fresh; the prototype was a reference for the rules only.
   B-spline; ellipse arcs, rational and periodic B-splines (none in the
   library); a component with a transform (ADR-0081), so a moved body's
   sketches could stay in its frame.
+
+## Amendment (S5, 2026-11-11): Pad, Pocket, Revolution, Groove, each checked
+
+A PartDesign body now comes in with its history as far as that history can be
+rebuilt and proven. `packages/fcstd`: `features.ts` (`decodeFeature`: the four
+features as typed data, or a refusal), `bodies.ts` (`bodyChain`,
+`importBodies`: the walk), `check.ts` (the comparison), `budget.ts`
+(`KernelBudget`: S3's budgets, now shared by the walk and the shapes import).
+Written fresh; the prototype was a reference for its rules only.
+
+### The walk
+
+- **Order:** the body's chain, followed back from `Tip` through each feature's
+  `BaseFeature`, once (a loop, a member missing from `Group` or the file, or no
+  tip ends it with `chain`). The body's own `BaseFeature` (an outside solid the
+  first feature builds on) ends the chain too, and a first feature that builds
+  on one is refused (`chain`): S5 builds nothing outside the body. A feature
+  listed twice in `Group` is walked once.
+- **Per feature:** decode (pure), add its sketch through S4's `addSketch` (once
+  per sketch, with the revolve's sketch axis drawn as a fixed construction line
+  through the new `AddSketchOptions.axes`, decision 8), pick the profile, add the
+  `extrude` or `revolve` with **explicit participants** (the bodies this FreeCAD
+  body has made so far; the first feature makes a new body), measure the stored
+  shape (`measureStoredShape`, placed by the feature's container chain,
+  `containerChain`, the same chain S4 flattens sketches with), rebuild
+  (`rebuild`), and compare. Everything a feature adds is one transaction,
+  **cancelled** when the feature doesn't hold (planes `placeSketch` made are
+  forgotten again, `forgetRemovedPlanes`), so the timeline keeps only features
+  that were rebuilt equal.
+- **One place stops a history** (`stop` in `importBodies`); S8 replaces "stop"
+  with "carry on from the stored shape" there. Reasons, a closed set
+  (`HistoryStop`): the refusals (`FeatureRefusal`: `type`, `suppressed`,
+  `profile`, `sketch`, `taper`, `direction`, `up-to`, `axis`, `value`, `option`,
+  `no-base`) and `chain`, `limit`, `stored` (the feature's stored shape can't be
+  read), `failed` (Extrudo refused it or it failed), `differs`, `kernel`,
+  `time`, `import-time`, `restarts`; with a clipped detail, and the drift for
+  `differs`.
+- **After the walk:** a body whose every feature came in has no `import` and no
+  attachment, and its bodies carry the file's name, colour and hidden state
+  (`setBodies`, S3's rule). A body whose history stopped comes in as S3 brings
+  it (`import`, same checks and limits), named after the body, and **one
+  `Remove <body>`** takes out what was rebuilt, placed before the imports; when
+  its final shape can't come in, the rebuilt part stays, named as the file names
+  it. A body whose first feature can't be mapped comes in exactly as in S3.
+  Everything that is not a PartDesign body is unchanged.
+
+### What is mapped
+
+- **Profile:** a whole sketch that S4 imported. FreeCAD's faces from it are the
+  regions inside an odd number of outer loops (`AllowMultiFace`, default true as
+  every library file that stores it has it) or exactly one; text regions never.
+  At most 1,000 regions per sketch (`MAX_PROFILE_REGIONS`).
+- **Pad / Pocket → `extrude`:** a length, two lengths (`TwoLengths`, or 1.1's
+  Two sides with a length or through all on side 2), symmetric (`Midplane`, or
+  1.1's `SideType`), `Reversed`, through all (Pocket). Direction: the sketch's
+  normal for a pad, against it for a pocket, turned by `Reversed` and once more
+  when the Extrudo plane faces the other way (`flip`). Lengths finite, ≥ 0, at
+  most 10 km (`MAX_FEATURE_LENGTH`), not 0 in total.
+- **Revolution / Groove → `revolve`:** an angle in (0°, 360°], symmetric,
+  `Reversed` as `flip`; the axis a sketch axis (`H_Axis`, `V_Axis`), a line of the
+  sketch (`EdgeN`, `AxisN`), or an origin axis of a body that is not moved.
+- **Refused:** a taper, a custom direction or one from a reference, the up-to
+  methods, two angles, a groove through all, `N_Axis`, datum lines and edges as
+  axes, a profile that is a face or a part of a sketch, a suppressed feature, a
+  Pocket or Groove first in its body, and any property it reads that is missing,
+  of the wrong kind or not finite. The reader now lists the properties it left
+  out as unreadable (`FcObject.unreadable`), so a `1e999` length is refused, not
+  read as the default.
+- **For S10:** each mapped feature records which FreeCAD property each Extrudo
+  input came from (`MappedFeature.sources`) and its expressions as stored; the
+  sketches' outcomes (with S4's bindings) are in the report.
+- **Not verified on the library:** a partial revolution's sense (the library has
+  only full turns). The tests build FreeCAD's rule from the notes (right-handed
+  about the axis, `Reversed` the other way, `Midplane` centred) and Extrudo
+  rebuilds it; a file that turns the other way would fail the check, not slip
+  through.
+
+### The check, and its tolerance
+
+Both sides are measured by the same kernel code (`measureShape` in
+`stored-shape.ts`: solids, volume, area, tight box): the stored shape by
+`measureStoredShape` (import kernel only, like `storedShapeToStep`), the rebuilt
+bodies by `measureBodies` after a `recompute`. Equal means: the same number of
+solids, volume and area each within **1e-6** relative
+(`HISTORY_VOLUME_TOLERANCE`, `HISTORY_AREA_TOLERANCE`), and every box corner
+within **1e-4 of the stored box's diagonal + 1e-6 mm** (`HISTORY_BOX_TOLERANCE`,
+S3's). Several Extrudo bodies of one FreeCAD body are added up (`combined`).
+
+On the library, the 51 features rebuilt equal differ from the stored shape by
+at most **2.5e-10** in volume (median 4e-16), **1.0e-10** in area and
+**7.5e-13** of the diagonal at a box corner: both sides are exact B-rep, no
+STEP between them, so the drift is rounding. The nearest feature that differs is
+**1.7e-2** off in volume and **1.0e-2** in area, its box the same to 3.5e-9 (a
+tapered tool, below). S3's 1e-3 would also separate them, but it would accept
+a wrong body: a hole 0.5 mm wide and 1 mm deep missing from a 100 × 100 × 10 mm
+plate changes its volume by 2e-6 and its area by 7e-5. At 1e-6 the margin is
+4,000 times the largest drift seen, and that hole is caught by both measures: a
+missing or extra piece passes only if it changes the volume **and** the area by
+less than a millionth, and a hole, a slot or a boss changes the area by its
+walls, which for anything a person models on a part is far above that. The box stays at
+S3's tolerance because a shape's tolerance zone enlarges its box by up to its
+edge tolerance (1e-7 mm on the library, more after some booleans), and the box
+only has to catch a body in the wrong place or turned the wrong way, which moves
+a corner by a feature's size. Every number from the kernel goes through
+`saneMeasure` (S3's rule) and a rebuild's reply through `saneRebuild` (string
+IDs, at most 100,000, every measure keyed by one of them); a reply that fails is
+a kernel failure.
+
+### The kernel interface
+
+`ImportKernel` gains `measureStoredShape(text, chain)` and
+`rebuild(doc, files, skip?)` → `{ ids, bodies, failed }`. The brief's
+`rebuild(doc, files)` got a third argument: **`skip`**, the bodies the walk has
+settled (other FreeCAD bodies), which are not measured again, so a rebuild
+costs the bodies of the body at hand, not of the whole file. In
+`packages/kernel`: `measureStoredShape` and `measureBodies` on `KernelApi`
+(`worker-api.ts`, `browser.ts`), and `importRebuilder(api)`
+(`import-rebuild.ts`), the one implementation the app's import kernel and the
+Node test kernel share: it sends each attachment once per kernel, passes the
+last recompute's body versions back as `have` (so a rebuild meshes only the
+bodies the newest feature changed) and starts over with a new kernel after a
+restart. `inspect` could not stand in for the body measure (no solid count).
+The app's worker loads planegcs for `addSketch`, as the f3d worker does.
+
+### Budgets, failures, limits
+
+- S3's per-call time (60 s), the import's (10 minutes) and the restart cap (3)
+  now cover the walk and the shapes import together (`KernelBudget`). A call
+  that throws, hangs or lies restarts the kernel and stops that body's history;
+  the body then falls back like any other stop. After the total budget or the
+  restart cap, the rest of the file is left to the shapes import, which leaves
+  it out with S3's reasons.
+- What is sent per rebuild is the document; the walk adds no attachments
+  (imports come after it), and the rebuilder sends a file once anyway.
+- **Limits:** 500 features per body (`MAX_BODY_FEATURES`; the library's
+  longest chain is 17) and 2,000 per file (`MAX_FILE_FEATURES`; the library's
+  most is 28): past them the history stops with `limit`. The chain is followed
+  once (a set of names seen), so a `BaseFeature` loop costs its length.
+- **Hardening (review, 2026-11-11):** a rebuild's body IDs are taken only as
+  `<ID of a feature in the document sent>:<whole number>`, at most 200
+  characters (`MAX_BODY_ID_LENGTH`), its measures only under own keys, into a
+  `Map`; anything else is a kernel failure (`saneRebuild`), and the kernel's
+  `measureBodies` answers in a prototype-free record. A `work` that throws
+  before returning a promise is a kernel failure with a restart, and anything a
+  feature's own work throws stops that body (`failed`, clipped), never the
+  import. The budget is checked before each feature's work and before each S3
+  shape is decoded. Each FreeCAD feature and sketch is walked for one body per
+  file: another body reaching it stops with `chain`, so a sketch is decoded and
+  tried once per import (the decode is shared with `addSketch`, its new
+  `decoded` option). A stored shape over the kernel's `MAX_BREP_BYTES` (32 MB,
+  `MAX_STORED_BREP_BYTES` here, a test keeps them equal) is refused by the
+  archive's size before it is inflated or decoded. A mapped feature keeps at
+  most 64 expressions (`MAX_FEATURE_EXPRESSIONS`; the library's most on one
+  PartDesign feature is 2) and counts the rest (`expressionsDropped`). A profile
+  sketch may draw at most 500 curves (`MAX_PROFILE_CURVES`; the library's
+  largest profile sketch draws 25, but a vent of 60 slots draws 240 and a
+  plate of 250 holes 250), checked before its regions are detected;
+  `profileRefs` finds a region's point from at most 8 scan lines (linear in its
+  vertices; `@extrudo/sketch`'s `interiorPoint` tries every height, the square,
+  8.5 s for 200 concentric circles) and tests a loop only where its box holds
+  the point. Measured unloaded, one run each (`profileRefs` with the detection,
+  and the process's peak memory):
+
+  | Drawn curves | Grid of crossing lines | Concentric circles |
+  |---|---|---|
+  | 500 | 1.1 s, 485 MB (62,001 regions, refused by `MAX_PROFILE_REGIONS` after the detection) | 2.1 s, 410 MB |
+  | 1,000 | 5.6 s, 961 MB (249,001 regions) | 7.0 s, 586 MB |
+  | 2,000 | 25.6 s, 3.1 GB (998,001 regions) | 1.9 s, 928 MB (2,000 regions, refused) |
+
+  500 is the highest whose worst cases stay under 3 s. Past it the grid is
+  the region detection itself (time and memory grow with the regions, which
+  grow with the square of the lines), so raising the cap needs a bound inside
+  `@extrudo/sketch`'s detection, not here. The library's numbers are
+  unchanged and no cap touches a library file.
+- **Known limit (for S13):** the design so far is serialised and sent to the
+  kernel for every feature, so a file's cost grows with features × design
+  size; the feature caps, the curve and region caps and the import's time
+  bound it.
+
+### The report and the app
+
+`FcstdImportReport.bodies`: per body its history (`mapped`: object, kind, the
+Extrudo feature and sketch, sources, expressions, drift), where it stopped
+(object, type, reason, detail, drift), the Extrudo bodies, the sketches'
+outcomes and the outcome (`history`, `shape`, `left-out`). `fcstdNotices` says
+how many shapes came in with their history and how many as bodies without,
+names the bodies taken from the file's shapes with the two commonest reasons,
+and says that the features rebuilt before a stop stay ahead of a Remove.
+
+### The library (60 files, `history-corpus.test.ts`)
+
+| | In the files | In a body's chain | Equal | Differed | Refused | Not reached |
+|---|---|---|---|---|---|---|
+| Pad | 70 | 41 | 31 | 1 | 1 (up to a face) | 8 |
+| Pocket | 67 | 30 | 12 | 0 | 2 (up to a face, up to the first) | 16 |
+| Revolution | 11 | 8 | 8 | 0 | 0 | 0 |
+| Groove | 3 | 3 | 0 | 0 | 0 | 3 |
+| Other PartDesign | | | | | 18 (`type`) | 28 |
+
+- **Bodies (35):** 9 with their whole history (no `import`), 22 from the file's
+  shape (19 of them after at least one rebuilt feature: 15 stopped at a fillet,
+  chamfer, hole, pattern or sweep, 3 at an up-to, 1 that differs; 3 with nothing
+  rebuilt, two starting from a base feature and one from a primitive), 4 empty
+  bodies left out as in S3. The import makes **282 `import`s instead of 291**;
+  the 348 other final shapes come in exactly as in S3.
+- **The one that differs** is a pad in a 0.20 file whose stored tool is a
+  frustum (it narrows by about half a degree), with no taper property in the
+  file: nothing to map, and the check catches it.
+- Of the features outside a body's chain, 28 pads, 36 pockets and 2
+  revolutions are in files from before bodies (S12's) and 1 pad, 1 pocket and
+  1 revolution are in a body past its tip; the prototype's 62 of 70 pads and 52 of 67 pockets counted those
+  and carried on after a stop, where this slice stops (so later features count
+  as not reached).
+- Time per file: median 0.1 s, slowest 14 s (most of it S3's shapes); no kernel
+  failure, no restart.
+
+### What S6 to S9 inherit
+
+- The walk's stop point is S8's step: there, a stop becomes an `import` of that
+  feature's stored shape and a Remove, and the walk carries on with the next
+  feature against it. S6 and S7 add kinds to `decodeFeature` and to
+  `addFeature`; the refusal reasons stay a closed set and grow there.
+- The fillets and chamfers (11 of the 18 `type` stops) are what most of the 19
+  partial bodies need next, then the up-to methods (3), as the plan says.

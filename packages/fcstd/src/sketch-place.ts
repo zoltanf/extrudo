@@ -119,29 +119,44 @@ const isIdentity = (p: FcPlacement) =>
   Math.hypot(...p.position) <= 1e-12 && Math.abs(Math.abs(p.rotation[3]) - 1) <= 1e-15;
 
 /**
+ * The placements of the containers that move what `object` holds, outermost
+ * first (plain folders pass through), and whether one of them moves it: the
+ * chain a stored shape of `object` is placed by in world coordinates, and
+ * that a sketch's frame is flattened with. `undefined` for containers that
+ * hold each other in a loop.
+ */
+export function containerChain(
+  doc: FcDocument,
+  object: FcObject,
+): { readonly chain: FcPlacement[]; readonly moved: boolean } | undefined {
+  const parent = parentsOf(doc);
+  const inner: FcPlacement[] = [];
+  const seen = new Set<string>([object.name]);
+  for (let p = parent.get(object.name), depth = 0; p; p = parent.get(p.name), depth++) {
+    if (seen.has(p.name) || depth >= MAX_CONTAINER_DEPTH) return undefined;
+    seen.add(p.name);
+    if (isGeoGroup(p)) inner.push(placementOf(p) ?? identity);
+  }
+  const chain = inner.reverse();
+  return { chain, moved: chain.some((c) => !isIdentity(c)) };
+}
+
+/**
  * A sketch's frame in world coordinates: its stored `Placement` times the
  * placements of the containers that move what they hold, outermost first
- * (plain folders pass through). A container loop leaves the containers out,
- * with a problem on `doc.problems`.
+ * (`containerChain`). A container loop leaves the containers out, with a
+ * problem on `doc.problems`.
  */
 export function sketchFrame(doc: FcDocument, sketch: FcObject): SketchFrameOf {
-  const parent = parentsOf(doc);
-  const chain: FcPlacement[] = [];
-  const seen = new Set<string>([sketch.name]);
-  for (let p = parent.get(sketch.name), depth = 0; p; p = parent.get(p.name), depth++) {
-    if (seen.has(p.name) || depth >= MAX_CONTAINER_DEPTH) {
-      doc.problems.push(
-        `${sketch.name}: its containers hold each other in a loop; their placements are left out.`,
-      );
-      chain.length = 0;
-      break;
-    }
-    seen.add(p.name);
-    if (isGeoGroup(p)) chain.push(placementOf(p) ?? identity);
-  }
+  const found = containerChain(doc, sketch);
+  if (!found)
+    doc.problems.push(
+      `${sketch.name}: its containers hold each other in a loop; their placements are left out.`,
+    );
+  const chain = found?.chain ?? [];
   let global = placementOf(sketch) ?? identity;
-  for (const c of chain) global = compose(c, global);
-  return { global, containers: chain.length, moved: chain.some((c) => !isIdentity(c)) };
+  for (let i = chain.length - 1; i >= 0; i--) global = compose(chain[i] as FcPlacement, global);
+  return { global, containers: chain.length, moved: found?.moved ?? false };
 }
 
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -157,6 +172,18 @@ const planeKey = (v: number) => Number(v.toPrecision(12)).toString();
 
 /** Planes made so far, per design: sketches on one plane share it. */
 const madePlanes = new WeakMap<Design, Map<string, GeomRef>>();
+
+/**
+ * Forgets the planes `placeSketch` made for `d` that are no longer in its
+ * timeline (an importer took back what it added for a feature), so a later
+ * sketch makes its plane again instead of naming one that is gone.
+ */
+export function forgetRemovedPlanes(d: Design): void {
+  const made = madePlanes.get(d);
+  if (!made) return;
+  const present = new Set<string>(d.doc.features.map((f) => f.id));
+  for (const [key, plane] of made) if (!present.has(plane.id)) made.delete(key);
+}
 
 /** Why a sketch has no Extrudo plane. */
 export const NO_PLANE =

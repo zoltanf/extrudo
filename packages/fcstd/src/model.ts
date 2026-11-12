@@ -154,6 +154,12 @@ export interface FcObject {
   readonly expressions: readonly FcExpression[];
   /** FreeCAD marked it invalid when saving (its recompute failed). */
   readonly invalid?: boolean;
+  /**
+   * The properties the reader left out because their value can't be read (a
+   * number that is not finite …), by name; absent when there are none. A
+   * mapper that reads one of them refuses rather than take a default.
+   */
+  readonly unreadable?: readonly string[];
   /** `GuiDocument.xml`'s view of it; `undefined` when the file has no GUI document or no view provider for it. */
   readonly gui?: FcGui;
 }
@@ -427,6 +433,7 @@ function propertiesOf(
   block: XmlElement | undefined,
   owner: string,
   ctx: Context,
+  unreadable?: string[],
 ): Record<string, FcProperty> {
   const out: Record<string, FcProperty> = Object.create(null);
   for (const p of children(block, 'Property')) {
@@ -449,6 +456,7 @@ function propertiesOf(
     } catch (error) {
       if (!(error instanceof FcstdFormatError)) throw error;
       ctx.problems.push(`${what} was left out: ${error.message}`);
+      unreadable?.push(name);
     }
   }
   return out;
@@ -644,7 +652,8 @@ export function readFcstdEntries(entries: FcEntries): FcDocument {
     }
     const declaredAs = types.get(name);
     if (!declaredAs) ctx.problems.push(`Document: ${short(name)} has data but no declared type.`);
-    const props = propertiesOf(child(o, 'Properties'), name, ctx);
+    const unreadable: string[] = [];
+    const props = propertiesOf(child(o, 'Properties'), name, ctx, unreadable);
     const label = props.Label?.value;
     const engine = props.ExpressionEngine?.value;
     const facts = gui?.get(name);
@@ -659,6 +668,7 @@ export function readFcstdEntries(entries: FcEntries): FcDocument {
       properties: props,
       expressions: engine?.kind === 'expressions' ? engine.items : [],
       ...(declaredAs?.invalid ? { invalid: true } : {}),
+      ...(unreadable.length > 0 ? { unreadable } : {}),
       ...(facts || visible !== undefined
         ? { gui: { ...facts, ...(visible !== undefined ? { visible } : {}) } }
         : {}),
@@ -713,6 +723,13 @@ export function storedShapeEntry(
   return value?.kind === 'shape' && value.entry !== '' ? value.entry : undefined;
 }
 
+/**
+ * The most B-rep text a stored shape may be: the kernel's `MAX_BREP_BYTES`
+ * (`packages/kernel/src/kernel.ts`, 32 MB), which this package can't import;
+ * `history.test.ts` checks the two are equal. A larger entry is never decoded.
+ */
+export const MAX_STORED_BREP_BYTES = 32 * 1024 * 1024;
+
 /** The B-rep text format line: `CASCADE Topology V1, (c) Matra-Datavision` and its later versions. */
 const BREP_TEXT = /^(?:DBRep_DrawableShape\s*)?\s*CASCADE Topology V\d/;
 
@@ -741,6 +758,14 @@ export function storedShapeText(
   const what = `${typeof object === 'string' ? object : object.name}.${property}`;
   if (entry === undefined) {
     doc.problems.push(`${what}: no stored shape.`);
+    return undefined;
+  }
+  // Checked by the archive's own size before anything is inflated or decoded.
+  const size = doc.entries.size(entry);
+  if (size !== undefined && size > MAX_STORED_BREP_BYTES) {
+    doc.problems.push(
+      `${what}: its stored shape is ${Math.round(size / (1024 * 1024))} MB, more than the ${MAX_STORED_BREP_BYTES / (1024 * 1024)} MB the import's kernel reads.`,
+    );
     return undefined;
   }
   let bytes: Uint8Array | undefined;

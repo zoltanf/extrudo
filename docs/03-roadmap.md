@@ -1758,7 +1758,8 @@ end to end, faster than in established desktop CAD.
     ADR-0144's S3 amendment, ADR-0115's amendment of 2026-11-11).
   - [x] S4 Sketches: geometry, constraints, placement (2026-11-11; ADR-0144's S4
     amendment).
-  - [ ] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape.
+  - [x] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape
+    (2026-11-11; ADR-0144's S5 amendment).
   - [ ] S6 Fillet and Chamfer, their edges found by geometry.
   - [ ] S7 Patterns, Mirrored, Hole.
   - [ ] S8 The stored-shape step in the middle of a body.
