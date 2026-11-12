@@ -53,6 +53,7 @@ import {
   SheetViewsCancelledError,
 } from './sheets/views';
 import {
+  type DetailNear,
   describeElements,
   describeStoredShape,
   type ElementRequest,
@@ -261,12 +262,16 @@ export interface KernelApi {
   /**
    * Every edge and face of bodies of the last finished recompute described
    * as `describeStoredShape` describes a stored shape's (the same code), by
-   * ID (P6-25 S6): an import looks a file's edges up among them, then takes
+   * ID, in detail the edges `near` the points given (P6-25 S6): an import
+   * looks a file's edges up among them, then takes
    * `reference` of the one it found. Rejects if a body is no longer in the
    * model; a body of more than `MAX_DESCRIBED_EDGES` edges comes back with
    * its counts only (`over`).
    */
-  describeBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, ShapeElements>>;
+  describeBodies(
+    bodies: readonly BodyId[],
+    near?: DetailNear,
+  ): Promise<Record<BodyId, ShapeElements>>;
   /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
@@ -693,11 +698,15 @@ export class KernelService implements KernelApi {
     return this.#run((kernel) => describeStoredShape(kernel, text, chain, ask));
   }
 
-  describeBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, ShapeElements>> {
+  describeBodies(
+    bodies: readonly BodyId[],
+    near?: DetailNear,
+  ): Promise<Record<BodyId, ShapeElements>> {
     return this.#run((kernel) => {
       // No prototype: the IDs are the caller's strings.
       const out = Object.create(null) as Record<BodyId, ShapeElements>;
-      for (const id of bodies) out[id] = describeElements(kernel, this.#bodyShape(id, 'measure'));
+      for (const id of bodies)
+        out[id] = describeElements(kernel, this.#bodyShape(id, 'measure'), undefined, near);
       return out;
     });
   }

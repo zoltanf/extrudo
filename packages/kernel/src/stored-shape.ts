@@ -167,11 +167,14 @@ export interface ElementEdge {
   length: number;
   /** The point in the middle of its parameter range. */
   midpoint: Vec3;
-  /** Its two ends (one point twice for a closed edge); none for a degenerate edge. */
-  ends: Vec3[];
   /** A line's direction, a circle's or ellipse's axis, else the middle tangent (canonical sign). */
   direction?: Vec3;
-  /** A circle's or ellipse's centre and (major) radius. */
+  /**
+   * Its two ends (one point twice for a closed edge; none for a degenerate
+   * edge), only where the edge is described in detail (`describeElements`).
+   */
+  ends?: Vec3[];
+  /** A circle's or ellipse's centre and (major) radius, in detail only. */
   centre?: Vec3;
   radius?: number;
   /** The distinct faces it bounds, by index. */
@@ -207,10 +210,23 @@ export interface ShapeElements {
 
 /**
  * The most edges one description may describe (ADR-0144's S6 amendment: the
- * library's largest rebuilt body has a few thousand); past it nothing is
+ * library's largest body a dress-up describes has 90); past it nothing is
  * described, so what crosses from the kernel stays bounded.
  */
-export const MAX_DESCRIBED_EDGES = 50_000;
+export const MAX_DESCRIBED_EDGES = 20_000;
+/**
+ * The most edges described in detail (ends, circle): `Kernel.edgeGeometry`
+ * maps the shape's edges again on every call, so detail costs each such edge
+ * the whole shape. 2,000 of 20,000 edges is a few seconds.
+ */
+export const MAX_DETAILED_EDGES = 2_000;
+
+/** Where detail is wanted on a whole shape: the edges whose midpoints lie within `radius` of a point. */
+export interface DetailNear {
+  points: readonly Vec3[];
+  /** mm. */
+  radius: number;
+}
 
 /** Which elements to describe: all of them, or the edges and faces asked for and their neighbours. */
 export interface ElementRequest {
@@ -221,16 +237,19 @@ export interface ElementRequest {
 }
 
 /**
- * Describes edges and faces of `shape` (`Kernel.describe` plus each edge's
- * ends and circle, `Kernel.edgeGeometry`): every one, or with `ask` the
- * edges and faces asked for, the faces each asked edge bounds and the edges
- * of each asked face. Indices out of range are left out (the counts say
- * why). Past `MAX_DESCRIBED_EDGES` edges it describes none and says so (`over`).
+ * Describes edges and faces of `shape` (`Kernel.describe`, linear in the
+ * shape): with `ask`, the edges and faces asked for, the faces each asked
+ * edge bounds and the edges of each asked face, every edge in detail (its
+ * ends and circle, `Kernel.edgeGeometry`); without, every edge and face, in
+ * detail only the edges whose midpoints are `near` a point. Indices out of
+ * range are left out (the counts say why). Past `MAX_DESCRIBED_EDGES` edges,
+ * or `MAX_DETAILED_EDGES` in detail, it describes none and says so (`over`).
  */
 export function describeElements(
   kernel: Kernel,
   shape: ShapeHandle,
   ask?: ElementRequest,
+  near?: DetailNear,
 ): ShapeElements {
   const d = kernel.describe(shape);
   const edgeCount = d.edges.length;
@@ -254,6 +273,9 @@ export function describeElements(
   }
   if (edgeSet.size > MAX_DESCRIBED_EDGES)
     return { edgeCount, faceCount, edges: [], faces: [], over: edgeSet.size };
+  const detailed = ask ? edgeSet : nearEdges(d, near);
+  if (detailed.size > MAX_DETAILED_EDGES)
+    return { edgeCount, faceCount, edges: [], faces: [], over: detailed.size };
   const edges: ElementEdge[] = [];
   for (const index of [...edgeSet].sort((a, b) => a - b)) {
     const e = d.edges[index] as ShapeDescription['edges'][number];
@@ -262,11 +284,11 @@ export function describeElements(
       type: e.type,
       length: e.length,
       midpoint: e.midpoint,
-      ends: [],
       faces: [...e.faces],
     };
     if (e.direction) out.direction = e.direction;
-    if (e.type !== 'degenerate') {
+    if (detailed.has(index)) out.ends = [];
+    if (detailed.has(index) && e.type !== 'degenerate') {
       const g = kernel.edgeGeometry(shape, index, 2);
       if (g.type !== 'degenerate') {
         const first = g.points[0];
@@ -295,6 +317,34 @@ export function describeElements(
       return out;
     });
   return { edgeCount, faceCount, edges, faces };
+}
+
+/** The edges whose midpoints lie within `near.radius` of one of its points, through a grid of that cell. */
+function nearEdges(d: ShapeDescription, near: DetailNear | undefined): Set<number> {
+  const out = new Set<number>();
+  if (!near || near.points.length === 0) return out;
+  const r = near.radius;
+  if (!(r > 0 && Number.isFinite(r)))
+    throw new KernelError('The detail radius is not a positive number.');
+  const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
+  const cells = new Map<string, Vec3[]>();
+  for (const p of near.points) {
+    if (!p.every(Number.isFinite)) throw new KernelError('A detail point is not finite.');
+    const k = key(Math.floor(p[0] / r), Math.floor(p[1] / r), Math.floor(p[2] / r));
+    const list = cells.get(k);
+    if (list) list.push(p);
+    else cells.set(k, [p]);
+  }
+  d.edges.forEach((e, i) => {
+    const [x, y, z] = e.midpoint.map((v) => Math.floor(v / r)) as [number, number, number];
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dz = -1; dz <= 1; dz++)
+          for (const p of cells.get(key(x + dx, y + dy, z + dz)) ?? [])
+            if (Math.hypot(p[0] - e.midpoint[0], p[1] - e.midpoint[1], p[2] - e.midpoint[2]) <= r)
+              out.add(i);
+  });
+  return out;
 }
 
 /**

@@ -216,7 +216,8 @@ describe('describeStoredShape and describeBodies (S6)', () => {
     expect(e.faces).toHaveLength(2);
     expect(d.faces.map((f) => f.index).sort()).toEqual([...e.faces].sort());
     // Placed: every point is past x = 100.
-    for (const p of [e.midpoint, ...e.ends]) expect(p[0]).toBeGreaterThanOrEqual(100 - 1e-9);
+    for (const p of [e.midpoint, ...(e.ends ?? [])])
+      expect(p[0]).toBeGreaterThanOrEqual(100 - 1e-9);
     const [a, b] = e.ends as unknown as [readonly number[], readonly number[]];
     expect(e.length).toBeCloseTo(Math.hypot(...a.map((v, i) => v - (b[i] as number))), 9);
     // A face asked for brings its four edges.
@@ -246,20 +247,29 @@ describe('describeStoredShape and describeBodies (S6)', () => {
     const result = await importer.recompute({ doc: testDocument([box('B')]) });
     if (result.status !== 'done') throw new Error('not done');
     const id = result.bodies[0]?.id as BodyId;
-    const described = await importer.describeBodies([id]);
-    expect(Object.getPrototypeOf(described)).toBeNull();
-    const body = described[id];
-    if (!body) throw new Error('no description');
-    expect([body.edgeCount, body.faceCount, body.edges.length, body.faces.length]).toEqual([
-      12, 6, 12, 6,
-    ]);
-    // The same box as B-rep text, wherever the primitive put it.
+    // In detail only the edges near the points given: the stored edges an import looks for.
+    const plain = (await importer.describeBodies([id]))[id];
+    expect(plain?.edges.every((e) => e.ends === undefined)).toBe(true);
     const at = (await importer.measureBodies([id]))[id]?.box;
     if (!at) throw new Error('no measure');
     const stored = await importer.describeStoredShape(boxBrep(at.min, at.max), [], {
       edges: [...Array(12).keys()],
       faces: [],
     });
+    const described = await importer.describeBodies([id], {
+      points: stored.edges.map((e) => e.midpoint),
+      radius: 0.04,
+    });
+    expect(Object.getPrototypeOf(described)).toBeNull();
+    const body = described[id];
+    if (!body) throw new Error('no description');
+    expect([body.edgeCount, body.faceCount, body.edges.length, body.faces.length]).toEqual([
+      12, 6, 12, 6,
+    ]);
+    expect(body.edges.every((e) => e.ends?.length === 2)).toBe(true);
+    const first = stored.edges[0]?.midpoint ?? [0, 0, 0];
+    const one = await importer.describeBodies([id], { points: [first], radius: 0.04 });
+    expect(one[id]?.edges.filter((e) => e.ends).length).toBe(1);
     // Every stored edge has exactly one rebuilt edge with its midpoint and length.
     for (const e of stored.edges) {
       const same = body.edges.filter(

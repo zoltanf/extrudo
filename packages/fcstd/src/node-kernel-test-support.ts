@@ -23,7 +23,8 @@ export function nodeImportKernel(): ImportKernel & {
     rebuild: (...args: Parameters<ImportKernel['rebuild']>) => rebuilder.rebuild(...args),
     describeStoredShape: (...args: Parameters<ImportKernel['describeStoredShape']>) =>
       service.describeStoredShape(...args),
-    describeBodies: (bodies: readonly string[]) => service.describeBodies(bodies as BodyId[]),
+    describeBodies: (...[bodies, near]: Parameters<ImportKernel['describeBodies']>) =>
+      service.describeBodies(bodies as BodyId[], { points: [...near.points], radius: near.radius }),
     references: (items: Parameters<ImportKernel['references']>[0]) =>
       importReferences(service, items),
     restart: async () => {

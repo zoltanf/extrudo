@@ -19,6 +19,8 @@ import type { CallOutcome, KernelBudget } from './budget';
 import type { DecodedDressUp, DressUpElement } from './features';
 import type { ElementEdge, ElementFace, ShapeElements, SubShapeAt } from './import-kernel';
 import {
+  cellFor,
+  detailRadius,
   ElementIndex,
   type Located,
   type Lookup,
@@ -140,10 +142,14 @@ export async function addDressUp(
   const picked = storedEdges(feature.elements, s);
   if ('stop' in picked) return picked;
 
-  // Every edge and face of the bodies the FreeCAD body has made so far, as last rebuilt.
+  // Every edge and face of the bodies the FreeCAD body has made so far, as last rebuilt; in
+  // detail the edges near the stored ones (the rest are no candidates).
+  const points = picked.edges.map((e) => e.midpoint);
+  const cell = cellFor([...points, ...s.faces.map((f) => f.centroid)]);
+  const near = { points, radius: detailRadius(cell) };
   let bodies: Map<string, ShapeElements> | undefined;
   const rebuilt = await budget.call(
-    () => budget.kernel.describeBodies(mine),
+    () => budget.kernel.describeBodies(mine, near),
     (reply: unknown): reply is Record<string, ShapeElements> => {
       bodies = saneBodies(reply, mine);
       return bodies !== undefined;
@@ -156,7 +162,7 @@ export async function addDressUp(
         stop: 'limit',
         detail: `its body has ${d.over} edges, more than the importer describes`,
       };
-  const index = new ElementIndex(bodies as Map<string, ShapeElements>);
+  const index = new ElementIndex(bodies as Map<string, ShapeElements>, cell);
 
   // Each stored edge found exactly once; a chamfer's face too, where its sizes differ.
   const storedFaces = new Map(s.faces.map((f) => [f.index, f]));

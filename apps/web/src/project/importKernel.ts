@@ -76,9 +76,12 @@ export function workerImportKernel(
         died,
       ]);
     },
-    describeBodies: (bodies) => {
+    describeBodies: (bodies, near) => {
       const c = connection ?? start();
-      return Promise.race([c.api.describeBodies(bodies as BodyId[]), died]);
+      return Promise.race([
+        c.api.describeBodies(bodies as BodyId[], { points: [...near.points], radius: near.radius }),
+        died,
+      ]);
     },
     references: (items) => {
       const c = connection ?? start();

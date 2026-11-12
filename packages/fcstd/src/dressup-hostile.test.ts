@@ -6,6 +6,7 @@
  * restarted and the body falls back to its stored shape).
  */
 import type { GeomRef } from '@extrudo/core';
+import { MAX_DESCRIBED_EDGES as KERNEL_MAX_DESCRIBED_EDGES } from '@extrudo/kernel';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { NONSENSE_REPLY } from './budget';
@@ -13,7 +14,13 @@ import { DRESSUP_CASES, type DressUpFixtureFeature, dressUpSpec } from './dressu
 import { type BodySpec, historyFile, num, rectangle } from './history-fixtures';
 import { importFcstd } from './import';
 import type { ImportKernel, ShapeElements } from './import-kernel';
-import { MATCH_TOLERANCE, namedFeatures, saneElements, saneReference } from './match';
+import {
+  MATCH_TOLERANCE,
+  MAX_DESCRIBED_EDGES,
+  namedFeatures,
+  saneElements,
+  saneReference,
+} from './match';
 import { nodeImportKernel } from './node-kernel-test-support';
 
 let planegcs: PlanegcsModule;
@@ -166,7 +173,7 @@ describe('matching', () => {
     ...base,
     rebuild: (...a) => base.rebuild(...a),
     measureStoredShape: (...a) => base.measureStoredShape(...a),
-    describeBodies: (b) => base.describeBodies(b),
+    describeBodies: (b, n) => base.describeBodies(b, n),
     references: (i) => base.references(i),
     restart: () => base.restart(),
     describeStoredShape: (text, chain, ask) =>
@@ -195,8 +202,8 @@ describe('matching', () => {
       describeStoredShape: (...a) => base.describeStoredShape(...a),
       references: (i) => base.references(i),
       restart: () => base.restart(),
-      describeBodies: async (bodies) => {
-        const real = (await base.describeBodies(bodies)) as Record<string, ShapeElements>;
+      describeBodies: async (bodies, near) => {
+        const real = (await base.describeBodies(bodies, near)) as Record<string, ShapeElements>;
         const out: Record<string, ShapeElements> = {};
         for (const [id, d] of Object.entries(real))
           out[id] = {
@@ -232,7 +239,7 @@ describe('a kernel that lies', () => {
       measureStoredShape: (...a) => base.measureStoredShape(...a),
       rebuild: (...a) => base.rebuild(...a),
       describeStoredShape: (...a) => base.describeStoredShape(...a),
-      describeBodies: (b) => base.describeBodies(b),
+      describeBodies: (b, n) => base.describeBodies(b, n),
       references: (i) => base.references(i),
       restart: () => base.restart(),
     };
@@ -247,8 +254,8 @@ describe('a kernel that lies', () => {
   const bodies =
     (change: (d: Record<string, ShapeElements>) => unknown): Lie =>
     (k) => ({
-      describeBodies: async (b) =>
-        change((await k.describeBodies(b)) as Record<string, ShapeElements>) as never,
+      describeBodies: async (b, n) =>
+        change((await k.describeBodies(b, n)) as Record<string, ShapeElements>) as never,
     });
   const refs =
     (change: (r: (GeomRef | undefined)[]) => unknown): Lie =>
@@ -338,6 +345,22 @@ describe('a kernel that lies', () => {
     ],
   ];
 
+  it('a body past the cap is a limit, not a kernel failure: no restart', async () => {
+    const before = base.restarts;
+    const over = bodies((d) =>
+      Object.fromEntries(
+        Object.entries(d).map(([k, v]) => [
+          k,
+          { edgeCount: 30_000, faceCount: v.faceCount, edges: [], faces: [], over: 30_000 },
+        ]),
+      ),
+    );
+    const { body } = await run([filletBody()], lying(over));
+    expect(body?.stop).toMatchObject({ reason: 'limit' });
+    expect(body?.stop?.detail).toMatch(/30000 edges/);
+    expect(base.restarts).toBe(before);
+  });
+
   it.each(lies)('%s is a kernel failure: restarted, the body falls back', async (_, lie) => {
     const before = base.restarts;
     const { body } = await run([filletBody()], lying(lie));
@@ -369,6 +392,10 @@ describe('a kernel that lies', () => {
 });
 
 describe('the reply checks, alone', () => {
+  it("use the kernel's cap on described edges", () => {
+    expect(MAX_DESCRIBED_EDGES).toBe(KERNEL_MAX_DESCRIBED_EDGES);
+  });
+
   it('take a reference only in the naming grammar, of the document sent and of the body', () => {
     const sent = new Set(['P', 'F', 'Q']);
     const body = new Set(['P', 'F']);

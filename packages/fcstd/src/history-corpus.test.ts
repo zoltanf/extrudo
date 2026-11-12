@@ -16,6 +16,8 @@ import type { ReferenceTally } from './dressups';
 import { decodeFeature, FEATURE_TYPES } from './features';
 import { finalShapes } from './final-shapes';
 import { importFcstd } from './import';
+import type { ShapeElements } from './import-kernel';
+import { edgeDistance, toleranceAt } from './match';
 import { readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { containerChain } from './sketch-place';
@@ -52,6 +54,15 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
     const node = nodeImportKernel();
     // S6: how large the rebuilt bodies a dress-up describes are, and how long that takes.
     const described = { bodies: 0, mostEdges: 0, slowestMs: 0, storedCalls: 0 };
+    // The report's own diagnosis, outside the importer: for each stored edge asked, every rebuilt
+    // edge of the same kind compared (all pairs, the library is small), the match and the nearest other.
+    const near = {
+      matched: 0,
+      furthestMatch: 0,
+      nearestOther: Infinity,
+      nearestOtherAnyKind: Infinity,
+    };
+    let lastStored: ShapeElements | undefined;
     const kernel: typeof node = {
       ...node,
       storedShapeToStep: (...a) => node.storedShapeToStep(...a),
@@ -59,17 +70,38 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       rebuild: (...a) => node.rebuild(...a),
       references: (i) => node.references(i),
       restart: () => node.restart(),
-      describeStoredShape: (...a) => {
+      describeStoredShape: async (...a) => {
         described.storedCalls++;
-        return node.describeStoredShape(...a);
+        lastStored = await node.describeStoredShape(...a);
+        return lastStored;
       },
-      describeBodies: async (b) => {
+      describeBodies: async (b, n) => {
         const t = performance.now();
-        const out = await node.describeBodies(b);
+        const out = await node.describeBodies(b, n);
         described.slowestMs = Math.max(described.slowestMs, performance.now() - t);
         for (const d of Object.values(out)) {
           described.bodies++;
           described.mostEdges = Math.max(described.mostEdges, d.edgeCount);
+        }
+        const asked = new Set(lastStored?.edges.map((e) => e.index));
+        for (const e of lastStored?.edges ?? []) {
+          if (!asked.has(e.index)) continue;
+          const ds = Object.values(out)
+            .flatMap((d) => d.edges)
+            .map((r) => ({
+              d: edgeDistance(r, e),
+              mid: Math.hypot(...r.midpoint.map((v, i) => v - (e.midpoint[i] as number))),
+            }))
+            .sort((x, y) => x.d - y.d);
+          const best = ds[0];
+          if (best && best.d <= toleranceAt(e.midpoint)) {
+            near.matched++;
+            near.furthestMatch = Math.max(near.furthestMatch, best.d);
+            if (ds[1]) near.nearestOther = Math.min(near.nearestOther, ds[1].d);
+            const others = ds.slice(1).map((x) => x.mid);
+            if (others.length > 0)
+              near.nearestOtherAnyKind = Math.min(near.nearestOtherAnyKind, ...others);
+          }
         }
         return out;
       },
@@ -273,6 +305,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       mostFeaturesInAFile: mostFeatures,
       imports: { s3: importsS3, s5: importsS5 },
       references: refs,
+      nearMisses: near,
       dressUps,
       described,
       equalDriftByKind: Object.fromEntries(

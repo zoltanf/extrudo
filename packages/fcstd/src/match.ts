@@ -22,11 +22,11 @@ export const MATCH_TOLERANCE = 1e-6;
 export const MATCH_RELATIVE = 1e-9;
 /** How far a face's area may be, relative. */
 export const MATCH_AREA_TOLERANCE = 1e-6;
-/** The grid's cell (mm): candidates are looked for in a point's cell and its neighbours. */
+/** The grid's smallest cell (mm): candidates are looked for in a point's cell and its neighbours. */
 const CELL = 0.01;
 
-/** The most edges or faces one shape's description may hold here (the kernel's own cap). */
-export const MAX_DESCRIBED_EDGES = 50_000;
+/** The most edges or faces one shape's description may hold here (the kernel's own cap, kept equal by a test). */
+export const MAX_DESCRIBED_EDGES = 20_000;
 /** The most faces an edge may bound, or edges a face may have, in a reply. */
 const MAX_ADJACENT = 100_000;
 /** The most elements a shape may count. */
@@ -48,6 +48,8 @@ const dirDist = (a: Vec3, b: Vec3) =>
  * length.
  */
 export function edgeDistance(a: ElementEdge, b: ElementEdge): number {
+  // An edge not described in detail is no candidate (the kernel details every edge near a stored one).
+  if (!a.ends || !b.ends) return Infinity;
   if (a.type !== b.type || a.ends.length !== b.ends.length) return Infinity;
   if ((a.direction === undefined) !== (b.direction === undefined)) return Infinity;
   if ((a.centre === undefined) !== (b.centre === undefined)) return Infinity;
@@ -122,12 +124,23 @@ class Grid<T> {
   }
 }
 
-const cellFor = (bodies: Iterable<ShapeElements>) => {
+/**
+ * The grid's cell for lookups of `points` (the stored elements' positions):
+ * four tolerances at the farthest of them, at least `CELL`, so a match is
+ * always in the cell of its stored element or a neighbouring one.
+ */
+export function cellFor(points: Iterable<Vec3>): number {
   let scale = 0;
-  for (const b of bodies) for (const e of b.edges) scale = Math.max(scale, scaleOf(e.midpoint));
-  // Two tolerances at the farthest point fit in a cell, so a match is always in a neighbouring one.
+  for (const p of points) scale = Math.max(scale, scaleOf(p));
   return Math.max(CELL, 4 * (MATCH_TOLERANCE + MATCH_RELATIVE * scale));
-};
+}
+
+/**
+ * How near a stored edge's midpoint a rebuilt edge must be to be described
+ * in detail: beyond the 27 cells a lookup reads (their farthest point is
+ * under 3.5 cells away), so every candidate has its ends and circle.
+ */
+export const detailRadius = (cell: number) => 4 * cell;
 
 /** One lookup: exactly one candidate within the tolerance, the nearest miss for the report. */
 function pick<T>(
@@ -161,9 +174,8 @@ export class ElementIndex {
   readonly #faces: Grid<ElementFace>;
   readonly #bodies: ReadonlyMap<string, ShapeElements>;
 
-  constructor(bodies: ReadonlyMap<string, ShapeElements>) {
+  constructor(bodies: ReadonlyMap<string, ShapeElements>, cell: number) {
     this.#bodies = bodies;
-    const cell = cellFor(bodies.values());
     this.#edges = new Grid(cell);
     this.#faces = new Grid(cell);
     for (const [body, d] of bodies) {
@@ -245,13 +257,15 @@ function saneEdge(v: unknown, edgeCount: number, faceCount: number): ElementEdge
   const length = own(v, 'length');
   const midpoint = vec(own(v, 'midpoint'));
   const endsIn = own(v, 'ends');
+  const detailed = endsIn !== undefined;
   const faces = indexList(own(v, 'faces'), faceCount);
   if (!Number.isInteger(index) || (index as number) < 0 || (index as number) >= edgeCount)
     return undefined;
   if (typeof type !== 'string' || !TYPE.test(type)) return undefined;
   if (!Number.isFinite(length) || (length as number) < 0 || !midpoint || !faces) return undefined;
-  if (!Array.isArray(endsIn) || (endsIn.length !== 0 && endsIn.length !== 2)) return undefined;
-  const ends = endsIn.map(vec);
+  if (detailed && (!Array.isArray(endsIn) || (endsIn.length !== 0 && endsIn.length !== 2)))
+    return undefined;
+  const ends = detailed ? (endsIn as unknown[]).map(vec) : [];
   if (ends.some((p) => p === undefined)) return undefined;
   const optional = (key: string) => {
     const x = own(v, key);
@@ -268,7 +282,7 @@ function saneEdge(v: unknown, edgeCount: number, faceCount: number): ElementEdge
     type,
     length: length as number,
     midpoint,
-    ends: ends as Vec3[],
+    ...(detailed ? { ends: ends as Vec3[] } : {}),
     faces,
     ...(direction.value ? { direction: direction.value } : {}),
     ...(centre.value ? { centre: centre.value } : {}),
@@ -352,6 +366,8 @@ export function saneElements(
     if (edges.length !== edgeCount || faces.length !== faceCount) return undefined;
   } else {
     for (const n of want.edges) if (n < edgeCount && !seenEdges.has(n)) return undefined;
+    // A stored shape's edges are all described in detail.
+    if (edges.some((e) => e.ends === undefined)) return undefined;
     for (const n of want.faces) if (n < faceCount && !seenFaces.has(n)) return undefined;
   }
   return { edgeCount, faceCount, edges, faces };

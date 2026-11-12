@@ -780,3 +780,185 @@ and says that the features rebuilt before a stop stay ahead of a Remove.
   `addFeature`; the refusal reasons stay a closed set and grow there.
 - The fillets and chamfers (11 of the 18 `type` stops) are what most of the 19
   partial bodies need next, then the up-to methods (3), as the plan says.
+
+## Amendment (S6, 2026-11-12): Fillet and Chamfer, by replay and match
+
+`PartDesign::Fillet` and `PartDesign::Chamfer` join the features the walk maps.
+`packages/fcstd`: `features.ts` decodes them, `match.ts` finds a stored element on
+the rebuilt body and checks the kernel's replies, `dressups.ts` adds the feature;
+the walk (`bodies.ts`) holds it like any other: one transaction, rebuilt and
+checked, the one stop point. Fixtures: ten small parts we made with FreeCAD
+1.1.4 through our own script (`packages/fcstd/scripts/make-dressup-fixtures.py`,
+data in `dressup-fixtures.ts`), so their stored shapes and element numbers are
+FreeCAD's own. All ten come in with their whole history.
+
+### The check gets the centre of mass
+
+A chamfer with two sizes and the same chamfer flipped have the same volume, area
+and box: S5's check passes either for the other. `measureShape` now returns the
+**centre of mass** (`Kernel.properties`' centroid; the origin for a shape with no
+mass, on both sides alike), and a rebuilt body holds only when its centre is
+within **1e-7 of the stored box's diagonal + 1e-9 mm**
+(`HISTORY_CENTRE_TOLERANCE`). Several Extrudo bodies of one FreeCAD body are
+combined weighting each centre by its volume.
+
+- **The flip pairs:** two distances (2 and 4 mm on a 20 mm edge of a 10 × 20 ×
+  30 box): the twins' centres are 0.0127 mm apart, 3.4e-4 of the diagonal;
+  distance and angle (2 mm, 30°): 0.0015 mm, 4.1e-5. With the right flag the
+  rebuild is equal to 2e-14; given the twin's stored shape it stops with
+  `differs` ("the centre of mass is … away"), the test maps it so on purpose.
+- **The library:** the features rebuilt equal drift at most **1.1e-10** of the
+  diagonal in centre (median 1.2e-16), so the tolerance has 880 times that
+  below it and sits 400 times under the closer twin. S5's results are
+  unchanged by it: the same 51 features equal, the same pad differs (its centre
+  is also 5.9e-3 of the diagonal off).
+- **Principal moments: not added.** They add nothing the centre misses where the
+  centre fails: a twin that is the right body's mirror image about a plane of
+  symmetry of the part (the same two-size chamfer flipped on all four vertical
+  edges of a square prism turns the prism into its own mirror image) keeps its
+  centre on the axis, and a mirror image has the same principal moments. Only a
+  face-by-face comparison would tell those apart; left for S13.
+
+### Finding the edges (decision 4)
+
+- **What FreeCAD names:** `Base` links the feature before it in the chain and
+  lists `EdgeN` and `FaceN` of **that feature's stored shape**, in
+  `TopExp::MapShapes` order, which `readBrep` keeps (S1); the kernel's own
+  sub-shape order is the same map, so `EdgeN` is the kernel's edge N − 1 of the
+  stored text placed by the base's container chain. A face stands for its edges;
+  an edge is taken once and only between exactly two faces (FreeCAD's rule; it
+  also leaves out an edge whose faces meet smoothly, a flag the description
+  doesn't carry, so such an edge would reach Extrudo's fillet and then the check).
+  OCCT rounds the whole tangent chain of an edge in FreeCAD and in Extrudo alike:
+  the slot fixture names one straight edge and both run round the slot's four
+  edges, equal.
+- **The description** (`describeElements` in the kernel, the same code for both
+  sides): per edge its curve type, length, midpoint, its two ends, a line's
+  direction or a circle's axis, centre and radius, and the faces it bounds; per
+  face its surface type, area, centroid, normal or axis, and its edges. The
+  stored side describes only the elements named, the faces round each named
+  edge and the edges of each named face; the rebuilt side every edge and face of
+  the FreeCAD body's Extrudo bodies of the last rebuild.
+- **The match:** a rebuilt edge's distance from a stored one is the largest of
+  the midpoints' distance, the lengths' difference, the ends' (either way
+  round), the centres' and radii's differences and the directions' difference
+  times the length; another curve type, or ends, a centre or a direction on one
+  side only, or an edge not described in detail, is no candidate. A match is within **1e-6 mm + 1e-9 of the point's
+  distance from the origin** (`MATCH_TOLERANCE`, `MATCH_RELATIVE`); a face's
+  area must agree to 1e-6 relative. **Exactly one** candidate is a match; none
+  or several stops the history with `reference` and says which (never the
+  closest of several). Candidates come from a grid of 0.01 mm cells (at least
+  four tolerances) over the midpoints, the point's cell and its 26 neighbours, so
+  a lookup costs a few cells, not every rebuilt edge.
+- **Why 1e-6 mm:** on the library the 114 stored edges asked for were matched
+  within **8.8e-13 mm**, and the nearest other rebuilt edge to any of them is
+  **0.17 mm** away (0.24 mm for one of the same kind): a millionth of a
+  millimetre sits six orders of magnitude from both. Two edges of a part closer
+  than that in midpoint, length and both ends are the same edge.
+- **The reference** is `KernelApi.reference(body, kind, index)` on the last
+  rebuild, the call the app makes for a picked edge (`importReferences`), so the
+  import stores what a pick would.
+- **Chamfer sizes:** FreeCAD puts the first size on the first of the edge's two
+  faces in the base's face order (the lower `FaceN`) and on the second with
+  `FlipDirection`; the fixtures confirm both. The importer finds that face on the
+  rebuilt body too (it must bound the matched edge) and gives it as the set's
+  `face` input, so the choice doesn't rest on Extrudo's own face order; edges
+  with different faces go in separate sets (at most `CHAMFER_MAX_SETS`, 32). A
+  file from before 1.0 with two sizes or an angle has its flag toggled, as
+  FreeCAD 1.0 does on opening it; no library chamfer has either mode, so that is
+  read from FreeCAD's notes, not verified (the check would catch a wrong one).
+
+### The kernel interface
+
+`ImportKernel` gains `describeStoredShape(text, chain, ask)` (B-rep text: refused
+unless the service is an import kernel, like `measureStoredShape`),
+`describeBodies(bodies, near)` (the last rebuild's bodies) and `references(items)`.
+`KernelApi` gains `describeStoredShape` and `describeBodies`
+(`worker-api.ts`, `browser.ts`); the app's `importKernel.ts` and the Node test
+kernel share `importReferences`.
+
+- **Bounded, and linear in the body:** a description is `Kernel.describe` (one
+  facade call for the whole shape) plus, per edge described **in detail**, its
+  ends and circle from `edgeGeometry`, which maps the shape's edges again on
+  every call. Described in detail are the stored side's edges (the named ones
+  and their faces' edges) and, on the rebuilt side, only the edges whose
+  midpoints lie within 4 grid cells of a stored edge's (`describeBodies`'
+  `near`): every candidate of a lookup, nothing else. The first version
+  detailed every rebuilt edge and was quadratic: 2,400 edges took 1 s, 9,600
+  took 15 s. Now, measured on a loaded machine: a 9,600-edge body in 0.28 s,
+  and the worst the caps allow, **2,000 edges in detail
+  (`MAX_DETAILED_EDGES`) of a body of 19,992**, 7.7 s; 1,000 stored edges of a
+  shape of 19,992, 3.9 s; both inside S3's 60 s per call. **`MAX_DESCRIBED_EDGES`
+  (20,000)** edges per description: the library's largest body a dress-up
+  describes has 90 (220 times that), the slowest description took 7 ms. Past
+  either cap the kernel answers with the counts only (`over`), which stops the
+  history with `limit` (a body) or `edges` (a stored face) and costs no
+  restart. A dress-up names at most `MAX_DRESSUP_ELEMENTS` (1,000; the
+  library's most is 12), checked before any is looked at, and works on at most
+  `MAX_DRESSUP_EDGES` (1,000) once its faces are counted out.
+- **Every reply checked** (`saneElements`, `saneBodies`, `saneReference`):
+  whole counts in range, every index and adjacency in range and each element
+  once, every asked element present (stored side) or every element in order
+  (rebuilt side), finite numbers, no key but the known ones (a `__proto__` key
+  refuses the reply), exactly the bodies asked for. A reference must have the
+  asked kind and an ID in the naming grammar (ADR-0005's, nesting at most 32
+  deep, at most 4,000 characters) whose every feature is one of the document
+  sent and at least one is the FreeCAD body's own mapped feature. Anything else
+  is "the kernel's answer makes no sense": a restart and a stop, as in S5.
+- **The last rebuild is the body so far:** a dress-up is reached only after the
+  feature before it held, whose rebuild was the kernel's last; the walk also
+  refuses (`kernel`) if the kernel was replaced since that rebuild.
+
+### What is refused
+
+Closed set, worded in the app's `HISTORY_STOP`: `base` (no `Base`, or not the
+feature before it in this body's chain), `element` (a name that isn't `EdgeN` or
+`FaceN` with N from 1, or one past the base's count: `Edge0`, `Edge1e9`,
+`Vertex1`, `Edge999999`), `edges` (none, more than the caps, more chamfer sets
+than Extrudo takes), `reference` (above), `no-base` (first in its body),
+`value` (a radius or size that is not finite, not above 0 or over
+`MAX_FEATURE_LENGTH`; an angle outside (0°, 180°); a chamfer type it doesn't
+know), `option` (`UseAllEdges`, which no library feature sets), `suppressed`.
+The same element named twice is taken once.
+
+### The library (60 files, `history-corpus.test.ts`)
+
+| | In the files | In a body's chain | Equal | Differed | Refused | Not reached |
+|---|---|---|---|---|---|---|
+| Pad | 70 | 41 | 31 | 1 | 1 (up to a face) | 8 |
+| Pocket | 67 | 30 | 17 | 0 | 2 (up to) | 11 |
+| Revolution | 11 | 8 | 8 | 0 | 0 | 0 |
+| Groove | 3 | 3 | 0 | 0 | 1 (`axis`: an edge) | 2 |
+| Fillet | 19 | 13 | 8 | 0 | 2 (`failed`) | 3 |
+| Chamfer | 13 | 5 | 4 | 0 | 0 | 1 |
+| Other PartDesign | | | | | 9 (`type`) | 19 |
+
+- **References:** 100 found, none missing, none ambiguous (the files name 89
+  `EdgeN` and 12 `FaceN` in all; the most in one feature is 12).
+- **Drift of the equal ones:** fillets at most 2.8e-10 in volume, 7.6e-11 in
+  area, 6.4e-11 of the diagonal in centre (8 features: FreeCAD's OCCT and ours
+  agree on the blends to rounding); chamfers 5.7e-16 (4). No fillet or chamfer
+  differs, so no tolerance of their own is needed: S5's 1e-6 stays for all.
+- **The two `failed`:** both fillets of one file (the two halves of a small
+  part), 0.45 mm on seven short sharp edges that meet in corners; Extrudo's
+  fillet can't build the corner blends ("radii up to about 0.33 mm"), FreeCAD's
+  older OCCT built them. Their edges were all found; the stored shape stands in.
+- **Bodies (35):** **15 with their whole history** (9 before), 16 from the
+  file's shape, 4 empty left out. **276 `import`s** (282 before); the 348
+  shapes that aren't bodies come in exactly as in S3. Time per file: median
+  0.11 s, slowest 14 s; no kernel failure, no restart.
+- **What S6 changed in S5's rows:** 5 more pockets equal and 1 groove reached
+  (both after a fillet that now holds), `type` stops from 18 to 9.
+
+### What S7 to S9 inherit
+
+- The stops left (20): `type` 9 (MultiTransform 2, LinearPattern 1,
+  PolarPattern 1, Hole 1, subtractive pipe 1, additive sphere 1, a base feature
+  2), the body's own `chain` 4, up-to 3, the 2 fillets, a groove about an edge,
+  the tapered pad. **MultiTransform is not in S7's list** and stops two bodies
+  after 7 rebuilt features: worth adding to S7.
+- S8's step would reach 3 fillets, 1 chamfer and 11 pockets now behind a stop,
+  and carry the two fillets Extrudo can't build.
+- S9 and S7 reuse the matcher: `describeStoredShape` with `ElementIndex.face`
+  for an up-to face, `ElementIndex.edge` for a pattern direction or a groove
+  axis named `EdgeN`.

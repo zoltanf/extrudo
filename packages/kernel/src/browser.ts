@@ -61,7 +61,7 @@ function connect(worker: Worker): KernelConnection {
     measureStoredShape: (text, chain) => api.measureStoredShape(text, chain),
     measureBodies: (bodies) => api.measureBodies(bodies),
     describeStoredShape: (text, chain, ask) => api.describeStoredShape(text, chain, ask),
-    describeBodies: (bodies) => api.describeBodies(bodies),
+    describeBodies: (bodies, near) => api.describeBodies(bodies, near),
     exportScad: (options) => api.exportScad(options),
     inspect: (targets) => api.inspect(targets),
     interference: (bodies) => api.interference(bodies),

@@ -50,8 +50,8 @@ export interface ElementEdge {
   readonly type: string;
   readonly length: number;
   readonly midpoint: Vec3;
-  /** Its two ends; none for a degenerate edge. */
-  readonly ends: readonly Vec3[];
+  /** Its two ends (none for a degenerate edge), only where it was described in detail. */
+  readonly ends?: readonly Vec3[];
   /** A line's direction, a circle's axis, else the middle tangent (either sign). */
   readonly direction?: Vec3;
   /** A circle's or ellipse's centre and (major) radius. */
@@ -127,8 +127,15 @@ export interface ImportKernel {
     chain: readonly FcPlacement[],
     ask: { readonly edges: readonly number[]; readonly faces: readonly number[] },
   ): Promise<ShapeElements>;
-  /** Every edge and face of bodies of the last `rebuild`, by ID. */
-  describeBodies(bodies: readonly string[]): Promise<Readonly<Record<string, ShapeElements>>>;
+  /**
+   * Every edge and face of bodies of the last `rebuild`, by ID; in detail
+   * (ends, circle) the edges whose midpoints lie within `near.radius` of one
+   * of `near.points`.
+   */
+  describeBodies(
+    bodies: readonly string[],
+    near: { readonly points: readonly Vec3[]; readonly radius: number },
+  ): Promise<Readonly<Record<string, ShapeElements>>>;
   /**
    * The persistent reference (ADR-0005) of each sub-shape of a body of the
    * last `rebuild`, as the app stores one for a picked edge or face;
