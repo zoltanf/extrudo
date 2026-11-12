@@ -6,7 +6,8 @@
  * (`KernelServiceOptions.importKernel`).
  */
 import { compose, IDENTITY, type Matrix12 } from './features/matrix';
-import { type Kernel, KernelError, type ShapeHandle } from './kernel';
+import { type Kernel, KernelError, type ShapeHandle, type Vec3 } from './kernel';
+import type { CurveType, ShapeDescription, SurfaceType } from './naming/description';
 
 /** A rigid placement: a move, then a turn by a unit quaternion `[x, y, z, w]` (FreeCAD's form). */
 export interface ShapePlacement {
@@ -14,12 +15,18 @@ export interface ShapePlacement {
   readonly rotation: readonly [number, number, number, number];
 }
 
-/** What a shape measures: the volume of its solids, its faces' area, a tight box. */
+/** What a shape measures: the volume of its solids, its faces' area, a tight box, its centre of mass. */
 export interface StoredShapeMeasure {
   solids: number;
   volume: number;
   area: number;
   box: { min: [number, number, number]; max: [number, number, number] };
+  /**
+   * The centre of mass of its solids (of its faces when it has none; the
+   * origin when it has neither), mm (ADR-0144 S6: what tells a chamfer from
+   * its flipped twin, which has the same volume, area and box).
+   */
+  centre: [number, number, number];
 }
 
 export interface StoredShapeStep extends StoredShapeMeasure {
@@ -72,7 +79,8 @@ const isIdentity = (m: Matrix12) =>
 
 /**
  * What a shape measures: its solids (counted, then released), the volume of
- * those solids, its faces' area and its tight box (`Kernel.properties`). The
+ * those solids, its faces' area, its tight box and its centre of mass
+ * (`Kernel.properties`). The
  * one definition both sides of an import's checks use (ADR-0144): a stored
  * shape and a rebuilt body are measured by this code only.
  */
@@ -80,12 +88,17 @@ export function measureShape(kernel: Kernel, shape: ShapeHandle): StoredShapeMea
   const solids = kernel.solids(shape);
   // One by one: a spread of a huge count overflows the stack and leaks the handles.
   for (const solid of solids) kernel.release(solid);
-  const { volume, area, bbox } = kernel.properties(shape);
+  const { volume, area, bbox, centroid } = kernel.properties(shape);
+  // A shape of no mass has no centre: the origin stands in, the same on both sides.
+  const centre: [number, number, number] = centroid.every(Number.isFinite)
+    ? [...centroid]
+    : [0, 0, 0];
   return {
     solids: solids.length,
     volume,
     area,
     box: { min: [...bbox.min], max: [...bbox.max] },
+    centre,
   };
 }
 
@@ -143,4 +156,163 @@ export function measureStoredShape(
   const read = scope.track(kernel.readBrep(text));
   const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
   return measureShape(kernel, placed);
+}
+
+/** An edge of a shape described for an import's matching (ADR-0144 S6), in world mm. */
+export interface ElementEdge {
+  /** Its 0-based place among the shape's edges (`TopExp::MapShapes` order). */
+  index: number;
+  type: CurveType;
+  /** mm; 0 for a degenerate edge. */
+  length: number;
+  /** The point in the middle of its parameter range. */
+  midpoint: Vec3;
+  /** Its two ends (one point twice for a closed edge); none for a degenerate edge. */
+  ends: Vec3[];
+  /** A line's direction, a circle's or ellipse's axis, else the middle tangent (canonical sign). */
+  direction?: Vec3;
+  /** A circle's or ellipse's centre and (major) radius. */
+  centre?: Vec3;
+  radius?: number;
+  /** The distinct faces it bounds, by index. */
+  faces: number[];
+}
+
+/** A face of a shape described for an import's matching (ADR-0144 S6). */
+export interface ElementFace {
+  index: number;
+  type: SurfaceType;
+  /** mm². */
+  area: number;
+  centroid: Vec3;
+  /** A plane's outward normal, an axis (canonical sign), else the middle normal; none for a sphere. */
+  direction?: Vec3;
+  /** Its edges, by index. */
+  edges: number[];
+}
+
+/** What a shape's description for matching holds: its counts and the elements described. */
+export interface ShapeElements {
+  edgeCount: number;
+  faceCount: number;
+  edges: ElementEdge[];
+  faces: ElementFace[];
+  /**
+   * Set, with nothing described, when the request would describe more than
+   * `MAX_DESCRIBED_EDGES` edges: how many. An answer, not an error, so a
+   * large body costs the import no kernel restart.
+   */
+  over?: number;
+}
+
+/**
+ * The most edges one description may describe (ADR-0144's S6 amendment: the
+ * library's largest rebuilt body has a few thousand); past it nothing is
+ * described, so what crosses from the kernel stays bounded.
+ */
+export const MAX_DESCRIBED_EDGES = 50_000;
+
+/** Which elements to describe: all of them, or the edges and faces asked for and their neighbours. */
+export interface ElementRequest {
+  /** 0-based edge indices; each with the faces it bounds. */
+  edges: readonly number[];
+  /** 0-based face indices; each with its edges. */
+  faces: readonly number[];
+}
+
+/**
+ * Describes edges and faces of `shape` (`Kernel.describe` plus each edge's
+ * ends and circle, `Kernel.edgeGeometry`): every one, or with `ask` the
+ * edges and faces asked for, the faces each asked edge bounds and the edges
+ * of each asked face. Indices out of range are left out (the counts say
+ * why). Past `MAX_DESCRIBED_EDGES` edges it describes none and says so (`over`).
+ */
+export function describeElements(
+  kernel: Kernel,
+  shape: ShapeHandle,
+  ask?: ElementRequest,
+): ShapeElements {
+  const d = kernel.describe(shape);
+  const edgeCount = d.edges.length;
+  const faceCount = d.faces.length;
+  const faceEdges: number[][] = d.faces.map(() => []);
+  d.edges.forEach((e, i) => {
+    for (const f of e.faces) faceEdges[f]?.push(i);
+  });
+  let edgeSet: Set<number>;
+  let faceSet: Set<number>;
+  if (ask) {
+    const inRange = (n: number, count: number) => Number.isInteger(n) && n >= 0 && n < count;
+    edgeSet = new Set(ask.edges.filter((n) => inRange(n, edgeCount)));
+    faceSet = new Set(ask.faces.filter((n) => inRange(n, faceCount)));
+    for (const e of [...edgeSet]) for (const f of d.edges[e]?.faces ?? []) faceSet.add(f);
+    for (const f of ask.faces)
+      if (inRange(f, faceCount)) for (const e of faceEdges[f] ?? []) edgeSet.add(e);
+  } else {
+    edgeSet = new Set(d.edges.keys());
+    faceSet = new Set(d.faces.keys());
+  }
+  if (edgeSet.size > MAX_DESCRIBED_EDGES)
+    return { edgeCount, faceCount, edges: [], faces: [], over: edgeSet.size };
+  const edges: ElementEdge[] = [];
+  for (const index of [...edgeSet].sort((a, b) => a - b)) {
+    const e = d.edges[index] as ShapeDescription['edges'][number];
+    const out: ElementEdge = {
+      index,
+      type: e.type,
+      length: e.length,
+      midpoint: e.midpoint,
+      ends: [],
+      faces: [...e.faces],
+    };
+    if (e.direction) out.direction = e.direction;
+    if (e.type !== 'degenerate') {
+      const g = kernel.edgeGeometry(shape, index, 2);
+      if (g.type !== 'degenerate') {
+        const first = g.points[0];
+        const last = g.points.at(-1);
+        if (first && last) out.ends = [first, last];
+        if (g.conic) {
+          out.centre = g.conic.center;
+          out.radius = g.conic.radius;
+        }
+      }
+    }
+    edges.push(out);
+  }
+  const faces: ElementFace[] = [...faceSet]
+    .sort((a, b) => a - b)
+    .map((index) => {
+      const f = d.faces[index] as ShapeDescription['faces'][number];
+      const out: ElementFace = {
+        index,
+        type: f.type,
+        area: f.area,
+        centroid: f.centroid,
+        edges: faceEdges[index] ?? [],
+      };
+      if (f.direction) out.direction = f.direction;
+      return out;
+    });
+  return { edgeCount, faceCount, edges, faces };
+}
+
+/**
+ * Reads `text` (`Kernel.readBrep`'s checks), places it by `chain` and
+ * describes the edges and faces `ask` names (`describeElements`): the
+ * elements a FreeCAD dress-up names on the shape its base stores, to look up
+ * on the rebuilt body (ADR-0144 decision 4, S6). Every shape is released
+ * before it returns or throws.
+ */
+export function describeStoredShape(
+  kernel: Kernel,
+  text: string,
+  chain: readonly ShapePlacement[],
+  ask: ElementRequest,
+): ShapeElements {
+  using scope = kernel.scope();
+  const matrix = chainMatrix(chain);
+  const read = scope.track(kernel.readBrep(text));
+  const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
+  return describeElements(kernel, placed, ask);
 }

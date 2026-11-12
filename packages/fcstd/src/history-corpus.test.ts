@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
 import { describe, expect, it } from 'vitest';
 import { bodyChain } from './bodies';
+import type { ReferenceTally } from './dressups';
 import { decodeFeature, FEATURE_TYPES } from './features';
 import { finalShapes } from './final-shapes';
 import { importFcstd } from './import';
@@ -48,16 +49,62 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
   it('reports, as numbers, what came in with its history and where it stopped', async () => {
     const files = [...walk(root as string)];
     const solver = new SketchSolver(await loadPlanegcs());
-    const kernel = nodeImportKernel();
+    const node = nodeImportKernel();
+    // S6: how large the rebuilt bodies a dress-up describes are, and how long that takes.
+    const described = { bodies: 0, mostEdges: 0, slowestMs: 0, storedCalls: 0 };
+    const kernel: typeof node = {
+      ...node,
+      storedShapeToStep: (...a) => node.storedShapeToStep(...a),
+      measureStoredShape: (...a) => node.measureStoredShape(...a),
+      rebuild: (...a) => node.rebuild(...a),
+      references: (i) => node.references(i),
+      restart: () => node.restart(),
+      describeStoredShape: (...a) => {
+        described.storedCalls++;
+        return node.describeStoredShape(...a);
+      },
+      describeBodies: async (b) => {
+        const t = performance.now();
+        const out = await node.describeBodies(b);
+        described.slowestMs = Math.max(described.slowestMs, performance.now() - t);
+        for (const d of Object.values(out)) {
+          described.bodies++;
+          described.mostEdges = Math.max(described.mostEdges, d.edgeCount);
+        }
+        return out;
+      },
+    };
+    const refs = { found: 0, none: 0, several: 0, furthest: 0, nearestMiss: Infinity };
+    const tally = (t: ReferenceTally | undefined) => {
+      if (!t) return;
+      refs.found += t.found;
+      refs.none += t.none;
+      refs.several += t.several;
+      refs.furthest = Math.max(refs.furthest, t.furthest);
+      if (t.nearestMiss !== undefined) refs.nearestMiss = Math.min(refs.nearestMiss, t.nearestMiss);
+    };
+    const dressUps = {
+      useAllEdges: 0,
+      mostElements: 0,
+      elementKinds: {} as Record<string, number>,
+    };
+    const byDrift: Record<string, { volume: number[]; area: number[]; centre: number[] }> = {};
     const byKind: Record<string, Record<string, number>> = {};
     const bodies: Record<string, number> = {};
     const fellBackAt: Record<string, number> = {};
-    const equal: { volume: number[]; area: number[]; box: number[] } = {
+    const equal: { volume: number[]; area: number[]; box: number[]; centre: number[] } = {
       volume: [],
       area: [],
       box: [],
+      centre: [],
     };
-    const differed: { volume: number; area: number; box: number; solids: boolean }[] = [];
+    const differed: {
+      volume: number;
+      area: number;
+      box: number;
+      centre: number;
+      solids: boolean;
+    }[] = [];
     const times: number[] = [];
     let restarts = 0;
     let longestChain = 0;
@@ -72,8 +119,17 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       const bytes = new Uint8Array(readFileSync(file));
       const doc = readFcstd(bytes);
       let walked = 0;
-      for (const o of doc.objects)
+      for (const o of doc.objects) {
         if (FEATURE_TYPES[o.type]) bump(census, `${kindOf(o.type)} in the file`);
+        if (o.type !== 'PartDesign::Fillet' && o.type !== 'PartDesign::Chamfer') continue;
+        const all = o.properties.UseAllEdges?.value;
+        if (all?.kind === 'bool' && all.value) dressUps.useAllEdges++;
+        const b = o.properties.Base?.value;
+        if (b?.kind === 'linkSub') {
+          dressUps.mostElements = Math.max(dressUps.mostElements, b.subs.length);
+          for (const sub of b.subs) bump(dressUps.elementKinds, sub.name.replace(/\d+$/, ''));
+        }
+      }
       for (const s of finalShapes(doc)) {
         if (s.kind !== 'body') continue;
         const chain = bodyChain(doc, s.object);
@@ -112,11 +168,22 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         const features = 'features' in chain ? chain.features : [];
         for (const m of b.mapped) {
           bump(of(byKind, m.kind), 'equal');
+          tally(m.references);
+          byDrift[m.kind] ??= { volume: [], area: [], centre: [] };
+          byDrift[m.kind]?.volume.push(m.drift.volume);
+          byDrift[m.kind]?.area.push(m.drift.area);
+          byDrift[m.kind]?.centre.push(
+            m.drift.diagonal > 0 ? m.drift.centre / m.drift.diagonal : 0,
+          );
           equal.volume.push(m.drift.volume);
           equal.area.push(m.drift.area);
           equal.box.push(m.drift.diagonal > 0 ? m.drift.corner / m.drift.diagonal : m.drift.corner);
+          equal.centre.push(
+            m.drift.diagonal > 0 ? m.drift.centre / m.drift.diagonal : m.drift.centre,
+          );
         }
         if (!b.stop) continue;
+        tally(b.stop.references);
         const at = features.findIndex((f) => f.name === b.stop?.object);
         const kind = kindOf(b.stop.type);
         bump(fellBackAt, `${kind} (${b.stop.reason})`);
@@ -130,12 +197,24 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
               b.stop.drift.diagonal > 0
                 ? b.stop.drift.corner / b.stop.drift.diagonal
                 : b.stop.drift.corner,
+            centre:
+              b.stop.drift.diagonal > 0
+                ? b.stop.drift.centre / b.stop.drift.diagonal
+                : b.stop.drift.centre,
             solids: /solid/.test(b.stop.detail ?? ''),
           });
         const f = features[at];
         const frame = f ? containerChain(doc, f) : undefined;
         const decoded =
-          f && body ? decodeFeature(doc, f, { body, moved: frame?.moved ?? false }) : undefined;
+          f && body
+            ? decodeFeature(doc, f, {
+                body,
+                moved: frame?.moved ?? false,
+                ...(features[at - 1]
+                  ? { previous: (features[at - 1] as { name: string }).name }
+                  : {}),
+              })
+            : undefined;
         lines.push(
           JSON.stringify({
             file,
@@ -145,6 +224,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
             reason: b.stop.reason,
             detail: b.stop.detail,
             drift: b.stop.drift,
+            references: b.stop.references,
             mapped: b.mapped.length,
             decoded: decoded?.ok ? decoded.feature : decoded,
           }),
@@ -171,12 +251,18 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
           p50: quantile(equal.area, 0.5),
         },
         box: { max: max(equal.box), p99: quantile(equal.box, 0.99), p50: quantile(equal.box, 0.5) },
+        centre: {
+          max: max(equal.centre),
+          p99: quantile(equal.centre, 0.99),
+          p50: quantile(equal.centre, 0.5),
+        },
       },
       nearestDiffered: {
         sameSolids: differed.filter((d) => !d.solids).length,
         volume: min(differed.filter((d) => !d.solids).map((d) => d.volume)),
         area: min(differed.filter((d) => !d.solids).map((d) => d.area)),
         box: min(differed.filter((d) => !d.solids).map((d) => d.box)),
+        centre: min(differed.filter((d) => !d.solids).map((d) => d.centre)),
         largestOfThree: min(
           differed.filter((d) => !d.solids).map((d) => Math.max(d.volume, d.area, d.box)),
         ),
@@ -186,6 +272,15 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       longestChain,
       mostFeaturesInAFile: mostFeatures,
       imports: { s3: importsS3, s5: importsS5 },
+      references: refs,
+      dressUps,
+      described,
+      equalDriftByKind: Object.fromEntries(
+        Object.entries(byDrift).map(([k, d]) => [
+          k,
+          { volume: max(d.volume), area: max(d.area), centre: max(d.centre), n: d.volume.length },
+        ]),
+      ),
       notBodies: { same: otherSame, differ: otherDiffer },
     };
     console.log(JSON.stringify(summary, null, 1));

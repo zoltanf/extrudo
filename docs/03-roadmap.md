@@ -1760,7 +1760,8 @@ end to end, faster than in established desktop CAD.
     amendment).
   - [x] S5 Pad, Pocket, Revolution, Groove, each checked against its stored shape
     (2026-11-11; ADR-0144's S5 amendment).
-  - [ ] S6 Fillet and Chamfer, their edges found by geometry.
+  - [x] S6 Fillet and Chamfer, their edges found by geometry (2026-11-12; ADR-0144's S6
+    amendment).
   - [ ] S7 Patterns, Mirrored, Hole.
   - [ ] S8 The stored-shape step in the middle of a body.
   - [ ] S9 Projected geometry in sketches, up-to-face, reference axes.

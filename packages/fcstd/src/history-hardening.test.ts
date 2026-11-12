@@ -55,7 +55,13 @@ const lying = (answer: (real: unknown) => unknown): ImportKernel => ({
 });
 
 describe('body IDs from the kernel', () => {
-  const m = { solids: 1, volume: 1, area: 1, box: { min: [0, 0, 0], max: [1, 1, 1] } };
+  const m = {
+    solids: 1,
+    volume: 1,
+    area: 1,
+    box: { min: [0, 0, 0], max: [1, 1, 1] },
+    centre: [0.5, 0.5, 0.5],
+  };
   const features = new Set(['f1']);
   it('takes only `<feature of the document>:<n>`, short, with measures under own keys', () => {
     expect(
@@ -171,11 +177,11 @@ describe('one object, one body, once per file', () => {
       ...padBody('B', 'Second', 'SketchB'),
       features: [
         { name: 'BPad', type: 'Pad', sketch: 'SketchB', length: 30, stored: BOX },
-        { name: 'BFillet', type: 'PartDesign::Fillet', sketch: 'Sketch', stored: BOX },
+        { name: 'BHole', type: 'PartDesign::Hole', sketch: 'Sketch', stored: BOX },
       ],
     };
     const r = await run([padBody(), b]);
-    expect(r.report.bodies[1]?.stop).toMatchObject({ object: 'BFillet', reason: 'type' });
+    expect(r.report.bodies[1]?.stop).toMatchObject({ object: 'BHole', reason: 'type' });
   });
 });
 

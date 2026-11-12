@@ -38,7 +38,13 @@ export {
   type SubShapeKind,
   type SubShapeRef,
 } from './history';
-export { type ImportRebuild, type ImportRebuilder, importRebuilder } from './import-rebuild';
+export {
+  type ImportRebuild,
+  type ImportRebuilder,
+  type ImportSubShape,
+  importRebuilder,
+  importReferences,
+} from './import-rebuild';
 export {
   type Box,
   type Inspection,
@@ -286,9 +292,14 @@ export {
   type ViewPiece,
 } from './sheets';
 export type {
+  ElementEdge,
+  ElementFace,
+  ElementRequest,
+  ShapeElements,
   ShapePlacement,
   StoredShapeMeasure,
   StoredShapeOptions,
   StoredShapeStep,
 } from './stored-shape';
+export { MAX_DESCRIBED_EDGES } from './stored-shape';
 export { TEST_PART, type TestPart } from './test-part';

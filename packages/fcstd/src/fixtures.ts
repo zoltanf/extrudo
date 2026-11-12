@@ -400,4 +400,7 @@ export function sheetFile(): Uint8Array {
 export const NO_HISTORY = {
   measureStoredShape: () => Promise.reject(new Error('this fake kernel has no history side')),
   rebuild: () => Promise.reject(new Error('this fake kernel has no history side')),
+  describeStoredShape: () => Promise.reject(new Error('this fake kernel has no history side')),
+  describeBodies: () => Promise.reject(new Error('this fake kernel has no history side')),
+  references: () => Promise.reject(new Error('this fake kernel has no history side')),
 };

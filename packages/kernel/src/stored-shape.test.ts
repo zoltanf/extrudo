@@ -170,10 +170,110 @@ describe('measureStoredShape and measureBodies (S5)', () => {
       release: (...shapes: unknown[]) => {
         released += shapes.length;
       },
-      properties: () => ({ volume: 1, area: 2, bbox: { min: [0, 0, 0], max: [1, 1, 1] } }),
+      properties: () => ({
+        volume: 1,
+        area: 2,
+        bbox: { min: [0, 0, 0], max: [1, 1, 1] },
+        centroid: [0.5, 0.5, 0.5],
+      }),
     } as unknown as Parameters<typeof measureShape>[0];
     expect(measureShape(kernel, 0 as never).solids).toBe(count);
     expect(released).toBe(count);
+  });
+});
+
+describe('describeStoredShape and describeBodies (S6)', () => {
+  const box = (id: string): Feature => ({
+    ...testFeature(id, 'box'),
+    inputs: primitiveInputs('box', {
+      numbers: { length: '10 mm', width: '20 mm', height: '30 mm' },
+    }),
+  });
+  const BOX_10_20_30 = boxBrep([0, 0, 0], [10, 20, 30]);
+
+  it("is refused by a project's kernel", async () => {
+    await expect(normal.describeStoredShape(BOX, [], { edges: [0], faces: [] })).rejects.toThrow(
+      /only an import's own kernel/,
+    );
+    expect((await normal.stats()).liveShapes).toBe(0);
+  });
+
+  it('describes only what is asked and its neighbours, placed, leaving nothing', async () => {
+    // A recompute before this one keeps its bodies alive.
+    const alive = (await importer.stats()).liveShapes;
+    const d = await importer.describeStoredShape(
+      BOX_10_20_30,
+      [{ position: [100, 0, 0], rotation: [0, 0, 0, 1] }],
+      { edges: [0, -1, 12, 1e9, 0.5], faces: [] },
+    );
+    expect([d.edgeCount, d.faceCount]).toEqual([12, 6]);
+    // Edge 0 only (the rest are out of range), with the two faces it bounds.
+    expect(d.edges.map((e) => e.index)).toEqual([0]);
+    const e = d.edges[0];
+    if (!e) throw new Error('no edge');
+    expect(e.type).toBe('line');
+    expect(e.ends).toHaveLength(2);
+    expect(e.faces).toHaveLength(2);
+    expect(d.faces.map((f) => f.index).sort()).toEqual([...e.faces].sort());
+    // Placed: every point is past x = 100.
+    for (const p of [e.midpoint, ...e.ends]) expect(p[0]).toBeGreaterThanOrEqual(100 - 1e-9);
+    const [a, b] = e.ends as unknown as [readonly number[], readonly number[]];
+    expect(e.length).toBeCloseTo(Math.hypot(...a.map((v, i) => v - (b[i] as number))), 9);
+    // A face asked for brings its four edges.
+    const top = await importer.describeStoredShape(BOX_10_20_30, [], {
+      edges: [],
+      faces: [d.faces[0]?.index ?? 0],
+    });
+    expect(top.faces[0]?.edges).toHaveLength(4);
+    expect(top.edges).toHaveLength(4);
+    await expect(
+      importer.describeStoredShape('not a shape', [], { edges: [], faces: [] }),
+    ).rejects.toThrow();
+    expect((await importer.stats()).liveShapes).toBe(alive);
+  });
+
+  it('describes a circle with its centre and radius', async () => {
+    const d = await importer.describeStoredShape(cylinderBrep(50), [], {
+      edges: [0, 1, 2],
+      faces: [],
+    });
+    const circles = d.edges.filter((e) => e.type === 'circle');
+    expect(circles.length).toBeGreaterThan(0);
+    for (const c of circles) expect(c.radius).toBeCloseTo(10, 9);
+  });
+
+  it('describes rebuilt bodies with the same code as stored shapes', async () => {
+    const result = await importer.recompute({ doc: testDocument([box('B')]) });
+    if (result.status !== 'done') throw new Error('not done');
+    const id = result.bodies[0]?.id as BodyId;
+    const described = await importer.describeBodies([id]);
+    expect(Object.getPrototypeOf(described)).toBeNull();
+    const body = described[id];
+    if (!body) throw new Error('no description');
+    expect([body.edgeCount, body.faceCount, body.edges.length, body.faces.length]).toEqual([
+      12, 6, 12, 6,
+    ]);
+    // The same box as B-rep text, wherever the primitive put it.
+    const at = (await importer.measureBodies([id]))[id]?.box;
+    if (!at) throw new Error('no measure');
+    const stored = await importer.describeStoredShape(boxBrep(at.min, at.max), [], {
+      edges: [...Array(12).keys()],
+      faces: [],
+    });
+    // Every stored edge has exactly one rebuilt edge with its midpoint and length.
+    for (const e of stored.edges) {
+      const same = body.edges.filter(
+        (r) =>
+          Math.hypot(...r.midpoint.map((v, i) => v - (e.midpoint[i] as number))) < 1e-9 &&
+          Math.abs(r.length - e.length) < 1e-9,
+      );
+      expect(same).toHaveLength(1);
+    }
+    // The reference the app would store for that edge.
+    const ref = await importer.reference(id, 'edge', 0);
+    expect(ref?.kind).toBe('edge');
+    expect(ref?.id).toContain(':B:');
+    await expect(importer.describeBodies(['nothing' as BodyId])).rejects.toThrow(/no longer/);
   });
 });
 

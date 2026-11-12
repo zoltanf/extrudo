@@ -1177,16 +1177,23 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   nothing). A file that isn't a zip ends in the
   `alert` toast "Import failed: This file can't be read as a FreeCAD file: …". The first test
   allows 60 s for the kernel worker to start under load.
-- **S5 (history):** the third test builds its file in the spec with `historyFile` and
-  `rectangle` (`packages/fcstd/src/history-fixtures.ts`) and `boxBrep` (imported from
-  `packages/kernel/src/read-brep-test-support.ts` by path): Bracket (Pad, Pocket from a sketch at
-  z = 30) and Lid (Pad, then a `PartDesign::Fillet`). The chips are
-  `list` "Features" › `[data-timeline-item="chip"]`, read with `toHaveText([...regexes])` in
-  order: Sketch, Pad, "Sketch001 plane" (the offset plane), Sketch001, Pocket, Sketch002, Pad001,
-  "Remove Lid", "Import Lid". The notices are "…: 2 of 2 shapes, 1 with its history and 1 as a
-  body without history." and the "Taken from the file's own shapes, without their whole
-  history: Lid. …" line. The shapes test's file (`shapesFile()`) has a body too: its pad is
-  refused (`value`), so that import also shows a "Taken from the file's own shapes" line.
+- **S5 and S6 (history):** the third test builds its file in the spec with `historyFile` and
+  `rectangle` (`packages/fcstd/src/history-fixtures.ts`), `boxBrep` (imported from
+  `packages/kernel/src/read-brep-test-support.ts` by path) and, for S6, `DRESSUP_CASES` and
+  `dressUpSpec` (`packages/fcstd/src/dressup-fixtures.ts`: FreeCAD's own stored shapes of small
+  parts we made): Bracket at x = 40 (Pad, Pocket from a sketch at z = 30), Lid (the
+  `fillet_one_edge` part: Pad001 and a Fillet of its `Edge1`, `base: 'Pad001'`) and Plate at
+  x = 80 (Pad002, then a `PartDesign::Hole`, which S7 maps). The chips are `list` "Features" ›
+  `[data-timeline-item="chip"]`, read by `aria-label` in order: Sketch, Pad, "Sketch001 plane"
+  (the offset plane), Sketch001, Pocket, Sketch002, Pad001, Fillet, Sketch003, Pad002,
+  "Remove Plate", "Import Plate". The notices are "…: 3 of 3 shapes, 2 with their history and
+  1 as a body without history." and the "Taken from the file's own shapes, without their whole
+  history: Plate, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. …"
+  line; no chip may end with `data-feature-status="error"` (the project's kernel recomputes the
+  fillet from the references the import's kernel gave). When S7 maps holes, give Plate another
+  unmapped feature (a `PartDesign::Thickness`) so the "Taken from" notice stays covered. The
+  shapes test's file (`shapesFile()`) has a body too: its pad is refused (`value`), so that
+  import also shows a "Taken from the file's own shapes" line.
 
 ### `e2e/import-mesh.spec.ts`
 

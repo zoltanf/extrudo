@@ -159,6 +159,7 @@ const measured = {
   volume: 6000,
   area: 2200,
   box: { min: [0, 0, 0], max: [10, 20, 30] },
+  centre: [5, 10, 15],
 };
 const good = { ...measured, step: 'ISO-10303-21;', read: measured } as unknown as StoredShapeStep;
 

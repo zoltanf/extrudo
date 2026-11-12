@@ -1,8 +1,10 @@
 /**
- * PartDesign's four sketch-based features (Pad, Pocket, Revolution, Groove)
- * as typed data (ADR-0144 S5): what Extrudo's `extrude` and `revolve` can
- * say, decoded from the feature's properties, or why not, from a closed set
- * of reasons. Nothing is mapped onto a design here and nothing is guessed: a
+ * PartDesign's four sketch-based features (Pad, Pocket, Revolution, Groove,
+ * ADR-0144 S5) and its two dress-ups (Fillet, Chamfer, S6) as typed data:
+ * what Extrudo's `extrude`, `revolve`, `fillet` and `chamfer` can say,
+ * decoded from the feature's properties, or why not, from a closed set of
+ * reasons. A dress-up's edges are names only here (`Edge3`, `Face2` of the
+ * feature before it); the walk finds them (`dressups.ts`). Nothing is mapped onto a design here and nothing is guessed: a
  * property this slice reads that is missing, unreadable, of the wrong kind,
  * not finite or out of range refuses the feature (`value`), and so does any
  * setting the slice doesn't map. What a property it doesn't read changes is
@@ -12,22 +14,24 @@
  * read are in `FORMAT.md`.
  */
 import { linkedObjects } from './final-shapes';
-import type { FcDocument, FcObject, FcValue } from './model';
+import { type FcDocument, type FcObject, type FcValue, versionAtLeast } from './model';
 import type { DecodedSketch } from './sketch-decode';
 
-export type FeatureKind = 'pad' | 'pocket' | 'revolution' | 'groove';
+export type FeatureKind = 'pad' | 'pocket' | 'revolution' | 'groove' | 'fillet' | 'chamfer';
 
-/** The FreeCAD types this slice maps, by kind. */
+/** The FreeCAD types the importer maps, by kind. */
 export const FEATURE_TYPES: Readonly<Record<string, FeatureKind>> = {
   'PartDesign::Pad': 'pad',
   'PartDesign::Pocket': 'pocket',
   'PartDesign::Revolution': 'revolution',
   'PartDesign::Groove': 'groove',
+  'PartDesign::Fillet': 'fillet',
+  'PartDesign::Chamfer': 'chamfer',
 };
 
 /** Why a feature is not mapped: the closed set the report and the app word. */
 export type FeatureRefusal =
-  /** Not one of the four features (a fillet, a pattern, a hole …: later slices). */
+  /** Not a feature the importer maps (a pattern, a hole …: later slices). */
   | 'type'
   /** Suppressed in the file. */
   | 'suppressed'
@@ -47,8 +51,14 @@ export type FeatureRefusal =
   | 'value'
   /** A setting this slice doesn't map (two angles, a groove through all). */
   | 'option'
-  /** A Pocket or a Groove with nothing before it to cut. */
-  | 'no-base';
+  /** A Pocket, a Groove, a Fillet or a Chamfer with nothing before it to work on. */
+  | 'no-base'
+  /** A dress-up whose `Base` is missing or is not the feature before it. */
+  | 'base'
+  /** A dress-up names a sub-element that is neither `EdgeN` nor `FaceN`, or one its base doesn't have. */
+  | 'element'
+  /** A dress-up with no edges, or with more than the importer or Extrudo's feature takes. */
+  | 'edges';
 
 /** One side of a pad or pocket: a length, or through all (pocket). */
 export interface DecodedSide {
@@ -81,7 +91,51 @@ interface Common {
   readonly sources: Readonly<Record<string, string>>;
 }
 
+/** A sub-element a dress-up names on its base's stored shape: `Edge3` is edge 2, `Face1` face 0. */
+export interface DressUpElement {
+  readonly kind: 'edge' | 'face';
+  /** 0-based, in the stored shape's `TopExp::MapShapes` order (FORMAT.md). */
+  readonly index: number;
+  /** As the file names it. */
+  readonly name: string;
+}
+
+interface DressUpCommon {
+  readonly object: string;
+  /** The feature before it, whose stored shape the elements are on. */
+  readonly base: string;
+  /** Each distinct element once, in the file's order. */
+  readonly elements: readonly DressUpElement[];
+  readonly sources: Readonly<Record<string, string>>;
+}
+
+/** A chamfer's sizes, in Extrudo's terms (`CHAMFER_MODES`). */
+export type DecodedChamferMode = 'equal' | 'two-distances' | 'distance-angle';
+
+export type DecodedDressUp =
+  | (DressUpCommon & {
+      readonly kind: 'fillet';
+      /** mm. */
+      readonly radius: number;
+    })
+  | (DressUpCommon & {
+      readonly kind: 'chamfer';
+      readonly mode: DecodedChamferMode;
+      /** mm, on the face that takes the first distance. */
+      readonly size: number;
+      /** mm, `two-distances` only. */
+      readonly size2?: number;
+      /** Degrees, `distance-angle` only. */
+      readonly angle?: number;
+      /**
+       * The first distance goes on the second face round each edge (FreeCAD
+       * 1.0's meaning: already toggled for an older file, FORMAT.md).
+       */
+      readonly flip: boolean;
+    });
+
 export type DecodedFeature =
+  | DecodedDressUp
   | (Common & {
       readonly kind: 'pad' | 'pocket';
       readonly direction: 'one-side' | 'symmetric' | 'two-sides';
@@ -109,6 +163,8 @@ export interface FeatureContext {
   readonly moved: boolean;
   /** The profile sketch, decoded (S4), to find a revolve's axis line in. */
   readonly sketch?: DecodedSketch;
+  /** The feature before it in the body's chain (a dress-up's `Base` must be it). */
+  readonly previous?: string;
 }
 
 /** The longest length a feature may have here (10 km): past it the kernel's arithmetic, not the file, decides. */
@@ -406,6 +462,118 @@ function revolution(
   };
 }
 
+/** The most sub-elements one dress-up may name (the library's most is in ADR-0144's S6 amendment). */
+export const MAX_DRESSUP_ELEMENTS = 1_000;
+
+const ELEMENT = /^(Edge|Face)([1-9]\d{0,8})$/;
+const CHAMFER_TYPES = ['Equal distance', 'Two distances', 'Distance and Angle'];
+
+/** A dress-up's `Base`: the feature before it and the elements it names. */
+function dressUpBase(
+  doc: FcDocument,
+  o: FcObject,
+  context: FeatureContext,
+): { base: string; elements: DressUpElement[] } {
+  const v = value(o, 'Base');
+  if (v === undefined) return refuse('base', 'it has no base');
+  if (v.kind !== 'linkSub') return refuse('value', 'its Base is not a link');
+  if (v.object === undefined || v.object === '') return refuse('base', 'it has no base');
+  if (!doc.byName.has(v.object)) return refuse('base', `its base ${v.object} isn't in the file`);
+  if (context.previous === undefined) return refuse('no-base', 'there is nothing before it');
+  if (v.object !== context.previous)
+    return refuse('base', `its base ${v.object} is not the feature before it`);
+  // Bounded before anything is looked at: a file may name any number.
+  if (v.subs.length > MAX_DRESSUP_ELEMENTS)
+    return refuse('edges', `it names ${v.subs.length} elements, more than ${MAX_DRESSUP_ELEMENTS}`);
+  const elements: DressUpElement[] = [];
+  const seen = new Set<string>();
+  for (const sub of v.subs) {
+    const name = sub.name;
+    if (name === '') continue;
+    const m = ELEMENT.exec(name);
+    if (!m) return refuse('element', `it names ${clipName(name)}, which is not an edge or a face`);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    elements.push({
+      kind: m[1] === 'Edge' ? 'edge' : 'face',
+      index: Number(m[2]) - 1,
+      name,
+    });
+  }
+  return { base: v.object, elements };
+}
+
+const clipName = (name: string) => (name.length > 40 ? `${name.slice(0, 40)}…` : name || 'nothing');
+
+/** A size of a dress-up: finite, above 0 and at most `MAX_FEATURE_LENGTH`. */
+function size(o: FcObject, name: string): number {
+  const v = number(o, name);
+  if (!(v > 0 && v <= MAX_FEATURE_LENGTH))
+    return refuse('value', `its ${name} of ${v} mm is out of range`);
+  return v;
+}
+
+function dressUp(
+  doc: FcDocument,
+  o: FcObject,
+  kind: 'fillet' | 'chamfer',
+  context: FeatureContext,
+): DecodedDressUp {
+  if (bool(o, 'Suppressed', false)) refuse('suppressed', 'it is suppressed');
+  const { base, elements } = dressUpBase(doc, o, context);
+  if (bool(o, 'UseAllEdges', false)) refuse('option', 'it works on every edge of the body');
+  if (elements.length === 0) refuse('edges', 'it names no edges');
+  if (kind === 'fillet')
+    return {
+      kind,
+      object: o.name,
+      base,
+      elements,
+      radius: size(o, 'Radius'),
+      sources: { edges: 'Base', radius: 'Radius' },
+    };
+  // ChamferType came with 0.19; a file from before has equal distances.
+  const type = choice(o, 'ChamferType', CHAMFER_TYPES, 'Equal distance');
+  const first = size(o, 'Size');
+  const shared = { kind, object: o.name, base, elements } as const;
+  if (type === 'Equal distance')
+    return {
+      ...shared,
+      mode: 'equal',
+      size: first,
+      flip: false,
+      sources: { edges: 'Base', distance: 'Size' },
+    };
+  let flip = bool(o, 'FlipDirection', false);
+  // FreeCAD 1.0 turned the flag's meaning round and toggles it when it opens an older file.
+  if (doc.version && !versionAtLeast(doc.version, [1, 0, 0])) flip = !flip;
+  const sources: Record<string, string> = {
+    edges: 'Base',
+    mode: 'ChamferType',
+    distance: 'Size',
+    flip: 'FlipDirection',
+  };
+  if (type === 'Two distances')
+    return {
+      ...shared,
+      mode: 'two-distances',
+      size: first,
+      size2: size(o, 'Size2'),
+      flip,
+      sources: { ...sources, distanceB: 'Size2' },
+    };
+  const angle = number(o, 'Angle');
+  if (!(angle > 0 && angle < 180)) refuse('value', `its angle of ${angle}° is out of range`);
+  return {
+    ...shared,
+    mode: 'distance-angle',
+    size: first,
+    angle,
+    flip,
+    sources: { ...sources, angle: 'Angle' },
+  };
+}
+
 /**
  * One feature of a body as typed data, or why this slice doesn't map it.
  * Never throws for anything the file holds.
@@ -422,7 +590,9 @@ export function decodeFeature(
     const feature =
       kind === 'pad' || kind === 'pocket'
         ? extrusion(doc, object, kind)
-        : revolution(doc, object, kind, context);
+        : kind === 'fillet' || kind === 'chamfer'
+          ? dressUp(doc, object, kind, context)
+          : revolution(doc, object, kind, context);
     return { ok: true, feature };
   } catch (error) {
     if (error instanceof Refuse) return { ok: false, reason: error.reason, detail: error.detail };

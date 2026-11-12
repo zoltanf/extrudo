@@ -8,12 +8,18 @@
  * rather than at the time budget. The history walk's rebuilds (S5) go
  * through the kernel's `importRebuilder`, one per worker, so a fresh kernel
  * after a restart is sent the files again and recomputes from nothing.
+ * The dress-ups' matching (S6) describes a stored shape and the last
+ * rebuild's bodies and takes references with the kernel's `importReferences`,
+ * the app's own call for a picked edge.
  */
+
+import type { BodyId } from '@extrudo/core';
 import type { ImportKernel, StoredShapeStep } from '@extrudo/fcstd';
 import {
   connectKernelWorker,
   type ImportRebuilder,
   importRebuilder,
+  importReferences,
   type KernelConnection,
 } from '@extrudo/kernel';
 import { IMPORT_KERNEL_WORKER_NAME } from './kernelNames';
@@ -59,6 +65,24 @@ export function workerImportKernel(
     rebuild: (doc, files, skip) => {
       if (!connection) start();
       return Promise.race([(rebuilder as ImportRebuilder).rebuild(doc, files, skip), died]);
+    },
+    describeStoredShape: (text, chain, ask) => {
+      const c = connection ?? start();
+      return Promise.race([
+        c.api.describeStoredShape(text, [...chain], {
+          edges: [...ask.edges],
+          faces: [...ask.faces],
+        }),
+        died,
+      ]);
+    },
+    describeBodies: (bodies) => {
+      const c = connection ?? start();
+      return Promise.race([c.api.describeBodies(bodies as BodyId[]), died]);
+    },
+    references: (items) => {
+      const c = connection ?? start();
+      return Promise.race([importReferences(c.api, items), died]);
     },
     restart: async () => {
       connection?.terminate();
