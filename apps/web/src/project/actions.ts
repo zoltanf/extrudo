@@ -390,12 +390,13 @@ export function fcstdNotices(
   const history = bodies.filter((b) => b.outcome === 'history').length;
   const came = report.shapes.length + history;
   const plain = report.shapes.length;
+  const total = `${report.finalShapes} shape${report.finalShapes === 1 ? '' : 's'}`;
   const out = [
     history === 0
-      ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, as bodies without history.`
+      ? `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`
       : plain === 0
-        ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, with their history (sketches and features).`
-        : `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
+        ? `Imported from the FreeCAD file: ${came} of ${total}, with ${history === 1 ? 'its' : 'their'} history (sketches and features).`
+        : `Imported from the FreeCAD file: ${came} of ${total}, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
   ];
   const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);
   if (short.length > 0) {

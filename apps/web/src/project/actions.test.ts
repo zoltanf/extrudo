@@ -467,7 +467,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
     expect(doc.name).toBe('Bracket');
     expect(await projects.readAttachment?.(id as never, sha256)).toEqual(step);
     expect(takeOpenNotices(id as never)).toEqual([
-      'Imported from the FreeCAD file: 1 of 2 shapes, as bodies without history.',
+      'Imported from the FreeCAD file: 1 of 2 shapes, as a body without history.',
       "Not imported: Scan (a mesh, which Extrudo doesn't import from FreeCAD files yet).",
     ]);
   });
@@ -505,7 +505,7 @@ describe('fcstdNotices', () => {
       problems: ['x: bad'],
     });
     expect(notices).toEqual([
-      'Imported from the FreeCAD file: 1 of 5 shapes, as bodies without history.',
+      'Imported from the FreeCAD file: 1 of 5 shapes, as a body without history.',
       "Not imported: Scan; Scan 2 (a mesh, which Extrudo doesn't import from FreeCAD files yet); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
       'Of each link array only one copy came in: Bolts.',
       '1 thing in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…',
@@ -538,6 +538,9 @@ describe('fcstdNotices', () => {
     ).toEqual([
       'Imported from the FreeCAD file: 2 of 2 shapes, with their history (sketches and features).',
     ]);
+    expect(fcstdNotices({ ...base, finalShapes: 1, bodies: [body('Bracket', 'history')] })).toEqual(
+      ['Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and features).'],
+    );
     const notices = fcstdNotices({
       ...base,
       finalShapes: 5,
@@ -564,7 +567,7 @@ describe('fcstdNotices', () => {
       bodies: [body('Clip', 'shape', 'up-to'), body('Housing', 'left-out', 'type', ['b:0'])],
     });
     expect(notices).toEqual([
-      'Imported from the FreeCAD file: 1 of 2 shapes, as bodies without history.',
+      'Imported from the FreeCAD file: 1 of 2 shapes, as a body without history.',
       "Taken from the file's own shapes, without their whole history: Clip, because a feature goes up to a face or a shape.",
       "Not imported: Housing (its shape didn't come through unchanged).",
       'Only partly rebuilt, up to the feature where the history stopped: Housing. It is not the whole shape from the file.',
