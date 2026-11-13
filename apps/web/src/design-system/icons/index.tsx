@@ -117,6 +117,7 @@ export const ICON_NAMES = [
   'tolerance',
   'overhang',
   'wall-thickness',
+  'simplify-for-print',
   'send-to-slicer',
   'render-picture',
   'sheets',

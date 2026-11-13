@@ -2006,6 +2006,22 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `fixtures/demos/removeFaces.extrudo` (the offset-face plate with its hole, rebuilt by
   `packages/cli/src/demo-designs.test.ts`).
 
+### `e2e/simplify-for-print.spec.ts`
+
+- **Simplify for Print e2e** (`e2e/simplify-for-print.spec.ts`, ADR-0141): the 40 cube of
+  remove-faces.spec with a Ø12 through hole at (5, −6) and a 3 mm round on the top front edge
+  (`Body1:8:40,40,40`). The tile is "Simplify for Print" in Make › Prepare (`pickTool`); the
+  dialog is the region "Simplify for Print dialog", its Bodies button reads the body's **name**
+  once picked ("Body1", not "1 body"; a click on the top at (−12, 10, 40) hovers `body:`). Each
+  kind is a **card**, the region "Rounds" / "Chamfers" / "Holes" (`[data-field="<limit>"]`,
+  `data-card` `open` or `none`), with the textbox and the slider (role slider) both named "Round
+  radius" / "Chamfer size" / "Hole diameter" (`exact: true`), the badge `[data-badge]` ("1 go",
+  "0 go", "Keep") and the notes `[data-note]` ("R3 mm goes", "Ø12 mm stays"; what couldn't be
+  removed has `data-note="warning"`). **No toggles**: the slider's Home key is Keep (the textbox
+  empties); End is the largest size. This cube has no chamfers (`data-card="none"`). Nothing
+  going gives `data-preview-status` `warning`. The view's `data-preview` is `cut` (the faces
+  that go). OK gives `Body1:6:40,40,40`; one Ctrl+Z gives the 8 faces back.
+
 ### `e2e/revolve.spec.ts`
 
 - **Revolve e2e** (`e2e/revolve.spec.ts`): the dialog is the region
