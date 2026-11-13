@@ -1,8 +1,8 @@
 # ADR-0140: Insert Design (Copied)
 
-- **Status:** Proposed, 2026-11-07 (a pilot of issue #75 built while the owner was
-  away; the storage decision in §2 is the recommendation, built as the pilot, and
-  is the owner's to confirm). Copied mode only; Linked mode is §7's later step.
+- **Status:** Accepted, 2026-11-13 (the owner: ship Copied mode as piloted on
+  2026-11-07, every recommendation taken; see "Decisions" at the end). Copied mode
+  only; Linked mode is §7's later step.
 - **Task:** P6-26 "Insert Design" (`docs/03-roadmap.md`), issue #75.
 - **Builds on:** ADR-0003 (the document is JSON, commands, deterministic recipes),
   ADR-0004 (expressions and parameters), ADR-0005 (topological naming), ADR-0024
@@ -50,7 +50,7 @@ Copy Component names a copy). The feature is named like its component. The
 component, the feature at the marker and the copied bodies' metadata in **one
 undo step**; every ID comes from the caller (`insertDesignPayload`, ADR-0003).
 
-### 2. Storage: the source design embedded as JSON (the recommendation)
+### 2. Storage: the source design embedded as JSON
 
 The `design` input holds the source design **as JSON**: its name, its length
 unit, its parameters and the features before its timeline marker, exactly as the
@@ -222,19 +222,28 @@ unchanged.
   themselves; own parameters; isolation; no recompute of the copy; an `.extrudo`
   round trip), `e2e/insert-design.spec.ts`.
 
-### Open questions for the owner
+### Decisions (the owner, 2026-11-13)
 
-1. Is embedding the JSON (§2) the storage you want, over a STEP snapshot or an
-   attachment holding the source file?
-2. Should an insert offer **parameter overrides** (like an OpenSCAD import's
-   `scadName`/`scadValue`: a copied parameter set to a host expression)? The
-   expansion would evaluate the copy with the override; a sketch dimension the
-   override drives would need the sketch re-solved, which the kernel doesn't do
-   today (sketches are solved by the app, ADR-0011).
-3. Component and feature name: the file name (as the issue says, `b4-box-with-lid`)
-   or the design's own name inside it (`B4 Box with lid`)?
-4. Should the insert land at the file's coordinates (now) or centred on the origin
-   like Import Model's default (`position: centre`)?
-5. Scripts and plugin features in the source: refuse (now) or expand them inside
-   the insert (an expansion within an expansion)?
-6. A tooltip clip for the tile is pending (`DEMO_CLIPS_PENDING`).
+1. **Storage:** the embedded JSON of §2, not a STEP snapshot or the source file as
+   an attachment.
+2. **No parameter overrides** for now (a follow-up, below).
+3. **Name:** the component and the feature are named after the file
+   (`b4-box-with-lid`), not after the design inside it.
+4. **Placement:** the bodies land at the file's own coordinates; Move places them.
+5. **Not insertable:** a source with a Script or a plugin feature (or an insert)
+   is refused, as §5 says.
+6. **No size cap** on the copy; storing one copy for several inserts comes with
+   Linked mode (a follow-up).
+7. **Not editable in place:** the copy's features have no chips of their own.
+8. The tile's tooltip clip is recorded with the others (`docs/assets.md`).
+
+### Follow-ups
+
+- **Parameter overrides** (like an OpenSCAD import's `scadName`/`scadValue`: a
+  copied parameter set to a host expression). The expansion would evaluate the
+  copy with the override; a sketch dimension the override drives would need the
+  sketch re-solved, which the kernel doesn't do today (sketches are solved by the
+  app, ADR-0011).
+- **One stored copy for several inserts** (content-addressed, with Linked mode and
+  occurrences), instead of one copy per insert.
+- **Linked mode** (§7), including the gone-file behaviour.

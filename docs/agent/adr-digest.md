@@ -4338,14 +4338,13 @@ renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config
 file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
 column has What's new above About, and the `whatsNew` command (Help) is agent-denied.
 
-ADR-0140 (pilot 2026-11-07, issue #75, **Proposed**: the owner to confirm the storage) added
+ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,
 `insertedFeatures`), the `design` input kind and `EmbeddedDesign`/`EmbeddedFeature`/
 `EmbeddedInputSchema` in `schema.ts`, kernel `features/insert-design.ts`, the engine's
 `Expansion.isolated` (`ownBodies`, `mergeBodies`, `scopes` in `#run`), app
-`components/insertDesign.ts` and the tool `insertDesign` (Solid › Assemble, agent-denied, clip
-pending). Rules: **the copy is JSON in the feature** (the source's name, `units`, parameters and
+`components/insertDesign.ts` and the tool `insertDesign` (Solid › Assemble, agent-denied). Rules: **the copy is JSON in the feature** (the source's name, `units`, parameters and
 features before its marker, no `component` keys); nothing geometric is stored. **One insert = one
 feature + one new component** (named after the file, `copyComponentName` on a clash), one undo
 step, every ID from the caller; copied `BodyMeta` goes to the host's `bodies` under
