@@ -18,7 +18,13 @@ import { type NamedShape, withHistory } from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { edgeResolver } from './lost-edges';
-import { buildRound, type RoundLimit } from './round-fallback';
+import {
+  buildRound,
+  CUT_SHORT,
+  diagnosisCost,
+  type RoundBudget,
+  type RoundLimit,
+} from './round-fallback';
 
 /**
  * The chamfer feature in the kernel (P3-02, ADR-0043): bevels the picked
@@ -152,6 +158,8 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
   edges.finish();
 
   using scope = kernel.scope();
+  // One budget of builds for the feature's retries, across its bodies.
+  const budget: RoundBudget = { builds: 0 };
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
   const made = new Map<BodyId, NamedShape>();
@@ -171,6 +179,8 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
         reason: (error) => (error instanceof ChamferError ? chamferMessage(error, picks) : ''),
         feature: 'chamfer',
         skip,
+        budget,
+        cost: (error) => (error instanceof ChamferError ? diagnosisCost(error.problems) : 1),
         warn: (message) => ctx.warn(message),
         limit: chamferLimit,
         stuck: (error) =>
@@ -182,7 +192,10 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
         sizeName: 'distance',
       });
     } catch (error) {
-      if (error instanceof ChamferError) throw new KernelError(chamferMessage(error, picks));
+      if (error instanceof ChamferError) {
+        const message = chamferMessage(error, picks);
+        throw new KernelError(budget.cutShort ? `${message} ${CUT_SHORT}` : message);
+      }
       throw error;
     }
     scope.track(result);

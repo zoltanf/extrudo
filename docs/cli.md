@@ -29,8 +29,12 @@ extrudo export <design.extrudo> --format stl|3mf|step|scad [--out <path>]
                [--param name=expr]… [--config <name>] [--bodies a,b]
                [--component <name>]… [--flat]
                [--resolution coarse|medium|fine|<deviation mm>] [--json]
+extrudo export <design.extrudo> --format pdf|svg [--sheet <name>]… [--out <path>]
+               [--param name=expr]… [--config <name>] [--date YYYY-MM-DD|today]
+               [--version-name <text>] [--density <g/cm³>] [--stickies] [--json]
 extrudo set    <design.extrudo> [--param name=expr]… [--config <name>] --out <new.extrudo>
-extrudo check  <design.extrudo> [--param …] [--config …] [--joints] [--min-gap <expr>] [--json]
+extrudo check  <design.extrudo> [--param …] [--config …] [--joints] [--min-gap <expr>]
+               [--sheets] [--json]
 extrudo script <design.extrudo> [--features a..b] [--param name=expr]…
 ```
 
@@ -80,15 +84,29 @@ Annotations:
   #4 ok       Logo here (done)
 ```
 
+A design with drawing sheets (P6-24, ADR-0143) lists them last, in page order:
+the paper, the sheet's scale, how many views and items it has, and how many of
+its anchors are detached now (a dimension, note, centre mark or line, or
+balloon whose edge, vertex or face is gone; a free point never is):
+
+```sh
+Sheets:
+  Plate  A3 landscape · 1:1 · 4 views · 9 items
+  Notes  A4 portrait · 1:1 · 0 views · 3 items · 1 detached anchor
+```
+
 `--json` prints the same as one JSON object on stdout: `name`, `units`,
 `notices`, `parameters` (each with its `owner`), `configurations`, `features`,
 `bodies`, `components`, `joints`, `annotations` (`number`, the whole `text`,
-`status`, and `done` / `hidden` when set), `errors`, `warnings`, `ms`. Its numbers are in mm and degrees,
+`status`, and `done` / `hidden` when set), `sheets` (`id`, `name`, `size`,
+`orientation`, `scale`, `views`, `items`, `detached`, and `problems`: each item
+not drawn as placed, with its `kind`, `state` and `message`), `errors`,
+`warnings`, `ms`. Its numbers are in mm and degrees,
 whatever `units` says. It is the slower way to read a design —
 the volumes are the kernel's exact mass properties (see
 [Times](#times)).
 
-### `export` — STL, 3MF, STEP or OpenSCAD
+### `export` — STL, 3MF, STEP or OpenSCAD; a drawing as PDF or SVG
 
 ```sh
 extrudo export box.extrudo --format 3mf --param clearance=0.4mm
@@ -129,6 +147,40 @@ extrudo export box.extrudo --format scad --out box.scad
   (0.005 mm) or a deflection in millimetres.
 - With `--json` it prints `{ "files": [{ "path", "name", "bytes", "bodies",
   "triangles", "closed" }] }`.
+
+**Drawings** (`--format pdf` or `svg`, P6-24 S6) write the design's sheets the
+way the app's Export Drawing does, through the same code
+(`@extrudo/kernel`'s `sheetModelNow`, then `@extrudo/sheets`' `sheetFiles`):
+
+```sh
+extrudo export bracket.extrudo --format pdf                       # Bracket.pdf, a page per sheet
+extrudo export bracket.extrudo --format svg --out drawings/       # an SVG per sheet
+extrudo export bracket.extrudo --format pdf --sheet Assembly --date today --version-name "Rev B"
+```
+
+- Every view is drawn exactly from the bodies at the marker, every anchor is
+  resolved and every parts list read again when the file is written: a
+  dimension whose geometry is gone is written as its text with `?`, never as
+  an old value (`check --sheets` finds those first).
+- A PDF holds the chosen sheets, one page each at its true size; an SVG is one
+  sheet. Without `--out` the files go next to the design: `Bracket.pdf`, or
+  `Bracket - Assembly.pdf` for one sheet of several; SVGs as
+  `Bracket - <sheet>.svg`. With `--out` a PDF or a single SVG is that file, and
+  several SVGs go into that folder.
+- `--sheet <name>` (repeatable, a name or ID) chooses sheets; they keep the
+  design's page order, and "sheet n of N" counts every sheet.
+- Fields the document can't fill are the command's: **`{date}`** writes
+  `--date` (`YYYY-MM-DD`, or `today`), by default the day the design was last
+  changed (its `meta.modified`), so the same file gives the same bytes;
+  **`{version}`** writes `--version-name`, by default the newest version saved
+  in the file (`V3`), else it stays as typed; a parts list's **Mass** needs
+  `--density` (g/cm³), else it is empty. Nothing personal is ever added: a
+  title block's "Drawn by" is whatever the design holds.
+- A sticky note is written only when its Print switch is on; `--stickies`
+  writes the on-screen ones too, as the export dialog's switch does.
+- `--param` and `--config` apply first, so a drawing of a changed design is
+  measured on the change. With `--json` it prints `{ "files": [{ "path",
+  "name", "bytes", "sheets" }] }`.
 
 ### `set` — a design with other parameters
 
@@ -171,6 +223,17 @@ It exits 2 when a joint collides, comes under the minimum gap, or has an error.
 `--min-gap` is an expression (the document's `tolerance` parameter by default,
 else 0.2 mm); `--json` prints the checks as data.
 
+With **`--sheets`** it resolves every sheet's anchors at the marker and exits 2
+when one is detached, naming the item and why, so a CI notices a model change
+that broke a drawing (a moved or invalid item is listed and does not fail):
+
+```sh
+$ extrudo check plate.extrudo --sheets; echo $?
+Plate: 1 detached anchor.
+  Plate: Dimension si2 is detached: Peg, the feature this was measured on, is suppressed. Unsuppress it to show the dimension again.
+2
+```
+
 ### `script` — a design as the code that makes it again
 
 ```sh
@@ -195,10 +258,16 @@ run it against a [`Design`](api/README.md).
 | `--bodies a,b` | Export only these bodies, by name (or by ID). |
 | `--component <name>` | Export a component's live bodies, by name (or ID). Repeatable; with `--bodies`, both. |
 | `--flat` | Write without the component structure: one 3MF object or STEP product per body. |
+| `--sheet <name>` | For `export --format pdf\|svg`: only this sheet, by name or ID. Repeatable. |
+| `--date <day>` | For a drawing: what `{date}` writes, `YYYY-MM-DD` or `today` (default: the day the design was last changed). |
+| `--version-name <text>` | For a drawing: what `{version}` writes (default: the newest version saved in the file, else left as typed). |
+| `--density <g/cm³>` | For a drawing: the density a parts list's Mass is worked out with (default: no Mass). |
+| `--stickies` | For a drawing: write every sticky note, the on-screen ones too. |
+| `--sheets` | For `check`: fail when an anchor on a sheet is detached. |
 | `--joints` | For `check`: run every joint's clearance check (ADR-0081 §4). |
 | `--min-gap <expr>` | For `check --joints`: the minimum gap the check allows (the design's `tolerance` by default). |
 | `--features a..b` | For `script`: emit only this run of the timeline (feature indices or IDs). |
-| `--out <path>` | The file to write: the export's, or the new design for `set`. Missing folders are made. |
+| `--out <path>` | The file to write: the export's (a folder for SVGs of several sheets), or the new design for `set`. Missing folders are made. |
 | `--resolution …` | `coarse`, `medium`, `fine` or a deflection in mm (for `scad`: its polyhedra and `$fa`/`$fs`). |
 | `--json` | One JSON object on stdout instead of the text report. |
 | `--help`, `--version` | The usage, and the version. |
@@ -218,8 +287,8 @@ is refused, and nothing is written.
 | Code | When |
 |---|---|
 | 0 | It worked. |
-| 1 | The command line was wrong: an unknown option or command, a missing `--format` or `--out`, a `--param` that isn't `name=expression`, a parameter the design doesn't have, an expression that doesn't evaluate. The usage follows a command-line mistake. |
-| 2 | The design has errors: `check` found one, an export named a body that isn't there, a design has nothing to export, or a change a sketch can't take was refused. |
+| 1 | The command line was wrong: an unknown option or command, a missing `--format` or `--out`, a `--param` that isn't `name=expression`, a parameter or sheet the design doesn't have, an expression that doesn't evaluate. The usage follows a command-line mistake. |
+| 2 | The design has errors: `check` found one (a detached anchor, with `--sheets`), an export named a body that isn't there, a design has nothing to export or no sheets, or a change a sketch can't take was refused. |
 | 3 | A file could not be read or written. |
 
 Messages go to stderr, in the app's wording, so they read the same as they do
@@ -238,6 +307,8 @@ console.log(notices);                            // what the file said about its
 await job.setParameters({ wall: '3.2 mm' });     // re-solves the sketches
 const result = await job.compute();              // features, bodies, volumes, timings
 const [file] = await job.export({ format: '3mf' });
+const [pdf] = await job.exportSheets({ format: 'pdf', date: '2026-11-11' }); // P6-24 S6
+const sheets = await job.checkSheets();          // each sheet's detached anchors and why
 await job.save('box-3.2mm.extrudo');
 await job.dispose();                             // frees the kernel
 ```

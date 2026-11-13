@@ -56,7 +56,8 @@ open designs). On a Mac these keys are `⌘`.
 **Opening `.extrudo` files.** Double-click an `.extrudo` file in your file manager and it opens in Extrudo. A design opened this way, or saved with **Save As…**,
 stays linked to that file: every autosave writes the file as well. If the file changed on disk
 in the meantime, nothing is overwritten and you choose between loading the disk's version and
-overwriting it, just as with a [linked folder](./files.md).
+overwriting it, just as with a [linked folder](./files.md). **Open…** also takes an
+`.extrudo.gz` (a design from a GitHub issue); that one opens as a copy, not linked to the file.
 
 **Send to Slicer.** In the Make tab's Output group, **Send to Slicer** (and the **Open in
 slicer** button in the Export dialog) hands the model to PrusaSlicer, OrcaSlicer, Bambu Studio
@@ -70,18 +71,20 @@ chooses the engine: **In the app** (the default) or **Blender**, a Blender 4.2 o
 on your machine (free from blender.org; the app finds it). You pick the scene, a finish for each
 body, the camera, the size and the quality, and get the picture to save or copy. See [rendering a picture](./rendering.md).
 
-**Other CAD files.** **Import…** also takes `.sldprt`, `.ipt`, `.iam`, `.catpart`, `.fcstd`,
+**Other CAD files.** **Import…** also takes `.sldprt`, `.ipt`, `.iam`, `.catpart`,
 `.sat`, `.smt`, `.smb`, `.sab`, `.igs`, `.iges` and `.pvz` files. The app converts them to STEP
 first, with the cadmpeg converter it ships with, and imports the STEP: you get the shapes, without
 colours, names or history. The design keeps only the STEP, so it opens in the browser too. The
 details are in the [desktop app's notes](https://github.com/zoltanf/extrudo/blob/main/docs/desktop.md#other-cad-files).
+FreeCAD `.FCStd` files don't go through the converter: Extrudo reads them itself, in the
+browser too, with the shapes' names and colours (see [files](./files.md)).
 
 **Updates.** The app looks for a new release a few seconds after it starts, then every six
 hours. What happens next depends on how you installed it:
 
 | Install | When a new version is out |
 |---|---|
-| AppImage, Windows installer | It downloads in the background, then tells you it is ready. Press **Restart**, or let it install the next time you quit. It saves open designs first. |
+| AppImage, Windows installer | It downloads in the background, then tells you it is ready. Press **Restart** (in the message, or in the Menu's bottom strip), or let it install the next time you quit. It saves open designs first. |
 | `.deb`, macOS | It tells you a new version is available, with a button for the release page. Your package manager or Homebrew (`brew upgrade`) does the update. |
 | Windows portable | It tells you a new version is available, with a button for the release page. Download the new exe and keep your `Extrudo-data` folder next to it. |
 

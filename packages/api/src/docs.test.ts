@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { type Attachment, type AttachmentId, addAttachment } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { exampleBlock } from './example-calls';
-import { docOnDisk, docPages, readFeatureDocs, skillPages } from './generate';
+import { docOnDisk, docPages, readFeatureDocs, sheetPages, skillPages } from './generate';
 import { FEATURE_TYPES, featureExamples } from './generated/features';
 import { Design } from './index';
 
@@ -132,6 +132,22 @@ describe('the examples', () => {
         .filter((feature) => feature.type !== 'sketch')
         .every((feature) => exampleBlock(feature).includes('d.')),
     ).toBe(true);
+  });
+});
+
+describe('the sheet reference (P6-24 S6)', () => {
+  it('is what the generator writes today, from the document schema', () => {
+    for (const [path, page] of sheetPages()) {
+      expect(docOnDisk(path), 'Run pnpm api:generate').toBe(page);
+      // Every stored field of every item kind, with its schema's description.
+      expect(page).toContain('| `anchors` | ');
+      expect(page).toContain(
+        '| `print` | true |  | Printed and exported (only as true); absent: on screen only. |',
+      );
+      for (const title of ['Sheet', 'View', 'Dimension', 'Parts list', 'Balloon', 'Table']) {
+        expect(page).toContain(`## ${title}\n`);
+      }
+    }
   });
 });
 

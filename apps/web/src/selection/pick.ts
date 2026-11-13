@@ -203,6 +203,24 @@ export function meshBvh(mesh: BodyMesh): MeshBVH {
   return indexOf(mesh).bvh;
 }
 
+/**
+ * The first face a ray meets in `mesh` (world mm): its index and how far along the ray, or
+ * `undefined`. A drawing's leader note picks a face this way (P6-24 S4): the ray runs along
+ * the view's direction through the point under the pointer.
+ */
+export function faceAlong(
+  mesh: BodyMesh,
+  origin: readonly [number, number, number],
+  direction: readonly [number, number, number],
+): { face: number; distance: number } | undefined {
+  const index = indexOf(mesh);
+  const ray = new Ray(new Vector3(...origin), new Vector3(...direction).normalize());
+  const hit = index.bvh.raycastFirst(ray, DoubleSide);
+  if (!hit || hit.faceIndex === undefined || hit.faceIndex === null) return undefined;
+  const face = index.triangleFace[hit.faceIndex];
+  return face === undefined ? undefined : { face, distance: hit.distance };
+}
+
 /** The face each triangle belongs to (`faceRanges`). */
 export function triangleFaces(mesh: BodyMesh): Uint32Array {
   const out = new Uint32Array(mesh.indices.length / 3);

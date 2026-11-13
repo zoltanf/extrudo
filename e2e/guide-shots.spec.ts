@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
@@ -274,4 +275,112 @@ test('the browser with a component', async ({ page }) => {
     width: box.width + 16,
     height: Math.min(box.height + 16, 600),
   });
+});
+
+// P6-24 S6: the drawings page, on the spool holder example (`fixtures/benchmarks/
+// spool-holder.extrudo`, its sheet built by `packages/cli/src/example-sheet.test.ts`).
+const sheetOf = (page: Page) => page.getByRole('region', { name: 'Sheet', exact: true });
+
+/** The app's version: an example opened as the first thing is a returning visit (ADR-0133). */
+const VERSION = (
+  JSON.parse(readFileSync(new URL('../apps/web/package.json', import.meta.url), 'utf8')) as {
+    version: string;
+  }
+).version;
+
+/** The spool holder example opened as a copy, in the model, with no "Updated to" toast. */
+async function spoolHolder(page: Page) {
+  await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [
+    'extrudo.whatsNew.lastVersion',
+    JSON.stringify(VERSION),
+  ] as const);
+  await page.goto('./#/example/spool-holder');
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  await kernelReady(page);
+}
+
+/** Make › Drawing on a design with a sheet: the sheet, every item drawn from the model. */
+async function openTheDrawing(page: Page, texts: readonly string[]) {
+  await selectTab(page, 'Make');
+  await pickTool(page, 'Drawing');
+  const sheet = sheetOf(page);
+  await expect(sheet).toBeVisible();
+  await expect
+    .poll(() => sheet.locator('[data-sheet-text] text').allTextContents(), { timeout: 60_000 })
+    .toEqual(expect.arrayContaining([...texts]));
+  await expect
+    .poll(() => sheet.locator('[data-sheet-paper] > svg path[data-state="stale"]').count(), {
+      timeout: 60_000,
+    })
+    .toBe(0);
+  return sheet;
+}
+
+test('the drawing mode', async ({ page }) => {
+  await spoolHolder(page);
+  await openTheDrawing(page, ['80.0', 'Ø12.4', 'Bracket', 'Axle']);
+  await page.mouse.move(1430, 450);
+  await page.waitForTimeout(1500);
+  const file = out('drawings', 'mode');
+  await ensureDir(file);
+  await save(page, file);
+});
+
+test('the New drawing dialog', async ({ page }) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await selectTab(page, 'Make');
+  await pickTool(page, 'Drawing');
+  const dialog = page.getByRole('dialog', { name: 'New drawing' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-new-sheets-summary]')).toHaveText(/^4 views of/, {
+    timeout: 30_000,
+  });
+  await page.waitForTimeout(500);
+  const file = out('drawings', 'new-drawing');
+  await ensureDir(file);
+  await writeFile(file, await indexed(page, await dialog.screenshot()));
+});
+
+test('a lost dimension', async ({ page }) => {
+  await spoolHolder(page);
+  // The drawing opened once, so the screen keeps where each dimension was; then the second
+  // screw hole suppressed in the model: the 60 between the holes is drawn lost, red and dashed.
+  await openTheDrawing(page, ['60.0']);
+  await pickTool(page, 'Finish Drawing');
+  await expect(sheetOf(page)).toHaveCount(0);
+  await chip(page, 'Screw hole 2').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /^Suppress/ }).click();
+  await kernelReady(page);
+  const sheet = await openTheDrawing(page, ['80.0', 'Bracket']);
+  await expect(
+    sheet.locator('[data-sheet-paper] > svg path[data-state="detached"][stroke-dasharray]'),
+  ).not.toHaveCount(0, { timeout: 30_000 });
+  await page.mouse.move(1430, 450);
+  await page.waitForTimeout(800);
+  // The top view and its dimensions: sheet mm 15…125 across, 100…178 down (A4 landscape).
+  const paper = await sheet.locator('[data-sheet-paper]').boundingBox();
+  if (!paper) throw new Error('no paper');
+  const k = paper.width / 297;
+  const file = out('drawings', 'lost');
+  await ensureDir(file);
+  await save(page, file, {
+    x: Math.round(paper.x + 15 * k),
+    y: Math.round(paper.y + 100 * k),
+    width: Math.round(110 * k),
+    height: Math.round(78 * k),
+  });
+});
+
+test('the Export drawing dialog', async ({ page }) => {
+  await spoolHolder(page);
+  await openTheDrawing(page, ['80.0']);
+  await page.keyboard.press('Control+e');
+  const dialog = page.getByRole('dialog', { name: 'Export drawing' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-sheet-export-summary]')).toHaveText(/1 page/);
+  await page.waitForTimeout(500);
+  const file = out('drawings', 'export');
+  await ensureDir(file);
+  await writeFile(file, await indexed(page, await dialog.screenshot()));
 });

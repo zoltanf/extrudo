@@ -118,3 +118,25 @@ it has a range: a string where it expects a number is refused as too new.
 
 - Renaming a group in one step (today: pick the new name on each member).
 - Selecting a feature from a "Used by" chip (only parameters are linked).
+
+## Amendment, 2026-11-07: where a refusal shows (issue #203 follow-up)
+
+A refused command's message no longer has one line at the top of the inspector,
+which pushed every field down (and the footer out of view). It shows where the
+action was taken (`Refusal { spot, text }` in `ParametersDialog.tsx`, rendered by
+`Refused` in `ParameterInspector.tsx`):
+
+- **`name`**: renaming a user or model parameter and adding one. The message sits
+  under the name field, the field is `aria-invalid` and keeps the typed name;
+  typing or Esc (which restores the name) clears it.
+- **`actions`** (the default): everything else, a refused delete above all. In a
+  user parameter it takes the place of the footer's "Order in this list…" hint,
+  beside Delete; in a model parameter it sits under Reset name and Make user
+  parameter. Deleting from a row's menu selects that row first, so the refusal
+  shows by its Delete button (the old selection comes back when the delete goes
+  through).
+
+Expressions and slider ranges keep their own inline errors, before anything is
+committed. Rejected: a toast (far from the action, and it fades), a banner over
+the pane (covers the name field), a callout on the control (more machinery for
+the same placement).

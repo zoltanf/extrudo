@@ -30,7 +30,7 @@ export interface FileActions {
   home(): void;
   exportFile(): void;
   importFile(): void;
-  /** Opens an `.f3d` file Import Model picked as a new design (ADR-0083 §4). */
+  /** Opens an `.f3d` or FreeCAD file Import Model picked as a new design (ADR-0083 §4, ADR-0144). */
   importF3d?(file: File): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;
@@ -90,6 +90,8 @@ export interface AppBarProps {
   helpTool(): HelpTool | undefined;
   /** The strip's Check now (desktop only, ADR-0075's 2026-10-09 amendment); absent on the web. */
   onCheckUpdates?(): void;
+  /** The strip's Restart / Reload while an update is ready (`applyUpdate`). */
+  onApplyUpdate?: (() => void) | undefined;
   /** About Extrudo. */
   onAbout(): void;
   /** Report a bug (ADR-0092). */
@@ -139,6 +141,7 @@ export function AppBar({
   onDocs,
   helpTool,
   onCheckUpdates,
+  onApplyUpdate,
   version,
   updates,
   onAbout,
@@ -225,6 +228,7 @@ export function AppBar({
           version={version}
           updates={updates}
           onCheckUpdates={onCheckUpdates}
+          onApplyUpdate={onApplyUpdate}
           onSource={onSource}
           onQuit={onQuit}
           onCloseDesign={onCloseDesign}

@@ -35,6 +35,14 @@ describe('the MCP bridge payloads (ADR-0087 §4)', () => {
         file: { design: 'Box', format: 'stl', bytes: new Uint8Array([1]) },
       }),
     ).toBe(true);
+    // A sheet's PDF (export_sheet, P6-24 S6).
+    expect(
+      isToolResponse({
+        id: 3,
+        result: { content: [] },
+        file: { design: 'Box', format: 'pdf', bytes: new Uint8Array([37]) },
+      }),
+    ).toBe(true);
   });
 
   it('refuses anything else', () => {

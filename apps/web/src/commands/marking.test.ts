@@ -165,6 +165,11 @@ describe('Repeat last', () => {
     for (const id of ['finishSketch', 'parameters', 'export', 'sketch', 'measure', 'section']) {
       expect(isRepeatable(id)).toBe(false);
     }
+    // The drawing (P6-24): entering, leaving and its dialogs are not; New Sheet is.
+    for (const id of ['sheets', 'finishDrawing', 'sheetSetup', 'exportSheets']) {
+      expect(isRepeatable(id)).toBe(false);
+    }
+    expect(isRepeatable('newSheet')).toBe(true);
   });
 });
 

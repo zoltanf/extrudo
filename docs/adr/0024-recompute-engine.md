@@ -158,3 +158,27 @@ said "kernel idle", and the kernel only ran on the debug page.
 - ~~The browser panel doesn't show feature status yet; P2-11 adds error
   chips' actions and "fix references".~~ Fix references came with P2-11,
   browser status with P3-17 (ADR-0033 amendment).
+
+## Amendment 2026-11-10: crashes that name a new feature
+
+The crashed features live in the `Recomputer` only, and `KernelClient` gives
+up after three restarts in a minute. So four features that trap the kernel
+left it failed, and a design with them failed the same way on every open
+(the security review of 2026-10-15, finding B5; a test on the base with five
+such features: three restarts, then "failed", four kernels).
+
+- `KernelClientOptions.counts(error)` says whether a crash counts against
+  `maxRestarts`. The `Recomputer` answers no for a crash in a feature of the
+  document it sent that isn't yet known to crash, while fewer than
+  `MAX_CRASHED_FEATURES` = 8 are: it is one feature fewer to try, and it is
+  skipped from then on. Any other crash counts as before (one in a feature
+  already skipped, outside a feature, or in a feature the document doesn't
+  have, such as a script's generated one, which no list skips).
+- A design with up to eight such features now opens with those features
+  shown as errors and the rest built; past eight, three more crashes in a
+  minute stop the kernel as before (twelve kernels at most).
+- Nothing is stored: the list is still per open document, so each open finds
+  the crashes again (one kernel start each). Rejected for now: keeping the
+  list in the document (a file-format change), and importing the features
+  that trapped the import's own check suppressed (the check's kernel would
+  have to report them; a proposal in the hardening report).

@@ -79,6 +79,20 @@ function idMap(original: ExtrudoDocument, recreated: ExtrudoDocument): Map<strin
     const other = (recreated.joints ?? []).find((candidate) => candidate.name === joint.name);
     if (other) map.set(joint.id, other.id);
   }
+  // Sheets, their views and items in order (P6-24 S6).
+  (original.sheets ?? []).forEach((sheet, s) => {
+    const other = recreated.sheets?.[s];
+    if (!other) return;
+    map.set(sheet.id, other.id);
+    sheet.views.forEach((view, v) => {
+      const mapped = other.views[v];
+      if (mapped) map.set(view.id, mapped.id);
+    });
+    sheet.items.forEach((item, i) => {
+      const mapped = other.items[i];
+      if (mapped) map.set(item.id, mapped.id);
+    });
+  });
   original.features.forEach((feature, index) => {
     const other = recreated.features[index];
     if (!other) return;
@@ -159,6 +173,8 @@ function canonical(doc: ExtrudoDocument, map: ReadonlyMap<string, string>): unkn
       .sort((a, b) => a.number - b.number)
       .map(({ id: _, ...annotation }) => JSON.parse(replaceIds(JSON.stringify(annotation), map))),
     annotationCounter: doc.annotationCounter ?? null,
+    // Sheets as stored, up to IDs (P6-24 S6).
+    sheets: doc.sheets ? JSON.parse(replaceIds(JSON.stringify(doc.sheets), map)) : null,
   };
 }
 
@@ -486,6 +502,122 @@ describe('emitScript', () => {
     const map = idMap(doc, recreated);
     expect(canonical(recreated, map)).toEqual(canonical(doc, map));
     expect(biomeFormat(code)).toBe(code);
+  });
+
+  it('round-trips sheets with every view and item kind (P6-24 S6)', () => {
+    const design = Design.create({ name: 'Bracket' });
+    design.parameter('width', '40 mm');
+    const plate = design.box({ length: 'width', width: '20 mm', height: '5 mm' });
+    const fingerprint = (at: [number, number, number]) => ({
+      type: 'line',
+      at,
+      dir: [1, 0, 0] as [number, number, number],
+      size: 40,
+      adj: [plate.faceName('cap:end'), plate.faceName('side:front')],
+    });
+    const top = {
+      ...plate.edge([plate.faceName('cap:end'), plate.faceName('side:front')]),
+      fingerprint: fingerprint([20, 0, 5]),
+    };
+    const bottom = plate.edge([plate.faceName('cap:start'), plate.faceName('side:front')]);
+    const face = plate.face('cap:end');
+    const circle = {
+      type: 'cylinder',
+      at: [10, 10, 2.5] as [number, number, number],
+      dir: [0, 0, 1] as [number, number, number],
+      size: 78.5,
+    };
+    const sheet = design.addSheet('Plate', {
+      start: 'standard',
+      bodies: [plate],
+      fields: { title: 'Bracket', drawnBy: 'Me', date: '{date}' },
+    });
+    const front = sheet.view('Front');
+    if (!front) throw new Error('no front');
+    front.update({ label: true, tangentEdges: false });
+    const odd = sheet.addView('Odd', {
+      at: [50, 250],
+      from: { direction: [1, 1, -1], up: [0, 0, 1] },
+      scale: [1, 2],
+      style: 'visible',
+      centreLines: false,
+    });
+    odd.project('left', [120, 250]);
+    sheet.addView('Back', { at: [300, 250], from: 'back' });
+    front.addDimension(
+      'linear',
+      [top, { ref: bottom, fingerprint: fingerprint([20, 0, 0]), at: 'middle' }],
+      [45, 2.5],
+      {
+        direction: 'vertical',
+        decimals: 2,
+        before: '2×',
+        after: ' max',
+        reference: true,
+      },
+    );
+    front.addDimension('diameter', [{ ref: face, fingerprint: circle }], [30, 30]);
+    front.addDimension(
+      'linear',
+      [{ ref: face, fingerprint: circle, silhouette: 1 }, [0, 0]],
+      [10, -10],
+    );
+    front.addLeader({ ref: top, at: 'end' }, [60, 20], 'Chamfer {= width / 40} mm');
+    front.addCentreMark({ ref: face, fingerprint: circle });
+    front.addCentreLine([{ ref: face, fingerprint: circle }]);
+    const list = front.addPartsList([300, 20], {
+      columns: ['item', 'qty', 'name', 'material'],
+      rows: [{ body: plate, name: 'Base', material: 'PETG' }],
+    });
+    front.addBalloon(top, [70, 40], list);
+    sheet.addText('Deburr all edges\nBreak sharp corners', [20, 180], { size: 5, width: 80 });
+    sheet.addSticky('Ask about the finish', [200, 20], {
+      size: [50, 25],
+      color: 'pink',
+      print: true,
+    });
+    sheet.addTable(
+      [20, 220],
+      [
+        ['Rev', 'What'],
+        ['A', 'First'],
+      ],
+      { columns: [12, 60] },
+    );
+    design.addSheet('Bare', {
+      size: [300, 200],
+      orientation: 'portrait',
+      scale: [2, 1],
+      projection: 'third',
+      decimals: 0,
+      border: false,
+      titleBlock: false,
+    });
+    design.addSheet('Zones', { border: 'zones', titleBlock: 'full', fields: {} });
+    const doc = design.toJSON();
+    expect(new Set(doc.sheets?.[0]?.items.map((i) => i.kind))).toEqual(
+      new Set([
+        'dimension',
+        'leader',
+        'centreMark',
+        'centreLine',
+        'partsList',
+        'balloon',
+        'text',
+        'sticky',
+        'table',
+      ]),
+    );
+    const code = emitScript(doc);
+    expect(code).toContain("const plate = design.addSheet('Plate', {");
+    expect(code).toContain("front.project('below',");
+    expect(code).toContain('front.addBalloon(');
+    const recreated = run(code, doc);
+    const map = idMap(doc, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(doc, map));
+    expect(biomeFormat(code)).toBe(code);
+    // A run of the timeline leaves the sheets out, as it leaves annotations out.
+    expect(emitScript(doc, { features: [0, 0] })).not.toContain('addSheet');
   });
 
   it("round-trips a distance to a circle's far edge (ADR-0112)", () => {

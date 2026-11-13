@@ -6,7 +6,7 @@ order: 0
 
 # Examples
 
-Twelve designs to open, take apart and change. Each opens as your own copy
+Thirteen designs to open, take apart and change. Each opens as your own copy
 in the app: nothing you change touches the original. They are the models
 Extrudo's own tests build, so they always work with the current version.
 
@@ -55,6 +55,15 @@ A plate with numbered notes on a face, an edge, a sketch circle and a point in s
 Shows: annotations, sketch on face, parameters.
 
 [Open in Extrudo]({{APP_URL}}/#/example/annotated-plate)
+
+### Spool holder
+![Spool holder](./images/examples/spool-holder.png)
+
+A bracket and the axle that fits its bore, with a drawing sheet of standard views, dimensions, notes and a parts list.
+
+Shows: drawing, sheet, parts list, two bodies.
+
+[Open in Extrudo]({{APP_URL}}/#/example/spool-holder)
 
 ## Intermediate
 ### Box with a lid

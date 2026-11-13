@@ -11,9 +11,12 @@ import type { GeomRef } from '@extrudo/core';
 import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { openDesign } from './headless';
+import { SPOOL_HOLDER_VIEWS, spoolHolderModel } from './spool-holder';
 
 const DEMOS = fileURLToPath(new URL('../../../fixtures/demos/', import.meta.url));
 const FONT = 'inter-regular@1';
+/** The title block of the drawing scenes' sheets: no date, author or version. */
+const SHEET_FIELDS = { title: 'Spool holder', units: 'mm' };
 
 /** A construction plane's reference (`constructionRef()` is undefined for other features). */
 function planeRef(feature: { constructionRef(): GeomRef | undefined }): GeomRef {
@@ -245,6 +248,39 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
   },
   midplaneAngled: (d) => {
     d.box({ x: '30 mm', y: '-35 mm', length: '30 mm', width: '20 mm', height: '14 mm' });
+  },
+  // The Drawing tab (P6-24 S6): the spool holder and an A4 sheet of it at 1:1. Empty, for Base
+  // View; its front view alone, for Projected View; the standard views, for the tools that
+  // add items; and with a parts list of the front view, for Balloon.
+  sheetEmpty: (d) => {
+    spoolHolderModel(d);
+    d.addSheet('Sheet 1', { size: 'A4', fields: SHEET_FIELDS });
+  },
+  sheetBase: (d) => {
+    spoolHolderModel(d);
+    d.addSheet('Sheet 1', { size: 'A4', fields: SHEET_FIELDS }).addView('Front', {
+      at: SPOOL_HOLDER_VIEWS.front,
+    });
+  },
+  sheetViews: (d) => {
+    spoolHolderModel(d);
+    d.addSheet('Sheet 1', {
+      size: 'A4',
+      start: 'standard',
+      at: SPOOL_HOLDER_VIEWS,
+      fields: SHEET_FIELDS,
+    });
+  },
+  sheetList: (d) => {
+    spoolHolderModel(d);
+    d.addSheet('Sheet 1', {
+      size: 'A4',
+      start: 'standard',
+      at: SPOOL_HOLDER_VIEWS,
+      fields: SHEET_FIELDS,
+    })
+      .view('Front')
+      ?.addPartsList([172, 118], { columns: ['item', 'qty', 'name', 'size'] });
   },
 };
 

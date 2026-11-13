@@ -11,6 +11,7 @@ import {
   randomUuid,
 } from '@extrudo/core';
 import type { ImportReport, ImportResult } from '@extrudo/f3d';
+import type { FcstdImportReport, HistoryStop, LeftOutReason } from '@extrudo/fcstd';
 import {
   ArchiveError,
   type ProjectId,
@@ -26,6 +27,7 @@ import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
 import type { BodyCheck, BodyCheckResult } from './f3dCheck';
 import type { ImportRunner } from './f3dImport';
+import type { FcstdImported, FcstdImportRunner } from './fcstdImport';
 
 /**
  * Saves a new project (blank, or the given document, with a picture for its card
@@ -88,18 +90,30 @@ export function loadProject(platform: Platform, id: ProjectId): Promise<ExtrudoD
 }
 
 /**
+ * What an Extrudo design file is picked as: an `.extrudo`, or one gzipped
+ * (`.extrudo.gz`, how a design comes from a GitHub issue), which
+ * `readArchive` unpacks.
+ */
+export const DESIGN_ACCEPT = `${FILE_EXTENSION},.gz,application/zip,application/gzip`;
+
+/**
  * Lets the user pick an `.extrudo` file (or takes `picked`) and imports it;
- * `undefined` if they cancel. An `.f3d` picked here is imported as one too.
+ * `undefined` if they cancel. An `.f3d` or FreeCAD file picked here is
+ * imported as one too.
  */
 export async function importProject(
   platform: Platform,
   picked?: File,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
   const file =
-    picked ?? (await platform.files.pick(`${FILE_EXTENSION},application/zip,${F3D_ACCEPT}`));
+    picked ?? (await platform.files.pick(`${DESIGN_ACCEPT},${F3D_ACCEPT},${FCSTD_ACCEPT}`));
   if (!file) return undefined;
   if (/\.f3d$/i.test(file.name)) {
     const id = await importF3dFile(platform, file);
+    return id ? { id } : undefined;
+  }
+  if (isFcstd(file.name)) {
+    const id = await importFcstdFile(platform, file);
     return id ? { id } : undefined;
   }
   const notices: string[] = [];
@@ -119,7 +133,7 @@ export async function importAnyFile(
   platform: Platform,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
   const file = await platform.files.pick(
-    `${FILE_EXTENSION},application/zip,${importAccept(!!platform.convertCad)}`,
+    `${DESIGN_ACCEPT},${importAccept(!!platform.convertCad)},${FCSTD_ACCEPT}`,
   );
   if (!file) return undefined;
   // Another CAD program's file is a model too where the Import dialog converts it (ADR-0115 §1).
@@ -247,6 +261,183 @@ export async function saveF3dImport(
   return id;
 }
 
+/** What a FreeCAD file is picked as (any case: `.FCStd` is FreeCAD's own spelling). */
+export const FCSTD_ACCEPT = '.fcstd';
+
+/** Whether `fileName` is a FreeCAD file, by its extension in any case. */
+export function isFcstd(fileName: string): boolean {
+  return /\.fcstd$/i.test(fileName);
+}
+
+/**
+ * The most a FreeCAD file may be before it is read, as `MAX_F3D_BYTES`
+ * (`@extrudo/fcstd`'s `MAX_FCSTD_BYTES`; the import holds the bytes, the
+ * entries it inflates and the XML tree at once).
+ */
+export const MAX_FCSTD_BYTES = 100 * 1024 * 1024;
+
+/** What the busy toast says while the FreeCAD import runs. */
+export const FCSTD_READING_TEXT = "Importing the FreeCAD file's shapes…";
+
+/**
+ * Lets the user pick a FreeCAD file (or takes `picked`) and imports it as a
+ * new design named after the file (ADR-0144 decision 9): its final shapes as
+ * bodies, each a STEP attachment on an `import` feature, with a report shown
+ * when the design opens. The importer and its own kernel run in workers
+ * (`fcstdImport.ts`); `run` stands in for them in tests. `undefined` if they
+ * cancel.
+ */
+export async function importFcstdFile(
+  platform: Platform,
+  picked?: File,
+  run?: FcstdImportRunner,
+): Promise<ProjectId | undefined> {
+  const file = picked ?? (await platform.files.pick(FCSTD_ACCEPT));
+  if (!file) return undefined;
+  if (file.size > MAX_FCSTD_BYTES)
+    throw new Error(
+      `This FreeCAD file is too large to import (the limit is ${MAX_FCSTD_BYTES / (1024 * 1024)} MB).`,
+    );
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const name = file.name.replace(/\.fcstd$/i, '') || 'Imported design';
+  const notifications = appNotifications.getState();
+  const toast = notifications.push('info', FCSTD_READING_TEXT, { lifetime: 15 * 60_000 });
+  let imported: FcstdImported;
+  try {
+    imported = await (run ?? (await import('./fcstdImport')).fcstdImportRunner())(bytes, name, {
+      id: randomUuid(),
+      appVersion: APP_VERSION,
+    });
+  } finally {
+    notifications.dismiss(toast);
+  }
+  return saveFcstdImport(platform, imported);
+}
+
+/**
+ * Saves an imported FreeCAD design: the STEP files first, then the document
+ * that names them (ADR-0061), then the report for its page.
+ */
+export async function saveFcstdImport(
+  platform: Platform,
+  { design, files, report }: FcstdImported,
+): Promise<ProjectId> {
+  const doc = design.toJSON();
+  for (const [attachment, bytes] of files) {
+    const record = doc.attachments?.[attachment];
+    if (record) await platform.projects.writeAttachment(doc.id, record.sha256, bytes);
+  }
+  const id = await createProject(platform, doc);
+  for (const message of fcstdNotices(report)) noteOnOpen(id, message);
+  return id;
+}
+
+/** Why a shape was left out, in the app's words. */
+const LEFT_OUT: Record<LeftOutReason, string> = {
+  mesh: "a mesh, which Extrudo doesn't import from FreeCAD files yet",
+  empty: 'no shape',
+  binary: "stored in FreeCAD's binary form, which Extrudo can't read",
+  unreadable: "its shape can't be read from the file",
+  'no-solid': 'no solid',
+  check: "its shape didn't come through unchanged",
+  'too-large': 'over 25 MB as STEP',
+  'design-full': "the design's files would pass 100 MB",
+  kernel: "the geometry kernel couldn't read it",
+  time: 'it took too long',
+  'import-time': 'the import ran out of time',
+  restarts: 'the geometry kernel failed too often',
+};
+
+/** Why a body's history stopped, in the app's words (after "because"). */
+const HISTORY_STOP: Record<HistoryStop, string> = {
+  type: "it has a feature Extrudo doesn't rebuild from FreeCAD files yet",
+  suppressed: 'it has a suppressed feature',
+  profile: 'a feature is made from a face or a part of a sketch',
+  sketch: "a feature's sketch couldn't be imported",
+  taper: 'a feature is tapered',
+  direction: 'a feature goes in a direction of its own',
+  'up-to': 'a feature goes up to a face or a shape',
+  axis: "a revolve turns about an axis Extrudo can't use yet",
+  value: "a feature has a value Extrudo can't read",
+  option: "a feature has a setting Extrudo can't rebuild",
+  'no-base': 'a cut comes before anything to cut',
+  chain: "its features don't follow each other",
+  limit: 'it has too many features',
+  stored: "a feature's shape can't be read from the file",
+  failed: 'a feature failed when Extrudo rebuilt it',
+  differs: "a rebuilt feature didn't match the file's shape",
+  kernel: 'the geometry kernel failed',
+  time: 'rebuilding took too long',
+  'import-time': 'the import ran out of time',
+  restarts: 'the geometry kernel failed too often',
+};
+
+/** The FreeCAD import's report as a few readable notices. */
+export function fcstdNotices(
+  report: Pick<
+    FcstdImportReport,
+    'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'
+  > &
+    Partial<Pick<FcstdImportReport, 'bodies'>>,
+): string[] {
+  if (report.finalShapes === 0)
+    return ['The FreeCAD file has no shapes to import, so the design is empty.'];
+  const bodies = report.bodies ?? [];
+  const history = bodies.filter((b) => b.outcome === 'history').length;
+  const came = report.shapes.length + history;
+  const plain = report.shapes.length;
+  const out = [
+    history === 0
+      ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, as bodies without history.`
+      : plain === 0
+        ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, with their history (sketches and features).`
+        : `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
+  ];
+  const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);
+  if (short.length > 0) {
+    const why = new Map<HistoryStop, number>();
+    for (const b of short) {
+      const reason = b.stop?.reason as HistoryStop;
+      why.set(reason, (why.get(reason) ?? 0) + 1);
+    }
+    const common = [...why]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([reason]) => HISTORY_STOP[reason]);
+    const partial = short.filter((b) => b.bodies.length > 0);
+    out.push(
+      `Taken from the file's own shapes, without their whole history: ${listed(short.map((b) => b.name))}${short.length === 1 ? ', because' : '. Most often because'} ${common.join(', or ')}.${
+        partial.length > 0
+          ? ' The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.'
+          : ''
+      }`,
+    );
+  }
+  const byReason = new Map<LeftOutReason, string[]>();
+  for (const l of report.leftOut)
+    byReason.set(l.reason, [...(byReason.get(l.reason) ?? []), l.name]);
+  if (byReason.size > 0)
+    out.push(
+      `Not imported: ${[...byReason]
+        .map(([reason, names]) => `${listed(names)} (${LEFT_OUT[reason]})`)
+        .join('; ')}.`,
+    );
+  // A body whose history stopped and whose own shape couldn't come in either: what was rebuilt stands in for it.
+  const partly = bodies.filter((b) => b.outcome === 'left-out' && b.bodies.length > 0);
+  if (partly.length > 0)
+    out.push(
+      `Only partly rebuilt, up to the feature where the history stopped: ${listed(partly.map((b) => b.name))}. ${partly.length === 1 ? 'It is' : 'They are'} not the whole shape from the file.`,
+    );
+  if (report.linkArrays.length > 0)
+    out.push(`Of each link array only one copy came in: ${listed([...report.linkArrays])}.`);
+  const unread = report.problems.length;
+  if (unread > 0)
+    out.push(
+      `${unread} thing${unread === 1 ? '' : 's'} in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…`,
+    );
+  return out;
+}
+
 /** At most six items, then "and N more". */
 function listed(items: string[]): string {
   const shown = items.slice(0, 6);
@@ -332,19 +523,25 @@ export async function exportProject(platform: Platform, id: ProjectId, name: str
  * Opens a `.extrudo` file the desktop app was handed (Open…, an association,
  * argv or the Open Recent list; P6-01 slice 2). Main already read the bytes;
  * the project is imported and linked to that file, as a linked-folder file is
- * (ADR-0065 §3), then opened. Leaves the notices for the project's page, the
- * way `importProject` does.
+ * (ADR-0065 §3), then opened; an `.extrudo.gz` is imported but not linked.
+ * Leaves the notices for the project's page, the way `importProject` does.
  */
 export async function openExternalFile(
   platform: Platform,
   file: OpenedFile,
 ): Promise<ProjectSummary> {
+  // A gzipped file (`.extrudo.gz`, from a GitHub issue) comes in as a copy, the
+  // way Import… brings it: linking it would write a plain zip back into a `.gz`.
+  const gzipped = /\.gz$/i.test(file.path);
   // A file already linked to a project opens that project rather than importing
   // a second copy (P6-01 slice 2, finding 3): the desktop links an opened path
   // `external`, so a second open (a re-launch, a double-click) navigates to it.
-  const existing = (await platform.projects.list()).find(
-    (summary) => !summary.trashed && summary.linked?.external && summary.linked.file === file.path,
-  );
+  const existing = gzipped
+    ? undefined
+    : (await platform.projects.list()).find(
+        (summary) =>
+          !summary.trashed && summary.linked?.external && summary.linked.file === file.path,
+      );
   if (existing) {
     navigate(projectHref(existing.id));
     return existing;
@@ -356,12 +553,14 @@ export async function openExternalFile(
       onNotice: (message) => notices.push(message),
     },
   );
-  await platform.projects.link(summary.id, {
-    file: file.path,
-    modified: file.modified,
-    sha256: sha256Hex(file.bytes),
-    external: true,
-  });
+  if (!gzipped) {
+    await platform.projects.link(summary.id, {
+      file: file.path,
+      modified: file.modified,
+      sha256: sha256Hex(file.bytes),
+      external: true,
+    });
+  }
   for (const notice of notices) noteOnOpen(summary.id, notice);
   navigate(projectHref(summary.id));
   return summary;

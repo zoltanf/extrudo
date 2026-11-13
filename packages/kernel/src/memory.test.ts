@@ -599,6 +599,12 @@ describe('memory', () => {
         // back through an XCAF document that lives only for the call.
         const text = kernel.writeStep([{ shape: body.shape, name: `Body${i}`, color: '#c81e28' }]);
         if (kernel.readStepColors(text).solids[0] !== '#c81e28') throw new Error('no colour');
+        // The file's hidden solids (ADR-0066's amendment of 2026-11-10): a
+        // plain reader that lives only for the call.
+        const solid = /#(\d+)\s*=\s*MANIFOLD_SOLID_BREP/.exec(text)?.[1];
+        const end = text.lastIndexOf('ENDSEC;');
+        const hiding = `${text.slice(0, end)}#9100 = INVISIBILITY((#${solid}));\n${text.slice(end)}`;
+        if (kernel.readStepHidden(hiding)[0] !== true) throw new Error('not hidden');
       }
     };
     for (let i = 0; i < WARM_UP; i++) run(i);

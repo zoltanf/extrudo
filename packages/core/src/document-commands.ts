@@ -6,7 +6,13 @@
 import { removeAnnotationsFrom } from './annotations';
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { isReservedName } from './expr/evaluate';
-import { mentions, parameterNames, renameReferences } from './expr/parameters';
+import {
+  lowestFreeModelParameterName,
+  mentions,
+  nextModelParameterName,
+  parameterNames,
+  renameReferences,
+} from './expr/parameters';
 import { spellOutUnit } from './expr/spell-unit';
 import { dropFeatureFromGroups, normalizeGroupsInPlace } from './groups';
 import type { BodyId, FeatureId, ParameterId, ViewId } from './ids';
@@ -24,11 +30,15 @@ import {
   type RenderSettings,
   RenderSettingsSchema,
   type Settings,
+  type UnitKind,
   type ViewCamera,
   type ViewSection,
   ViewSectionSchema,
 } from './schema';
+import { mapSheetFieldTexts, renameSheetFieldReferences } from './sheet-fields';
+import type { Sheet } from './sheet-schema';
 import { dimensionUnit } from './sketch/dimensions';
+import type { SketchDimension } from './sketch/schema';
 import { referencedFeatures } from './timeline';
 
 export const renameDocument = defineCommand<{ name: string }>(
@@ -42,7 +52,7 @@ export const renameDocument = defineCommand<{ name: string }>(
 /**
  * Brings back a saved version's content (FR-PRJ-03, P2-14): its settings,
  * parameters, timeline, groups, components, joints, bodies, views,
- * configurations, attachments and annotations. The document's ID, name and
+ * configurations, attachments, annotations and sheets. The document's ID, name and
  * dates stay, so the project stays the same project. One undo step.
  * Attachments come back with the rest: a version's texts need the fonts it
  * carried (P4-03b), and its groups come back with the timeline they were folds
@@ -66,6 +76,8 @@ export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
     draft.components = doc.components;
     draft.joints = doc.joints;
     draft.annotations = doc.annotations;
+    if (doc.sheets) draft.sheets = doc.sheets;
+    else delete draft.sheets;
     const counter = Math.max(draft.annotationCounter ?? 0, doc.annotationCounter ?? 0);
     if (counter > 0) draft.annotationCounter = counter;
     normalizeGroupsInPlace(draft);
@@ -145,52 +157,123 @@ export const updateParameter = defineCommand<{
   Object.assign(parameter, changes);
   // A rename carries over to every expression that uses the parameter,
   // sketch dimensions included.
-  const newName = parameter.name;
-  if (newName !== oldName) {
-    for (const p of draft.parameters) {
-      if (mentions(p.expression, oldName)) {
-        p.expression = renameReferences(p.expression, oldName, newName);
-      }
+  if (parameter.name !== oldName) rewriteReferences(draft, oldName, parameter.name);
+});
+
+/**
+ * Renames a model parameter (`d1`, ADR-0142): the name a sketch dimension or
+ * a feature input carries. Same name rules as a user parameter; every
+ * expression that used the old name follows, in the same undo step.
+ */
+export const renameModelParameter = defineCommand<{ name: string; newName: string }>(
+  'parameter.renameModel',
+  'Rename parameter',
+  (draft, { name, newName }) => {
+    const { holder } = modelParameterHolder(draft, name);
+    if (newName === name) return;
+    checkParameterName(draft, newName);
+    holder.paramName = newName;
+    rewriteReferences(draft, name, newName);
+  },
+);
+
+/** The non-driven dimension or `expr` input that carries the model parameter `name`. */
+function modelParameterHolder(draft: DocumentDraft, name: string) {
+  for (const entry of featureExpressions(draft)) {
+    if (!entry.holder.driven && entry.holder.paramName === name) return entry;
+  }
+  throw new CommandError(`There is no model parameter named "${name}".`);
+}
+
+/**
+ * Hands a model parameter's name and value to a new user parameter (ADR-0142):
+ * the user parameter `name` takes the expression, the dimension or input
+ * keeps pointing at it by name and gets a fresh `dN` of its own. Expressions
+ * that used `name` need no change. There is no way back; undo is the way.
+ */
+export const makeUserParameter = defineCommand<{ name: string; id: ParameterId }>(
+  'parameter.makeUser',
+  'Make user parameter',
+  (draft, { name, id }) => {
+    const { holder, dimension } = modelParameterHolder(draft, name);
+    const expression = holder.expr;
+    const unit = dimension
+      ? dimensionUnit(holder as SketchDimension)
+      : ((holder as { unit?: UnitKind }).unit ?? 'length');
+    holder.paramName = nextModelParameterName(draft as ExtrudoDocument);
+    holder.expr = name;
+    draft.parameters.push({ id, name, expression, unit });
+  },
+);
+
+/**
+ * Gives a renamed model parameter the lowest free `dN` again (ADR-0142),
+ * usually the name it was born with; expressions follow.
+ */
+export const resetModelParameterName = defineCommand<{ name: string }>(
+  'parameter.resetModelName',
+  'Reset parameter name',
+  (draft, { name }) => {
+    const { holder } = modelParameterHolder(draft, name);
+    const newName = lowestFreeModelParameterName(draft as ExtrudoDocument);
+    holder.paramName = newName;
+    rewriteReferences(draft, name, newName);
+  },
+);
+
+/** Rewrites `oldName` to `newName` in every expression that names it. */
+function rewriteReferences(draft: DocumentDraft, oldName: string, newName: string): void {
+  for (const p of draft.parameters) {
+    if (mentions(p.expression, oldName)) {
+      p.expression = renameReferences(p.expression, oldName, newName);
     }
-    // Slider ranges too (ADR-0086 §2).
-    for (const p of draft.parameters) {
-      const range = p.customizer;
-      if (!range) continue;
-      for (const field of ['min', 'step', 'max'] as const) {
-        const text = range[field];
-        if (text !== undefined && mentions(text, oldName)) {
-          range[field] = renameReferences(text, oldName, newName);
-        }
-      }
-    }
-    for (const { holder } of featureExpressions(draft)) {
-      if (mentions(holder.expr, oldName))
-        holder.expr = renameReferences(holder.expr, oldName, newName);
-    }
-    // A joint's limits too (ADR-0081 §4).
-    for (const joint of draft.joints ?? []) {
-      for (const limit of [joint.min, joint.max]) {
-        if (limit && mentions(limit.expr, oldName)) {
-          limit.expr = renameReferences(limit.expr, oldName, newName);
-        }
-      }
-    }
-    // A named view's section (ADR-0045's amendment of 2026-11-06).
-    const rename = (text: string) =>
-      mentions(text, oldName) ? renameReferences(text, oldName, newName) : text;
-    for (const view of draft.views) {
-      const section = view.section;
-      if (section?.kind === 'planes') {
-        for (const plane of section.planes) plane.offset = rename(plane.offset);
-      } else if (section?.kind === 'box') {
-        const [cx, cy, cz] = section.center;
-        const [hx, hy, hz] = section.half;
-        section.center = [rename(cx), rename(cy), rename(cz)];
-        section.half = [rename(hx), rename(hy), rename(hz)];
+  }
+  // Slider ranges too (ADR-0086 §2).
+  for (const p of draft.parameters) {
+    const range = p.customizer;
+    if (!range) continue;
+    for (const field of ['min', 'step', 'max'] as const) {
+      const text = range[field];
+      if (text !== undefined && mentions(text, oldName)) {
+        range[field] = renameReferences(text, oldName, newName);
       }
     }
   }
-});
+  for (const { holder } of featureExpressions(draft)) {
+    if (mentions(holder.expr, oldName))
+      holder.expr = renameReferences(holder.expr, oldName, newName);
+  }
+  // A joint's limits too (ADR-0081 §4).
+  for (const joint of draft.joints ?? []) {
+    for (const limit of [joint.min, joint.max]) {
+      if (limit && mentions(limit.expr, oldName)) {
+        limit.expr = renameReferences(limit.expr, oldName, newName);
+      }
+    }
+  }
+  // A named view's section (ADR-0045's amendment of 2026-11-06).
+  const rename = (text: string) =>
+    mentions(text, oldName) ? renameReferences(text, oldName, newName) : text;
+  for (const view of draft.views) {
+    const section = view.section;
+    if (section?.kind === 'planes') {
+      for (const plane of section.planes) plane.offset = rename(plane.offset);
+    } else if (section?.kind === 'box') {
+      const [cx, cy, cz] = section.center;
+      const [hx, hy, hz] = section.half;
+      section.center = [rename(cx), rename(cy), rename(cz)];
+      section.half = [rename(hx), rename(hy), rename(hz)];
+    }
+  }
+  // A sheet text's `{= …}` fields (ADR-0143's S5 amendment).
+  if (draft.sheets) {
+    draft.sheets = draft.sheets.map((sheet) =>
+      mapSheetFieldTexts(sheet as Sheet, (text) =>
+        renameSheetFieldReferences(text, oldName, newName),
+      ),
+    );
+  }
+}
 
 /**
  * Deletes a parameter and every value a configuration stored for it, so no

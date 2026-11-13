@@ -13,7 +13,7 @@ import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node'
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
 import { settleSketches } from '@extrudo/sketch/inference';
 import { bodyEntries } from '../shell/bodies';
-import type { AgentBody } from './host';
+import type { AgentBody, AgentSheetKernel } from './host';
 import { fakeHost } from './testing';
 
 let shared: Promise<Kernel> | undefined;
@@ -45,11 +45,18 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
     store.getState().commitTransaction();
   };
 
+  // What the last finished recompute made of each body, as `Recomputer.bodyVersions`.
+  let versions: Record<BodyId, string> = {};
+
   const recompute = async () => {
     const current = store.getState().doc;
     model.getState().computing();
     const result = await engine.recompute({ doc: current });
     if (result.status !== 'done') return;
+    versions = Object.fromEntries(result.bodies.map((b) => [b.id, b.version])) as Record<
+      BodyId,
+      string
+    >;
     const sketches: Record<string, SketchReport> = {};
     const construction: Record<string, unknown> = {};
     for (const [id, report] of Object.entries(result.reports)) {
@@ -104,5 +111,25 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
       }),
     );
 
-  return { ...fake, dispose: () => engine.clear() };
+  // The sheet tools' kernel: the engine's sheet calls, as the app's `Recomputer` answers them.
+  const sheetKernel: AgentSheetKernel = {
+    async sheetViews(requests, onView) {
+      const out = [];
+      for (const [i, request] of requests.entries()) {
+        const result = engine.sheetView(request);
+        out.push(result);
+        await onView?.(result, i + 1, requests.length);
+      }
+      return out;
+    },
+    cancelSheetViews: () => {},
+    bodyVersions: () => versions,
+    resolveSheet: async (sheet) => engine.resolveSheet(sheet),
+    sheetParts: async (sheet) => engine.sheetParts(sheet),
+    reference: async (body, kind, name) => engine.reference(body, kind, name),
+  };
+  host.sheetKernel = () => sheetKernel;
+  host.sheetFields = async () => ({ version: 'V2' });
+
+  return { ...fake, sheetKernel, dispose: () => engine.clear() };
 }

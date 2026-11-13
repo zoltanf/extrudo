@@ -1,0 +1,24 @@
+{
+  "name": "@extrudo/fcstd",
+  "version": "0.10.0",
+  "private": true,
+  "description": "Reads FreeCAD .FCStd archives (container, Document.xml, GuiDocument.xml, stored shapes) into plain data, and later maps them onto an Extrudo design through @extrudo/api.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/api": "workspace:*",
+    "@extrudo/core": "workspace:*",
+    "@extrudo/sketch": "workspace:*",
+    "@extrudo/storage": "workspace:*",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@extrudo/kernel": "workspace:*"
+  }
+}

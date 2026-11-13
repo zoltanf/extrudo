@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dimension tool on a sheet, light theme</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#1A6AD0}a:hover{color:#2F86F0}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.tab{height:40px;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:.08em;color:#5B6375;border-bottom:2px solid transparent;box-sizing:border-box}
+.tab.on{color:#111318;border-bottom-color:#E08A1E}
+.ib{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;color:#5B6375;flex:none}
+.ib svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ib.on{background:rgba(224,138,30,.18);color:#111318}
+.grp{display:flex;flex-direction:column;align-items:center;padding:0 6px;border-right:1px solid #E0E4EC}
+.tiles{display:flex;gap:2px}
+.gl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#5B6375;text-transform:uppercase;margin-top:2px}
+.tile{width:64px;height:64px;display:flex;flex-direction:column;align-items:center;gap:5px;padding-top:8px;border-radius:9px;font-size:11px;line-height:1.15;color:#111318;text-align:center;box-sizing:border-box}
+.tile.on{background:rgba(224,138,30,.18)}
+.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ic .f{fill:currentColor;fill-opacity:.22}
+.cv{color:#12A879}.cd{color:#2451FF}.cn{color:#0F9DAB}.ct{color:#E0457F}.cs{color:#5B6375}.co{color:#E59A00}.cf{color:#1B9E5E}
+.row{height:28px;display:flex;align-items:center;gap:6px;padding-right:10px;border-radius:6px;white-space:nowrap}
+.row svg{width:14px;height:14px;fill:none;stroke:#5B6375;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.row .sp{flex:1}
+.mu{color:#5B6375}
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+.bdg{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;color:#5B6375;background:#E0E4EC;border-radius:999px;padding:1px 6px}
+.sw{width:26px;height:14px;border-radius:999px;background:#C9CFDA;position:relative;flex:none}
+.sw.on{background:#E08A1E}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:#FFFFFF}
+.sw.on::after{left:14px}
+.pl{font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#5B6375;text-transform:uppercase}
+.prow{display:flex;align-items:center;justify-content:space-between;gap:8px;height:26px}
+.segs{display:flex;gap:2px;margin-top:4px;padding:2px;border:1px solid #E0E4EC;border-radius:8px;background:#F3F5F9}
+.seg{flex:1;height:28px;display:grid;place-items:center;border-radius:6px;color:#5B6375;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px}
+.seg.on{background:#FFFFFF;color:#111318;box-shadow:0 0 0 1px #E08A1E}
+.seg svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.fld{height:28px;border:1px solid #E0E4EC;border-radius:6px;background:#FFFFFF;display:flex;align-items:center;padding:0 8px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;box-sizing:border-box;width:100%;color:#5B6375}
+.pg{height:34px;display:flex;align-items:center;gap:8px;padding:0 10px 0 6px;border-radius:9px;border:1px solid #E0E4EC;background:#FFFFFF;font-size:12px}
+.pg.on{border-color:#E08A1E;background:rgba(224,138,30,.14)}
+.pg svg{width:26px;height:19px;flex:none}
+.vis{stroke:#111318;stroke-width:.5;fill:none;stroke-linejoin:round;stroke-linecap:round}
+.thn{stroke:#111318;stroke-width:.18;fill:none}
+.hid{stroke:#111318;stroke-width:.25;fill:none;stroke-dasharray:2 1}
+.ctr{stroke:#111318;stroke-width:.18;fill:none;stroke-dasharray:6 1.2 .8 1.2}
+.dim{stroke:#111318;stroke-width:.2;fill:none}
+.arr{fill:#111318}
+.tx{font-family:'Instrument Sans',system-ui,sans-serif;fill:#111318;font-size:4px}
+.mid{text-anchor:middle}
+.pre{stroke:#2F86F0;stroke-width:.3;fill:none}
+.lost{stroke:#D93D3D;stroke-width:.3;fill:none;stroke-dasharray:1.6 1}
+</style>
+</helmet>
+<div style="width:100%; height:900px; display:flex; flex-direction:column; background:#FFFFFF; color:#111318; font-family:'Instrument Sans',system-ui,sans-serif; font-size:13px; line-height:1.3; overflow:hidden">
+
+  <header style="height:40px; flex:none; display:flex; align-items:center; gap:2px; padding:0 10px 0 12px; border-bottom:1px solid #E0E4EC; box-sizing:border-box">
+    <svg viewBox="0 0 64 64" style="width:20px; height:20px; flex:none" aria-hidden="true"><path d="M10 24 24 10H52L38 24Z" fill="#FFBE55"></path><path d="M38 24 52 10V38L38 52Z" fill="#D9861F"></path><rect x="10" y="24" width="28" height="28" rx="1" fill="rgba(47,134,240,.14)" stroke="#2F86F0" style="stroke-width:2; stroke-dasharray:3.2 2.6"></rect></svg>
+    <span style="font-weight:600; font-size:15px; letter-spacing:-.02em; margin:0 14px 0 6px">extrudo<span style="color:#E08A1E">.</span></span>
+    <button class="tab">HOME</button>
+    <button class="tab on" aria-current="page">DRAWING</button>
+    <span style="width:1px; height:18px; background:#E0E4EC; margin:0 8px"></span>
+    <button class="ib" aria-label="Undo"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg></button>
+    <button class="ib" aria-label="Redo"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"></path><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"></path></svg></button>
+    <div style="flex:1; display:flex; align-items:center; justify-content:center; gap:8px; min-width:0">
+      <span style="font-weight:600">Box with a lid</span>
+      <span style="width:6px; height:6px; border-radius:50%; background:#1B9E5E"></span>
+      <span class="mu" style="font-size:11.5px">Saved</span>
+    </div>
+    <button class="ib" aria-label="Version history"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3 2"></path></svg></button>
+    <button class="ib" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg></button>
+    <button class="ib" aria-label="Menu"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg></button>
+  </header>
+
+  <div style="height:92px; flex:none; display:flex; align-items:flex-start; padding:6px 6px 0; border-bottom:1px solid #E0E4EC; box-sizing:border-box; overflow:hidden">
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5" style="stroke-dasharray:3 2.6"></rect><path class="f" d="M8 9H16V15H8Z"></path></svg>Base View</button>
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><rect class="f" x="3" y="8" width="8" height="8" rx="1.5"></rect><rect x="15" y="8" width="6" height="8" rx="1.5" style="stroke-dasharray:3 2.6"></rect><path d="M11.5 12H14.5"></path></svg>Projected View</button>
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><rect class="f" x="4" y="9" width="16" height="11" rx="2"></rect><path d="M8 20 13 9M13 20 18 9"></path><path d="M2.5 5H21.5" style="stroke-dasharray:5 2 1.5 2"></path></svg>Section View</button>
+        <button class="tile"><svg class="ic cv" viewBox="0 0 24 24"><circle cx="8" cy="15.5" r="3.5"></circle><circle class="f" cx="16" cy="8" r="5.5"></circle><path d="M10.5 13 12 11.5"></path></svg>Detail View</button>
+      </div>
+      <span class="gl">Views</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile on" aria-pressed="true"><svg class="ic cd" viewBox="0 0 24 24"><path d="M4 9V20M20 9V20"></path><path d="M4 16H20M7 13.5 4 16 7 18.5M17 13.5 20 16 17 18.5"></path><rect class="f" x="7.5" y="3" width="9" height="7" rx="1.8"></rect></svg>Dimension</button>
+        <button class="tile"><svg class="ic cd" viewBox="0 0 24 24"><circle class="f" cx="12" cy="12" r="6.5"></circle><path d="M12 2.5V21.5M2.5 12H21.5" style="stroke-dasharray:5 2 1.5 2"></path></svg>Centre Mark</button>
+        <button class="tile"><svg class="ic cd" viewBox="0 0 24 24"><path class="f" d="M4 6H20V18H4Z" style="stroke:none"></path><path d="M4 6H20M4 18H20"></path><path d="M2.5 12H21.5" style="stroke-dasharray:5 2 1.5 2"></path></svg>Centreline</button>
+      </div>
+      <span class="gl">Dimensions</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><rect class="f" x="3" y="4" width="18" height="16" rx="3"></rect><path d="M8 9H16M12 9V16"></path></svg>Text</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><rect class="f" x="8" y="3" width="13" height="9.5" rx="2"></rect><path d="M11 6.5H18M11 9.5H15.5"></path><path d="M8.5 12 5.5 17.5"></path><circle cx="4.5" cy="19.5" r="1.5"></circle></svg>Leader Note</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><circle class="f" cx="15" cy="9" r="6"></circle><path d="M10.5 13.5 4 20"></path><path d="M14 7.2 15.5 6.5V12"></path></svg>Balloon</button>
+        <button class="tile"><svg class="ic cn" viewBox="0 0 24 24"><path class="f" d="M4 4H20V14L14 20H4Z"></path><path d="M20 14H14V20"></path><path d="M8 9H16"></path></svg>Sticky Note</button>
+      </div>
+      <span class="gl">Notes</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic ct" viewBox="0 0 24 24"><rect class="f" x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M3 9.5H21M3 14.5H21M9 9.5V20"></path></svg>Parts List</button>
+        <button class="tile"><svg class="ic ct" viewBox="0 0 24 24"><path class="f" d="M3 4H12V12H3Z" style="stroke:none"></path><rect x="3" y="4" width="18" height="16" rx="2.5"></rect><path d="M3 12H21M12 4V20"></path></svg>Table</button>
+      </div>
+      <span class="gl">Tables</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cs" viewBox="0 0 24 24"><path class="f" d="M5 3H15L19 7V21H5Z"></path><path d="M12 10V16M9 13H15"></path></svg>New Sheet</button>
+        <button class="tile"><svg class="ic cs" viewBox="0 0 24 24"><rect class="f" x="3" y="6" width="18" height="12" rx="2"></rect><path d="M13 13.5H21M13 13.5V18"></path></svg>Sheet Setup</button>
+      </div>
+      <span class="gl">Sheet</span>
+    </div>
+    <div class="grp">
+      <div class="tiles">
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path d="M12 3V13M8 9.5 12 13.5 16 9.5"></path><path class="f" d="M4 15.5V18.5A2.5 2.5 0 0 0 6.5 21H17.5A2.5 2.5 0 0 0 20 18.5V15.5Z"></path></svg>Export PDF</button>
+        <button class="tile"><svg class="ic co" viewBox="0 0 24 24"><path d="M7 8V3.5H17V8"></path><rect class="f" x="3" y="8" width="18" height="9" rx="2.5"></rect><path d="M7 14H17V20.5H7Z"></path></svg>Print</button>
+      </div>
+      <span class="gl">Output</span>
+    </div>
+    <div class="grp" style="border-right:0">
+      <div class="tiles">
+        <button class="tile"><svg class="ic cf" viewBox="0 0 24 24"><rect class="f" x="3" y="3" width="18" height="18" rx="4.5"></rect><path d="M7.5 12.5 10.5 15.5 16.5 8.5"></path></svg>Finish Drawing</button>
+      </div>
+      <span class="gl">Finish</span>
+    </div>
+  </div>
+
+  <div style="flex:1; min-height:0; display:flex">
+    <aside style="flex:0 0 248px; background:#F3F5F9; border-right:1px solid #E0E4EC; padding:10px 6px 10px 8px; box-sizing:border-box; overflow:hidden">
+      <div class="row" style="height:24px; padding-left:4px"><span class="pl">Browser</span><span class="sp"></span><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M10 4v16M16 10l-2 2 2 2"></path></svg></div>
+      <div class="row" style="padding-left:4px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6Z"></path><path d="M14 3v4h4"></path></svg><span>Sheets</span><span class="bdg">2</span></div>
+      <div class="row" style="padding-left:20px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><span style="font-weight:600">1 · Assembly</span><span class="mu" style="font-size:11px">editing</span></div>
+      <div class="row" style="padding-left:36px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Views</span><span class="bdg">4</span></div>
+      <div class="row" style="padding-left:36px"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg><span>Dimensions</span><span class="bdg">8</span></div>
+      <div class="row" style="padding-left:58px"><span class="mono" style="font-size:12px">240</span><span class="mu">Top · width</span></div>
+      <div class="row" style="padding-left:58px"><span class="mono" style="font-size:12px">160</span><span class="mu">Top · depth</span></div>
+      <div class="row" style="padding-left:58px"><span class="mono" style="font-size:12px">116</span><span class="mu">Front · height</span></div>
+      <div class="row" style="padding-left:58px; color:#D93D3D"><span class="mono" style="font-size:12px">100</span><span>Front · lost its edge</span><span class="sp"></span><svg viewBox="0 0 24 24" style="stroke:#D93D3D"><path d="M12 4 21 20H3Z"></path><path d="M12 10v4M12 17v.5"></path></svg></div>
+      <div class="row mu" style="padding-left:58px">4 more…</div>
+      <div class="row" style="padding-left:36px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>Notes</span><span class="bdg">4</span></div>
+      <div class="row" style="padding-left:56px"><span>Parts list</span></div>
+      <div class="row" style="padding-left:56px"><span>Title block</span></div>
+      <div class="row" style="padding-left:20px"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"></path></svg><span>2 · Lid</span></div>
+    </aside>
+
+    <main style="flex:999 1 560px; min-width:0; position:relative; background:radial-gradient(90% 80% at 45% 42%, #FFFFFF 0%, #EEF1F5 52%, #DCE1E9 100%); overflow:hidden">
+
+      <svg viewBox="18 22 202 122" role="img" aria-label="The front view at 280 percent, with a new dimension from the left edge to the hole's axis being placed, and one dimension that lost its edge" style="position:absolute; left:0; top:0; width:100%; height:100%">
+        <rect x="0" y="0" width="420" height="297" fill="#FFFFFF" stroke="#C9CFDA" style="stroke-width:.3"></rect>
+        <path class="vis" d="M10 10V287"></path>
+
+        <path class="vis" d="M50 53H170V103H50ZM50 53V45H170V53"></path>
+        <path class="thn" d="M58 45V103M162 45V103"></path>
+        <path class="hid" d="M51.5 53V101.5H168.5V53M53 53V57H167V53M100 45V53M120 45V53"></path>
+        <path class="ctr" d="M110 41V107"></path>
+
+        <rect class="vis" x="50" y="135" width="120" height="80" rx="8"></rect>
+        <rect class="hid" x="51.5" y="136.5" width="117" height="77" rx="6.5"></rect>
+        <path class="dim" d="M167.66 137.34 178 127H192"></path>
+        <path class="arr" d="M167.66 137.34 170.2 135.64 169.36 134.8Z"></path>
+        <text class="tx" x="179.5" y="125.6">R16</text>
+
+        <path class="dim" d="M48 45H27M48 103H27M30 45V103"></path>
+        <path class="arr" d="M30 45l-.6 3h1.2ZM30 103l-.6-3h1.2Z"></path>
+        <text class="tx mid" x="28.6" y="74" transform="rotate(-90 28.6 74)">116</text>
+
+        <path class="lost" d="M48 53H37M40 53V103"></path>
+        <text class="tx mid" x="38.6" y="80" transform="rotate(-90 38.6 80)" style="fill:#D93D3D">100</text>
+        <path d="M38.2 66.5 41.6 72.5H34.8Z" fill="#FFFFFF" stroke="#D93D3D" style="stroke-width:.4; stroke-linejoin:round"></path>
+        <path d="M38.2 68.6v1.8M38.2 71.4v.2" stroke="#D93D3D" style="stroke-width:.45; stroke-linecap:round"></path>
+
+        <path class="dim" d="M50 105V115M170 105V115M50 112H170"></path>
+        <path class="arr" d="M50 112l3-.6v1.2ZM170 112l-3-.6v1.2Z"></path>
+        <text class="tx mid" x="110" y="110.6">240</text>
+
+        <path d="M50 45V103" stroke="#E08A1E" style="stroke-width:1.1; stroke-linecap:round" fill="none"></path>
+        <path d="M110 41V107" stroke="#E08A1E" style="stroke-width:1.1; stroke-linecap:round; opacity:.5" fill="none"></path>
+        <rect x="108.6" y="43.6" width="2.8" height="2.8" fill="#FFFFFF" stroke="#E08A1E" style="stroke-width:.4" transform="rotate(45 110 45)"></rect>
+
+        <path class="pre" d="M50 43V31M110 39V31M50 34H110"></path>
+        <path d="M50 34l3-.6v1.2ZM110 34l-3-.6v1.2Z" fill="#2F86F0"></path>
+        <rect x="71" y="30.4" width="18" height="7.2" rx="1.4" fill="#FFFFFF" stroke="#2F86F0" style="stroke-width:.35"></rect>
+        <text class="tx mid" x="80" y="35.5" style="fill:#1A6AD0; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:3.8px">120</text>
+
+        <path d="M92 36.5l0 6.4 1.7-1.5 1.2 2.7 1-.45-1.2-2.65 2.2-.1Z" fill="#111318" stroke="#FFFFFF" style="stroke-width:.3; stroke-linejoin:round"></path>
+        <rect x="98" y="41" width="33" height="6.4" rx="1.6" fill="#111318"></rect>
+        <text class="tx" x="100.2" y="45.4" style="fill:#FFFFFF; font-size:3.2px">Click to place</text>
+      </svg>
+
+      <section aria-label="Dimension tool" style="position:absolute; top:16px; right:16px; width:252px; background:#FFFFFF; border:1px solid #E0E4EC; border-radius:12px; box-shadow:0 10px 24px -14px rgba(17,19,24,.25); padding:12px; box-sizing:border-box; display:flex; flex-direction:column; gap:10px">
+        <div style="display:flex; align-items:center; gap:8px">
+          <svg class="ic cd" viewBox="0 0 24 24" style="width:18px; height:18px"><path d="M4 9V20M20 9V20"></path><path d="M4 16H20M7 13.5 4 16 7 18.5M17 13.5 20 16 17 18.5"></path><rect class="f" x="7.5" y="3" width="9" height="7" rx="1.8"></rect></svg>
+          <span style="font-weight:600; flex:1">Dimension</span>
+          <span class="mono mu" style="font-size:11px">D</span>
+        </div>
+        <p class="mu" style="margin:0; font-size:12px; line-height:1.45">Pick an edge, two edges or points, or a circle. Then click where the number goes.</p>
+        <div>
+          <span class="pl">Direction</span>
+          <div class="segs">
+            <button class="seg on" aria-pressed="true" style="font-family:inherit">Auto</button>
+            <button class="seg" aria-label="Horizontal"><svg viewBox="0 0 24 24"><path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3"></path></svg></button>
+            <button class="seg" aria-label="Vertical"><svg viewBox="0 0 24 24"><path d="M12 4v16M9 7l3-3 3 3M9 17l3 3 3-3"></path></svg></button>
+            <button class="seg" aria-label="Aligned"><svg viewBox="0 0 24 24"><path d="M6 18 18 6M6 13.5V18h4.5M13.5 6H18v4.5"></path></svg></button>
+          </div>
+        </div>
+        <div>
+          <span class="pl">Decimals</span>
+          <div class="segs">
+            <button class="seg on" aria-pressed="true">0</button>
+            <button class="seg">0.0</button>
+            <button class="seg">0.00</button>
+          </div>
+        </div>
+        <div>
+          <div class="prow"><span>Show the unit</span><button class="sw" role="switch" aria-checked="false" aria-label="Show the unit"></button></div>
+          <div class="prow"><span>In brackets (reference)</span><button class="sw" role="switch" aria-checked="false" aria-label="In brackets, as a reference"></button></div>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px">
+          <label style="display:flex; flex-direction:column; gap:4px"><span class="mu" style="font-size:12px">Before</span><span class="fld">2×</span></label>
+          <label style="display:flex; flex-direction:column; gap:4px"><span class="mu" style="font-size:12px">After</span><span class="fld">±0.2</span></label>
+        </div>
+        <p style="margin:0; padding-top:10px; border-top:1px solid #E0E4EC; font-size:12px; line-height:1.45">The number is measured from the model. Change the model and it follows.</p>
+        <p style="margin:0; font-size:12px; line-height:1.45; color:#B32D2D">A red dimension lost its edge. Drag an end onto an edge, or delete it.</p>
+      </section>
+
+      <div style="position:absolute; left:50%; bottom:14px; transform:translateX(-50%); display:flex; align-items:center; gap:2px; padding:4px 8px; background:rgba(255,255,255,.9); border:1px solid #E0E4EC; border-radius:999px; box-shadow:0 10px 24px -14px rgba(17,19,24,.25)">
+        <button class="ib" aria-label="Select"><svg viewBox="0 0 24 24"><path d="M5 3l14 7-6 2-2 6Z"></path></svg></button>
+        <button class="ib" aria-label="Pan"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-2.5 2.5M12 3l2.5 2.5M12 21l-2.5-2.5M12 21l2.5-2.5M3 12l2.5-2.5M3 12l2.5 2.5M21 12l-2.5-2.5M21 12l-2.5 2.5"></path></svg></button>
+        <button class="ib" aria-label="Zoom"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5M8 11h6M11 8v6"></path></svg></button>
+        <button class="ib" aria-label="Fit sheet"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button>
+        <span class="mono mu" style="font-size:11.5px; padding:0 8px; border-left:1px solid #E0E4EC; border-right:1px solid #E0E4EC">280%</span>
+        <button class="ib on" aria-label="Snap" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4Z"></path></svg></button>
+        <button class="ib" aria-label="Show sticky notes"><svg viewBox="0 0 24 24"><path d="M4 4H20V14L14 20H4Z"></path><path d="M20 14H14V20"></path></svg></button>
+      </div>
+    </main>
+  </div>
+
+  <footer style="height:48px; flex:none; display:flex; align-items:center; gap:6px; padding:0 12px; background:#F3F5F9; border-top:1px solid #E0E4EC; box-sizing:border-box">
+    <button class="pg on" aria-current="page"><svg viewBox="0 0 26 19" aria-hidden="true"><rect x=".5" y=".5" width="25" height="18" rx="1.5" fill="#FFFFFF" stroke="#5B6375"></rect><path d="M4 4h7v4H4ZM4 10h7v5H4ZM14 4h4v4h-4ZM16 12h7v4h-7Z" fill="none" stroke="#111318" style="stroke-width:.8"></path></svg><span style="font-weight:600">1 · Assembly</span></button>
+    <button class="pg"><svg viewBox="0 0 26 19" aria-hidden="true"><rect x=".5" y=".5" width="25" height="18" rx="1.5" fill="#FFFFFF" stroke="#5B6375"></rect><path d="M4 5h9v3H4ZM4 10h9v5H4ZM16 12h7v4h-7Z" fill="none" stroke="#111318" style="stroke-width:.8"></path></svg><span>2 · Lid</span></button>
+    <button class="ib" aria-label="New sheet" style="border:1px dashed #C9CFDA"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></button>
+    <span style="flex:1"></span>
+    <span class="mono mu" style="font-size:11.5px">Dimension · pick the second edge or point, then click to place · Esc ends</span>
+    <button class="ib" aria-label="Notification history"><svg viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15Z"></path><path d="M10 21h4"></path></svg></button>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -52,6 +52,17 @@ const ALLOWED = {
     '@extrudo/storage',
     '@extrudo/kernel',
   ],
+  // The FreeCAD importer (ADR-0144 decision 1): reads the archive and, from
+  // its mapping slice on, builds the design through the document API. The
+  // sketch package for profiles, storage for its hash; the kernel only in its
+  // tests (the import's geometry goes through an interface the caller supplies).
+  '@extrudo/fcstd': [
+    '@extrudo/api',
+    '@extrudo/core',
+    '@extrudo/sketch',
+    '@extrudo/storage',
+    '@extrudo/kernel',
+  ],
   // The script runner (ADR-0070): user code in QuickJS, building features
   // through @extrudo/api. Nothing of the kernel's: the kernel gets the runner
   // injected, so this package stays out of its dependency graph.
@@ -68,9 +79,24 @@ const ALLOWED = {
     // The script runner, injected into the kernel for a design with a script
     // (P5-02, ADR-0070 §2): the kernel may not import it itself.
     '@extrudo/script',
+    // Drawing sheets, laid out and written as PDF or SVG (P6-24 S6, ADR-0143).
+    '@extrudo/sheets',
     '@extrudo/openscad',
     '@extrudo/sketch',
     '@extrudo/storage',
+  ],
+  // Drawing sheets (P6-24, ADR-0143 §7): layout into display lists and the
+  // PDF/SVG output. The document's sheets, the text module (Inter's outlines
+  // through `@extrudo/sketch/text`), io's display list and writers, the font
+  // IDs. No kernel: view lines and resolved anchors are handed in; the
+  // kernel is a devDependency only, for the tests that measure dimensions on
+  // shapes it builds (`dimensions.kernel.test.ts`).
+  '@extrudo/sheets': [
+    '@extrudo/core',
+    '@extrudo/sketch',
+    '@extrudo/io',
+    '@extrudo/fonts',
+    '@extrudo/kernel',
   ],
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
@@ -83,12 +109,16 @@ const ALLOWED = {
     '@extrudo/api',
     // The .f3d import, loaded lazily when the user picks a file.
     '@extrudo/f3d',
+    // The FreeCAD import (ADR-0144), likewise: in its own module worker.
+    '@extrudo/fcstd',
     '@extrudo/core',
     '@extrudo/sketch',
     '@extrudo/kernel',
     // Only the project's kernel worker entry imports it (P5-02, ADR-0070 §2).
     '@extrudo/script',
     '@extrudo/io',
+    // The Drawing mode's sheets, laid out and exported (P6-24, ADR-0143 §7).
+    '@extrudo/sheets',
     '@extrudo/storage',
     '@extrudo/fonts',
   ],

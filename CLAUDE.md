@@ -18,10 +18,13 @@ spec's selectors into `docs/agent/e2e-notes.md`).
 
 Phases 0, 1, 2, 3 and 5 are complete. Phase 4 is complete apart from **P4-12's
 remaining backlog** (the open items in `docs/03-roadmap.md`). Phase 6 is
-complete apart from P6-04 (i18n, **deferred**: English only for now); P6-08,
-the desktop MCP server and its skill (ADR-0087), is done. Phase 7 (IK) is last, lowest priority. The
+complete apart from P6-04 (i18n, **deferred**: English only for now) and
+**P6-25** (FreeCAD file import with history; ADR-0144, in slices). **P6-24**, drawings
+(2D sheets with views, dimensions, notes, parts lists and PDF/SVG export; ADR-0143, plan in
+`docs/plans/drawings-2026-11-10.md`), is done, and so is P6-08, the desktop MCP server and
+its skill (ADR-0087). Phase 7 (IK) is last, lowest priority. The
 owner's UI review 3 is done (`docs/plans/ui-review-2026-10-11.md`), tooltip
-clips included: every tile of the Solid, Modify, Construct, Make and Sketch tabs has one.
+clips included: every tile of the Solid, Modify, Construct, Make, Sketch and Drawing tabs has one.
 
 Releases: v0.4.0 was the first public one; v0.4.1, v0.5.0 (2026-10-10), v0.6.0,
 v0.6.1 (2026-10-12), v0.7.0 (2026-10-15), v0.8.0, v0.8.1 (2026-10-18), v0.8.2 (2026-10-21), v0.8.3 (2026-10-23), v0.9.0 (2026-10-26) and **v0.10.0** (2026-11-06) followed. **The owner tags** (`docs/release-checklist.md`;

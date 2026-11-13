@@ -51,6 +51,7 @@ describe('the docs pages', () => {
       'plugins.md',
       'references.md',
       'scripts.md',
+      'sheets.md',
       'sketch.md',
     ]);
     expect(paths).toContain('features/README.md');
@@ -127,6 +128,7 @@ describe('the sidebar', () => {
         { title: 'Scripts', url: '/docs/api/scripts/' },
         { title: 'Macros', url: '/docs/api/emit/' },
         { title: 'Plugins', url: '/docs/api/plugins/' },
+        { title: 'Sheet reference', url: '/docs/api/sheets/' },
       ],
     });
   });

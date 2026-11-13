@@ -7,6 +7,9 @@ import type {
   GeomRef,
   Joint,
   JointReport,
+  Sheet,
+  SheetAnchors,
+  SheetParts,
 } from '@extrudo/core';
 import type { ScadCompiler, ScadParametersResult } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
@@ -43,6 +46,21 @@ import type {
 } from './recompute/types';
 import type { ScadExportOptions } from './scad-export/file';
 import { NO_SCRIPT_HOST, type ScriptHost, type ScriptHostLoader } from './script-host';
+import {
+  type SheetViewProgress,
+  type SheetViewRequest,
+  type SheetViewResult,
+  SheetViewsCancelledError,
+} from './sheets/views';
+import {
+  measureShape,
+  measureStoredShape,
+  type ShapePlacement,
+  type StoredShapeMeasure,
+  type StoredShapeOptions,
+  type StoredShapeStep,
+  storedShapeToStep,
+} from './stored-shape';
 import { makeTestPart, type TestPart } from './test-part';
 
 export interface KernelInfo {
@@ -129,15 +147,16 @@ export interface KernelApi {
   endPreview(): Promise<void>;
   /**
    * A reference to a face, edge or vertex of a body the last recompute
-   * returned (its index in the body's mesh), or with `base` one the last
-   * preview returned as its base (editing a feature), with its persistent
-   * name and fingerprint (ADR-0005): what a feature's `ref` input stores.
-   * Undefined if the body or the sub-shape is gone.
+   * returned (its index in the body's mesh, or its persistent name: a sheet
+   * view's curve carries that), or with `base` one the last preview returned
+   * as its base (editing a feature), with its persistent name and fingerprint
+   * (ADR-0005): what a feature's `ref` input stores. Undefined if the body or
+   * the sub-shape is gone.
    */
   reference(
     body: BodyId,
     kind: SubShapeKind,
-    index: number,
+    index: number | string,
     base?: boolean,
   ): Promise<GeomRef | undefined>;
   /**
@@ -198,6 +217,32 @@ export interface KernelApi {
   /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
   exportStep(bodies: readonly StepBody[]): Promise<string>;
   /**
+   * A third-party file's stored B-rep text as STEP (P6-25 S3, ADR-0144
+   * decision 5): read, placed by `chain` (outermost first), written with our
+   * STEP writer and read back in the same call; the result measures both, so
+   * the caller can compare them. Only a kernel started as an import kernel
+   * (`KernelServiceOptions.importKernel`) runs it: any other refuses with a
+   * `KernelError`, so B-rep text never reaches a project's kernel.
+   */
+  storedShapeToStep(
+    text: string,
+    chain: readonly ShapePlacement[],
+    options?: StoredShapeOptions,
+  ): Promise<StoredShapeStep>;
+  /**
+   * A third-party file's stored B-rep text, placed by `chain` and measured
+   * (solids, volume, area, tight box), with no STEP (P6-25 S5, ADR-0144): the
+   * shape a file stores for a feature, to compare with the body rebuilt for
+   * it. Refused like `storedShapeToStep` unless this is an import kernel.
+   */
+  measureStoredShape(text: string, chain: readonly ShapePlacement[]): Promise<StoredShapeMeasure>;
+  /**
+   * Bodies of the last finished recompute measured as `measureStoredShape`
+   * measures a stored shape (the same code), by ID (P6-25 S5, ADR-0144).
+   * Rejects if a body is no longer in the model.
+   */
+  measureBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, StoredShapeMeasure>>;
+  /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
    * options' tessellation where they don't. Rejects if a body is no longer
@@ -237,6 +282,39 @@ export interface KernelApi {
   checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck>;
   /** Stops a running `checkJoint`. */
   cancelCheck(): Promise<void>;
+  /**
+   * Sheet views of the bodies at the marker of the last finished recompute
+   * (P6-24 S2, ADR-0143's S2 amendment), one at a time in the order asked:
+   * each view is one kernel run that nothing interrupts, and other calls (a
+   * recompute) get their turn between views, so a view after a recompute
+   * draws the new bodies (`versions` tells). `onView` hears each result as it
+   * is done; a `false` from it, or `cancelSheetViews()`, stops the run before
+   * the next view with a `SheetViewsCancelledError` (`isSheetViewsCancelled`).
+   * Results are cached (`RecomputeEngine.sheetView`). A view that fails is an
+   * `error` result; the others still come.
+   */
+  sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+  ): Promise<SheetViewResult[]>;
+  /** Stops every running `sheetViews` before its next view. */
+  cancelSheetViews(): Promise<void>;
+  /**
+   * A sheet's dimension anchors against the bodies at the marker of the last
+   * finished recompute (P6-24 S3, ADR-0143's S3 amendment): per dimension, per
+   * anchor, `ok`, `moved` or `detached` and the 3D geometry it stands for,
+   * which `@extrudo/sheets` measures and lays out. Never rejects for a lost
+   * anchor. Evaluates nothing.
+   */
+  resolveSheet(sheet: Sheet): Promise<SheetAnchors>;
+  /**
+   * What a sheet's parts lists need that the document doesn't hold (P6-24
+   * S5, ADR-0143's S5 amendment), against the bodies at the marker of the
+   * last finished recompute: per list, its view's bodies in order, and each
+   * one's volume and box (as Print Info measures them). `@extrudo/sheets`
+   * merges them into rows. Evaluates nothing.
+   */
+  sheetParts(sheet: Sheet): Promise<SheetParts>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -317,7 +395,20 @@ export interface KernelServiceOptions {
    * `enableOpenscad()` refuses and a `.scad` import says it can't compile.
    */
   openscad?: () => ScadCompiler | Promise<ScadCompiler>;
+  /**
+   * Starts the kernel as an import's throwaway kernel (P6-25 S3, ADR-0144
+   * decision 5): only then does `storedShapeToStep` read third-party B-rep
+   * text. Set only by the import's own worker entry and by tests; a project's
+   * kernel never sets it.
+   */
+  importKernel?: boolean;
 }
+
+/** Why a project's kernel refuses third-party B-rep text (ADR-0144 decision 5). */
+const notAnImportKernel = () =>
+  new KernelError(
+    "This kernel doesn't read stored shapes: only an import's own kernel does (ADR-0144).",
+  );
 
 export class KernelService implements KernelApi {
   readonly #load: () => Promise<OcctModule>;
@@ -338,6 +429,8 @@ export class KernelService implements KernelApi {
   #compiler: ScadCompiler | undefined;
   /** Bumped by every request that stops a running clearance check. */
   #checks = 0;
+  /** Bumped by `cancelSheetViews`. */
+  #sheetRuns = 0;
 
   constructor(load: () => Promise<OcctModule>, options: KernelServiceOptions = {}) {
     this.#load = load;
@@ -463,7 +556,7 @@ export class KernelService implements KernelApi {
   reference(
     body: BodyId,
     kind: SubShapeKind,
-    index: number,
+    index: number | string,
     base = false,
   ): Promise<GeomRef | undefined> {
     return this.#run(() => this.#engineOf().reference(body, kind, index, base));
@@ -543,6 +636,29 @@ export class KernelService implements KernelApi {
     );
   }
 
+  storedShapeToStep(
+    text: string,
+    chain: readonly ShapePlacement[],
+    options: StoredShapeOptions = {},
+  ): Promise<StoredShapeStep> {
+    if (!this.#options.importKernel) return Promise.reject(notAnImportKernel());
+    return this.#run((kernel) => storedShapeToStep(kernel, text, chain, options));
+  }
+
+  measureStoredShape(text: string, chain: readonly ShapePlacement[]): Promise<StoredShapeMeasure> {
+    if (!this.#options.importKernel) return Promise.reject(notAnImportKernel());
+    return this.#run((kernel) => measureStoredShape(kernel, text, chain));
+  }
+
+  measureBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, StoredShapeMeasure>> {
+    return this.#run((kernel) => {
+      // No prototype: the IDs are the caller's strings.
+      const out = Object.create(null) as Record<BodyId, StoredShapeMeasure>;
+      for (const id of bodies) out[id] = measureShape(kernel, this.#bodyShape(id, 'measure'));
+      return out;
+    });
+  }
+
   exportScad(options: ScadExportOptions): Promise<string> {
     return this.#run(() => this.#engineOf().exportScad(options));
   }
@@ -609,6 +725,37 @@ export class KernelService implements KernelApi {
 
   async cancelCheck(): Promise<void> {
     this.#checks++;
+  }
+
+  async sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+  ): Promise<SheetViewResult[]> {
+    const run = this.#sheetRuns;
+    const out: SheetViewResult[] = [];
+    for (const [i, request] of requests.entries()) {
+      if (run !== this.#sheetRuns) throw new SheetViewsCancelledError();
+      const result = await this.#run(() => this.#engineOf().sheetView(request));
+      out.push(result);
+      if ((await onView?.(result, i + 1, requests.length)) === false) {
+        if (i < requests.length - 1) throw new SheetViewsCancelledError();
+      }
+      // A recompute, or the caller's cancel, gets its turn between views.
+      if (i < requests.length - 1) await yieldToEvents();
+    }
+    return out;
+  }
+
+  async cancelSheetViews(): Promise<void> {
+    this.#sheetRuns++;
+  }
+
+  resolveSheet(sheet: Sheet): Promise<SheetAnchors> {
+    return this.#run(() => this.#engineOf().resolveSheet(sheet));
+  }
+
+  sheetParts(sheet: Sheet): Promise<SheetParts> {
+    return this.#run(() => this.#engineOf().sheetParts(sheet));
   }
 
   async debugTestPart(): Promise<TestPart> {

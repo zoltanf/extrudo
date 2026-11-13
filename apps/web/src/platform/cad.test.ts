@@ -15,6 +15,9 @@ describe('other CAD files (P6-19, ADR-0115 §1)', () => {
     expect(isConvertibleCad('part.step')).toBe(false);
     expect(isConvertibleCad('sldprt')).toBe(false);
     expect(isConvertibleCad('dir.ipt/file')).toBe(false);
+    // FreeCAD files have their own importer (ADR-0144), not cadmpeg.
+    expect(isConvertibleCad('Bracket.FCStd')).toBe(false);
+    expect(CAD_CONVERT_EXTENSIONS).not.toContain('.fcstd' as never);
   });
 
   it('names the STEP after the file', () => {

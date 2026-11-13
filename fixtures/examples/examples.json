@@ -94,5 +94,13 @@
     "file": "benchmarks/annotated-plate.extrudo",
     "tags": ["annotations", "sketch on face", "parameters"],
     "level": "beginner"
+  },
+  {
+    "id": "spool-holder",
+    "title": "Spool holder",
+    "description": "A bracket and the axle that fits its bore, with a drawing sheet of standard views, dimensions, notes and a parts list.",
+    "file": "benchmarks/spool-holder.extrudo",
+    "tags": ["drawing", "sheet", "parts list", "two bodies"],
+    "level": "beginner"
   }
 ]

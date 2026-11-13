@@ -7,8 +7,10 @@
  * extrudo export <design.extrudo> --format stl|3mf|step|scad [--out <path>]
  *                [--param name=expr]… [--config <name>] [--bodies a,b]
  *                [--resolution coarse|medium|fine|<mm>] [--json]
+ * extrudo export <design.extrudo> --format pdf|svg [--sheet <name>]… [--date …]
+ *                [--version-name …] [--density …] [--stickies] [--out <path>]
  * extrudo set    <design.extrudo> [--param name=expr]… [--config <name>] --out <new.extrudo>
- * extrudo check  <design.extrudo> [--param …] [--config …] [--json]
+ * extrudo check  <design.extrudo> [--param …] [--config …] [--joints | --sheets] [--json]
  * extrudo script <design.extrudo> [--features a..b] [--param …]
  * ```
  *
@@ -31,11 +33,12 @@ import {
   type ComputeResult,
   type DesignJob,
   EXTRUDO_VERSION,
-  type ExportedFile,
   FileError,
   HeadlessError,
   openDesign,
   ParameterError,
+  type SheetItemProblem,
+  type SheetReport,
 } from './headless';
 
 /** What the commands share: where output and messages go. */
@@ -67,9 +70,12 @@ Usage:
                 [--param name=expr]... [--config <name>] [--bodies a,b]
                 [--component name]... [--flat]
                 [--resolution coarse|medium|fine|<deviation mm>] [--json]
+  extrudo export <design.extrudo> --format pdf|svg [--sheet <name>]... [--out <path>]
+                [--param name=expr]... [--config <name>] [--date YYYY-MM-DD|today]
+                [--version-name <text>] [--density <g/cm3>] [--stickies] [--json]
   extrudo set    <design.extrudo> [--param name=expr]... [--config <name>] --out <new.extrudo>
   extrudo check  <design.extrudo> [--param name=expr]... [--config <name>]
-                 [--joints] [--min-gap <expr>] [--json]
+                 [--joints] [--min-gap <expr>] [--sheets] [--json]
   extrudo script <design.extrudo> [--features a..b] [--param name=expr]...
 
 Options:
@@ -79,10 +85,19 @@ Options:
   --bodies a,b        Export only these bodies, by name.
   --component <name>  Export a component's live bodies (a name or ID). Repeatable.
   --flat              Write without the component structure (one object per body).
+  --sheet <name>      Export only this sheet (pdf, svg), by name or ID. Repeatable.
+  --date <day>        What a sheet's {date} writes: YYYY-MM-DD or today
+                      (default: the day the design was last changed).
+  --version-name <t>  What a sheet's {version} writes (default: the newest
+                      version saved in the file, "V3"; none: left as typed).
+  --density <g/cm3>   The density a parts list's Mass is worked out with (default: no Mass).
+  --stickies          Write every sticky note, those on screen only too.
   --joints            Check every joint's clearance (extrudo check).
+  --sheets            Check that no sheet has a detached anchor (extrudo check).
   --min-gap <expr>    The minimum gap a joint check allows (default the design's tolerance).
   --features a..b     Emit only this run of the timeline (feature indices or IDs).
-  --out <path>        Where to write. For export it is the one file to write;
+  --out <path>        Where to write. For export it is the one file to write
+                      (a folder for SVGs of several sheets);
                       for set it is the .extrudo file to write.
   --resolution        coarse, medium (the default), fine, or a deflection in mm
                       (an OpenSCAD file: its polyhedra and $fa/$fs).
@@ -111,6 +126,12 @@ export interface Options {
   flat?: boolean;
   joints?: boolean;
   minGap?: string;
+  sheets?: string[];
+  date?: string;
+  versionName?: string;
+  density?: number;
+  stickies?: boolean;
+  checkSheets?: boolean;
   features?: [number | string, number | string];
   resolution?: string;
   json: boolean;
@@ -127,6 +148,12 @@ const PARSE_OPTIONS = {
   flat: { type: 'boolean' },
   joints: { type: 'boolean' },
   'min-gap': { type: 'string' },
+  sheet: { type: 'string', multiple: true },
+  date: { type: 'string' },
+  'version-name': { type: 'string' },
+  density: { type: 'string' },
+  stickies: { type: 'boolean' },
+  sheets: { type: 'boolean' },
   features: { type: 'string' },
   resolution: { type: 'string' },
   json: { type: 'boolean' },
@@ -234,8 +261,54 @@ export function parse(argv: readonly string[]): Options | { help: true } | { ver
   if (values.joints === true) options.joints = true;
   if (values['min-gap'] !== undefined) options.minGap = values['min-gap'];
   if (values.features !== undefined) options.features = featuresOf(values.features);
+  if (values.sheet !== undefined) {
+    options.sheets = values.sheet.map((name) => name.trim()).filter((name) => name.length > 0);
+    if (options.sheets.length === 0) throw new UsageError('--sheet takes a sheet name or ID.');
+  }
+  if (values.date !== undefined) options.date = dateOf(values.date);
+  if (values['version-name'] !== undefined) options.versionName = values['version-name'];
+  if (values.density !== undefined) {
+    const density = Number(values.density);
+    if (!(Number.isFinite(density) && density > 0)) {
+      throw new UsageError(
+        `--density takes g/cm³ as a number above 0 ("${values.density}" isn't).`,
+      );
+    }
+    options.density = density;
+  }
+  if (values.stickies === true) options.stickies = true;
+  if (values.sheets === true) options.checkSheets = true;
   if (options.command === 'export' && options.format === undefined) {
-    throw new UsageError('extrudo export needs --format stl, 3mf, step or scad.');
+    throw new UsageError('extrudo export needs --format stl, 3mf, step, scad, pdf or svg.');
+  }
+  const sheetFormat = options.format === 'pdf' || options.format === 'svg';
+  for (const [flag, given] of [
+    ['--sheet', options.sheets !== undefined],
+    ['--date', options.date !== undefined],
+    ['--version-name', options.versionName !== undefined],
+    ['--density', options.density !== undefined],
+    ['--stickies', options.stickies === true],
+  ] as const) {
+    if (given && !(options.command === 'export' && sheetFormat)) {
+      throw new UsageError(`${flag} is for extrudo export --format pdf or svg.`);
+    }
+  }
+  if (sheetFormat) {
+    for (const [flag, given] of [
+      ['--bodies', values.bodies !== undefined],
+      ['--component', values.component !== undefined],
+      ['--flat', values.flat === true],
+      ['--resolution', values.resolution !== undefined],
+    ] as const) {
+      if (given)
+        throw new UsageError(`${flag} is for a model export, not --format ${options.format}.`);
+    }
+  }
+  if (options.command !== 'check' && options.checkSheets === true) {
+    throw new UsageError(`--sheets is for extrudo check, not ${options.command}.`);
+  }
+  if (options.checkSheets && options.joints) {
+    throw new UsageError('extrudo check takes --joints or --sheets, not both.');
   }
   if (options.command === 'set' && options.out === undefined) {
     throw new UsageError('extrudo set needs --out <new.extrudo> to write.');
@@ -279,6 +352,23 @@ function featuresOf(text: string): [number | string, number | string] {
   }
   const one = (end: string): number | string => (/^\d+$/.test(end) ? Number(end) : end);
   return [one(ends[0] as string), one(ends[1] as string)];
+}
+
+/** `--date` as `YYYY-MM-DD`: a day, or `today` (the local date). */
+function dateOf(text: string): string {
+  if (text === 'today') {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  const valid =
+    day &&
+    new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])))
+      .toISOString()
+      .startsWith(text);
+  if (!valid) throw new UsageError(`--date takes YYYY-MM-DD or today ("${text}" is neither).`);
+  return text;
 }
 
 /** `--resolution` as a preset name or a deflection in mm. */
@@ -423,8 +513,39 @@ function report(job: DesignJob, result: ComputeResult): string[] {
       );
     }
   }
+  if (result.sheets.length > 0) {
+    lines.push('Sheets:');
+    for (const sheet of result.sheets) lines.push(`  ${sheetLine(sheet)}`);
+  }
   return lines;
 }
+
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "Plate  A3 landscape · 1:1 · 4 views · 9 items · 1 detached anchor". */
+function sheetLine(sheet: SheetReport): string {
+  const parts = [
+    `${sheet.size} ${sheet.orientation}`,
+    sheet.scale,
+    count(sheet.views, 'view', 'views'),
+    count(sheet.items, 'item', 'items'),
+  ];
+  if (sheet.detached > 0) parts.push(count(sheet.detached, 'detached anchor', 'detached anchors'));
+  return `${sheet.name}  ${parts.join(' · ')}`;
+}
+
+/** What an item is, as the sheet's browser rows say it. */
+const ITEM_LABELS: Readonly<Record<SheetItemProblem['kind'], string>> = {
+  text: 'Text',
+  dimension: 'Dimension',
+  leader: 'Leader note',
+  sticky: 'Sticky note',
+  centreMark: 'Centre mark',
+  centreLine: 'Centre line',
+  partsList: 'Parts list',
+  balloon: 'Balloon',
+  table: 'Table',
+};
 
 /** `info`: the design as it computes. */
 async function info(options: Options, streams: Streams): Promise<number> {
@@ -445,6 +566,7 @@ async function info(options: Options, streams: Streams): Promise<number> {
             components: result.components,
             joints: result.joints,
             annotations: result.annotations,
+            sheets: result.sheets,
             errors: result.errors,
             warnings: result.warnings,
             ms: Math.round(result.ms),
@@ -464,19 +586,58 @@ async function info(options: Options, streams: Streams): Promise<number> {
 }
 
 /** Where an exported file goes: `--out`, or next to the design. */
-function pathOf(options: Options, file: ExportedFile): string {
+function pathOf(options: Options, name: string): string {
   if (options.out) return options.out;
   const folder = dirname(options.design);
-  const beside = join(folder, file.name);
+  const beside = join(folder, name);
   // Never write over the design itself.
-  return beside === options.design ? join(folder, `export-${file.name}`) : beside;
+  return beside === options.design ? join(folder, `export-${name}`) : beside;
 }
 
-/** `export`: the chosen bodies as mesh, STEP or OpenSCAD files. */
+/**
+ * `export --format pdf|svg`: the design's sheets (P6-24 S6), a PDF with a page
+ * per sheet or an SVG per sheet, beside the design or at `--out` (a folder
+ * when several SVGs are written).
+ */
+async function exportSheetsCommand(
+  format: 'pdf' | 'svg',
+  options: Options,
+  streams: Streams,
+): Promise<number> {
+  const job = await opened(options);
+  try {
+    const files = await job.exportSheets({
+      format,
+      ...(options.sheets && { sheets: options.sheets }),
+      ...(options.date !== undefined && { date: options.date }),
+      ...(options.versionName !== undefined && { version: options.versionName }),
+      ...(options.density !== undefined && { density: options.density }),
+      ...(options.stickies && { stickies: true }),
+    });
+    const written: { path: string; name: string; bytes: number; sheets: string[] }[] = [];
+    for (const file of files) {
+      const path =
+        options.out && files.length > 1 ? join(options.out, file.name) : pathOf(options, file.name);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file.bytes);
+      written.push({ path, name: file.name, bytes: file.bytes.length, sheets: file.sheets });
+    }
+    if (options.json) streams.out(JSON.stringify({ files: written }, null, 2));
+    else for (const file of written) streams.out(`Wrote ${file.path}`);
+    return OK;
+  } finally {
+    await job.dispose();
+  }
+}
+
+/** `export`: the chosen bodies as mesh, STEP or OpenSCAD files, or the sheets as PDF or SVG. */
 async function exportCommand(options: Options, streams: Streams): Promise<number> {
   const format = (options.format ?? '').toLowerCase();
+  if (format === 'pdf' || format === 'svg') return exportSheetsCommand(format, options, streams);
   if (format !== 'stl' && format !== '3mf' && format !== 'step' && format !== 'scad') {
-    throw new UsageError(`--format takes stl, 3mf, step or scad ("${options.format}" is none).`);
+    throw new UsageError(
+      `--format takes stl, 3mf, step, scad, pdf or svg ("${options.format}" is none).`,
+    );
   }
   const resolution = resolutionOf(options.resolution);
   const job = await opened(options);
@@ -503,7 +664,7 @@ async function exportCommand(options: Options, streams: Streams): Promise<number
       closed: boolean;
     }[] = [];
     for (const file of files) {
-      const path = pathOf(options, file);
+      const path = pathOf(options, file.name);
       await mkdir(dirname(path), { recursive: true });
       await writeFile(path, file.bytes);
       written.push({
@@ -617,12 +778,42 @@ async function checkJoints(job: DesignJob, options: Options, streams: Streams): 
 async function check(options: Options, streams: Streams): Promise<number> {
   const job = await opened(options);
   try {
-    return options.joints
-      ? await checkJoints(job, options, streams)
-      : await checkFeatures(job, options, streams);
+    if (options.joints) return await checkJoints(job, options, streams);
+    if (options.checkSheets) return await checkSheets(job, options, streams);
+    return await checkFeatures(job, options, streams);
   } finally {
     await job.dispose();
   }
+}
+
+/**
+ * `check --sheets` (P6-24 S6): exit 2 when an anchor on a sheet is detached
+ * (a dimension, note, centre mark or line, or balloon that lost what it was
+ * placed on), so a CI notices a model change that broke a drawing. A moved or
+ * invalid item is listed but does not fail.
+ */
+async function checkSheets(job: DesignJob, options: Options, streams: Streams): Promise<number> {
+  const sheets = await job.checkSheets();
+  const detached = sheets.reduce((n, sheet) => n + sheet.detached, 0);
+  if (options.json) {
+    streams.out(JSON.stringify({ name: job.doc.name, ok: detached === 0, sheets }, null, 2));
+  } else if (sheets.length === 0) {
+    streams.out(`${job.doc.name}: no sheets.`);
+  } else {
+    if (detached === 0)
+      streams.out(
+        `${job.doc.name}: no detached anchors (${count(sheets.length, 'sheet', 'sheets')}).`,
+      );
+    else streams.err(`${job.doc.name}: ${count(detached, 'detached anchor', 'detached anchors')}.`);
+    for (const sheet of sheets) {
+      for (const problem of sheet.problems) {
+        const line = `  ${sheet.name}: ${ITEM_LABELS[problem.kind]} ${problem.id} is ${problem.state}${problem.message ? `: ${problem.message}` : '.'}`;
+        if (problem.state === 'detached') streams.err(line);
+        else streams.out(line);
+      }
+    }
+  }
+  return detached > 0 ? DESIGN_ERROR : OK;
 }
 
 /** The feature half of `check` (no joints): every feature's status. */

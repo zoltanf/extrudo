@@ -29,6 +29,8 @@ These pages are the written guide:
   or, on the desktop, with Blender.
 - [OpenSCAD export](./openscad.md): your design as editable OpenSCAD code, what turns into code and
   what turns into a mesh.
+- [Drawings](./drawings.md): sheets of views, dimensions, notes and a parts list made from the
+  model, exported as PDF or SVG.
 - [Files, versions and where your work lives](./files.md): autosave, `.extrudo` files, imports,
   version history, linked folders, offline use and the examples.
 - [The desktop app](./desktop.md): installing it and what it adds.

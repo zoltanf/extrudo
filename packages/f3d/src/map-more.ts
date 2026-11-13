@@ -5,7 +5,7 @@
  * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
-import { ORIGIN_PLANES } from '@extrudo/core';
+import { ORIGIN_PLANES, threadRadii } from '@extrudo/core';
 import { type CopiedObjects, cantorPair } from './decode/copies';
 import type { ModelPlane } from './decode/hole';
 import type { ParameterValue } from './decode/parameters';
@@ -91,6 +91,24 @@ function planeRef(
   return placed?.plane;
 }
 
+/**
+ * The imported features a mirror or pattern copies, in timeline order (the
+ * order `made` was filled in), and how many it can't. The file lists them in
+ * the order they were picked, but the kernel replays them in the order given,
+ * each on what the last left: a join picked before the cut it sits in would
+ * be cut away again.
+ */
+export function copiedFeatures(
+  records: readonly number[],
+  made: ReadonlyMap<number, { id: string }>,
+): { features: GeomRef[]; left: number } {
+  const wanted = new Set(records);
+  const features: GeomRef[] = [];
+  for (const [record, feature] of made)
+    if (wanted.has(record)) features.push({ kind: 'feature', id: feature.id });
+  return { features, left: wanted.size - features.length };
+}
+
 /** The features or bodies a mirror or pattern copies, as Extrudo inputs; or why not. */
 function copiedInputs(
   f: CopiedObjects & { name: string },
@@ -102,18 +120,9 @@ function copiedInputs(
     if (!bodies) return 'a body it copies was not imported as one body of one feature';
     return { objects: 'bodies', bodies };
   }
-  const features: GeomRef[] = [];
-  let left = 0;
-  for (const record of f.features) {
-    const feature = context.made.get(record);
-    if (feature) features.push({ kind: 'feature', id: feature.id });
-    else left++;
-  }
+  const { features } = copiedFeatures(f.features, context.made);
+  // The ones left out get their note from the caller, after the rounds it repeats (`copyRounds`).
   if (features.length === 0) return 'none of the features it copies was imported';
-  if (left)
-    context.report.notes.push(
-      `${f.name}: ${left} of the ${f.features.length} features it copies left out (not imported, or a fillet or chamfer).`,
-    );
   return { objects: 'features', features };
 }
 
@@ -123,6 +132,8 @@ export interface MadeCopies {
   id: string;
   /** Extrudo's label of the file's instance code. */
   label: (code: number) => string | undefined;
+  /** Every copy's label (the original left out), where they are known. */
+  labels?: string[];
 }
 
 /** A mirror of features or bodies in a plane. */
@@ -133,7 +144,7 @@ export function mirror(d: Design, f: F3dMirror, context: CopyContext): string | 
   const plane = planeRef(d, f.plane, f.name, context.report, 'mirrors in');
   if (!plane) return 'its plane is not along an origin axis';
   const made = d.mirror({ ...copied, plane } as Parameters<Design['mirror']>[0], { name: f.name });
-  return { op: 'mirror', id: made.id, label: () => '' };
+  return { op: 'mirror', id: made.id, label: () => '', labels: [''] };
 }
 
 /**
@@ -178,7 +189,12 @@ export function rectangularPattern(
     const [u, v] = cantorPair(code);
     return row && v === 0 && u >= 2 ? String(u - 1) : undefined;
   };
-  return { op: 'pattern', id: made.id, label };
+  const count = f.counts[0]?.value ?? 0;
+  const labels =
+    row && Number.isInteger(count) && count >= 2 && count <= 1000
+      ? Array.from({ length: count - 1 }, (_, i) => String(i + 1))
+      : undefined;
+  return { op: 'pattern', id: made.id, label, ...(labels && { labels }) };
 }
 
 /**
@@ -360,11 +376,13 @@ export function moveBodies(d: Design, f: F3dMove, context: CopyContext): string 
 /**
  * A modeled thread on cylindrical faces, at the file's major diameter and
  * pitch with no clearance (the file's diameters are the thread's own).
- * Extrudo's tooth is the 60° ISO profile: a 55° pipe thread comes out a
- * little deeper. The file resizes the face to the thread's crest; Extrudo
- * fills a wider hole in (or builds a thinner shaft up) to it along the
- * thread (ADR-0056's fifth amendment), so the thread is imported as drawn,
- * at the file's diameters.
+ * Extrudo's tooth is the 60° ISO profile, or for a 55° one (the BSP G pipe
+ * threads) the Whitworth profile. The file resizes the whole face to the thread's crest (its
+ * minor diameter inside, major outside). Extrudo fills a wider hole in (or
+ * builds a thinner shaft up) to it along the thread (ADR-0056's fifth
+ * amendment), which is the whole face for a thread along all of it; a thread
+ * along part of it gets an Offset Face that moves the face to the crest first
+ * (`crestOffset`), so the face beyond the thread is the file's too.
  */
 export function thread(
   d: Design,
@@ -397,12 +415,79 @@ export function thread(
     if (length) inputs.length = expressionOf(length);
     if (offset && Math.abs(offset.value) > 1e-12) inputs.offset = expressionOf(offset);
   }
-  if (Math.abs(spec.angle - 60) > 1e-6)
+  // The hole's radius (cm) as it is threaded: one radius for every face, moved to the crest below.
+  let hole = holeRadius(f);
+  if (!spec.full) {
+    const resize = crestOffset(f);
+    if (resize !== undefined) {
+      hole = crestRadius(spec);
+      // The file resizes the whole face to the thread's crest, not only along
+      // the thread: the face is moved there first, then threaded.
+      d.offsetFace(
+        { faces, distance: mm(resize), keepRounds: true } as Parameters<Design['offsetFace']>[0],
+        { name: `${f.name} face` },
+      );
+      report.notes.push(
+        `${f.name}: its face is moved to the thread's ${spec.external ? 'major' : 'minor'} diameter (${Number((crestRadius(spec) * 20).toPrecision(6))} mm) along its whole length, as the file does, then threaded.`,
+      );
+    }
+  }
+  // A 55° thread is a Whitworth form (the BSP G pipe threads); another angle has no profile here.
+  const profile = Math.abs(spec.angle - 55) < 1e-6 ? 'whitworth' : 'iso';
+  if (profile !== 'iso') inputs.profile = profile;
+  else if (Math.abs(spec.angle - 60) > 1e-6)
     report.notes.push(
       `${f.name}: ${spec.designation} has a ${spec.angle}° profile; imported with Extrudo's 60° one.`,
     );
+  if (profile === 'whitworth' && !spec.external && hole !== undefined) {
+    // The file's minor diameter is its class's, for a pipe thread well wider
+    // than the basic profile's crest. A hole between the two would be filled
+    // in to the crest, a sleeve that a later cut can leave loose: the whole
+    // tooth moves out to the hole instead, as a tolerance does (the root goes
+    // as much deeper). A hole wider than the file's minor is filled in as
+    // before; ISO threads are left as they were.
+    const { crest } = threadRadii(profile, spec.major * 10, spec.pitch * 10, 0, true);
+    const lift = hole * 10 - crest;
+    if (lift > 1e-6 && hole <= spec.minor / 2 + 1e-9) inputs.tolerance = mm(lift / 10);
+  }
   d.thread(inputs as Parameters<Design['thread']>[0], { name: f.name });
   return undefined;
+}
+
+/** The radius (cm) a thread's face has to have: its crest's, the major outside, the minor inside. */
+function crestRadius(spec: F3dThread['spec']): number {
+  return (spec.external ? spec.major : spec.minor) / 2;
+}
+
+/** The one radius (cm) of a thread's cylindrical faces, where they all have it. */
+function holeRadius(f: F3dThread): number | undefined {
+  let radius: number | undefined;
+  for (const face of f.faces) {
+    const s = face.surface;
+    if (s?.kind !== 'cone' || !s.cylinder) return undefined;
+    if (radius !== undefined && Math.abs(radius - s.radius) > 1e-9) return undefined;
+    radius = s.radius;
+  }
+  return radius;
+}
+
+/**
+ * How far (cm, along the face's outward normal) a thread's faces move to its
+ * crest: one distance for all of them, or none where they are there already
+ * (within 1e-5 cm), aren't cylinders, or would move apart.
+ */
+function crestOffset(f: F3dThread): number | undefined {
+  const crest = crestRadius(f.spec);
+  let offset: number | undefined;
+  for (const face of f.faces) {
+    const s = face.surface;
+    if (s?.kind !== 'cone' || !s.cylinder) return undefined;
+    // Outside, the outward normal points away from the axis; inside, towards it.
+    const d = f.spec.external ? crest - s.radius : s.radius - crest;
+    if (offset !== undefined && Math.abs(d - offset) > 1e-9) return undefined;
+    offset = d;
+  }
+  return offset !== undefined && Math.abs(offset) > 1e-5 ? offset : undefined;
 }
 
 /** A sketch point (cm) in model space through the sketch's frame. */

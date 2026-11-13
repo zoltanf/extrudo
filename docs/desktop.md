@@ -142,7 +142,7 @@ the pictures stay in `<tmp>/extrudo-pictures/` for a look.
 
 ## Other CAD files
 
-The desktop app imports `.sldprt .ipt .iam .catpart .fcstd .sat .smt .smb .sab
+The desktop app imports `.sldprt .ipt .iam .catpart .sat .smt .smb .sab
 .igs .iges .pvz` by converting them to STEP with the bundled cadmpeg (P6-19,
 ADR-0115) and then importing that STEP: pick one with **Import…** (the Insert
 tab's tile, the File menu, or the home screen, which makes a new design for
@@ -151,6 +151,11 @@ was converted to STEP: shapes only, without colours, names or history. The
 Import dialog that follows is the one for a STEP file. The design stores the
 STEP, not the original file, so it opens in the browser too; the browser itself
 can't convert these files and says the desktop app does.
+
+FreeCAD's `.FCStd` files no longer go through cadmpeg (ADR-0144, P6-25 S3):
+Extrudo reads them itself, in the desktop app and the browser alike, and makes
+a new design of the file's final shapes with their names, colours and
+visibility (the intermediate shapes a FreeCAD file stores stay out).
 
 A file over 100 MB, a conversion that takes longer than 2 minutes or a file
 cadmpeg's own check refuses is not imported; the message is cadmpeg's last
@@ -174,7 +179,12 @@ While the app runs it hosts an MCP server (ADR-0087) that AI agents such as
 Claude Code and Claude Desktop use to read and change the open design: the
 timeline and each feature's status, parameters, bodies and their volumes, a
 screenshot, and changes through the document API, each one undo step named
-`Agent: …`. The top bar shows **Agent connected** while one is.
+`Agent: …`; and the drawing's sheets: `list_sheets`, `add_sheet` (the standard
+views fitted to the model), `add_view`, `add_dimension` (it answers the value
+it measures), `add_note`, and `export_sheet` (a PDF, or a PNG of a sheet for the
+agent to look at). The sheet tools leave the drawing open or closed as it is; a
+`screenshot` finishes an open drawing first. The top bar shows **Agent
+connected** while one is.
 
 The server listens on `http://127.0.0.1:7474/mcp` (this computer only) and
 needs the install's token (`userData/mcp-token`, made on first start). Settings ›
@@ -233,7 +243,7 @@ so publishing the release is what ships an update. Prereleases are ignored.
 
 | Install | What happens |
 |---|---|
-| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
+| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches; the Menu strip has the same **Restart** while the update waits), or installs on the next quit |
 | Windows (NSIS) | the same |
 | Windows portable exe | the same as a deb: there is no installer to run, so it says a version is out and offers the release page; download the new exe and keep the `Extrudo-data` folder beside it |
 | Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |

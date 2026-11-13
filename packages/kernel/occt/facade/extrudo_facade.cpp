@@ -111,6 +111,11 @@
 #include <BRepTools.hxx>
 #include <BRepTools_History.hxx>
 #include <BRepTools_ReShape.hxx>
+#include <BRepTools_ShapeSet.hxx>
+#include <BRep_CurveRepresentation.hxx>
+#include <BRep_PointRepresentation.hxx>
+#include <BRep_TEdge.hxx>
+#include <BRep_TVertex.hxx>
 #include <BRepLib.hxx>
 #include <BRepLib_MakeEdge.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
@@ -128,6 +133,11 @@
 #include <HLRBRep_Algo.hxx>
 #include <HLRBRep_Data.hxx>
 #include <HLRBRep_EdgeData.hxx>
+#include <HLRBRep_FaceIterator.hxx>
+#include <HLRBRep_PolyAlgo.hxx>
+#include <HLRBRep_ShapeBounds.hxx>
+#include <HLRTopoBRep_Data.hxx>
+#include <HLRTopoBRep_OutLiner.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -211,6 +221,14 @@
 #include <XCAFDoc_ShapeTool.hxx>
 #include <StepBasic_Product.hxx>
 #include <StepData_StepModel.hxx>
+#include <StepVisual_LayeredItem.hxx>
+#include <StepVisual_PresentationLayerAssignment.hxx>
+#include <StepVisual_StyledItem.hxx>
+#include <StepVisual_StyledItemTarget.hxx>
+#include <TransferBRep.hxx>
+#include <Transfer_TransientProcess.hxx>
+#include <XSControl_TransferReader.hxx>
+#include <XSControl_WorkSession.hxx>
 #include <TCollection_HAsciiString.hxx>
 #include <STEPControl_Writer.hxx>
 #include <UnitsMethods_LengthUnit.hxx>
@@ -246,7 +264,9 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <climits>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <map>
 #include <set>
@@ -255,6 +275,7 @@
 #include <array>
 #include <unordered_set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -2119,6 +2140,217 @@ public:
   uintptr_t geometryPtr() const { return reinterpret_cast<uintptr_t>(geometry_.data()); }
   int geometrySize() const { return static_cast<int>(geometry_.size()); }
 
+  /**
+   * Hidden-line spans of a shape seen from the side (dx, dy, dz) points to
+   * (P6-24, ADR-0143's S0 amendment): OCCT's exact hidden-line removal
+   * (HLRBRep_Algo, as edgeVisibility), walked span by span. Returns the
+   * number of records, or -1. One record per edge of HLR's data that is a
+   * model edge or an outline HLR added (isolines and edges seen end-on are
+   * left out). An edge HLR split at an outline point keeps its model edge
+   * and parameters, one record per piece:
+   *
+   * hlrInts, 6 per record: edge (sub-shape index, -1 for an outline HLR
+   * added), kind (0 sharp, 1 smooth, 2 seam: a joint of continuity above
+   * G1, 3 outline: one HLR added, or a smooth edge or seam a face turns away
+   * at),
+   * face (an outline's face, or -1; also set for a model edge HLR uses as a
+   * face's outline), visible spans, hidden spans, curve (an outline's offset
+   * in the curve block, else -1).
+   *
+   * hlrNumbers: per record in order, the edge's parameter range [first,
+   * last] (a split model edge's whole range), then [t0, t1] per visible span
+   * and per hidden span, in the parameter of the edge's own 3D curve; then
+   * the curve block: each outline as edgeGeometry encodes an edge (a line or
+   * circle or ellipse exactly, else `samples` points).
+   */
+  int hlrSpans(int shape, double dx, double dy, double dz, int samples) {
+    beginOp();
+    hlrInts_.clear();
+    hlrNumbers_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec view(dx, dy, dz);
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges, faces;
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(view)));
+      occ::handle<HLRBRep_Algo> algo = new HLRBRep_Algo();
+      algo->Add(*s, 0);
+      algo->Projector(projector);
+      algo->Update();
+      algo->Hide();
+      occ::handle<HLRBRep_Data> data = algo->DataStructure();
+      if (data.IsNull()) return 0;
+      const int ne = data->NbEdges();
+      // HLR's outliner splits edges at outline points and rebuilds faces with
+      // their outlines; its data knows the shape each new one came from.
+      HLRTopoBRep_Data& topo = algo->ShapeBounds(1).Shape()->DataStructure();
+      auto indexIn = [&](const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& map,
+                         const TopoDS_Shape& x) {
+        const int i = map.FindIndex(x);
+        return i != 0 ? i : map.FindIndex(topo.NewSOldS(x));
+      };
+      // What the faces say about each edge: an isoline, or a face's outline.
+      std::vector<int> outlineOf(ne + 1, 0);
+      std::vector<char> outline(ne + 1, 0), iso(ne + 1, 0);
+      for (int f = 1; f <= data->NbFaces(); ++f) {
+        HLRBRep_FaceIterator it;
+        for (it.InitEdge(data->FDataArray().ChangeValue(f)); it.MoreEdge(); it.NextEdge()) {
+          const int ie = it.Edge();
+          if (ie < 1 || ie > ne) continue;
+          if (it.IsoLine()) iso[ie] = 1;
+          if (it.OutLine() || it.Internal()) {
+            outline[ie] = 1;
+            if (outlineOf[ie] == 0) outlineOf[ie] = indexIn(faces, data->FaceMap()(f));
+          }
+        }
+      }
+      std::vector<double> spans, curves;
+      int records = 0;
+      for (int ie = 1; ie <= ne; ++ie) {
+        HLRBRep_EdgeData& ed = data->EDataArray().ChangeValue(ie);
+        if (iso[ie] || ed.Vertical()) continue;
+        const int model = indexIn(edges, data->EdgeMap()(ie));
+        if (model == 0 && !outline[ie]) continue;
+        // A smooth edge or seam that a face turns away at is that face's outline
+        // (HLRToShape draws it with the sharp edges): kind outline, edge kept.
+        const bool smooth = ed.RgNLine() || ed.Rg1Line();
+        const int kind = model == 0 || (smooth && outline[ie]) ? 3 : ed.RgNLine() ? 2 : ed.Rg1Line() ? 1 : 0;
+        // The status intervals are in the 3D curve's parameter already (HLRBRep::MakeEdge
+        // turns them into the 2D curve's with Parameter2d), so they pass through as they are.
+        const HLRBRep_Curve& curve = ed.Geometry();
+        // The whole edge's parameter range first (a model edge's, not a split piece's).
+        const BRepAdaptor_Curve whole =
+            model == 0 ? curve.GetCurve() : BRepAdaptor_Curve(TopoDS::Edge(edges(model)));
+        spans.insert(spans.end(), {whole.FirstParameter(), whole.LastParameter()});
+        int visible = 0, hidden = 0;
+        double sta = 0, end = 0;
+        float tolsta = 0, tolend = 0;
+        HLRAlgo_EdgeIterator it;
+        for (it.InitVisible(ed.Status()); it.MoreVisible(); it.NextVisible()) {
+          it.Visible(sta, tolsta, end, tolend);
+          if (std::abs(end - sta) <= Precision::PConfusion()) continue;
+          spans.insert(spans.end(), {sta, end});
+          ++visible;
+        }
+        for (it.InitHidden(ed.Status()); it.MoreHidden(); it.NextHidden()) {
+          it.Hidden(sta, tolsta, end, tolend);
+          if (std::abs(end - sta) <= Precision::PConfusion()) continue;
+          spans.insert(spans.end(), {sta, end});
+          ++hidden;
+        }
+        if (visible + hidden == 0) {
+          spans.resize(spans.size() - 2);
+          continue;
+        }
+        int at = -1;
+        if (model == 0) {
+          at = static_cast<int>(curves.size());
+          encodeCurve(curve.GetCurve(), BRep_Tool::IsClosed(curve.GetCurve().Edge()), samples, curves);
+        }
+        hlrInts_.insert(hlrInts_.end(), {model - 1, kind, outlineOf[ie] - 1, visible, hidden, at});
+        ++records;
+      }
+      hlrNumbers_ = std::move(spans);
+      hlrNumbers_.insert(hlrNumbers_.end(), curves.begin(), curves.end());
+      return records;
+    } catch (...) {
+      hlrInts_.clear();
+      hlrNumbers_.clear();
+      failFromException("Hidden-line removal failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Polygonal hidden-line removal (HLRBRep_PolyAlgo) of a shape along
+   * (dx, dy, dz), on the triangulation its faces have (meshed with
+   * `deflection` first where a face has none). Returns the number of
+   * pieces, or -1. hlrInts, 3 per piece: edge (sub-shape index, -1 when it
+   * is a face's outline), face (an outline's face, else -1), flags (1
+   * visible, 2 smooth, 4 seam, 8 outline). hlrNumbers, 6 per piece: its two
+   * ends in 3D (on the triangulation).
+   */
+  int hlrPolySpans(int shape, double dx, double dy, double dz, double deflection) {
+    beginOp();
+    hlrInts_.clear();
+    hlrNumbers_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec view(dx, dy, dz);
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
+      bool meshed = true;
+      for (TopExp_Explorer x(*s, TopAbs_FACE); x.More() && meshed; x.Next()) {
+        TopLoc_Location loc;
+        if (BRep_Tool::Triangulation(TopoDS::Face(x.Current()), loc).IsNull()) meshed = false;
+      }
+      if (!meshed) {
+        BRepMesh_IncrementalMesh mesh(*s, deflection, false, 0.5, false);
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges, faces;
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      const HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(view)));
+      occ::handle<HLRBRep_PolyAlgo> algo = new HLRBRep_PolyAlgo(*s);
+      algo->Projector(projector);
+      algo->Update();
+      int pieces = 0;
+      HLRAlgo_EdgeStatus status;
+      TopoDS_Shape source;
+      bool reg1 = false, regn = false, outl = false, intl = false;
+      double sta = 0, end = 0;
+      float tolsta = 0, tolend = 0;
+      for (algo->InitHide(); algo->MoreHide(); algo->NextHide()) {
+        const HLRAlgo_BiPoint::PointsT& p = algo->Hide(status, source, reg1, regn, outl, intl);
+        const gp_XYZ a = p.Pnt1, b = p.Pnt2;
+        const int edge = intl ? -1 : edges.FindIndex(source) - 1;
+        const int face = intl ? faces.FindIndex(source) - 1 : -1;
+        const int base = (regn ? 4 : reg1 ? 2 : 0) | (outl || intl ? 8 : 0);
+        auto piece = [&](bool visible) {
+          const gp_XYZ u = a + (b - a) * sta, v = a + (b - a) * end;
+          hlrInts_.insert(hlrInts_.end(), {edge, face, base | (visible ? 1 : 0)});
+          hlrNumbers_.insert(hlrNumbers_.end(), {u.X(), u.Y(), u.Z(), v.X(), v.Y(), v.Z()});
+          ++pieces;
+        };
+        HLRAlgo_EdgeIterator it;
+        for (it.InitVisible(status); it.MoreVisible(); it.NextVisible()) {
+          it.Visible(sta, tolsta, end, tolend);
+          piece(true);
+        }
+        for (it.InitHidden(status); it.MoreHidden(); it.NextHidden()) {
+          it.Hidden(sta, tolsta, end, tolend);
+          piece(false);
+        }
+      }
+      return pieces;
+    } catch (...) {
+      hlrInts_.clear();
+      hlrNumbers_.clear();
+      failFromException("Hidden-line removal failed");
+      return -1;
+    }
+  }
+
+  uintptr_t hlrIntsPtr() const { return reinterpret_cast<uintptr_t>(hlrInts_.data()); }
+  int hlrIntsSize() const { return static_cast<int>(hlrInts_.size()); }
+  uintptr_t hlrNumbersPtr() const { return reinterpret_cast<uintptr_t>(hlrNumbers_.data()); }
+  int hlrNumbersSize() const { return static_cast<int>(hlrNumbers_.size()); }
+
   // ------------------------------------------------------------- sketches --
   //
   // A sketch's profiles (P2-02, ADR-0025): stage its curves in the sketch
@@ -2736,6 +2968,57 @@ public:
       return store(reader.OneShape());
     } catch (...) {
       return failFromException("STEP import failed");
+    }
+  }
+
+  /**
+   * Reads OCCT's own B-rep text (what BRepTools::Write makes: a
+   * "CASCADE Topology V1" to V3 line, with any lines before it skipped, then
+   * the locations, curves, surfaces and shapes) into one shape, as stored:
+   * nothing is healed or reordered, so the sub-shapes come out in the order
+   * the text lists them (TopExp::MapShapes, as count()/subShape() index them).
+   * Returns a handle, or 0.
+   */
+  int readBrep(const char* text) {
+    beginOp();
+    quietMessages();
+    try {
+      // BRepTools::Read, in its two steps: the shape set carries on after a
+      // table it couldn't read and then indexes its (empty) list of shapes, so
+      // text without the format line or without a shape is refused first.
+      if (text == nullptr || std::strstr(text, "CASCADE Topology V") == nullptr) {
+        return fail("B-rep import failed: the text is not a B-rep.");
+      }
+      std::istringstream in(text);
+      // A failed read throws: OCCT's loops re-test a variable the failed
+      // stream no longer writes (an edge's list of curves read on forever).
+      in.exceptions(std::ios::failbit | std::ios::badbit);
+      BRep_Builder builder;
+      CheckedShapeSet set(builder);
+      set.Read(in);
+      if (in.fail() || set.NbShapes() <= 0) {
+        return fail("B-rep import failed: the text couldn't be read.");
+      }
+      // The root reference, checked as CheckedShapeSet checks a sub-shape's.
+      const std::streampos root = in.tellg();
+      if (CheckedShapeSet::reference(in, set.NbShapes(), set.NbShapes()) == 0) {
+        return fail("B-rep import failed: the text has no shape.");
+      }
+      in.clear();
+      in.seekg(root);
+      TopoDS_Shape shape;
+      set.Read(shape, in);
+      if (shape.IsNull()) return fail("B-rep import failed: the text has no shape.");
+      if (const char* missing = missingGeometry(shape)) {
+        return fail((std::string("B-rep import failed: ") + missing).c_str());
+      }
+      return store(shape);
+    } catch (const std::ios_base::failure&) {
+      return fail("B-rep import failed: the text is damaged or cut short.");
+    } catch (const std::runtime_error& e) {
+      return fail((std::string("B-rep import failed: ") + e.what()).c_str());
+    } catch (...) {
+      return fail("B-rep import failed: the text is damaged or cut short.");
     }
   }
 
@@ -3428,6 +3711,72 @@ public:
     } catch (...) {
       readNames_.clear();
       readNameText_.clear();
+      failFromException("STEP import failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Which of a STEP file's solids the file hides (ADR-0066's amendment of
+   * 2026-11-10): the same text as readStep(), read the same way (a plain
+   * STEPControl_Reader), so the solids are readStep()'s own. A solid is
+   * hidden when one of the file's INVISIBILITY entities lists the solid
+   * itself, a STYLED_ITEM whose item it is, or a PRESENTATION_LAYER_ASSIGNMENT
+   * it is assigned to. The lists come from the text (stepInvisibleIds): the
+   * schema allows only styled items, layers and representations there, so
+   * OCCT's reader drops a solid that is listed directly, which is how some
+   * writers hide one. Read with geometryPtr/Size: 1 (hidden) or 0 per solid,
+   * in the order readStep()'s shape lists them (TopExp::MapShapes, as
+   * count()/subShape() do). Returns the number of solids, or -1.
+   */
+  int readStepHidden(const char* text) {
+    beginOp();
+    quietMessages();
+    geometry_.clear();
+    try {
+      std::vector<int> ids;
+      stepInvisibleIds(text == nullptr ? "" : text, ids);
+      std::sort(ids.begin(), ids.end());
+      std::istringstream in(text == nullptr ? "" : text);
+      STEPControl_Reader reader;
+      if (reader.ReadStream("extrudo.step", in) != IFSelect_RetDone) {
+        fail("STEP import failed: the file couldn't be read.");
+        return -1;
+      }
+      if (reader.TransferRoots() <= 0) {
+        fail("STEP import failed: the file has no shapes.");
+        return -1;
+      }
+      // The hidden solids without their locations: a solid is the same one
+      // wherever an assembly places it.
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> hidden;
+      if (!ids.empty()) {
+        const Handle(StepData_StepModel) model = reader.StepModel();
+        const Handle(Transfer_TransientProcess) process =
+            reader.WS()->TransferReader()->TransientProcess();
+        const int entities = model->NbEntities();
+        for (int i = 1; i <= entities; ++i) {
+          const Handle(Standard_Transient)& entity = model->Value(i);
+          if (!std::binary_search(ids.begin(), ids.end(), model->IdentLabel(entity))) continue;
+          if (entity->IsKind(STANDARD_TYPE(StepVisual_PresentationLayerAssignment))) {
+            const Handle(StepVisual_PresentationLayerAssignment) layer =
+                Handle(StepVisual_PresentationLayerAssignment)::DownCast(entity);
+            for (int k = 1; k <= layer->NbAssignedItems(); ++k) {
+              stepHideSolids(process, layer->AssignedItemsValue(k).Value(), hidden);
+            }
+          } else {
+            stepHideSolids(process, entity, hidden);
+          }
+        }
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> solids;
+      TopExp::MapShapes(reader.OneShape(), TopAbs_SOLID, solids);
+      for (int i = 1; i <= solids.Extent(); ++i) {
+        geometry_.push_back(hidden.Contains(solids(i).Located(TopLoc_Location())) ? 1.0 : 0.0);
+      }
+      return solids.Extent();
+    } catch (...) {
+      geometry_.clear();
       failFromException("STEP import failed");
       return -1;
     }
@@ -6110,11 +6459,22 @@ private:
     Handle(ShapeBuild_ReShape) reshape = new ShapeBuild_ReShape();
     BRep_Builder builder;
     TopTools_MapOfShape seen;
+    NCollection_DataMap<TopoDS_Shape, TopoDS_Shape, TopTools_ShapeMapHasher> rebuiltFaces;
     for (TopExp_Explorer it(direct, TopAbs_FACE); it.More(); it.Next()) {
       const TopoDS_Shape face = it.Current().Oriented(TopAbs_FORWARD);
       if (!seen.Add(face) || !reversedWire(face)) continue;
-      TopoDS_Shape rebuilt = face.EmptyCopied();
-      for (TopoDS_Iterator w(face, false, false); w.More(); w.Next()) {
+      // The explorer's face carries every location above it (a placed
+      // solid's, even an identity one). The new face is built on the bare
+      // face, whose wires are relative to it, and given that location back
+      // afterwards: BRep_Builder::Add moves a child by the inverse of its
+      // parent's location, which put the wires somewhere else.
+      const TopoDS_Shape bare = face.Located(TopLoc_Location());
+      if (const TopoDS_Shape* done = rebuiltFaces.Seek(bare)) {
+        reshape->Replace(face, done->Located(face.Location()));
+        continue;
+      }
+      TopoDS_Shape rebuilt = bare.EmptyCopied();
+      for (TopoDS_Iterator w(bare, false, false); w.More(); w.Next()) {
         const TopoDS_Shape& wire = w.Value();
         if (wire.Orientation() != TopAbs_REVERSED) {
           builder.Add(rebuilt, wire);
@@ -6128,9 +6488,143 @@ private:
         forward.Closed(wire.Closed());
         builder.Add(rebuilt, forward);
       }
-      reshape->Replace(face, rebuilt);
+      rebuiltFaces.Bind(bare, rebuilt);
+      reshape->Replace(face, rebuilt.Located(face.Location()));
     }
     return reshape->Apply(direct);
+  }
+
+  /**
+   * OCCT's B-rep shape table, read with each shape's sub-shape list checked
+   * before OCCT reads it (P6-25 S1, ADR-0144's amendment). OCCT reads the list
+   * up to its "*" and looks each "+N L" up without a range check, so a list
+   * cut short reads on forever (the stream has failed and the token never
+   * changes) and an index past the shapes read so far reads outside the
+   * table. Here the flags and the list are read ahead and the stream put back:
+   * every index must name a shape already read, every token fit OCCT's
+   * 255-byte buffer, and the list end in "*". The declared count comes from
+   * the "TShapes n" line, peeked the same way after the geometry tables. The
+   * shapes may nest MAX_DEPTH deep: OCCT walks them recursively, and 10^5
+   * nested compounds overflow the WASM stack. A refusal throws
+   * std::runtime_error with the words readBrep() shows.
+   */
+  class CheckedShapeSet : public BRepTools_ShapeSet {
+   public:
+    explicit CheckedShapeSet(const BRep_Builder& builder) : BRepTools_ShapeSet(builder) {}
+
+    void ReadGeometry(Standard_IStream& in, const Message_ProgressRange& progress) override {
+      BRepTools_ShapeSet::ReadGeometry(in, progress);
+      const std::streampos at = in.tellg();
+      std::string word;
+      long long count = -1;
+      if (!(in >> word) || word != "TShapes" || !(in >> count) || count < 1 || count > INT_MAX) {
+        throw std::runtime_error("the shape table is damaged.");
+      }
+      declared_ = static_cast<int>(count);
+      in.seekg(at);
+    }
+
+    void ReadGeometry(const TopAbs_ShapeEnum type, Standard_IStream& in, TopoDS_Shape& shape) override {
+      BRepTools_ShapeSet::ReadGeometry(type, in, shape);
+      const std::streampos at = in.tellg();
+      const char* damaged = "a shape's list of parts is damaged or cut short.";
+      std::string flags;
+      if (!(in >> flags) || flags.size() > 200) throw std::runtime_error(damaged);
+      int depth = 1;
+      for (;;) {
+        const std::streampos next = in.tellg();
+        std::string word;
+        if (!(in >> word) || word.size() > 200) throw std::runtime_error(damaged);
+        if (word[0] == '*') break;
+        in.seekg(next);
+        const int position = reference(in, declared_, NbShapes());
+        if (position == 0) throw std::runtime_error(damaged);
+        depth = std::max(depth, depths_[position - 1] + 1);
+      }
+      if (depth > MAX_DEPTH) throw std::runtime_error("the shapes nest too deep.");
+      depths_.push_back(depth);
+      in.seekg(at);
+    }
+
+    /**
+     * Reads one "+N L" (or -, i, e): the table position OCCT looks it up at
+     * (from 1), or 0 when that is outside the shapes read so far. Of
+     * `declared` shapes, `read` are in the table; N counts from the end of
+     * the declared ones.
+     */
+    static int reference(std::istream& in, int declared, int read) {
+      std::string word;
+      long long location = 0;
+      if (!(in >> word) || word.size() < 2 || word.size() > 200 || std::strchr("+-ie", word[0]) == nullptr) {
+        return 0;
+      }
+      char* end = nullptr;
+      const long long index = std::strtoll(word.c_str() + 1, &end, 10);
+      if (end == nullptr || *end != '\0') return 0;
+      const long long position = static_cast<long long>(declared) - index + 1;
+      if (position < 1 || position > read || !(in >> location)) return 0;
+      return static_cast<int>(position);
+    }
+
+   private:
+    static constexpr int MAX_DEPTH = 256;
+    int declared_ = 0;
+    /** Per shape read, from 1 for a vertex: how deep its parts nest. */
+    std::vector<int> depths_;
+  };
+
+  /**
+   * Whether every curve, pcurve and surface `shape` refers to is there: OCCT's
+   * reader skips or keeps as a null handle a reference of 0 or past its table,
+   * which the first check or mesh of the shape dereferences (a WASM trap). A
+   * face with only a triangulation may have no surface.
+   */
+  static const char* missingGeometry(const TopoDS_Shape& shape) {
+    const char* edgeMissing = "an edge lacks its curve.";
+    const char* pcurveMissing = "an edge lacks its curve on a face.";
+    const char* vertexMissing = "a point lacks the curve or surface it lies on.";
+    const char* faceMissing = "a face lacks its surface.";
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> all;
+    TopExp::MapShapes(shape, all);
+    for (int i = 1; i <= all.Extent(); ++i) {
+      const TopoDS_Shape& s = all(i);
+      if (s.ShapeType() == TopAbs_EDGE) {
+        const TopoDS_Edge& edge = TopoDS::Edge(s);
+        const Handle(BRep_TEdge) tedge = Handle(BRep_TEdge)::DownCast(edge.TShape());
+        if (tedge.IsNull()) return edgeMissing;
+        // OCCT's reader leaves a missing curve off the edge; the kernel's
+        // code expects every edge but a degenerate one to have a 3D curve (a
+        // degenerate edge, a sphere's pole, holds a null one).
+        const bool degenerate = BRep_Tool::Degenerated(edge);
+        bool curve = false;
+        for (const Handle(BRep_CurveRepresentation)& r : tedge->Curves()) {
+          if (r.IsNull()) return edgeMissing;
+          if (r->IsCurve3D()) {
+            if (r->Curve3D().IsNull() && !degenerate) return edgeMissing;
+            curve = curve || !r->Curve3D().IsNull();
+          }
+          if (r->IsCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return pcurveMissing;
+          if (r->IsCurveOnClosedSurface() && r->PCurve2().IsNull()) return pcurveMissing;
+        }
+        if (!curve && !degenerate) return edgeMissing;
+      } else if (s.ShapeType() == TopAbs_VERTEX) {
+        const Handle(BRep_TVertex) tvertex = Handle(BRep_TVertex)::DownCast(s.TShape());
+        if (tvertex.IsNull()) return vertexMissing;
+        for (const Handle(BRep_PointRepresentation)& r : tvertex->Points()) {
+          if (r.IsNull()) return vertexMissing;
+          if (r->IsPointOnCurve() && r->Curve().IsNull()) return vertexMissing;
+          if (r->IsPointOnCurveOnSurface() && (r->PCurve().IsNull() || r->Surface().IsNull())) return vertexMissing;
+          if (r->IsPointOnSurface() && r->Surface().IsNull()) return vertexMissing;
+        }
+      } else if (s.ShapeType() == TopAbs_FACE) {
+        TopLoc_Location location;
+        const TopoDS_Face& face = TopoDS::Face(s);
+        if (BRep_Tool::Surface(face, location).IsNull() && BRep_Tool::Triangulation(face, location).IsNull()) {
+          return faceMissing;
+        }
+      }
+    }
+    return nullptr;
   }
 
   /** Whether stageStepColor() gave any staged part a colour. */
@@ -6410,6 +6904,102 @@ private:
     }
   }
 
+  /** Past the spaces and block comments at `p`. */
+  static const char* stepSkipBlank(const char* p) {
+    for (;;) {
+      if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') {
+        ++p;
+      } else if (p[0] == '/' && p[1] == '*') {
+        p += 2;
+        while (*p != '\0' && !(p[0] == '*' && p[1] == '/')) ++p;
+        if (*p != '\0') p += 2;
+      } else {
+        return p;
+      }
+    }
+  }
+
+  /**
+   * readStepHidden(): the entity numbers a STEP text's INVISIBILITY entities
+   * list (`INVISIBILITY((#12,#34))`, a CONTEXT_DEPENDENT_INVISIBILITY's
+   * too). Strings and comments are passed over, so a name that holds the
+   * keyword lists nothing.
+   */
+  static void stepInvisibleIds(const char* text, std::vector<int>& ids) {
+    static const char KEY[] = "INVISIBILITY";
+    static const char LONG_KEY[] = "CONTEXT_DEPENDENT_INVISIBILITY";
+    const auto word = [](char c) {
+      return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_';
+    };
+    const char* p = text;
+    while (*p != '\0') {
+      if (*p == '\'') {
+        // A string; a doubled quote inside one reads as two strings, which is the same here.
+        ++p;
+        while (*p != '\0' && *p != '\'') ++p;
+        if (*p != '\0') ++p;
+        continue;
+      }
+      if (p[0] == '/' && p[1] == '*') {
+        p = stepSkipBlank(p);
+        continue;
+      }
+      if (!word(*p)) {
+        ++p;
+        continue;
+      }
+      const char* start = p;
+      while (word(*p)) ++p;
+      const std::string keyword(start, static_cast<size_t>(p - start));
+      if (keyword != KEY && keyword != LONG_KEY) continue;
+      const char* q = stepSkipBlank(p);
+      if (*q != '(') continue;
+      q = stepSkipBlank(q + 1);
+      if (*q != '(') continue;
+      ++q;
+      for (;;) {
+        q = stepSkipBlank(q);
+        if (*q == ',') {
+          ++q;
+        } else if (*q == '#') {
+          ++q;
+          long long id = 0;
+          while (*q >= '0' && *q <= '9') {
+            if (id < 2000000000) id = id * 10 + (*q - '0');
+            ++q;
+          }
+          if (id > 0 && id < 2000000000) ids.push_back(static_cast<int>(id));
+        } else {
+          break;
+        }
+      }
+      p = q;
+    }
+  }
+
+  /**
+   * readStepHidden(): the solids of what an INVISIBILITY item stands for go
+   * into `hidden` without their locations. A styled item stands for the item
+   * it styles; anything else for itself (a solid, a representation). A face,
+   * a shell or a curve holds no solid, so hiding one hides no body.
+   */
+  static void stepHideSolids(const Handle(Transfer_TransientProcess)& process,
+                             const Handle(Standard_Transient)& listed,
+                             NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher>& hidden) {
+    Handle(Standard_Transient) entity = listed;
+    if (!entity.IsNull() && entity->IsKind(STANDARD_TYPE(StepVisual_StyledItem))) {
+      const Handle(StepVisual_StyledItem) styled = Handle(StepVisual_StyledItem)::DownCast(entity);
+      entity = styled->Item();
+      if (entity.IsNull()) entity = styled->ItemAP242().Value();
+    }
+    if (entity.IsNull() || process.IsNull()) return;
+    const TopoDS_Shape shape = TransferBRep::ShapeResult(process, entity);
+    if (shape.IsNull()) return;
+    for (TopExp_Explorer solid(shape, TopAbs_SOLID); solid.More(); solid.Next()) {
+      hidden.Add(solid.Current().Located(TopLoc_Location()));
+    }
+  }
+
   std::vector<std::string> stepNames_;
   /** Per staged STEP part, [r, g, b] in 0..1 (sRGB), or -1s for none (P4-12). */
   std::vector<double> stepColors_;
@@ -6434,6 +7024,9 @@ private:
   std::vector<int32_t> describeInts_;
   std::vector<double> describeNumbers_;
   std::vector<double> geometry_;
+  /** hlrSpans' and hlrPolySpans' output (P6-24). */
+  std::vector<int32_t> hlrInts_;
+  std::vector<double> hlrNumbers_;
   /** Mesh to Solid's input (meshNodes, meshTriangles) and its report. */
   std::vector<double> meshNodes_;
   std::vector<uint32_t> meshTriangles_;
@@ -15630,6 +16223,97 @@ private:
     }
   }
 
+  /**
+   * The distance (mm) at or below which two shapes touch: `TOUCH` in the
+   * kernel's `features/operation.ts`, which decides that a join's tool and
+   * its target touch. A fuse whose operands lie that close is built again
+   * with it as the fuzzy value (`missedOverlaps`, `strandedTools`), so the
+   * join and the touching test agree. Change both together.
+   */
+  static constexpr double kTouch = 1e-4;
+
+  /**
+   * How many solids of `b` a fuse left as solids of their own although they
+   * lie within `kTouch` of `a` (ADR-0051, 2026-11-10): 0 for anything but a
+   * fuse of solids. A tool whose face lies a hair off the target's (a
+   * profile 2.4e-6 mm above the face it stands on) gives the General Fuse no
+   * contact at all (its tolerance is 1e-7 mm), so the fuse returns both
+   * solids side by side, while the app's touching test, at 1e-4 mm, had
+   * called them touching: a join made two bodies. A solid counts when the
+   * result has a solid made only of its faces, it met nothing of `a` (a
+   * solid that met `a` along an edge or a line stays apart at any fuzzy
+   * value: no single solid has such a union), and the exact distance to `a`
+   * is within `kTouch`, boxes first. Cost: a map lookup per face (0.01 ms on
+   * 222 faces); the distance only for a solid left apart near `a` (1 to 24
+   * ms on 6 to 222 faces).
+   */
+  template <typename Builder>
+  static int strandedTools(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b) {
+    if constexpr (!std::is_base_of_v<BRepAlgoAPI_BooleanOperation, Builder>) {
+      return 0;
+    } else {
+      if (builder.Operation() != BOPAlgo_FUSE) return 0;
+      if (countSubShapes(a, TopAbs_SOLID) == 0) return 0;
+      std::vector<TopoDS_Shape> solids;
+      NCollection_DataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> solidOf, faceOf;
+      for (TopExp_Explorer s(b, TopAbs_SOLID); s.More(); s.Next()) {
+        const int k = static_cast<int>(solids.size());
+        solids.push_back(s.Current());
+        solidOf.TryBind(s.Current(), k);
+        for (TopAbs_ShapeEnum type : {TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX}) {
+          for (TopExp_Explorer e(s.Current(), type); e.More(); e.Next()) solidOf.TryBind(e.Current(), k);
+        }
+        for (TopExp_Explorer e(s.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          const NCollection_List<TopoDS_Shape>& images = builder.Modified(e.Current());
+          if (images.IsEmpty()) faceOf.TryBind(e.Current(), k);
+          for (NCollection_List<TopoDS_Shape>::Iterator it(images); it.More(); it.Next()) faceOf.TryBind(it.Value(), k);
+        }
+      }
+      if (solids.empty()) return 0;
+      // The result's solids made only of one tool solid's faces.
+      std::vector<char> apart(solids.size(), 0);
+      for (TopExp_Explorer s(builder.Shape(), TopAbs_SOLID); s.More(); s.Next()) {
+        int owner = -1;
+        for (TopExp_Explorer e(s.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          const int* k = faceOf.Seek(e.Current());
+          if (k == nullptr || (owner >= 0 && *k != owner)) {
+            owner = -1;
+            break;
+          }
+          owner = *k;
+        }
+        if (owner >= 0) apart[owner] = 1;
+      }
+      if (std::find(apart.begin(), apart.end(), 1) == apart.end()) return 0;
+      // Those that met a (any interference with one of their sub-shapes) stay apart at any fuzzy value.
+      const BOPAlgo_PPaveFiller& filler = builder.DSFiller();
+      if (filler != nullptr) {
+        const BOPDS_PDS& ds = filler->PDS();
+        for (NCollection_Map<BOPDS_Pair>::Iterator it(ds->Interferences()); it.More(); it.Next()) {
+          int i1 = 0, i2 = 0;
+          it.Value().Indices(i1, i2);
+          for (int i : {i1, i2}) {
+            if (i < 0 || i >= ds->NbSourceShapes() || ds->Rank(i) != 1) continue;
+            if (const int* k = solidOf.Seek(ds->Shape(i))) apart[*k] = 0;
+          }
+        }
+      }
+      Bnd_Box boxA;
+      BRepBndLib::Add(a, boxA);
+      int stranded = 0;
+      for (size_t k = 0; k < solids.size(); ++k) {
+        if (!apart[k]) continue;
+        Bnd_Box box;
+        BRepBndLib::Add(solids[k], box);
+        box.Enlarge(kTouch);
+        if (boxA.IsOut(box)) continue;
+        BRepExtrema_DistShapeShape measure(a, solids[k], Extrema_ExtFlag_MIN);
+        if (measure.IsDone() && measure.Value() <= kTouch) ++stranded;
+      }
+      return stranded;
+    }
+  }
+
   template <typename Builder>
   static void buildBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, double fuzzy) {
     NCollection_List<TopoDS_Shape> arguments, tools;
@@ -15665,20 +16349,32 @@ private:
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
     // Only when the operands met and the result misses an overlap
-    // (`missedOverlaps`): the same boolean again with a fuzzy value of 1e-4
-    // mm (the distance at which the app counts bodies as touching), which
-    // classifies a tool side along a rounded face right; 1e-6 and 1e-5 still
-    // came out wrong or broken on some of the cases measured. Its result
-    // replaces the first only if it is sound and misses fewer; a tool
-    // that only touches the body keeps the first result, and with it the
-    // message that the cut removes nothing. The history, and so the names,
-    // come from the boolean that is kept.
-    if (const int missed = missedOverlaps(builder, inA, inB); missed > 0) {
+    // (`missedOverlaps`), or a fuse left a tool solid apart that lies within
+    // the touching distance (`strandedTools`): the same boolean again, once,
+    // with a fuzzy value of `kTouch` (1e-4 mm, the distance at which the app
+    // counts bodies as touching). It classifies a tool side along a rounded
+    // face right (1e-6 and 1e-5 still came out wrong or broken on some of the
+    // cases measured), and it joins a tool that stands a hair off the face it
+    // was drawn on. Its result replaces the first only if it is sound and
+    // misses fewer, or misses no more and has fewer solids where a tool was
+    // stranded; a tool that only touches the body, or touches it along a
+    // line, keeps the first result, and with it the message that the cut
+    // removes nothing. The history, and so the names, come from the boolean
+    // that is kept.
+    const int missed = missedOverlaps(builder, inA, inB);
+    const int stranded = strandedTools(builder, inA, inB);
+    if (missed > 0 || stranded > 0) {
       Builder retry;
-      buildBoolean(retry, inA, inB, 1e-4);
-      if (retry.IsDone() && !retry.HasErrors() && missedOverlaps(retry, inA, inB) < missed &&
-          BRepCheck_Analyzer(retry.Shape()).IsValid()) {
-        return finishBuilt(retry, a, b, inA, inB, simplify);
+      buildBoolean(retry, inA, inB, kTouch);
+      if (retry.IsDone() && !retry.HasErrors()) {
+        const int missedAgain = missedOverlaps(retry, inA, inB);
+        const bool better =
+            missedAgain < missed ||
+            (stranded > 0 && missedAgain <= missed &&
+             countSubShapes(retry.Shape(), TopAbs_SOLID) < countSubShapes(builder.Shape(), TopAbs_SOLID));
+        if (better && BRepCheck_Analyzer(retry.Shape()).IsValid()) {
+          return finishBuilt(retry, a, b, inA, inB, simplify);
+        }
       }
     }
     return finishBuilt(builder, a, b, inA, inB, simplify);
@@ -16123,6 +16819,33 @@ private:
         ends.Append(builder.LastShape(sub));
         appendRelation(ends, resultMaps, 0, kind, i - 1, 5);
       }
+    }
+  }
+
+  /** A curve in edgeGeometry's encoding: type, closed, n, points, then a circle's or ellipse's data. */
+  static void encodeCurve(const BRepAdaptor_Curve& curve, bool closed, int samples, std::vector<double>& out) {
+    const GeomAbs_CurveType type = curve.GetType();
+    const double first = curve.FirstParameter();
+    const double last = curve.LastParameter();
+    const int n = type == GeomAbs_Line ? 2 : std::max(2, samples);
+    out.push_back(static_cast<double>(type));
+    out.push_back(closed ? 1.0 : 0.0);
+    out.push_back(static_cast<double>(n));
+    auto point = [&](const gp_Pnt& p) { out.insert(out.end(), {p.X(), p.Y(), p.Z()}); };
+    auto dir = [&](const gp_Dir& d) { out.insert(out.end(), {d.X(), d.Y(), d.Z()}); };
+    for (int i = 0; i < n; ++i) point(curve.Value(i == n - 1 ? last : first + (last - first) * i / (n - 1)));
+    if (type == GeomAbs_Circle) {
+      const gp_Circ c = curve.Circle();
+      point(c.Location());
+      dir(c.Axis().Direction());
+      dir(c.XAxis().Direction());
+      out.insert(out.end(), {c.Radius(), first, last});
+    } else if (type == GeomAbs_Ellipse) {
+      const gp_Elips c = curve.Ellipse();
+      point(c.Location());
+      dir(c.Axis().Direction());
+      dir(c.XAxis().Direction());
+      out.insert(out.end(), {c.MajorRadius(), c.MinorRadius(), first, last});
     }
   }
 

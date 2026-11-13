@@ -23,7 +23,13 @@ import type { EvalContext, FeatureOutput, PreviewTool } from '../recompute/types
 import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
 import { add, scale } from './vec';
 
-/** Distances (mm) at or below which shapes touch. */
+/**
+ * Distances (mm) at or below which shapes touch. The facade's `kTouch` is the
+ * same distance: a fuse whose tool it leaves apart within it is built again
+ * with it as the fuzzy value, so a join of bodies this test calls touching
+ * gives one body (ADR-0051, 2026-11-10). Change both together
+ * (`join-gap.test.ts` joins at 0.9 × `TOUCH`).
+ */
 export const TOUCH = 1e-4;
 
 /**

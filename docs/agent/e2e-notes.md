@@ -823,6 +823,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `assetsInlineLimit` and inlines as a data URL, so no asset file exists to
   skip). The B1 plate fixture is the sketch stage only (no extrude, 0 bodies),
   so the Plate example opens on its sketch, not on a body.
+- The list has 13 rows since the Spool holder (P6-24 S6). Its test opens
+  `#/example/spool-holder`, Make › `pickTool(page, 'Drawing')` (the design has a sheet, so
+  no New drawing dialog), and polls the text layer `[data-sheet-text] text` (60 s) for the
+  measured "80.0", "60.0", "40.0", "Ø12.4" and the parts list's "Bracket", "Axle", "PETG";
+  no path may carry `data-state="detached"`. The copy's bodies get new IDs, so a broken
+  `remintSheets` shows here as lost anchors and an empty list.
 
 ### `e2e/export-3d.spec.ts`
 
@@ -975,13 +981,24 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   entries) and the browser with a component (first `data-bodies` body, then
   `pickTool(page, 'New Component')`).
 
+- The drawings page (P6-24 S6, `docs/guide/images/drawings/`): the spool holder example
+  (`#/example/spool-holder`) with an init script setting `extrudo.whatsNew.lastVersion` to
+  `apps/web/package.json`'s version (an example opened first counts as a returning visit,
+  so "Updated to Extrudo …" would cover the picture); `openTheDrawing` waits for given
+  strings in the text layer and for no `data-state="stale"` path. The lost dimension: open
+  the drawing once (the screen keeps each dimension's last geometry only after it was
+  drawn), Finish Drawing, suppress `chip('Screw hole 2')`, open it again: the 60 is red and
+  dashed (`[data-state="detached"][stroke-dasharray]`); opened only after the suppress it
+  would be a bare "?". The New drawing dialog is the wall bracket's (no sheet yet), shot
+  once `[data-new-sheets-summary]` reads "4 views of …".
+
 ### `e2e/readme-shots.spec.ts`
 
 - Skipped unless `RECORD_ASSETS=1`; `pnpm demos -g readme` (`--skip-build`
   when `dist` is current; `E2E_GPU=1` where there is a GPU is faster; the
   status bar's frame rate, recompute time and renderer are hidden with
-  `e2e/screenshot.css`) records the README's eight scenes (home,
-  model, drawing, sketch, fillet, assembly, print, customizer) at 1440 × 900 into
+  `e2e/screenshot.css`) records the README's nine scenes (home,
+  model, drawing, sketch, fillet, assembly, sheet, print, customizer) at 1440 × 900 into
   `docs/images/readme/<scene>-<light|dark>.webp`. Each theme is a `describe`
   with `test.use({ colorScheme })`: the app follows the system scheme while
   no theme is picked. Shots are WebP q 0.9 encoded by `OffscreenCanvas` in a
@@ -992,7 +1009,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `chip('Sketch1').dblclick()` and the
   Sketch palette, `chip('Fillet1').dblclick()` until `data-preview-status=ok`,
   the hinge fixture imported then F6 (Fit), Make › Print Info until
-  `data-print-state=ready`, Customizer until `data-customizer-state`.
+  `data-print-state=ready`, Customizer until `data-customizer-state`. **sheet** (P6-24 S6;
+  "drawing" is the older sketch scene): the spool holder example with the What's new
+  version set (as in `guide-shots.spec.ts`), Make › Drawing, until the text layer holds
+  "80.0", "Ø12.4", "Bracket" and "Axle". Record it alone with `-g "sheet$"`.
 
 ### `e2e/help-links.spec.ts`
 
@@ -1050,8 +1070,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   'Report a bug')` opens the `dialog` "Report a bug" (also from About's footer button and the
   home screen's app menu). Fields by label: "Title", "What happened?", "Steps to reproduce",
   "Include the timeline" (a checkbox, absent on the home screen). The screenshot is
-  `img` "Screenshot" (the viewport snapshot; Remove, then "No screenshot" and the button "Take
-  screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
+  `img` "Screenshot" (the viewport snapshot; in the drawing the sheet's own PNG, A3 landscape
+  `1600x1131` by `naturalWidth`/`naturalHeight`, read with a typed `evaluate` callback since
+  e2e/ has no DOM types; Remove, then "No screenshot" and the button "Take screenshot"); the report preview is `getByTestId('bug-report-preview')`. "Copy report" turns
   into "Copied" for 1.6 s; "Open GitHub draft" opens a popup on the prefilled issue URL
   (github.com answered locally with `context.route`). Trap: grant `clipboard-read` and
   `clipboard-write`; the PNG is not read back, only the text copy and the popup URL.
@@ -1115,11 +1136,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/import-drawing.spec.ts`
 
 - **Import drawing e2e** (`e2e/import-drawing.spec.ts`, P4-06 slice 1): the tool
-  is `importDrawing` in the Sketch tab's Create menu ("Import Drawing…", no
+  is `importDrawing` in the Sketch tab's Create menu ("Import SVG/DXF…" since
+  ADR-0143's S1, before it "Import Drawing…"; no
   key); it opens the file dialog at once, so the spec waits for the
   `filechooser` **beside** the click (`chooser.setFiles('packages/io/src/
   fixtures/rect-circle.svg')`, the fixtures `@extrudo/io`'s own tests read). The
-  panel is the region "Import drawing": the file's name, the comboboxes "Units"
+  panel is the region "Import SVG/DXF": the file's name, the comboboxes "Units"
   (the file's own preselected: `mm`, `in`) and "Position" (`origin`/`centre`),
   the "Scale" textbox (an `ExpressionInput`, so `fill('2')`), the "Fixed"
   checkbox, `[data-import-summary]` ("5 curves", or the reason it can't be
@@ -1141,6 +1163,30 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `page.on('worker')` seeing a URL with `f3dWorker` (the worker's `name` isn't exposed). The
   empty design's notice is "Imported from the .f3d file: 0 of 0 timeline features."; a bad
   file's error is the home screen's `alert` toast "Import failed: …".
+
+### `e2e/import-fcstd.spec.ts`
+
+- **The FreeCAD import** (P6-25 S3, ADR-0144): the file is `shapesFile()` from
+  `packages/fcstd/src/shape-fixtures.ts` (authored XML and the kernel's own test shapes; never
+  a sample), fed to the home screen's **Import…** with `chooser.setFiles` as `Shapes.FCStd`.
+  The notices are "Imported from the FreeCAD file: 9 of 11 shapes, as bodies without
+  history." and the "Not imported: Scan (…); Empty body (no shape)." line; body rows are
+  `[data-body]` filtered by the name button (`exact: true`), `data-body-display` "shown" or
+  "hidden" ("Hidden box"); the compound gives "Pair" and "Pair 2". `page.on('worker')` sees
+  `fcstdWorker` (its nested kernel is a `kernelWorker` like the project's, so its URL tells
+  nothing). A file that isn't a zip ends in the
+  `alert` toast "Import failed: This file can't be read as a FreeCAD file: …". The first test
+  allows 60 s for the kernel worker to start under load.
+- **S5 (history):** the third test builds its file in the spec with `historyFile` and
+  `rectangle` (`packages/fcstd/src/history-fixtures.ts`) and `boxBrep` (imported from
+  `packages/kernel/src/read-brep-test-support.ts` by path): Bracket (Pad, Pocket from a sketch at
+  z = 30) and Lid (Pad, then a `PartDesign::Fillet`). The chips are
+  `list` "Features" › `[data-timeline-item="chip"]`, read with `toHaveText([...regexes])` in
+  order: Sketch, Pad, "Sketch001 plane" (the offset plane), Sketch001, Pocket, Sketch002, Pad001,
+  "Remove Lid", "Import Lid". The notices are "…: 2 of 2 shapes, 1 with its history and 1 as a
+  body without history." and the "Taken from the file's own shapes, without their whole
+  history: Lid. …" line. The shapes test's file (`shapesFile()`) has a body too: its pad is
+  refused (`value`), so that import also shows a "Taken from the file's own shapes" line.
 
 ### `e2e/import-mesh.spec.ts`
 
@@ -1289,6 +1335,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   imported into a new design reads `data-body-appearance`
   `Body1:#c81e28:1` (`Body1:<n>:40,80,60`); recoloured `#22b3c2` and its chip's
   Up set to `y` (`40,60,80`), it stays `#22b3c2`.
+  **The hidden-solid test** (ADR-0066's amendment of 2026-11-10) builds its
+  file in the test: b3.step's text with `#9100 = INVISIBILITY((#<the second
+  MANIFOLD_SOLID_BREP>));` before the last `ENDSEC;`, given to the chooser as
+  `{ name, mimeType: 'model/step', buffer }`. After OK the browser has both
+  rows: `[data-body]` filtered by the name button ("Stand rest", `exact: true`)
+  reads `data-body-display="hidden"`, "Stand base" `shown`, and `data-bodies`
+  lists only "Stand base". The eye "Show Stand rest" draws it, and it stays
+  `shown` after the chip's Up is set to `y`.
   Slice 5 added the **canvas** (`features/canvas.tsx`, `viewport/Canvas.tsx`,
   `viewport/canvasGeometry.ts`, `viewport/canvasImages.ts`): a canvas is **view
   geometry from a report, never picked** — the kernel evaluator reads the plane
@@ -1470,9 +1524,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (the notice is `pointer-events: none`, the button alone takes the click) is
   clicked. The toast (`[data-toast]` with "Update cancelled") comes with the
   click and is gone again after a few seconds, so check it **before** waiting
-  for ready. The Kernel status must then be `ready` within 20 s: Cancel waits
+  for ready. The Kernel status must then be `ready` within 40 s: Cancel waits
   for the feature in flight (the heavy thread) and then replays from the cache
-  (ADR-0111), 1-3.5 s on GitHub's runners, about 4.5 s on the Arch ARM VM and
+  (ADR-0111), 0.7-3.6 s on GitHub's runners when the click misses the long feature, 11-21.5 s when it hits it; about 4.5 s on the Arch ARM VM and
   5.5-7.5 s under load; the spec logs the measured time instead of asserting
   it (a 4 s budget failed on main repeatedly). `capDia` is read back by reopening
   Parameters (`parameterExpression(…).toHaveValue`) and closing it with
@@ -1574,8 +1628,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `[data-parameter-row="<name>"]` (`aria-current="true"` when selected),
   sections `[data-parameter-section="<title>"]` ("User parameters" while
   flat; "General", then groups); model parameters sit in the collapsed
-  "Model parameters" section. Use `selectParameter(page, name)` and
-  `parameterExpression(page, name)` (both open Model parameters when needed)
+  "Model parameters" section, and one whose expression is only a user
+  parameter's name (`d1 = width` in the Wall bracket) is hidden behind the
+  button "Show N that follow(s) a user parameter" (ADR-0142 §6), so a missing
+  row there is expected; shown, it has `[title="Follows <name>"]` instead of
+  the formula mark `[title="A formula"]`. Use `selectParameter(page, name)` and
+  `parameterExpression(page, name)` (both open Model parameters and the Show
+  line when needed)
   and `addUserParameter(page, name, expression, unit?)` from `helpers.ts`
   (the form's "New parameter name"/"New parameter expression", the radio
   group "New parameter unit", "Add"; the new parameter is selected after).
@@ -1876,8 +1935,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `.previous-precache` when it activates); the toast "A new version of Extrudo is
   ready." has the button "Reload" (`exact: true`). After it the new version is
   active and the page reloaded; a project rename made just before survives.
+  The app menu's strip then has "Reload" before "GitHub" (`[data-update-strip]`,
+  `data-update-word` "Update ready"); clicking it activates the new version too.
   Unit tests: `platform/updates.test.ts`, `updateNotice.test.ts`,
-  `project/autosave.test.ts` (`saveEverything`).
+  `project/autosave.test.ts` (`saveEverything`), `shell/AppMenu.update.test.tsx`.
 
 ### `e2e/recompute.spec.ts`
 
@@ -1897,6 +1958,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/record-assets.spec.ts`
 
 - See `e2e/onboarding.spec.ts`: `RECORD_ASSETS=1` only, the demo recorder.
+- **The Drawing tab's clips** (P6-24 S6): `sheetScene` imports `fixtures/demos/sheet*.extrudo`
+  (the spool holder, A4 landscape 1:1, first angle; front view origin at sheet mm (75, 82),
+  top view at (75, 140): `frontAt(x, z)`, `topAt(x, y)`), opens it with `runTool(page,
+  'sheets', 'print')` and waits for no stale line. `frameSheet` zooms the paper with the wheel
+  at a sheet region's middle until it fills 0.95 of the 400 × 250 FRAME (poll the paper's box
+  width, not `data-zoom`: it is rounded) and pans with **Ctrl + a middle drag** (a pan in every
+  preset; a right drag would be a pan only in some). `pickOnSheet` glides and waits for
+  `[data-dimension-hover]` before clicking. **Rest the pointer outside every view's box**
+  (`restOnSheet`: Esc, glide, Esc): a pointer over a view tints it the whole clip. A frame
+  whose right edge passes sheet x 127 shows the title block's corner. New Sheet refits the
+  window (a new sheet is fitted, and A3 and A4 have the same shape), so its frame is taken at
+  fit without zooming. Make › Drawing's clip opens and finishes the drawing once before
+  recording: the first opening loads the mode and shows a blank frame. Runs of identical
+  frames last 400 ms in a clip, so a clip that only switches (New Sheet, Sheet Setup, Finish
+  Drawing) is about 1.5 s.
 - `demo: meshToSolid` starts from a mesh, not a design: `demoProject('blank')`, Home › Import Model with `fixtures/demos/meshToSolid.stl` (the demo-designs test writes it), the Import dialog's OK before `record`. Then the Body field picks: `runTool`, wait for the dialog, `pickModel(…, /./)` on the plate's top (the hover is a `face:` kind, not `body:`; a face click *before* the tool selects no body, so the Body field stays empty and OK disabled). Waits: `data-regions` matches `/planes/` (colours on), `previewed`, 600 ms; after `commit` the row loses `data-body-mesh`. The parked pointer must miss the axes (an axis hover lights it orange): `clip.y + 130` at the right edge is clear.
 
 ### `e2e/render-tile.spec.ts`
@@ -2080,6 +2156,189 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   menuitem "Change shortcut…". A Search row's key button is `[data-change-shortcut]`
   (visible on the active row). Read the preference with
   `localStorage.getItem('extrudo.keymap.overrides')`.
+
+### `e2e/sheets.spec.ts`
+
+- **The Drawing mode** (P6-24 S1, ADR-0143). Make › `pickTool(page, 'Drawing')` opens the
+  dialog "New drawing" (summary `[data-new-sheets-summary]`, button "Create Drawing"). In the
+  mode the toolbar tabs are Home and Drawing, the timeline's region is gone and the bottom row
+  is the region "Sheets": the list "Sheet tabs" with a `[data-sheet-tab]` (sheet ID) per tab,
+  `aria-current="page"` on the open tab's button, the button "New sheet",
+  `output[aria-label="Status"]` ("Editing drawing · sheet 1 of 1 · A3 landscape · 1:1 · mm").
+- **The sheet** is the region "Sheet" (`exact: true`: "Sheet setup" and "Sheets" exist too),
+  `[data-sheet-canvas]`, with `data-paper` ("420x297", mm across × down) and `data-zoom`
+  ("54%", written directly on every pan and zoom: read it with a polling assertion). Each
+  drawn item is a `path[data-key]` (`paper`, `border`, `title-block`, `title-block:<field>`,
+  `item:<id>`, `view:<id>`); the text layer `[data-sheet-text] text[data-key]` holds the
+  strings. **Trap:** a title-block cell's label ("TITLE") and its value share the key; the
+  value is the last. Text appears only after the sheet fonts load (the paper is drawn bare
+  before), so wait for a string before reading geometry.
+- **Sheet Setup** is the region "Sheet setup": textboxes by label ("Sheet name", "Title",
+  "Drawn by", …) commit on Enter or blur; the combobox "Paper" takes `selectOption('A4')`;
+  the radio groups "Orientation" and "Projection"; the switches "Border" and "Zones"; number
+  fields ("Scale: model", "Scale: sheet", "Decimals", a custom size's "Width"/"Height") are
+  `ExpressionInput`s.
+- Finish Drawing lists the sheet under the browser's Drawings folder (`[data-sheet-row]`,
+  text "1 · AssemblyA4": the name, then the size); double-click reopens it. The undo after
+  Finish takes back the last sheet edit (Finish is no step); undoing New drawing ends the mode.
+- The 3D view stays mounted (inert) under the sheet. Ctrl+PageUp/PageDown reach the page in
+  Playwright (the browser's own tab keys are not in its way there).
+- The model's browser folders stay mounted but hidden (React `Activity`) in the mode: a folder
+  opened before ("Document settings", closed by default) is `aria-expanded="true"` again
+  after Finish Drawing; while the drawing is open it is hidden, not gone.
+- **Export drawing** (part B): the Export PDF tile and the tab menu's "Export This Sheet" open
+  the dialog "Export drawing": a checkbox per sheet named "n · name", the radio group
+  "Format" (radios "PDF", "SVG", `aria-checked`), the textbox "File name" (no extension),
+  `[data-sheet-export-summary]` ("2 pages · A3 landscape, A4 landscape", "1 SVG file · A4
+  landscape", "Choose at least one sheet."), the button "Export" (disabled with no sheet).
+  A PDF has a `/MediaBox` per page (A3 landscape `[0 0 1190.551 841.89]`, A4 landscape
+  `[0 0 841.89 595.276]`); an SVG starts `width="297mm" height="210mm" viewBox="0 0 297 210"`.
+  The format is the preference `export.sheets`; the spec checks it survives a reopening.
+- **Selecting** uses a fixture written with `writeArchive` (sheet `s1`: text `t1` "A note" at
+  [40, 40], view `v1` "Front" at [200, 150] drawn as its 60 × 40 mm placeholder centred on
+  `at`) and imported with home's "Import…". Sheet mm → screen: the `[data-sheet-paper]` box
+  spans the paper (420 × 297 for A3). The region "Sheet" carries `data-hover` and
+  `data-selected` (targets joined by spaces: `item:t1 view:v1`, `title-block`); each frame is
+  `[data-sheet-frame="<target>"]` with `data-state` `hover`/`selected`, and its `rect`'s `x`
+  (mm, the box's left minus 1.2) shows a move; frames exist only while hovered or selected,
+  so select again after an undo of Delete. The right column is the region "Selection" (its
+  name, e.g. `Text “A note”`), or the region "Title block" (template and fields) when the
+  title block alone is selected. Ctrl+click toggles; drag on empty paper is a box select;
+  arrows nudge 1 mm (Shift 10 mm); Delete removes; each is one undo step.
+
+
+### `e2e/sheet-views.spec.ts`
+
+- **The view tools** (P6-24 S2, ADR-0143's S2 view-tools amendment). The Base View tile is
+  `#toolbar-groups [data-label="Base View"]` (key `V`); while it runs the right column is the
+  region "Base view" (comboboxes "Looking from", take `selectOption({ label: 'Top' })`, and
+  "Scale", values like `'1:2'`; the radio group "Style"), and the frame following the pointer is
+  `[data-sheet-placing]` (shown once the pointer moved over the sheet). A click places the view
+  with the middle of its lines at the pointer and selects it: read its ID from the region
+  "Sheet"'s `data-selected` (`view:<id>`).
+- **A view's lines** are `[data-sheet-paper] > svg path[data-key="view:<id>"][stroke-width]`
+  (the overlay svg has frames with the same keys: scope to the first svg; the label's outline is
+  a filled path with the same key: `[stroke-width]` leaves it out), one per line kind: `stroke-width`
+  0.5 (visible, outline), 0.25 with `stroke-dasharray="3 1.5"` (hidden), 0.18 (tangent).
+  `data-state="stale"` marks lines shown while the view is recomputed (dimmed); poll until no
+  path has it before reading sizes. `getBBox()` gives the geometry in sheet mm, strokes left out (a
+  40 mm edge at 1:2 reads 20).
+- **The card** is the region "View" (`exact: true`): textbox "View name", comboboxes "Looking
+  from" and "Scale", radio "Visible edges" / "Visible and hidden", switches "Tangent edges" and
+  "View label", checkboxes "All shown" and one per body by name. The label is a text in
+  `[data-sheet-text]` keyed `view:<id>` ("Front (1:2)" when its scale differs from the sheet's).
+- **The views notice** is `[data-sheet-views-progress]` (`running` after 300 ms, "View n of N",
+  button "Cancel drawing the views"; `cancelled`, "Some views are out of date", button "Draw the
+  views"). The cancel test uses B7 (`fixtures/benchmarks/b7-knurled-knob.extrudo`, read with
+  `readArchive`, a sheet added, `writeArchive`, home's "Import…"): its side views take seconds
+  each, so the run is still on the first exact view when Cancel is clicked. Re-run a timeout
+  alone before believing it.
+- **Export**: the PDF's content streams are deflated; inflate each `/FlateDecode` stream with
+  `zlib.inflateSync`. Hidden lines write `[3 1.5] 0 d`; the page is in mm (`0.5 w`).
+- **Part 2** (Projected View and the rest). Base View carries on as Projected View: the
+  `baseView` helper presses Esc after the click unless `keep`. Projected View's column is the
+  region "Projected view"; `[data-projected-next]` holds the name a click makes now ("Top",
+  "Isometric") once the pointer moved: move the pointer to the side first, then wait for it.
+  A drag with Alt: `keyboard.down('Alt')` before `mouse.down()`. A view's menu is the menu
+  "<view name> menu" (items "Projected View from This", "Fit Scale", "Delete"), opened by a
+  right-click inside the view's lines. A body is dragged with `row.dragTo(paper, …)` from the
+  browser's `[data-body]` row (drag data `application/x-extrudo-bodies`). New drawing: the radio
+  group "Start with" ("Standard views", "One view", "Empty sheet"; the `newDrawing` helper picks
+  Empty sheet), the selects "Bodies" and "Scale" (first option "Fit the sheet · 1:N"), the
+  summary `[data-new-sheets-summary]`.
+- **The template goldens** (`<slug>-standard-views-chromium-linux.txt`): New drawing's Standard
+  views of each template, exported as SVG, paths and subpaths sorted. The template's IDs must be
+  fixed (`addInitScript` makes `crypto.randomUUID` count): its edges' names follow its feature
+  IDs, and with them the curves' order and direction. Rewrite with `--update-snapshots` and look
+  at the diff.
+### `e2e/sheet-dimensions.spec.ts`
+
+- **Dimensions in the app** (P6-24 S3, ADR-0143's S3 Dimension tool amendment). The fixture is
+  B2 (`fixtures/benchmarks/b2-storage-box.extrudo`, fixed IDs) with a sheet `s1` holding the
+  front view `v1` at 2:1 and three linear dimensions on **stored refs** (the box's height edge
+  `dh` 40, its front bottom edge `dw` 80, the pocket's floor edge `df` 74, names and
+  fingerprints written in the spec): if the kernel's naming changes, stored dimensions stop
+  resolving and the spec fails. Imported with home's "Import…", opened by double-clicking
+  `[data-sheet-row="s1"]`.
+- A dimension's text is `[data-sheet-text] text[data-key="item:<id>"]` (only drawn once the
+  kernel answered: wait for it with a long timeout); its paths
+  `[data-sheet-paper] > svg path[data-key="item:<id>"]` carry `data-state` (`detached`,
+  `invalid`, `moved`; none when ok); a detached one's stroked paths have `stroke="#d93d3d"` and a
+  `stroke-dasharray`. The browser's rows are `[data-sheet-item-row="<id>"]` with `data-state`,
+  inside the sheet's folder "Dimensions"; their button selects. The status bar is
+  `output[aria-label="Status"]`, with `data-state` while it shows a selected (or hovered) item's
+  reason.
+- Deleting or suppressing a feature needs the timeline: Finish Drawing, the chip's menu, then
+  double-click the sheet row again. Undo in the drawing is a plain undo (a feature deleted in
+  the model comes back).
+- An export with a lost dimension writes it as "?" (`<3f> Tj`), never its last value: the spec
+  checks that after deleting the pocket (the dialog's summary ends "· 1 dimension detached,
+  written as ?").
+- **The tool** (`#toolbar-groups [data-label="Dimension"]`, key `D`) is tested on the wall
+  bracket template: Empty sheet, front and top Base Views at 2:1, positions from each view's
+  lines' box (`getBBox` of `path[data-key="view:<id>"][stroke-width]`, once none is stale). Its
+  panel is the region "Dimension tool" (`[data-dimension-waiting]` while a view's lines are not
+  exact: wait for it to go; `[data-dimension-step]` what to pick next, "Reading the pick…" while
+  the kernel answers). Move the pointer before clicking: `[data-dimension-hover]` (the
+  pickable's key, `data-end` at a vertex) shows what a click takes; picked ones are
+  `[data-dimension-picked]`; the preview `[data-dimension-preview]` carries its text in
+  `data-text`. A click on empty paper places. The card is the region "Dimension" (`exact`):
+  radio group "Direction" ("Horizontal" etc. by accessible name; the labels are shortened),
+  textbox "Decimals" (`ExpressionInput`), "Text before", "Text after", switch "In brackets
+  (reference)". A lost or moved dimension selected has `[data-repick-handle="<i>"]` circles:
+  drag one with `mouse.down/move/up` onto an edge (wait for `[data-dimension-hover]`).
+- The export's PDF text layer writes strings in lowercase hex (`<3734> Tj` is "74"); inflate the
+  `/FlateDecode` streams first. `SHEET_SHOTS=<dir>` makes the spec save light and dark
+  screenshots for a person to look at.
+
+### `e2e/sheet-notes.spec.ts`
+
+- **The notes tools** (P6-24 S4, ADR-0143's S4 notes tools amendment), on the wall bracket template with New
+  drawing's Standard views (A3, 1:1; view IDs from `[data-sheet-view-row]` by name). The top view's box gives the
+  model's x 0..40 and y −40..40 (`tAt`): the holes' rims at (25 + 2.6, ±20), the foot's long edges at y ±40.
+- Tiles `#toolbar-groups [data-label="Centre Mark" | "Centreline" | "Text" | "Leader Note" | "Sticky Note"]`, keys
+  `t` and `n`. Panels are the regions "<Tool> tool" with `[data-note-step]` (what to do next; "Reading the pick…"
+  while the kernel answers). Hover markers are the Dimension tool's (`[data-dimension-hover]`), plus
+  `[data-face-hover]` for a face under the pointer (Leader Note); a following leader is `[data-dimension-preview]`.
+- Typing: the field is `[data-sheet-editor="text" | "leader" | "sticky"]` (focused when it opens): type, Shift+Enter
+  for a new line, Enter to finish (the field goes). Wait for the field to go before the next click. A double-click on
+  a text's glyphs (`[data-sheet-text] text[data-key="item:<id>"]`) opens the field again.
+- Items: rows `[data-sheet-item-row]` under the folder button "Notes" (and "Dimensions"); find a new item by diffing
+  the row IDs. A centre line is one horizontal path of zero height: check `path[data-key]` counts, not visibility.
+  One undo step per item: Ctrl+Z takes the row away, Ctrl+Y brings it back.
+- Cards: regions "Text" (`exact`), "Leader note", "Sticky note" (switch "Print"), "Centre mark", "Centre line"; the
+  view card's switch "Centre lines". The export dialog's switch "Sticky notes"; its summary ends "· 1 sticky note left
+  out" while a note is on screen only. "On screen only" is a text run on the sheet (screen only).
+- Snap: the floating bar's button "Snap" (pressed by default). A drag shows `[data-sheet-guides]`; specs that measure
+  an exact drag (`sheets.spec.ts`' selection test, `sheet-views.spec.ts`' Projected View test) switch it off first.
+- A lost leader: the status text is the kernel's ("The feature this was drawn on is deleted."); its handle is
+  `[data-repick-handle="0"]`, dragged like a dimension's onto an edge.
+
+### `e2e/sheet-lists.spec.ts`
+
+- **The list tools** (P6-24 S5, ADR-0143's S5 list tools amendment) on the base frame built in the spec (as
+  `parts.kernel.test.ts` builds it: `Top` 600 × 400 × 18 on `Leg1`, `Leg2` 50 × 50 × `legs`, boxes centred on x and
+  y; bodies `Top:0`, `Leg1:0`, `Leg2:0`), written with `writeArchive` and opened with Home's "Import…" file chooser,
+  then Make › Drawing › Create Drawing (Standard views, A3, 1:10). The front view's box is the model's x −300..300 and
+  z 0..718 (`fAt`): the legs' outer edges at x ±275, Leg 1's inner edge at −225, the top's face at z 718. Sheet Setup's
+  "Decimals" set to 0 first (whole mm, as the reference's sheet).
+- Tiles `#toolbar-groups [data-label="Parts List" | "Table"]`, key `b` (Balloon). Panels "Parts List tool",
+  "Balloon tool", "Table tool" with `[data-note-step]`. Parts List: the view under the pointer is framed
+  `[data-parts-view]`; the list follows the pointer by its top-left corner. Balloon hovers like a leader
+  (`[data-dimension-hover]`), follows as `[data-dimension-preview]`.
+- Items: rows `[data-sheet-item-row]` under the folders "Notes" (balloons: "Balloon 2 Front") and "Tables" ("Parts
+  list Front", "Table 3 × 2"). A list's cells, a balloon's number and a table's cells are its text runs
+  `[data-sheet-text] text[data-key="item:<id>"]` (`textsOf`): headers in capitals ("SIZE (MM)"), sizes "600 × 400 ×
+  18". A text with a trailing space keeps it in its run.
+- Cards: regions "Parts list" (checkboxes by column name, textboxes "Name, row n" / "Material, row n" with the model's
+  name as placeholder, button "Model's name, row n"), "Balloon", "Table" (buttons "Add row", …), "Text" (`exact`)
+  with the combobox "Insert field" (`selectOption('{sheet}')`). A cell is typed with
+  `[data-sheet-editor="cell"]` after a double-click inside it (sheet mm: the table's `at` + (5, 3.5) is row 1,
+  column 1).
+- Parameters in the drawing: Home › Parameters, `parameterExpression`, then `selectParameter` and the textbox "Name of
+  legs" to rename; the views, the list's sizes and `{= legs}` follow within the poll's 60 s.
+- Leg2 deleted (Finish Drawing, the chip's menu, the sheet's row double-clicked): its balloon's row is `detached` and
+  its paths `data-state="detached"`; `[data-repick-handle="0"]` dragged onto Leg 1's inner edge makes it "2" again.
 
 ### `e2e/shell-feature.spec.ts`
 

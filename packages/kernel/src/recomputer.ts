@@ -7,6 +7,8 @@
  * while another runs cancels it in the worker. Meshes of bodies that didn't
  * change stay here: each request says which versions it has. When a feature
  * crashes the kernel, it is marked as an error and skipped until it changes.
+ * Such a crash doesn't count against the kernel client's restart budget, for
+ * up to `MAX_CRASHED_FEATURES` features: each is one feature fewer to try.
  */
 import {
   type Annotation,
@@ -45,6 +47,9 @@ import {
   type PatternReport,
   PLUGIN_MEDIA_TYPE,
   pluginFileOf,
+  type Sheet,
+  type SheetAnchors,
+  type SheetParts,
   type SimplifyReport,
   type SketchReport,
   type SweepReport,
@@ -77,6 +82,7 @@ import {
   type ExportProgress,
   isKernelCrash,
 } from './service';
+import type { SheetViewProgress, SheetViewRequest, SheetViewResult } from './sheets/views';
 
 export interface RecomputerOptions {
   spawn: SpawnKernel;
@@ -129,6 +135,14 @@ export interface RecomputerOptions {
  * recycling heavy documents more often would pause them for no safety gain.
  */
 export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * The features that crashed the kernel whose crashes don't count against its
+ * restart budget (3 a minute), per open document: past them the budget
+ * applies again, so a design whose every feature traps the kernel still
+ * stops (ADR-0024's amendment of 2026-11-10).
+ */
+export const MAX_CRASHED_FEATURES = 8;
 
 /** Where the bytes of the fonts a design uses come from (ADR-0058 §4). */
 export interface FontSource {
@@ -327,6 +341,18 @@ export class Recomputer {
         }
       },
       onRestart: () => this.#resend(),
+      // A crash in a feature of the document not known to crash is free (it
+      // is skipped from now on), up to MAX_CRASHED_FEATURES of them; any other
+      // one counts (a script's generated feature, say, which no list skips).
+      counts: () => {
+        const id = this.#current;
+        return !(
+          id !== undefined &&
+          !this.#crashed.has(id) &&
+          this.#crashed.size < MAX_CRASHED_FEATURES &&
+          (this.#sent?.features.some((f) => f.id === id) ?? false)
+        );
+      },
     });
   }
 
@@ -517,7 +543,8 @@ export class Recomputer {
 
   /**
    * The persistent reference of a face, edge or vertex of a body the model
-   * store shows (by its mesh index), or with `base` of the last preview's
+   * store shows (by its mesh index, or by its persistent name: a sheet view's
+   * curve carries that), or with `base` of the last preview's
    * base, with its fingerprint (ADR-0005): what a feature dialog's
    * selection field stores. Undefined if the kernel no longer has it or
    * can't be reached.
@@ -525,7 +552,7 @@ export class Recomputer {
   async reference(
     body: BodyId,
     kind: SubShapeKind,
-    index: number,
+    index: number | string,
     base = false,
     options?: WaitOptions,
   ): Promise<GeomRef | undefined> {
@@ -716,6 +743,65 @@ export class Recomputer {
     this.client.call((api) => api.cancelCheck()).catch(() => {});
   }
 
+  /**
+   * Sheet views of what the model store shows (P6-24 S2), one at a time;
+   * `onView` hears each and may stop the run, as may `cancelSheetViews`
+   * (rejects with `isSheetViewsCancelled`).
+   */
+  sheetViews(
+    requests: readonly SheetViewRequest[],
+    onView?: SheetViewProgress,
+    options?: WaitOptions,
+  ): Promise<SheetViewResult[]> {
+    return this.#wait('Computing the sheet views…', options, () =>
+      this.client.call((api) => api.sheetViews(requests, onView)),
+    );
+  }
+
+  /**
+   * The version of each body the model store holds now (the last finished
+   * recompute's, `BodyResult.version`), which a sheet view result's
+   * `versions` are compared with to tell stale lines (P6-24 S2).
+   */
+  bodyVersions(): Record<BodyId, string> {
+    return this.#have();
+  }
+
+  /** Stops running sheet views before their next view. */
+  cancelSheetViews(): void {
+    this.client.call((api) => api.cancelSheetViews()).catch(() => {});
+  }
+
+  /**
+   * A sheet's dimension anchors against what the model store shows (P6-24
+   * S3): per dimension, per anchor, its state and 3D geometry. Undefined if
+   * the kernel can't say (keep the last result then).
+   */
+  async resolveSheet(sheet: Sheet, options?: WaitOptions): Promise<SheetAnchors | undefined> {
+    try {
+      return await this.#wait("Reading the sheet's dimensions…", options, () =>
+        this.client.call((api) => api.resolveSheet(sheet)),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * What a sheet's parts lists need of the model (P6-24 S5): per list, its
+   * view's bodies and their measures. Undefined if the kernel can't say
+   * (keep the last result then).
+   */
+  async sheetParts(sheet: Sheet, options?: WaitOptions): Promise<SheetParts | undefined> {
+    try {
+      return await this.#wait("Reading the sheet's parts lists…", options, () =>
+        this.client.call((api) => api.sheetParts(sheet)),
+      );
+    } catch {
+      return undefined;
+    }
+  }
+
   /** The dialog closed: drops a pending preview. */
   endPreview(): void {
     this.#endPreview();
@@ -887,8 +973,9 @@ export class Recomputer {
         }
         const full = this.#document.getState().doc;
         const marker = full.timelineMarker;
-        // Annotations may name sketches past the marker (ADR-0126); a command can't read them.
-        const { annotations: _notes, annotationCounter: _counter, ...rest } = full;
+        // Annotations may name sketches past the marker (ADR-0126) and sheets bodies past
+        // it (ADR-0143); a command can't read either.
+        const { annotations: _notes, annotationCounter: _counter, sheets: _sheets, ...rest } = full;
         const doc: ExtrudoDocument = {
           ...rest,
           features: full.features.slice(0, marker),

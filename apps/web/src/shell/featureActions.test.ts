@@ -10,6 +10,7 @@ import {
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
+import { createSheet, openSheet } from '../sheets/mode';
 import { createSketchOn, finishSketch } from '../sketch/mode';
 import { createViewportStore } from '../viewport/store';
 import { createFeatureActions } from './featureActions';
@@ -128,6 +129,37 @@ describe('feature actions', () => {
     actions.edit(t.a);
     expect(actions.edit(press.id)).toBe(false);
     expect(opened).toEqual(['p']);
+  });
+
+  it('end the drawing before opening a dialog or a sketch from it (P6-24)', () => {
+    const t = setup();
+    const opened: FeatureId[] = [];
+    const actions = createFeatureActions(t, () => {}, {
+      exportSketch: () => {},
+      editFeature: (id) => {
+        opened.push(id);
+        return t.session.getState().mode === 'model';
+      },
+      hasDialog: (type) => type === 'press',
+    });
+    const press = { id: 'p' as FeatureId, type: 'press', name: 'P', suppressed: false, inputs: {} };
+    const other = { ...press, id: 'q' as FeatureId, type: 'fillet' };
+    t.store.setState({
+      doc: { ...t.s().doc, features: [...t.s().doc.features, press, other], timelineMarker: 4 },
+    });
+    const sheetId = createSheet(t, {});
+    expect(t.session.getState().mode).toBe('sheet');
+    // A feature without a dialog leaves the drawing open.
+    expect(actions.edit(other.id)).toBe(false);
+    expect(t.session.getState().mode).toBe('sheet');
+    // A dialog opens over the model, never over the sheet.
+    expect(actions.edit(press.id)).toBe(true);
+    expect(opened).toEqual(['p']);
+    expect(t.session.getState().mode).toBe('model');
+    // So does a sketch.
+    openSheet(t, sheetId);
+    expect(actions.edit(t.a)).toBe(true);
+    expect(t.session.getState()).toMatchObject({ mode: 'sketch', activeSketchId: t.a });
   });
 
   it('roll the marker and move features, one step each, refused while a sketch is open (P2-11)', () => {

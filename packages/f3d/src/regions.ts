@@ -27,6 +27,29 @@ export type Vec2 = [number, number];
 /** Two points closer than this (cm) are the same point. */
 const TOL = 1e-6;
 
+/**
+ * The work one sketch's region matching may take: segment pairs tested,
+ * polyline steps walked and points sampled, summed over everything asked of
+ * the sketch's pieces. A crafted sketch (two splines of many poles laid over
+ * each other) would otherwise take hours; past this its profile regions are
+ * left unresolved (`overBudget`). The corpus's dearest sketch takes about
+ * 4 million, and this much takes about a second (ADR-0083, amendment of
+ * 2026-11-10).
+ */
+export const MAX_PIECE_WORK = 30_000_000;
+
+class TooMuchWork extends Error {}
+
+/** What a sketch's pieces have spent of `MAX_PIECE_WORK`. */
+interface Budget {
+  work: number;
+}
+
+function spend(budget: Budget, n: number): void {
+  budget.work += n;
+  if (budget.work > MAX_PIECE_WORK) throw new TooMuchWork();
+}
+
 type Curve =
   | { kind: 'line'; a: Vec2; b: Vec2 }
   | {
@@ -40,7 +63,14 @@ type Curve =
       to: number;
       closed: boolean;
     }
-  | { kind: 'polyline'; points: Vec2[]; params: number[]; closed: boolean };
+  | {
+      kind: 'polyline';
+      points: Vec2[];
+      params: number[];
+      closed: boolean;
+      /** Each segment's box, widened by `SEG_TOL` (crossing search), made on first use. */
+      boxes?: Float64Array;
+    };
 
 interface Traced {
   key: string;
@@ -70,8 +100,15 @@ function at(curve: Curve, t: number): Vec2 {
     ];
   }
   const { points, params } = curve;
-  let i = 0;
-  while (i < params.length - 2 && t > (params[i + 1] as number)) i++;
+  // The first segment whose end is at or past t (the params rise), by halving.
+  let lo = 0;
+  let hi = params.length - 2;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (t > (params[mid + 1] as number)) lo = mid + 1;
+    else hi = mid;
+  }
+  const i = Math.max(0, lo);
   const p0 = params[i] as number;
   const p1 = params[i + 1] as number;
   const s = p1 > p0 ? (t - p0) / (p1 - p0) : 0;
@@ -93,7 +130,7 @@ function angleOf(curve: Extract<Curve, { kind: 'arc' }>, p: Vec2): number {
 }
 
 /** A point at parameter `t` (within tolerance) of a traced curve, or undefined. */
-function paramOn(curve: Traced, p: Vec2): number | undefined {
+function paramOn(curve: Traced, p: Vec2, budget: Budget): number | undefined {
   const c = curve.curve;
   if (c.kind === 'line') {
     const d = sub2(c.b, c.a);
@@ -116,6 +153,7 @@ function paramOn(curve: Traced, p: Vec2): number | undefined {
     return Math.min(c.to, Math.max(c.from, a));
   }
   // A polyline: the nearest segment.
+  spend(budget, c.points.length);
   let best: { t: number; d: number } | undefined;
   for (let i = 0; i + 1 < c.points.length; i++) {
     const a = c.points[i] as Vec2;
@@ -133,30 +171,173 @@ function paramOn(curve: Traced, p: Vec2): number | undefined {
   return best && best.d < 1e-4 ? best.t : undefined;
 }
 
+/** The tolerance of a crossing found segment by segment (cm). */
+const SEG_TOL = 1e-5;
+
+/** A curve as the points of a chain of segments (an arc sampled), for the segment-by-segment search. */
+function chainOf(c: Traced): Vec2[] {
+  const k = c.curve;
+  if (k.kind === 'line') return [k.a, k.b];
+  if (k.kind === 'polyline') return k.points;
+  const n = Math.max(4, Math.ceil(((k.to - k.from) / (2 * Math.PI)) * 96));
+  return Array.from({ length: n + 1 }, (_, i) => at(k, k.from + ((k.to - k.from) * i) / n));
+}
+
+/** Each segment's box (x0, y0, x1, y1), widened by `SEG_TOL`: a crossing lies in both. */
+function segmentBoxes(pts: Vec2[]): Float64Array {
+  const n = Math.max(0, pts.length - 1);
+  const out = new Float64Array(4 * n);
+  for (let i = 0; i < n; i++) {
+    const p = pts[i] as Vec2;
+    const q = pts[i + 1] as Vec2;
+    out[4 * i] = Math.min(p[0], q[0]) - 2 * SEG_TOL;
+    out[4 * i + 1] = Math.min(p[1], q[1]) - 2 * SEG_TOL;
+    out[4 * i + 2] = Math.max(p[0], q[0]) + 2 * SEG_TOL;
+    out[4 * i + 3] = Math.max(p[1], q[1]) + 2 * SEG_TOL;
+  }
+  return out;
+}
+
+function boxesOf(c: Traced, pts: Vec2[]): Float64Array {
+  const k = c.curve;
+  if (k.kind !== 'polyline') return segmentBoxes(pts);
+  k.boxes ??= segmentBoxes(pts);
+  return k.boxes;
+}
+
+/** A side of the crossing search's grid at most (cells). */
+const GRID = 1024;
+
+/**
+ * The segment pairs of two chains whose boxes meet, each pair once, in the
+ * order a test of every pair would visit them (a's segments in turn, b's
+ * ascending): b's segments are put in a grid over where the two curves'
+ * boxes meet, and each of a's looks only in the cells its box covers.
+ */
+function* nearPairs(
+  ba: Float64Array,
+  bb: Float64Array,
+  budget: Budget,
+): Generator<[number, number]> {
+  const na = ba.length / 4;
+  const nb = bb.length / 4;
+  if (na * nb <= 64) {
+    spend(budget, na * nb);
+    for (let i = 0; i < na; i++) for (let j = 0; j < nb; j++) yield [i, j];
+    return;
+  }
+  // Where both curves are.
+  const ext = (b: Float64Array, n: number) => {
+    const e = [
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+    ];
+    for (let i = 0; i < n; i++) {
+      e[0] = Math.min(e[0] as number, b[4 * i] as number);
+      e[1] = Math.min(e[1] as number, b[4 * i + 1] as number);
+      e[2] = Math.max(e[2] as number, b[4 * i + 2] as number);
+      e[3] = Math.max(e[3] as number, b[4 * i + 3] as number);
+    }
+    return e;
+  };
+  spend(budget, na + nb);
+  const ea = ext(ba, na);
+  const eb = ext(bb, nb);
+  const x0 = Math.max(ea[0] as number, eb[0] as number);
+  const y0 = Math.max(ea[1] as number, eb[1] as number);
+  const x1 = Math.min(ea[2] as number, eb[2] as number);
+  const y1 = Math.min(ea[3] as number, eb[3] as number);
+  if (!(x0 <= x1 && y0 <= y1)) return;
+  // About one cell per segment of b, square-ish over the common box.
+  const aspect = (x1 - x0) / (y1 - y0 || x1 - x0 || 1) || 1;
+  const sx = Math.max(1, Math.min(GRID, Math.ceil(Math.sqrt(nb * aspect))));
+  const sy = Math.max(1, Math.min(GRID, Math.ceil(nb / sx)));
+  const w = (x1 - x0) / sx || 1;
+  const h = (y1 - y0) / sy || 1;
+  const cell = (v: number, o: number, s: number, n: number) =>
+    Math.max(0, Math.min(n - 1, Math.floor((v - o) / s)));
+  // The cells a box covers, or undefined when it misses the common box.
+  const span = (b: Float64Array, i: number) => {
+    if (
+      (b[4 * i + 2] as number) < x0 ||
+      (b[4 * i] as number) > x1 ||
+      (b[4 * i + 3] as number) < y0 ||
+      (b[4 * i + 1] as number) > y1
+    )
+      return undefined;
+    return [
+      cell(b[4 * i] as number, x0, w, sx),
+      cell(b[4 * i + 1] as number, y0, h, sy),
+      cell(b[4 * i + 2] as number, x0, w, sx),
+      cell(b[4 * i + 3] as number, y0, h, sy),
+    ] as const;
+  };
+  const cells = new Map<number, number[]>();
+  for (let j = 0; j < nb; j++) {
+    const s = span(bb, j);
+    if (!s) continue;
+    spend(budget, (s[2] - s[0] + 1) * (s[3] - s[1] + 1));
+    for (let cx = s[0]; cx <= s[2]; cx++)
+      for (let cy = s[1]; cy <= s[3]; cy++) {
+        const k = cx * sy + cy;
+        const list = cells.get(k);
+        if (list) list.push(j);
+        else cells.set(k, [j]);
+      }
+  }
+  const seen = new Int32Array(nb).fill(-1);
+  const found: number[] = [];
+  for (let i = 0; i < na; i++) {
+    const s = span(ba, i);
+    if (!s) continue;
+    spend(budget, (s[2] - s[0] + 1) * (s[3] - s[1] + 1));
+    found.length = 0;
+    for (let cx = s[0]; cx <= s[2]; cx++)
+      for (let cy = s[1]; cy <= s[3]; cy++) {
+        const list = cells.get(cx * sy + cy);
+        if (!list) continue;
+        spend(budget, list.length);
+        for (const j of list) {
+          if (seen[j] === i) continue;
+          seen[j] = i;
+          found.push(j);
+        }
+      }
+    found.sort((p, q) => p - q);
+    for (const j of found) {
+      // Boxes apart: no crossing within the tolerance.
+      if (
+        (ba[4 * i] as number) > (bb[4 * j + 2] as number) ||
+        (bb[4 * j] as number) > (ba[4 * i + 2] as number) ||
+        (ba[4 * i + 1] as number) > (bb[4 * j + 3] as number) ||
+        (bb[4 * j + 1] as number) > (ba[4 * i + 3] as number)
+      )
+        continue;
+      yield [i, j];
+    }
+  }
+}
+
 /** Where two curves meet: points (sketch frame), found segment by segment for polylines. */
-function crossings(a: Traced, b: Traced): Vec2[] {
+function crossings(a: Traced, b: Traced, budget: Budget): Vec2[] {
   const A = a.curve;
   const B = b.curve;
   if (A.kind === 'polyline' || B.kind === 'polyline') {
-    const segs = (c: Traced): [Vec2, Vec2][] => {
-      const k = c.curve;
-      if (k.kind === 'line') return [[k.a, k.b]];
-      const n =
-        k.kind === 'arc' ? Math.max(4, Math.ceil(((k.to - k.from) / (2 * Math.PI)) * 96)) : 0;
-      const pts =
-        k.kind === 'polyline'
-          ? k.points
-          : Array.from({ length: n + 1 }, (_, i) => at(k, k.from + ((k.to - k.from) * i) / n));
-      const out: [Vec2, Vec2][] = [];
-      for (let i = 0; i + 1 < pts.length; i++) out.push([pts[i] as Vec2, pts[i + 1] as Vec2]);
-      return out;
-    };
+    const pa = chainOf(a);
+    const pb = chainOf(b);
     const out: Vec2[] = [];
-    for (const [p, q] of segs(a))
-      for (const [r, s] of segs(b)) {
-        const hit = segmentCrossing(p, q, r, s, 1e-5);
-        if (hit) out.push(hit);
-      }
+    for (const [i, j] of nearPairs(boxesOf(a, pa), boxesOf(b, pb), budget)) {
+      const hit = segmentCrossing(
+        pa[i] as Vec2,
+        pa[i + 1] as Vec2,
+        pb[j] as Vec2,
+        pb[j + 1] as Vec2,
+        SEG_TOL,
+      );
+      if (hit) out.push(hit);
+    }
     return out;
   }
   if (A.kind === 'line' && B.kind === 'line') {
@@ -219,6 +400,10 @@ function lineCircle(a: Vec2, b: Vec2, c: Vec2, r: number): Vec2[] {
   const slack = 4 * A * 2 * r * 10 * TOL;
   if (disc < -slack) return [];
   disc = Math.max(0, disc);
+  // Two roots closer than the tolerance along the line are one touch: a line
+  // tangent to an arc (a rounded corner) gives two roots a hair apart, and
+  // the one inside the arc would cut it.
+  if (Math.sqrt(disc / A) < 10 * TOL) disc = 0;
   const root = Math.sqrt(disc);
   const ts = disc === 0 ? [-B / (2 * A)] : [(-B - root) / (2 * A), (-B + root) / (2 * A)];
   return ts.map((t) => [a[0] + t * d[0], a[1] + t * d[1]] as Vec2);
@@ -245,8 +430,14 @@ export function nurbsAt(c: SketchSpline, poles: Vec2[], t: number): Vec2 {
   const p = c.degree;
   const k = c.knots;
   const last = poles.length - 1;
+  // The last span whose knot is at or before t (the knots rise), by halving.
   let span = p;
-  while (span < last && t >= (k[span + 1] as number)) span++;
+  let hi = last;
+  while (span < hi) {
+    const mid = (span + hi + 1) >> 1;
+    if (t >= (k[mid] as number)) span = mid;
+    else hi = mid - 1;
+  }
   const d: [number, number, number][] = [];
   for (let j = 0; j <= p; j++) {
     const i = j + span - p;
@@ -271,14 +462,20 @@ const keyOf = (tag: bigint | undefined, secondary: bigint | undefined) =>
   `${tag ?? '?'}:${secondary ?? 0n}`;
 
 function boxOf(points: Vec2[]): [number, number, number, number] {
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
-  return [
-    Math.min(...xs) - TOL,
-    Math.min(...ys) - TOL,
-    Math.max(...xs) + TOL,
-    Math.max(...ys) + TOL,
+  // A loop, not a spread: a spread of many points overflows the stack.
+  let [x0, y0, x1, y1] = [
+    Number.POSITIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
   ];
+  for (const [x, y] of points) {
+    x0 = Math.min(x0, x);
+    y0 = Math.min(y0, y);
+    x1 = Math.max(x1, x);
+    y1 = Math.max(y1, y);
+  }
+  return [x0 - TOL, y0 - TOL, x1 + TOL, y1 + TOL];
 }
 
 function arcCurve(c: SketchCircular): Extract<Curve, { kind: 'arc' }> {
@@ -300,7 +497,7 @@ function arcCurve(c: SketchCircular): Extract<Curve, { kind: 'arc' }> {
 }
 
 /** The sketch's profile curves (not construction), traced. */
-function trace(s: F3dSketch, profileCurves: Set<string>): Traced[] {
+function trace(s: F3dSketch, profileCurves: Set<string>, budget: Budget): Traced[] {
   const points = new Map(s.points.map((p) => [p.id, p.at]));
   const pt = (id: number | undefined, fallback: Vec3): Vec2 => {
     const p = (id !== undefined ? points.get(id) : undefined) ?? fallback;
@@ -348,6 +545,7 @@ function trace(s: F3dSketch, profileCurves: Set<string>): Traced[] {
     const t0 = k[c.degree] as number;
     const t1 = k[poles.length] as number;
     const n = Math.max(16, 8 * (poles.length - c.degree));
+    spend(budget, n);
     const params = Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
     const pts = params.map((t) => nurbsAt(c, poles, t));
     const closed = dist2(pts[0] as Vec2, pts.at(-1) as Vec2) < TOL;
@@ -365,6 +563,7 @@ function trace(s: F3dSketch, profileCurves: Set<string>): Traced[] {
     const t0 = e.startAngle;
     const t1 = t0 + ellipseSweep(e);
     const n = Math.max(16, Math.ceil(((t1 - t0) / (2 * Math.PI)) * 96));
+    spend(budget, n);
     const params = Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
     const pts = params.map((t) => ellipseAt(e, t));
     // The ends sit on the file's own points, as the other curves' do.
@@ -392,30 +591,111 @@ export function ellipseAt(e: SketchEllipse, t: number): Vec2 {
   ];
 }
 
+/**
+ * Where another curve meets a curve. `seam`: the touch of a coincident circle
+ * at a closed curve's start, which the file counts there (first), not at the
+ * end of the turn.
+ */
+interface Hit {
+  other: string;
+  t: number;
+  seam?: true;
+}
+
 /** Each curve, and where the sketch's other curves meet it (its parameter there). */
 export interface SketchPieces {
-  byKey: Map<string, { traced: Traced; hits: { other: string; t: number }[] }>;
+  byKey: Map<string, { traced: Traced; hits: Hit[] }>;
+  /** What the matching has spent so far, shared by every question asked of these pieces. */
+  budget: Budget;
+  /** Set once the work passed `MAX_PIECE_WORK`: no region of the sketch is found from then on. */
+  overBudget?: true;
+}
+
+/** Charges `n` to the pieces' budget: false (and over budget from then on) past it. */
+export function chargePieces(pieces: SketchPieces, n: number): boolean {
+  if (pieces.overBudget) return false;
+  try {
+    spend(pieces.budget, n);
+    return true;
+  } catch (e) {
+    if (!(e instanceof TooMuchWork)) throw e;
+    pieces.overBudget = true;
+    pieces.byKey.clear();
+    return false;
+  }
+}
+
+/**
+ * Charges `steps` probe steps (a point held against one segment of the pieces,
+ * the mapping's point-in-region tests) to the pieces' budget: one such step
+ * costs about a tenth of a unit of the budget (4 ns against 40 ns, measured).
+ */
+export function chargeProbes(pieces: SketchPieces, steps: number): boolean {
+  return chargePieces(pieces, Math.ceil(steps / 10));
+}
+
+/** `run` within the pieces' budget; undefined when it is (or was already) spent. */
+function withinBudget<T>(pieces: SketchPieces, run: () => T): T | undefined {
+  if (pieces.overBudget) return undefined;
+  try {
+    return run();
+  } catch (e) {
+    if (!(e instanceof TooMuchWork)) throw e;
+    pieces.overBudget = true;
+    pieces.byKey.clear();
+    return undefined;
+  }
+}
+
+/** Two arcs on one circle (same centre and radius). */
+function coincident(a: Traced, b: Traced): boolean {
+  const A = a.curve;
+  const B = b.curve;
+  return (
+    A.kind === 'arc' && B.kind === 'arc' && dist2(A.c, B.c) < TOL && Math.abs(A.r - B.r) < 10 * TOL
+  );
+}
+
+/** Where two arcs on one circle touch: each one's ends (a closed one's start, its seam). */
+function coincidentTouches(a: Traced, b: Traced): Vec2[] {
+  const out: Vec2[] = [];
+  for (const t of [a, b]) {
+    out.push(at(t.curve, t.t0));
+    if (!t.closed) out.push(at(t.curve, t.t1));
+  }
+  return out;
 }
 
 export function sketchPieces(s: F3dSketch, profileCurves: Set<string>): SketchPieces {
-  const traced = trace(s, profileCurves);
-  const byKey: SketchPieces['byKey'] = new Map();
+  const budget: Budget = { work: 0 };
+  const pieces: SketchPieces = { byKey: new Map(), budget };
+  withinBudget(pieces, () => cutAll(s, profileCurves, pieces));
+  return pieces;
+}
+
+function cutAll(s: F3dSketch, profileCurves: Set<string>, pieces: SketchPieces): void {
+  const { budget, byKey } = pieces;
+  const traced = trace(s, profileCurves, budget);
   const overlap = (a: Traced, b: Traced) =>
     a.box[0] <= b.box[2] && b.box[0] <= a.box[2] && a.box[1] <= b.box[3] && b.box[1] <= a.box[3];
-  const hits = new Map<Traced, { other: string; t: number }[]>(traced.map((t) => [t, []]));
-  for (let i = 0; i < traced.length; i++)
+  const hits = new Map<Traced, Hit[]>(traced.map((t) => [t, []]));
+  for (let i = 0; i < traced.length; i++) {
+    spend(budget, traced.length - i);
     for (let j = i + 1; j < traced.length; j++) {
       const a = traced[i] as Traced;
       const b = traced[j] as Traced;
       if (!overlap(a, b)) continue;
-      for (const p of crossings(a, b)) {
-        const ta = paramOn(a, p);
-        const tb = paramOn(b, p);
+      // Arcs on one circle have no crossing; they touch where one of them ends.
+      const same = coincident(a, b);
+      for (const p of same ? coincidentTouches(a, b) : crossings(a, b, budget)) {
+        const ta = paramOn(a, p, budget);
+        const tb = paramOn(b, p, budget);
         if (ta === undefined || tb === undefined) continue;
-        hits.get(a)?.push({ other: b.key, t: ta });
-        hits.get(b)?.push({ other: a.key, t: tb });
+        hits.get(a)?.push({ other: b.key, t: ta, ...(same && { seam: true as const }) });
+        hits.get(b)?.push({ other: a.key, t: tb, ...(same && { seam: true as const }) });
       }
     }
+  }
   // Two curves under one key (a duplicate): neither can be told apart.
   const twice = new Set<string>();
   for (const t of traced) {
@@ -423,21 +703,22 @@ export function sketchPieces(s: F3dSketch, profileCurves: Set<string>): SketchPi
     byKey.set(t.key, { traced: t, hits: hits.get(t) ?? [] });
   }
   for (const key of twice) byKey.delete(key);
-  return { byKey };
 }
 
 /**
  * Where a curve is cut by the given other curves: the distinct parameters
  * inside it, in order (on a closed curve, all of them).
  */
-function cutsBy(entry: { traced: Traced; hits: { other: string; t: number }[] }, by: Set<string>) {
+function cutsBy(entry: { traced: Traced; hits: Hit[] }, by: Set<string>, budget: Budget) {
   const t = entry.traced;
+  spend(budget, entry.hits.length);
   const span = Math.abs(t.t1 - t.t0);
   const eps = span * 1e-7 + 1e-9;
   const own = entry.hits
     .filter((h) => h.other !== t.key && by.has(h.other))
-    // On a closed curve, a cut at its start is the one at its end: (t0, t1].
-    .map((h) => (t.closed && h.t < t.t0 + eps ? h.t + span : h.t))
+    // On a closed curve, a cut at its start is the one at its end: (t0, t1];
+    // a coincident circle's touch at the seam stays at the start.
+    .map((h) => (t.closed && h.t < t.t0 + eps && !h.seam ? h.t + span : h.t))
     .filter((x) => t.closed || (x > t.t0 + eps && x < t.t1 - eps))
     .sort((a, b) => a - b);
   const distinct: number[] = [];
@@ -447,7 +728,13 @@ function cutsBy(entry: { traced: Traced; hits: { other: string; t: number }[] },
 }
 
 /** Piece `k` of `n` of a curve as a polyline, or undefined when the curve is not cut into `n`. */
-function piece(t: Traced, cuts: number[], k: number, n: number): Vec2[] | undefined {
+function piece(
+  t: Traced,
+  cuts: number[],
+  k: number,
+  n: number,
+  budget: Budget,
+): Vec2[] | undefined {
   let a: number;
   let b: number;
   if (t.closed) {
@@ -474,6 +761,7 @@ function piece(t: Traced, cuts: number[], k: number, n: number): Vec2[] | undefi
       : c.kind === 'arc'
         ? Math.max(2, Math.ceil((Math.abs(b - a) / (2 * Math.PI)) * 96))
         : Math.max(2, Math.ceil(((b - a) / (t.t1 - t.t0)) * c.points.length * 2));
+  spend(budget, steps);
   const wrap = (x: number) =>
     t.closed && x > t.t1 ? x - (t.t1 - t.t0) : t.closed && x < t.t0 ? x + (t.t1 - t.t0) : x;
   return Array.from({ length: steps + 1 }, (_, i) => at(c, wrap(a + ((b - a) * i) / steps)));
@@ -484,6 +772,11 @@ function piece(t: Traced, cuts: number[], k: number, n: number): Vec2[] | undefi
  * cannot be found as the file counted it, or the pieces do not close up.
  */
 export function regionPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2[][] | undefined {
+  return withinBudget(pieces, () => regionPiecesIn(pieces, loops));
+}
+
+function regionPiecesIn(pieces: SketchPieces, loops: RegionPiece[][]): Vec2[][] | undefined {
+  const { budget } = pieces;
   const out: Vec2[][] = [];
   const ends: Vec2[] = [];
   // A curve's pieces are counted between the region's own curves.
@@ -500,7 +793,7 @@ export function regionPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2
       done.add(name(m));
       const entry = pieces.byKey.get(keyOf(m.tag, m.secondary));
       if (!entry) return undefined;
-      const line = piece(entry.traced, cutsBy(entry, own), m.piece, m.of);
+      const line = piece(entry.traced, cutsBy(entry, own, budget), m.piece, m.of, budget);
       if (!line) return undefined;
       const first = line[0] as Vec2;
       const last = line.at(-1) as Vec2;
@@ -510,6 +803,7 @@ export function regionPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2
         dist2(mid, centre(other)) < 1e-5 &&
         ((dist2(first, other[0] as Vec2) < 1e-5 && dist2(last, other.at(-1) as Vec2) < 1e-5) ||
           (dist2(first, other.at(-1) as Vec2) < 1e-5 && dist2(last, other[0] as Vec2) < 1e-5));
+      spend(budget, out.length);
       if (out.some(same)) continue;
       out.push(line);
       if (dist2(first, last) > 1e-5) ends.push(first, last);
@@ -517,10 +811,37 @@ export function regionPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2
   // Every end meets another one.
   const left = [...ends];
   while (left.length > 0) {
+    spend(budget, left.length);
     const p = left.pop() as Vec2;
     const i = left.findIndex((q) => dist2(p, q) < 1e-5);
     if (i < 0) return undefined;
     left.splice(i, 1);
+  }
+  return out;
+}
+
+/**
+ * The listed pieces that can still be found as the file counted them, as
+ * polylines (sketch frame), once each: a region record written before its
+ * sketch was edited names curves that are gone or cut differently now, and
+ * the rest still say where its boundary ran.
+ */
+export function listedPieces(pieces: SketchPieces, loops: RegionPiece[][]): Vec2[][] {
+  return withinBudget(pieces, () => listedPiecesIn(pieces, loops)) ?? [];
+}
+
+function listedPiecesIn(pieces: SketchPieces, loops: RegionPiece[][]): Vec2[][] {
+  const { budget } = pieces;
+  const own = new Set(loops.flat().map((m) => keyOf(m.tag, m.secondary)));
+  const out: Vec2[][] = [];
+  const done = new Set<string>();
+  for (const m of loops.flat()) {
+    const name = `${keyOf(m.tag, m.secondary)}#${m.piece}/${m.of}`;
+    if (done.has(name)) continue;
+    done.add(name);
+    const entry = pieces.byKey.get(keyOf(m.tag, m.secondary));
+    const line = entry && piece(entry.traced, cutsBy(entry, own, budget), m.piece, m.of, budget);
+    if (line) out.push(line);
   }
   return out;
 }

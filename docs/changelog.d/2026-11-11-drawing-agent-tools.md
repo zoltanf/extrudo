@@ -1,0 +1,1 @@
+- 2026-11-11 · **Agents make drawings**: the desktop app's MCP server lists sheets, adds a sheet with the standard views fitted to the model, views, dimensions that answer the size they measure, and notes, and exports a sheet as a PDF or a picture; the skill says how (P6-24 S6, ADR-0143).

@@ -166,6 +166,16 @@ jobs:
       - name: Unit and memory tests
         run: node scripts/vitest-retry.ts
 
+      # Drawings (P6-24 S6, ADR-0143): the CLI exports the drawing fixture as a
+      # PDF, and its pages and text are what the sheets say; no anchor is detached.
+      - name: A drawing exported by the CLI
+        run: |
+          pnpm extrudo check fixtures/sheets/plate.extrudo --sheets
+          pnpm extrudo export fixtures/sheets/plate.extrudo --format pdf --version-name V1 --out "$RUNNER_TEMP/plate.pdf"
+          node scripts/check-sheet-pdf.mjs "$RUNNER_TEMP/plate.pdf" --pages 2 \
+            --text "Plate and peg" --text "60.0" --text "Ø16.0" --text "Break the edge 1.0 mm" \
+            --text "Drawn 2026-11-11, V1. Sheet 1 of 2." --text "First drawing"
+
   docker:
     # The Docker image (ADR-0091): builds it from a fresh app build for the
     # runner's architecture, starts it and runs the smoke test. Pushes nothing;

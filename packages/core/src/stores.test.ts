@@ -3,7 +3,7 @@ import { CommandError } from './commands';
 import { createDocument } from './document';
 import { renameDocument, renameFeature } from './document-commands';
 import type { HistoryEvent } from './history';
-import type { ComponentId } from './ids';
+import type { ComponentId, SheetId } from './ids';
 import { createDocumentStore, createModelStore, createSessionStore } from './stores';
 import { bid, fid, sampleDocument } from './testing';
 
@@ -239,6 +239,24 @@ describe('session store', () => {
     });
     store.getState().exitSketch();
     expect(store.getState()).toMatchObject({ mode: 'model', activeSketchId: undefined });
+  });
+
+  it('enters the drawing with its sheet, and a sketch clears it (ADR-0143)', () => {
+    const store = createSessionStore();
+    const sheet = 's1' as SheetId;
+    store.getState().select([face('a')]);
+    store.getState().enterMode('sheet', { activeSheetId: sheet });
+    expect(store.getState()).toMatchObject({
+      mode: 'sheet',
+      activeSheetId: sheet,
+      activeSketchId: undefined,
+      selection: [],
+    });
+    store.getState().enterSketch(fid('f1'));
+    expect(store.getState()).toMatchObject({ mode: 'sketch', activeSheetId: undefined });
+    store.getState().enterMode('sheet', { activeSheetId: sheet });
+    store.getState().exitMode();
+    expect(store.getState()).toMatchObject({ mode: 'model', activeSheetId: undefined });
   });
 
   it('resets the Slice side when a sketch opens or closes (P4-12)', () => {

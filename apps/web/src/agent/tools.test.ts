@@ -15,6 +15,7 @@ import type { AgentReply } from '../platform/agent';
 import type { SnapshotOptions } from '../viewport/snapshotView';
 import type { AgentHost } from './host';
 import { TOOL_NAMES, toolDefinitions } from './schemas';
+import { NO_SHEET_KERNEL } from './sheetTools';
 import { fakeContext, fakeHost } from './testing';
 import {
   type AgentContext,
@@ -969,5 +970,76 @@ describe('annotations (ADR-0126 §8)', () => {
     expect(textOf(await runTool('remove_annotation', { numbers: [1] }, context(host)))).toMatch(
       /There is no annotation/,
     );
+  });
+});
+
+describe('the sheet tools (P6-24 S6) and the drawing mode', () => {
+  it('adds an empty sheet in one step, answers it, and undo takes it back', async () => {
+    const { host, store, session } = plateHost();
+    const added = jsonOf(
+      await runTool('add_sheet', { name: 'Notes', start: 'empty', size: 'A4' }, context(host)),
+    );
+    expect(added.done).toBe('Agent: Add sheet Notes');
+    expect(added.result).toMatchObject({
+      name: 'Notes',
+      paper: { size: 'A4', orientation: 'landscape', width: 297, height: 210 },
+      scale: '1:1',
+      views: [],
+      items: [],
+    });
+    // The API's defaults: the design's name and units, no date and no author.
+    expect(store.getState().doc.sheets?.[0]?.titleBlock?.fields).toEqual({
+      title: 'Plate',
+      units: 'mm',
+    });
+    expect(session.getState().mode).toBe('model');
+    expect(store.getState().undoLabel).toBe('Agent: Add sheet Notes');
+    await runTool('undo', {}, context(host));
+    expect(store.getState().doc.sheets ?? []).toEqual([]);
+  });
+
+  it('refuses a name in use, a standard start without the kernel, and an unknown sheet', async () => {
+    const { host, store } = plateHost();
+    await runTool('add_sheet', { name: 'Notes', start: 'empty' }, context(host));
+    const before = store.getState().doc;
+    expect(
+      textOf(await runTool('add_sheet', { name: 'notes', start: 'empty' }, context(host))),
+    ).toBe('name: There is a sheet named "Notes" already: pick another name.');
+    expect(textOf(await runTool('add_sheet', { name: 'Plate' }, context(host)))).toBe(
+      NO_SHEET_KERNEL,
+    );
+    expect(
+      textOf(await runTool('add_note', { sheet: 'Other', text: 'x', at: [1, 1] }, context(host))),
+    ).toBe('sheet: There is no sheet "Other": list_sheets lists them.');
+    expect(textOf(await runTool('export_sheet', { format: 'pdf' }, context(host)))).toBe(
+      NO_SHEET_KERNEL,
+    );
+    expect(store.getState().doc).toBe(before);
+  });
+
+  it('works with the drawing open and leaves it open; a screenshot finishes it first', async () => {
+    const { host, store, session } = plateHost();
+    await runTool('add_sheet', { name: 'Notes', start: 'empty' }, context(host));
+    const id = store.getState().doc.sheets?.[0]?.id;
+    session.getState().enterMode('sheet', { activeSheetId: id });
+    const note = jsonOf(
+      await runTool('add_note', { sheet: 'Notes', text: 'Deburr', at: [20, 20] }, context(host)),
+    );
+    expect(note.result.kind).toBe('text');
+    expect(session.getState().mode).toBe('sheet');
+    expect(jsonOf(await runTool('list_sheets', {}, context(host))).open).toBe('Notes');
+    const shot = await runTool('screenshot', {}, context(host));
+    expect(session.getState().mode).toBe('model');
+    expect(shot.result.content.map((c) => c.type)).toEqual(['image', 'text']);
+    expect((shot.result.content[1] as { text: string }).text).toMatch(/drawing was open/);
+    // In the model already: the screenshot says nothing of the drawing.
+    const again = await runTool('screenshot', {}, context(host));
+    expect(again.result.content.map((c) => c.type)).toEqual(['image']);
+  });
+
+  it('refuses a sheet change while a sketch is open', async () => {
+    const { host, session } = plateHost();
+    session.setState({ mode: 'sketch' } as never);
+    expect(textOf(await runTool('add_sheet', { start: 'empty' }, context(host)))).toBe(BUSY);
   });
 });

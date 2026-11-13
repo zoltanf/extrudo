@@ -2906,6 +2906,460 @@ test('demo: intersect', async ({ page }) => {
   });
 });
 
+// ---- The Drawing tab (P6-24 S6, ADR-0143) -------------------------------------
+//
+// The sheet is SVG, not the 3D view: a scene opens one of the spool holder's sheets
+// (`fixtures/demos/sheet*.extrudo`, A4 landscape at 1:1, first angle: the front view's origin
+// at sheet mm (75, 82), the top view's at (75, 140), z and y up the paper), zooms the paper
+// until a region of it fills the frame (`frameSheet`), and drives the tool there. Points are
+// sheet mm from the paper's top-left corner, y down.
+
+type Mm = readonly [number, number];
+
+const sheetOf = (page: Page) => page.getByRole('region', { name: 'Sheet', exact: true });
+
+/** The front view's sheet point for model (x, z), and the top view's for model (x, y). */
+const frontAt = (x: number, z: number): Mm => [75 + x, 82 - z];
+const topAt = (x: number, y: number): Mm => [75 + x, 140 + y];
+
+/** Every view drawn exactly (no stale lines) and the sheet's text in. */
+async function sheetSettled(page: Page) {
+  const sheet = sheetOf(page);
+  await expect(sheet.locator('[data-sheet-text] text').first()).toBeAttached({ timeout: 30_000 });
+  await expect
+    .poll(() => sheet.locator('[data-sheet-paper] > svg path[data-state="stale"]').count(), {
+      timeout: 60_000,
+    })
+    .toBe(0);
+  await page.waitForTimeout(300);
+}
+
+/** A drawing scene's design, its sheet open (Make › Drawing) with every view drawn. */
+async function sheetScene(page: Page, name: string) {
+  await demoDesign(page, name);
+  await runTool(page, 'sheets', 'print');
+  await expect(sheetOf(page)).toBeVisible();
+  await sheetSettled(page);
+}
+
+/** Sheet mm to page px, as the paper lies now. */
+async function paperAt(page: Page) {
+  const sheet = sheetOf(page);
+  const box = await sheet.locator('[data-sheet-paper]').boundingBox();
+  if (!box) throw new Error('no paper');
+  const [w, h] = ((await sheet.getAttribute('data-paper')) ?? '').split('x').map(Number) as [
+    number,
+    number,
+  ];
+  return ([x, y]: Mm) => ({ x: box.x + (x / w) * box.width, y: box.y + (y / h) * box.height });
+}
+
+/** Pans the sheet so page point `from` moves to `to`: Ctrl + a middle drag pans in every preset. */
+async function panSheetBy(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+) {
+  await page.mouse.move(from.x, from.y);
+  await page.keyboard.down('Control');
+  await page.mouse.down({ button: 'middle' });
+  for (let i = 1; i <= 8; i++) {
+    await page.mouse.move(from.x + ((to.x - from.x) * i) / 8, from.y + ((to.y - from.y) * i) / 8);
+  }
+  await page.mouse.up({ button: 'middle' });
+  await page.keyboard.up('Control');
+}
+
+/**
+ * Zooms the paper at the middle of sheet region [x0, y0, x1, y1] until it fills `fill` of a
+ * FRAME, pans it clear of the browser, the right column and the floating bar, and gives the
+ * frame round it with the mapping from sheet mm.
+ */
+async function frameSheet(page: Page, [x0, y0, x1, y1]: readonly number[], fill = 0.95) {
+  const paper = sheetOf(page).locator('[data-sheet-paper]');
+  const width = async () => (await paper.boundingBox())?.width ?? 0;
+  for (let step = 0; step < 40; step++) {
+    const at = await paperAt(page);
+    const a = at([x0 ?? 0, y0 ?? 0]);
+    const b = at([x1 ?? 0, y1 ?? 0]);
+    const centre = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    const share = Math.max((b.x - a.x) / FRAME.width, (b.y - a.y) / FRAME.height);
+    if (Math.abs(share / fill - 1) <= 0.04) {
+      const area = await safeArea(page);
+      const want = {
+        x: clamp(centre.x, area.left + FRAME.width / 2, area.right - FRAME.width / 2),
+        y: clamp(centre.y, area.top + FRAME.height / 2, area.bottom - FRAME.height / 2),
+      };
+      if (Math.hypot(want.x - centre.x, want.y - centre.y) < 2) {
+        return { at, clip: await frameAt(page, centre) };
+      }
+      await panSheetBy(page, centre, want);
+      continue;
+    }
+    await page.mouse.move(centre.x, centre.y);
+    const before = await width();
+    await page.mouse.wheel(0, clamp(Math.log(share / fill) / 0.0015, -400, 400));
+    await expect.poll(width).not.toBe(before);
+  }
+  throw new Error('the sheet would not fit the frame');
+}
+
+/** Glides to sheet point `q` until the running tool shows `what` there, then clicks. */
+async function pickOnSheet(
+  page: Page,
+  p: Glide,
+  at: (q: Mm) => { x: number; y: number },
+  q: Mm,
+  what = '[data-dimension-hover]',
+) {
+  const aim = at(q);
+  await p.moveTo(aim, 450);
+  let nudge = 0;
+  await expect
+    .poll(async () => {
+      await page.mouse.move(aim.x + (nudge++ % 2), aim.y);
+      return sheetOf(page).locator(what).count();
+    })
+    .toBe(1);
+  await page.waitForTimeout(150);
+  await page.mouse.click(aim.x, aim.y);
+  await expect(page.locator('[data-note-step], [data-dimension-step]').first()).not.toHaveText(
+    'Reading the pick…',
+  );
+  await page.waitForTimeout(150);
+}
+
+/** Types into the field the tool opened on the sheet, a key at a time, and finishes with Enter. */
+async function typeOnSheet(page: Page, kind: string, text: string) {
+  const field = sheetOf(page).locator(`[data-sheet-editor="${kind}"]`);
+  await expect(field).toBeFocused();
+  await page.keyboard.type(text, { delay: 70 });
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Enter');
+  await expect(field).toHaveCount(0);
+}
+
+/** Ends a scene: Esc ends the tool, the pointer glides to empty paper, Esc clears the selection. */
+async function restOnSheet(page: Page, p: Glide, q: { x: number; y: number }) {
+  await page.keyboard.press('Escape');
+  await p.moveTo(q, 400);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(900);
+}
+
+test('demo: baseView', async ({ page }) => {
+  await sheetScene(page, 'sheetEmpty');
+  const { at, clip } = await frameSheet(page, [20, 20, 140, 95]);
+  const p = pointer(page);
+  await p.jump(at([128, 88]));
+  const panel = page.getByRole('region', { name: 'Base view' });
+  await record(page, 'baseView', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'baseView', 'sheet');
+    await p.moveTo(at([118, 80]), 300);
+    await expect(panel).toContainText('Click on the sheet to place the view.');
+    await expect(sheetOf(page).locator('[data-sheet-placing]')).toBeVisible();
+    await p.moveTo(at([100, 70]), 500);
+    await p.click(at([75, 56]), 600);
+    await expect(page.getByRole('region', { name: 'Projected view' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await sheetSettled(page);
+    await restOnSheet(page, p, at([128, 88]));
+  });
+});
+
+test('demo: projectedView', async ({ page }) => {
+  await sheetScene(page, 'sheetBase');
+  const { at, clip } = await frameSheet(page, [28, 22, 196, 127]);
+  const p = pointer(page);
+  await p.jump(at([60, 110]));
+  const panel = page.getByRole('region', { name: 'Projected view' });
+  await record(page, 'projectedView', clip, async () => {
+    await page.waitForTimeout(300);
+    // The front view selected, then the tool: it projects from the selected view.
+    await p.click(at([60, 79]), 450);
+    await expect.poll(() => sheetOf(page).getAttribute('data-selected')).toMatch(/^view:/);
+    await runTool(page, 'projectedView', 'sheet');
+    await expect(panel).toContainText('From Front');
+    await p.moveTo(at([130, 60]), 500);
+    await p.moveTo(at([165, 56]), 500);
+    await expect(panel.locator('[data-projected-next]')).toHaveAttribute(
+      'data-projected-next',
+      'Left',
+    );
+    await page.waitForTimeout(300);
+    await p.click(at([165, 56]), 100);
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await sheetSettled(page);
+    await restOnSheet(page, p, at([60, 110]));
+  });
+});
+
+test('demo: sheetDimension', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [25, 26, 133, 93.5]);
+  const p = pointer(page);
+  await p.jump(at([30, 30]));
+  await record(page, 'sheetDimension', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetDimension', 'sheet');
+    await expect(page.locator('[data-dimension-waiting]')).toHaveCount(0, { timeout: 60_000 });
+    // The plate's bottom edge: 80 below it, then its right side: 6 beside it.
+    await pickOnSheet(page, p, at, frontAt(22, 0));
+    await p.moveTo(at([90, 88]), 500);
+    await p.click(at([75, 90]), 400);
+    await pickOnSheet(page, p, at, frontAt(40, 3));
+    await p.moveTo(at([118, 76]), 400);
+    await p.click(at([124, 79]), 300);
+    await restOnSheet(page, p, at([30, 30]));
+  });
+});
+
+test('demo: sheetCentreMark', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [21, 108, 121, 170.5]);
+  const p = pointer(page);
+  await p.jump(at([70, 165]));
+  await record(page, 'sheetCentreMark', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetCentreMark', 'sheet');
+    for (const rim of [topAt(-30 + 2.25, 0), topAt(30 - 2.25, 0), topAt(0, 13)]) {
+      await pickOnSheet(page, p, at, rim);
+      await page.waitForTimeout(250);
+    }
+    await restOnSheet(page, p, at([70, 165]));
+  });
+});
+
+test('demo: sheetCentreLine', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [25, 22, 125, 84.5]);
+  const p = pointer(page);
+  await p.jump(at([121, 28]));
+  await record(page, 'sheetCentreLine', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetCentreLine', 'sheet');
+    // The axle's two outlines, midway between them.
+    await pickOnSheet(page, p, at, frontAt(-6, 32));
+    await pickOnSheet(page, p, at, frontAt(6, 32));
+    await restOnSheet(page, p, at([121, 28]));
+  });
+});
+
+test('demo: sheetText', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [15, 140, 119, 205]);
+  const p = pointer(page);
+  await p.jump(at([100, 195]));
+  await record(page, 'sheetText', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetText', 'sheet');
+    await p.click(at([22, 180]), 600);
+    await typeOnSheet(page, 'text', 'Print in PETG.');
+    await restOnSheet(page, p, at([100, 195]));
+  });
+});
+
+test('demo: sheetLeader', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [17, 106, 121, 171]);
+  const p = pointer(page);
+  await p.jump(at([100, 165]));
+  await record(page, 'sheetLeader', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetLeader', 'sheet');
+    await pickOnSheet(page, p, at, topAt(-30 + 2.25, 0));
+    await p.moveTo(at([52, 118]), 500);
+    await expect(sheetOf(page).locator('[data-dimension-preview]')).toHaveCount(1);
+    await p.click(at([56, 113]), 300);
+    await typeOnSheet(page, 'leader', '2 holes for M4');
+    await restOnSheet(page, p, at([100, 165]));
+  });
+});
+
+test('demo: sheetBalloon', async ({ page }) => {
+  await sheetScene(page, 'sheetList');
+  const { at, clip } = await frameSheet(page, [14, 22, 118, 87]);
+  const p = pointer(page);
+  await p.jump(at([112, 25]));
+  await record(page, 'sheetBalloon', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetBalloon', 'sheet');
+    // The bracket's left end, then the axle's outline: numbered 1 and 2 by the parts list.
+    await pickOnSheet(page, p, at, frontAt(-40, 3));
+    await p.click(at([22, 62]), 500);
+    await pickOnSheet(page, p, at, frontAt(6, 36));
+    await p.click(at([100, 40]), 500);
+    await restOnSheet(page, p, at([112, 25]));
+  });
+});
+
+test('demo: sheetSticky', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [176, 100, 280, 165]);
+  const p = pointer(page);
+  await p.jump(at([270, 160]));
+  await record(page, 'sheetSticky', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetSticky', 'sheet');
+    await p.click(at([186, 106]), 600);
+    await typeOnSheet(page, 'sticky', 'Ask about the colour');
+    await restOnSheet(page, p, at([270, 160]));
+  });
+});
+
+test('demo: sheetPartsList', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [135, 26, 287, 121]);
+  const p = pointer(page);
+  await p.jump(at([140, 95]));
+  await record(page, 'sheetPartsList', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetPartsList', 'sheet');
+    // The side view's bodies become the rows; the list follows the pointer by its corner.
+    await p.click(at([165, 60]), 600);
+    await expect(sheetOf(page).locator('[data-parts-view]')).toHaveCount(1);
+    await p.moveTo(at([175, 105]), 500);
+    await p.click(at([150, 98]), 500);
+    await restOnSheet(page, p, at([140, 95]));
+  });
+});
+
+test('demo: sheetTable', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [15, 140, 119, 205]);
+  const p = pointer(page);
+  await p.jump(at([100, 195]));
+  await record(page, 'sheetTable', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetTable', 'sheet');
+    await p.click(at([22, 172]), 600);
+    await page.keyboard.press('Escape');
+    for (const [dx, text] of [
+      [5, 'Rev'],
+      [35, 'A'],
+    ] as const) {
+      const cell = at([22 + dx, 175.5]);
+      await p.moveTo(cell, 400);
+      await page.mouse.dblclick(cell.x, cell.y);
+      await typeOnSheet(page, 'cell', text);
+    }
+    await restOnSheet(page, p, at([100, 195]));
+  });
+});
+
+test('demo: newSheet', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  // A new sheet is fitted to the window like the first (A3 and A4 have the same shape), so the
+  // frame stays on the paper's lower right, its title block, without zooming.
+  const at = await paperAt(page);
+  const clip = await frameAt(page, at([205, 160]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 40, y: clip.y + 40 });
+  await record(page, 'newSheet', clip, async () => {
+    await page.waitForTimeout(1000);
+    await runTool(page, 'newSheet', 'sheet');
+    await expect(page.locator('[data-sheet-tab]')).toHaveCount(2);
+    await sheetSettled(page);
+    await page.waitForTimeout(1800);
+  });
+});
+
+test('demo: sheetSetup', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  const { at, clip } = await frameSheet(page, [18, 20, 194, 130]);
+  const p = pointer(page);
+  await p.jump(at([180, 120]));
+  await record(page, 'sheetSetup', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'sheetSetup', 'sheet');
+    const setup = page.getByRole('region', { name: 'Sheet setup' });
+    await expect(setup).toBeVisible();
+    // The sheet's scale, 1:1 → 1:2: every view follows.
+    await page.waitForTimeout(700);
+    const scale = setup.getByRole('textbox', { name: 'Scale: sheet' });
+    await scale.focus();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.type('2');
+    await page.keyboard.press('Enter');
+    await sheetSettled(page);
+    await page.waitForTimeout(1800);
+  });
+});
+
+test('demo: exportSheets', async ({ page }) => {
+  await sheetScene(page, 'sheetViews');
+  await runTool(page, 'exportSheets', 'sheet');
+  const dialog = page.getByRole('dialog', { name: 'Export drawing' });
+  await expect(dialog).toBeVisible();
+  await page.waitForTimeout(400);
+  // The frame holds the format column: Format, its note, the file name and the switches.
+  const box = await dialog.boundingBox();
+  const format = await dialog.getByRole('radio', { name: 'PDF' }).boundingBox();
+  if (!box || !format) throw new Error('no dialog');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  const clip = {
+    x: Math.round(Math.min(format.x - 24, box.x + box.width - 400)),
+    y: Math.round(format.y - 56),
+    width: 400,
+    height: 250,
+  };
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 330, y: clip.y + 220 });
+  await record(page, 'exportSheets', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'exportSheets', 'sheet');
+    await expect(dialog).toBeVisible();
+    await page.waitForTimeout(600);
+    await p.click(await centreOf(dialog.getByRole('radio', { name: 'SVG' })), 600);
+    await page.waitForTimeout(700);
+    await p.click(await centreOf(dialog.getByRole('radio', { name: 'PDF' })), 500);
+    await page.waitForTimeout(900);
+  });
+});
+
+test('demo: finishDrawing', async ({ page }) => {
+  // The model framed in the 3D view first, so Finish Drawing comes back to it.
+  await demoDesign(page, 'sheetViews');
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-40, -20, 0], [40, 20, 53]), 0.6);
+  await runTool(page, 'sheets', 'print');
+  await expect(sheetOf(page)).toBeVisible();
+  await sheetSettled(page);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  await record(page, 'finishDrawing', clip, async () => {
+    await page.waitForTimeout(1000);
+    await runTool(page, 'finishDrawing', 'sheet');
+    await expect(sheetOf(page)).toHaveCount(0);
+    await settled(viewportOf(page));
+    await page.waitForTimeout(1500);
+  });
+});
+
+test('demo: sheets', async ({ page }) => {
+  await demoDesign(page, 'sheetViews');
+  // Opened and finished once first: the clip shows the sheet coming in, not the mode loading.
+  await runTool(page, 'sheets', 'print');
+  await sheetSettled(page);
+  await runTool(page, 'finishDrawing', 'sheet');
+  await expect(sheetOf(page)).toHaveCount(0);
+  await turnView(page, 'Shift+1');
+  const { clip } = await frameWorld(page, boxPoints([-40, -20, 0], [40, 20, 53]), 0.6);
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 40, y: clip.y + clip.height - 30 });
+  await record(page, 'sheets', clip, async () => {
+    await page.waitForTimeout(1000);
+    // Make › Drawing opens the sheet edited last.
+    await runTool(page, 'sheets', 'print');
+    await expect(sheetOf(page)).toBeVisible();
+    await sheetSettled(page);
+    await page.waitForTimeout(1200);
+  });
+});
+
 // ---- The landing page's walkthrough (ADR-0057 amendment) ---------------------
 
 const WALKTHROUGH = join(process.cwd(), 'apps', 'site', 'src', 'images', 'walkthrough');

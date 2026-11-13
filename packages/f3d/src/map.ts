@@ -59,6 +59,7 @@ import { continues, type EdgeShape, edgeShape } from './edge-shape';
 import {
   type CopyContext,
   combineBodies,
+  copiedFeatures,
   type MadeCopies,
   mirror,
   moveBodies,
@@ -84,7 +85,15 @@ import type {
   F3dSketchFeature,
   Matrix,
 } from './model';
-import { insidePieces, nurbsAt, regionPieces, type SketchPieces, sketchPieces } from './regions';
+import {
+  chargeProbes,
+  insidePieces,
+  listedPieces,
+  nurbsAt,
+  regionPieces,
+  type SketchPieces,
+  sketchPieces,
+} from './regions';
 import {
   addSketchConstraints,
   type ConstraintContext,
@@ -856,13 +865,31 @@ export function f3dToDesign(
         if (reason) report.skipped.push(skippedFeature(feature.name, feature.kind, reason));
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
-        const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
+        const made = circularPattern(d, feature, replayable, sketches, expressionOf);
         if (typeof made === 'string')
           report.skipped.push(skippedFeature(feature.name, feature.kind, made));
         else {
           // The file numbers instances from 1, the original; Extrudo from 0.
           const label = (code: number) => (code >= 2 ? String(code - 1) : undefined);
-          naming.copies.set(feature.id, { op: 'pattern', id: made.id, label });
+          const count = feature.count?.value ?? 0;
+          const labels =
+            Number.isInteger(count) && count >= 2 && count <= 1000
+              ? Array.from({ length: count - 1 }, (_, i) => String(i + 1))
+              : undefined;
+          const copies: MadeCopies = {
+            op: 'pattern',
+            id: made.id,
+            label,
+            ...(labels && { labels }),
+          };
+          naming.copies.set(feature.id, copies);
+          leftOut(
+            feature,
+            'repeats',
+            replayable,
+            copyRounds(d, feature, copies, replayable, naming.rounds, report),
+            report,
+          );
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'thread') {
@@ -945,6 +972,10 @@ export function f3dToDesign(
             report.skipped.push(skippedFeature(feature.name, feature.kind, made));
           else {
             naming.copies.set(feature.id, made);
+            if (feature.objects === 'features') {
+              const again = copyRounds(d, feature, made, replayable, naming.rounds, report);
+              leftOut(feature, 'copies', replayable, again, report);
+            }
             report.imported.push(feature.name);
           }
         }
@@ -2009,6 +2040,9 @@ export function selectProfiles(
     const exact = new Map(
       operand.regions.map((want) => [want, exactRegions(sketch, regions, want)]),
     );
+    // A crafted sketch whose curves cost too much to cut: its regions are not
+    // looked for again (`MAX_PIECE_WORK`).
+    if (sketch.pieces?.overBudget) return TOO_MANY_CROSSINGS;
     const whole = new Set(
       operand.regions.filter((want) => !want.outline && !exact.get(want)).map((want) => want.group),
     );
@@ -2022,14 +2056,24 @@ export function selectProfiles(
       if (want.outline && !whole.has(want.group)) continue;
       if (!want.outline && !exact.get(want) && covered.has(want.group)) continue;
       const found = exact.get(want);
-      const how = found ? 'exact' : want.outline ? 'outline skipped' : 'by curves';
+      // Not found as counted: the region whose boundary follows the listed
+      // pieces best, else the region the listed curves close.
+      const near = found || want.outline ? undefined : overlapRegion(sketch, regions, want);
+      const how = found
+        ? 'exact'
+        : want.outline
+          ? 'outline skipped'
+          : near
+            ? 'by overlap'
+            : 'by curves';
       regionStats[how] = (regionStats[how] ?? 0) + 1;
       if (found) {
-        for (const ref of found) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
+        for (const ref of [...found, ...textsInside(sketch, want)])
+          if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
         continue;
       }
       if (want.outline) continue;
-      const refs = matchRegions(sketch.handle, regions, sketch.tags, want);
+      const refs = near ?? matchRegions(sketch.handle, regions, sketch.tags, want);
       if (refs.length === 0) {
         // Every curve around it was deleted after the pick: the file lost this
         // region too, and the operand's other regions make the profile.
@@ -2057,6 +2101,7 @@ export function selectProfiles(
       }
       for (const ref of refs) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
     }
+    if (sketch.pieces?.overBudget) return TOO_MANY_CROSSINGS;
     if (missed && profiles.length === before) return missed;
     if (lost && profiles.length === before)
       return 'the curves around its profile regions were deleted';
@@ -2292,8 +2337,9 @@ function revolve(
 /**
  * A circular pattern of features: the tools of the imported features it
  * repeats, replayed round an origin axis or a sketch line and joined or cut
- * as each feature was. Features Extrudo does not replay (fillets, chamfers)
- * or did not import are left out with a note.
+ * as each feature was. Its fillets and chamfers are repeated after it
+ * (`copyRounds`); features it can't repeat or did not import are left out
+ * with a note (`leftOut`).
  */
 function circularPattern(
   d: Design,
@@ -2301,24 +2347,13 @@ function circularPattern(
   made: Map<number, { id: string; name: string }>,
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
-  report: ImportReport,
 ): string | { id: string } {
   if (f.objects !== 'features' || f.features.length === 0)
     return 'it repeats faces (only features are imported)';
   if (!f.axis) return 'its axis was not found';
   if (!f.count) return 'its count was not found';
-  const features: GeomRef[] = [];
-  let left = 0;
-  for (const record of f.features) {
-    const feature = made.get(record);
-    if (feature) features.push({ kind: 'feature', id: feature.id });
-    else left++;
-  }
+  const { features } = copiedFeatures(f.features, made);
   if (features.length === 0) return 'none of the features it repeats was imported';
-  if (left)
-    report.notes.push(
-      `${f.name}: ${left} of the ${f.features.length} features it repeats left out (not imported, or a fillet or chamfer).`,
-    );
   const axis = axisRef(f.axis, sketches);
   if (!axis) return 'its axis is not an origin axis or a sketch line';
   const angle = f.parameters.find((p) => p.kind === 'TotalAngle');
@@ -2799,12 +2834,15 @@ function offsetFaces(
   report: ImportReport,
 ): string | undefined {
   if (!f.distance) return 'its distance was not found';
+  // An offset by 0 moves nothing: imported as nothing (Extrudo refuses one).
+  if (Math.abs(f.distance.value) < 1e-12) {
+    report.notes.push(`${f.name}: its distance is 0, so it changes nothing; imported as nothing.`);
+    return undefined;
+  }
   // The one such offset in the files seen fails in the kernel: its body has a
   // notch across a cylinder's seam, where Offset Face refuses every face.
   if (f.faces.some((face) => face.instance))
     return 'it moves faces a pattern or mirror copied (not imported yet)';
-  if (Math.abs(f.distance.value) < 1e-12)
-    return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
   // Named by the face as the offset saw it (`surface`, the state before the
   // offset: an extrude's cap is still at its cap), and failing that by its
   // solved state. Not by the face's other states: the faces those name had
@@ -2842,6 +2880,162 @@ function offsetFaces(
 }
 
 /**
+ * The most references one repeated round may get, all copies of all its
+ * inputs together (`copyRounds`). The corpus's largest is 18.
+ */
+export const MAX_REPEATED_ROUND_REFS = 10_000;
+
+/**
+ * The fillets and chamfers a mirror or pattern of features copies, repeated
+ * on every copy (the kernel copies only the tools of solid features). Each
+ * becomes one more round after the copying feature, named `<round> (<copy>)`,
+ * on the copies of its edges: an edge between faces of the copied features
+ * is the edge between those faces' copies, `<op>:<copy>:<label>:from:(<face>)`.
+ * A round with an edge on any other face (the body's, an earlier round's)
+ * can't be told on the copies and stays left out, as the note says; so does
+ * one whose repeat would take more than `MAX_REPEATED_ROUND_REFS` references
+ * (copies × its edges and faces; a hostile file's count must not make the
+ * import hang, ADR-0083 "Hostile files") or more than `MAX_ROUND_EDGES`
+ * edges (the bound every imported round has).
+ */
+function copyRounds(
+  d: Design,
+  f: { name: string; features: number[] },
+  copies: MadeCopies,
+  made: ReadonlyMap<number, { id: string }>,
+  rounds: ReadonlyMap<number, ImportedRound>,
+  report: ImportReport,
+): number {
+  const labels = copies.labels;
+  if (!labels || labels.length === 0) return 0;
+  const copied = new Set<string>();
+  for (const record of f.features) {
+    const id = made.get(record)?.id;
+    if (id) copied.add(id);
+  }
+  // The repeated rounds so far: the original's id → the repeat's.
+  const repeated = new Map<string, string>();
+  const copyOf = (face: string, label: string): string | undefined => {
+    const [op, owner] = face.split(':', 2);
+    if (!op || !owner) return undefined;
+    const copy = (name: string) =>
+      `${copies.op}:${copies.id}:${label === '' ? '' : `${label}:`}from:(${name})`;
+    if (copied.has(owner)) return /[()|#[\]]/.test(face) ? undefined : copy(face);
+    // A face of a round repeated already: the repeat's face from the copy of its edge.
+    const again = repeated.get(owner);
+    const from = `${op}:${owner}:from:(`;
+    if (!again || !face.startsWith(from) || !face.endsWith(')')) return undefined;
+    const edge = edgeCopy(face.slice(from.length, -1), label);
+    return edge && `${op}:${again}:from:(${edge})`;
+  };
+  const edgeCopy = (edge: string, label: string): string | undefined => {
+    const m = /^e\[(.*)\](@\d+)?$/.exec(edge);
+    if (!m) return undefined;
+    const faces = topLevel(m[1] as string).map((face) => copyOf(face, label));
+    if (faces.length === 0 || faces.some((face) => face === undefined)) return undefined;
+    return `e[${[...new Set(faces as string[])].sort().join('|')}]${m[2] ?? ''}`;
+  };
+  const wanted = new Set(f.features);
+  // In timeline order: a round on an earlier one's faces comes after it.
+  for (const [record, round] of rounds) {
+    if (!wanted.has(record)) continue;
+    const source = d.doc.features.find((x) => x.id === round.id);
+    if (!source) continue;
+    // The repeat's references, all copies of all its inputs together: past the cap, left out.
+    const refsOf = (input: unknown) => (input as { refs?: GeomRef[] } | undefined)?.refs;
+    // It is built here, not by `edgeTreatment`, so its edges are held to
+    // that round's `MAX_ROUND_EDGES` here too.
+    let total = 0;
+    let edgeRefs = 0;
+    for (const [key, input] of Object.entries(source.inputs)) {
+      const n = /^(edges|face)\d*$/.test(key) ? (refsOf(input)?.length ?? 0) : 0;
+      total += n;
+      if (key.startsWith('edges')) edgeRefs += n;
+    }
+    if (total * labels.length > MAX_REPEATED_ROUND_REFS) continue;
+    if (edgeRefs * labels.length > MAX_ROUND_EDGES) continue;
+    const inputs: Record<string, unknown> = {};
+    let whole = true;
+    for (const [key, input] of Object.entries(source.inputs)) {
+      if (!whole) break;
+      const refs = refsOf(input);
+      if (!/^(edges|face)\d*$/.test(key) || !refs) {
+        // An expression without its parameter name: that stays the original's.
+        const { paramName: _, ...rest } = input as { paramName?: string };
+        inputs[key] = rest;
+        continue;
+      }
+      // A chamfer's distance face is one face: one per copy can't be said in one round.
+      if (key.startsWith('face') && labels.length > 1) whole = false;
+      const out: GeomRef[] = [];
+      const seen = new Set<string>();
+      for (const label of labels)
+        for (const ref of refs) {
+          const id = ref.kind === 'edge' ? edgeCopy(ref.id, label) : copyOf(ref.id, label);
+          if (id === undefined) whole = false;
+          // Without the original's fingerprint: a lost copy is left out, not matched to the original.
+          else if (!seen.has(id)) {
+            seen.add(id);
+            out.push({ kind: ref.kind, id } as GeomRef);
+          }
+        }
+      inputs[key] = { kind: 'ref', refs: out };
+    }
+    if (!whole) continue;
+    const name = `${source.name} (${f.name})`;
+    const again =
+      round.op === 'fillet'
+        ? d.fillet(inputs as Parameters<Design['fillet']>[0], { name })
+        : d.chamfer(inputs as Parameters<Design['chamfer']>[0], { name });
+    repeated.set(round.id, again.id);
+    report.notes.push(`${f.name}: ${source.name} is repeated on its copies as ${name}.`);
+  }
+  return repeated.size;
+}
+
+/** The note on the features a mirror or pattern copies that it leaves out: neither imported nor repeated (`copyRounds`). */
+function leftOut(
+  f: { name: string; features: number[] },
+  verb: string,
+  made: ReadonlyMap<number, { id: string }>,
+  repeated: number,
+  report: ImportReport,
+): void {
+  const left = copiedFeatures(f.features, made).left - repeated;
+  if (left > 0)
+    report.notes.push(
+      `${f.name}: ${left} of the ${f.features.length} features it ${verb} left out (not imported, or a fillet or chamfer).`,
+    );
+}
+
+/** The names a compound name joins with `|`, split at its own level (not inside `(…)` or `[…]`). */
+function topLevel(names: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < names.length; i++) {
+    const c = names[i];
+    if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === '|' && depth === 0) {
+      out.push(names.slice(from, i));
+      from = i + 1;
+    }
+    if (depth < 0) return [];
+  }
+  if (depth !== 0) return [];
+  out.push(names.slice(from));
+  return out;
+}
+
+/**
+ * The edges a fillet or chamfer may round at import (all its sets together):
+ * the corpus's largest rounds 224 (median 4). Past it the feature is left out
+ * with a reason (ADR-0083's amendment of 2026-11-10).
+ */
+export const MAX_ROUND_EDGES = 2000;
+
+/**
  * Adds a fillet or chamfer on the edges that can be named; returns why not
  * when none can, or the feature and its edges' names (for its faces' names).
  * `loose`: the second try of a round none of whose edges passed the first,
@@ -2856,6 +3050,10 @@ function edgeTreatment(
   report: ImportReport,
   loose = false,
 ): string | ImportedRound {
+  // A crafted round of very many edges would cost the kernel's diagnosis
+  // hours when it fails (about nine builds a chain).
+  const count = f.sets.reduce((n, s) => n + s.edges.length, 0);
+  if (count > MAX_ROUND_EDGES) return `it rounds ${count} edges, more than ${MAX_ROUND_EDGES}`;
   const inputs: Record<string, unknown> = {};
   const edges: (string | undefined)[] = [];
   const shapes: (EdgeShape | undefined)[] = [];
@@ -3054,9 +3252,13 @@ const SLIVER = 0.01;
 /** How profile regions were found, counted (for the corpus tools). */
 export const regionStats: Record<string, number> = {
   exact: 0,
+  'by overlap': 0,
   'by curves': 0,
   'outline skipped': 0,
 };
+
+/** Why a feature's profile was not found when its sketch's region matching ran out of budget. */
+export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
 
 /**
  * The Extrudo regions inside an f3d region rebuilt from its pieces of
@@ -3072,14 +3274,204 @@ function exactRegions(
   const lines = regionPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]);
   if (!lines) return undefined;
   const mapped = lines.map((line) => line.map(([u, v]) => entry.placement.map(u, v)));
+  // Each region's probe walks every point of the pieces.
+  const points = lines.reduce((sum, line) => sum + line.length, 0);
+  if (!chargeProbes(entry.pieces, points * regions.length)) return undefined;
   const out: GeomRef[] = [];
   for (const r of regions) {
     if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
-    const p = probeOf(r);
+    const p = clearProbeOf(r);
     if (p && insidePieces(mapped, p))
       out.push({ kind: 'profile', id: `${entry.handle.id}/${r.id}` });
   }
   return out.length > 0 ? out : undefined;
+}
+
+/**
+ * The texts inside a region of the file (its pieces enclose the text's
+ * middle). The file's regions run round curves only, so a text in one is
+ * part of it; Extrudo's region has the letters cut out, and their ink is
+ * added back to make the same solid.
+ */
+function textsInside(entry: SketchEntry, want: ProfileRegion): GeomRef[] {
+  if (entry.source.texts.length === 0 || !entry.pieces) return [];
+  const lines = regionPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]);
+  if (!lines) return [];
+  const points = lines.reduce((sum, line) => sum + line.length, 0);
+  if (!chargeProbes(entry.pieces, points * entry.source.texts.length)) return [];
+  const out: GeomRef[] = [];
+  for (const t of entry.source.texts) {
+    const id = entry.texts.get(t.id);
+    if (id === undefined) continue;
+    // The box's middle: `width` along the baseline (an older text: its box), `height` across.
+    const w = t.width || t.old?.box?.[0] || 0;
+    const h = t.height || t.old?.box?.[1] || 0;
+    const c = Math.cos(t.angle);
+    const s = Math.sin(t.angle);
+    const middle: Vec2 = [t.at[0] + (c * w - s * h) / 2, t.at[1] + (s * w + c * h) / 2];
+    if (insidePieces(lines, middle))
+      out.push({ kind: 'sketchEntity', id: `${entry.handle.id}/${id}` });
+  }
+  return out;
+}
+
+/**
+ * How far (mm) a probe keeps from the region's edges. A region's polygons
+ * sample its arcs; the pieces of the file's region sample them otherwise, and
+ * a probe nearer an arc than the sampling's sag (a thin ring round a circle)
+ * can fall on the wrong side of the other polygon.
+ */
+const PROBE_CLEARANCE = 0.05;
+
+/** A point as profiles keep them. */
+type Pt = readonly [number, number];
+
+/** The distance from a point to the nearest edge of some closed polygons. */
+function edgeDistance(rings: readonly (readonly Pt[])[], p: Pt): number {
+  let best = Number.POSITIVE_INFINITY;
+  for (const ring of rings)
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i] as Pt;
+      const b = ring[(i + 1) % ring.length] as Pt;
+      best = Math.min(best, segmentDistance(p, a, b));
+    }
+  return best;
+}
+
+function segmentDistance(p: Pt, a: Pt, b: Pt): number {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len2 = dx * dx + dy * dy;
+  const t =
+    len2 > 0 ? Math.min(1, Math.max(0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2)) : 0;
+  return Math.hypot(a[0] + t * dx - p[0], a[1] + t * dy - p[1]);
+}
+
+/**
+ * `probeOf`, moved off the edges when it lies within `PROBE_CLEARANCE` of
+ * one (only then: a clearance search is slow on long spline outlines).
+ */
+const clearProbes = new WeakMap<Profile, readonly [number, number] | undefined>();
+function clearProbeOf(r: Profile): readonly [number, number] | undefined {
+  if (clearProbes.has(r)) return clearProbes.get(r);
+  const p = probeOf(r);
+  const rings = [r.outer.polygon, ...r.holes.map((h) => h.polygon)];
+  const clear =
+    p && edgeDistance(rings, p) < PROBE_CLEARANCE
+      ? (interiorPoint(
+          r.outer.polygon,
+          r.holes.map((h) => h.polygon),
+          PROBE_CLEARANCE,
+        ) ?? p)
+      : p;
+  clearProbes.set(r, clear);
+  return clear;
+}
+
+/**
+ * How well a region's boundary must follow the listed pieces to stand in for
+ * a region the file names by a record its sketch has outgrown: the share of
+ * those pieces' length along the region's boundary times the share of the
+ * boundary along them. A region the record named with a curve or two since
+ * redrawn scores 0.5 to 1 (measured on the corpus's stale records); a
+ * neighbour sharing a side scores far less.
+ */
+const OVERLAP_SCORE = 0.5;
+/** A region along less than this share of the listed pieces is not looked at further. */
+const OVERLAP_MIN_SHARE = 0.3;
+/** How near (mm) a boundary point must be to a piece to run along it. */
+const OVERLAP_TOLERANCE = 0.05;
+
+/**
+ * The one region of the sketch whose boundary best runs along the listed
+ * pieces that are still there (`listedPieces`), for a region whose record
+ * no longer fits the sketch (curves deleted, trimmed, lengthened since the
+ * pick); undefined when none scores `OVERLAP_SCORE`.
+ */
+function overlapRegion(
+  entry: SketchEntry,
+  regions: SketchHandle['regions'],
+  want: ProfileRegion,
+): GeomRef[] | undefined {
+  entry.pieces ??= sketchPieces(entry.source, entry.profileCurves);
+  const pieces = listedPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]).map(
+    (line) => line.map(([u, v]) => entry.placement.map(u, v)),
+  );
+  if (pieces.length === 0) return undefined;
+  const near = (p: Pt, lines: readonly (readonly Pt[])[], closed: boolean) =>
+    lines.some((line) => {
+      const n = closed ? line.length : line.length - 1;
+      for (let i = 0; i < n; i++)
+        if (
+          segmentDistance(p, line[i] as Pt, line[(i + 1) % line.length] as Pt) < OVERLAP_TOLERANCE
+        )
+          return true;
+      return false;
+    });
+  const piecePoints = pieces.flatMap((line) => samples(line, false));
+  const pieceLength = piecePoints.reduce((sum, s) => sum + s.weight, 0);
+  if (pieceLength <= 0) return undefined;
+  const box = boundsOf(pieces);
+  let best: { region: SketchHandle['regions'][number]; score: number } | undefined;
+  for (const r of regions) {
+    if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
+    const rings = [r.outer.polygon, ...r.holes.map((h) => h.polygon)];
+    const rb = boundsOf(rings);
+    if (rb[0] > box[2] || box[0] > rb[2] || rb[1] > box[3] || box[1] > rb[3]) continue;
+    // Each sample of one side is held against every segment of the other.
+    const ringPoints = rings.reduce((sum, ring) => sum + ring.length, 0);
+    if (!chargeProbes(entry.pieces, piecePoints.length * ringPoints)) return undefined;
+    const along = piecePoints
+      .filter((s) => near(s.at, rings, true))
+      .reduce((sum, s) => sum + s.weight, 0);
+    const share = along / pieceLength;
+    if (share < OVERLAP_MIN_SHARE) continue;
+    const boundary = rings.flatMap((ring) => samples(ring, true));
+    if (!chargeProbes(entry.pieces, boundary.length * piecePoints.length)) return undefined;
+    const total = boundary.reduce((sum, s) => sum + s.weight, 0);
+    const on = boundary
+      .filter((s) => near(s.at, pieces, false))
+      .reduce((sum, s) => sum + s.weight, 0);
+    const score = share * (total > 0 ? on / total : 0);
+    if (!best || score > best.score) best = { region: r, score };
+  }
+  if (!best || best.score < OVERLAP_SCORE) return undefined;
+  return [{ kind: 'profile', id: `${entry.handle.id}/${best.region.id}` }];
+}
+
+/** Points along a polyline (closed: back to its start), each weighted by the length it stands for. */
+function samples(line: readonly Pt[], closed: boolean): { at: Vec2; weight: number }[] {
+  const out: { at: Vec2; weight: number }[] = [];
+  const n = closed ? line.length : line.length - 1;
+  for (let i = 0; i < n; i++) {
+    const a = line[i] as Pt;
+    const b = line[(i + 1) % line.length] as Pt;
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    // About every half millimetre; a long edge at most 200 points.
+    const k = Math.min(200, Math.max(1, Math.ceil(length / 0.5)));
+    for (let j = 0; j < k; j++) {
+      const t = (j + 0.5) / k;
+      out.push({ at: [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])], weight: length / k });
+    }
+  }
+  return out;
+}
+
+function boundsOf(lines: readonly (readonly Pt[])[]): [number, number, number, number] {
+  const box: [number, number, number, number] = [
+    Number.POSITIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ];
+  for (const line of lines)
+    for (const [x, y] of line) {
+      box[0] = Math.min(box[0], x);
+      box[1] = Math.min(box[1], y);
+      box[2] = Math.max(box[2], x);
+      box[3] = Math.max(box[3], y);
+    }
+  return box;
 }
 
 /**
@@ -3156,10 +3548,38 @@ function staleRegion(
   const left = new Set([...tags.values()].map(String).filter((t) => outerTags.has(t)));
   if (left.size === 0) return [];
   const need = Math.max(Math.min(2, left.size), Math.ceil(left.size / 2));
+  // The listed lines, to count one an outline runs along on a collinear
+  // duplicate (the outline's edge then belongs to the other line).
+  const ends = (id: string): [Vec2, Vec2] | undefined => {
+    const e = handle.data.entities[id as keyof typeof handle.data.entities] as
+      | { type: string; start?: string; end?: string }
+      | undefined;
+    if (e?.type !== 'line' || !e.start || !e.end) return undefined;
+    const point = (ref: string) =>
+      handle.data.entities[ref as keyof typeof handle.data.entities] as
+        | { type: string; x: number; y: number }
+        | undefined;
+    const a = point(e.start);
+    const b = point(e.end);
+    return a?.type === 'point' && b?.type === 'point'
+      ? [
+          [a.x, a.y],
+          [b.x, b.y],
+        ]
+      : undefined;
+  };
+  const lines = [...tags]
+    .filter(([, tag]) => left.has(String(tag)))
+    .flatMap(([id, tag]) => {
+      const line = ends(id);
+      return line ? [{ tag: String(tag), line }] : [];
+    });
   let best: { region: SketchHandle['regions'][number]; covered: number } | undefined;
   for (const r of regions) {
     if (r.text !== undefined) continue;
     const along = new Set(r.outer.edges.map((e) => String(tags.get(e.curve))));
+    for (const { tag, line } of lines)
+      if (!along.has(tag) && r.outer.edges.some((e) => onLine(e.points, line))) along.add(tag);
     const covered = [...left].filter((t) => along.has(t)).length;
     if (covered < need) continue;
     if (
@@ -3170,4 +3590,21 @@ function staleRegion(
       best = { region: r, covered };
   }
   return best ? [{ kind: 'profile', id: `${handle.id}/${best.region.id}` }] : [];
+}
+
+/** Whether a straight edge lies along a line and overlaps it (more than a touch at an end). */
+function onLine(points: readonly Pt[], [a, b]: [Vec2, Vec2]): boolean {
+  const p = points[0];
+  const q = points.at(-1);
+  if (!p || !q) return false;
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return false;
+  const off = (s: Pt) => Math.abs((s[0] - a[0]) * dy - (s[1] - a[1]) * dx) / len;
+  if (off(p) > 1e-4 || off(q) > 1e-4) return false;
+  const t = (s: Pt) => ((s[0] - a[0]) * dx + (s[1] - a[1]) * dy) / (len * len);
+  const lo = Math.max(0, Math.min(t(p), t(q)));
+  const hi = Math.min(1, Math.max(t(p), t(q)));
+  return (hi - lo) * len > 1e-4;
 }

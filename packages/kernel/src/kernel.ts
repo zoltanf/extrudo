@@ -182,6 +182,41 @@ export interface MeshToSolidResult {
   report: MeshToSolidReport;
 }
 
+/**
+ * The most B-rep text `readBrep` takes, in UTF-8 bytes (P6-25 S1, ADR-0144's
+ * amendment): 32 MB, seven times the largest stored shape of the FreeCAD
+ * library it was measured on (4.4 MB).
+ */
+export const MAX_BREP_BYTES = 32 * 1024 * 1024;
+
+/**
+ * What a linear scan finds wrong with B-rep text before OCCT reads it (P6-25
+ * S1, ADR-0144's amendment), or `undefined`. OCCT's reader runs a table's
+ * loop as many times as its header says, on a failed stream too (minutes for
+ * a count of 10^9), copies a token into a 255-byte buffer without a bound, and
+ * takes NaN and infinite numbers as they come. Every table entry takes at
+ * least two characters, so a count above half the text can't be true. Only
+ * the text from the format line on is scanned.
+ */
+function brepTextProblem(text: string): string | undefined {
+  const body = text.slice(Math.max(0, text.indexOf('CASCADE Topology V')));
+  const header =
+    /^[ \t]*(Locations|Curve2ds|Curves|Polygon3D|PolygonOnTriangulations|Polygon2D|Surfaces|Triangulations|TShapes)[ \t]+(\S*)/gm;
+  for (const [, table, count] of body.matchAll(header)) {
+    if (!/^\d{1,10}$/.test(count ?? '') || Number(count) > body.length / 2) {
+      return `the ${table} table's count (${(count ?? '').slice(0, 20)}) can't be right.`;
+    }
+  }
+  if (/\S{200}/.test(body)) return 'the text has a word over 200 characters long.';
+  if (/(?<![\w.])[-+]?(?:nan|inf(?:inity)?)(?![\w.])/i.test(body)) {
+    return 'the text has a number that is not finite.';
+  }
+  for (const [exponent] of body.matchAll(/(?<=\d\.?[eE][+]?)\d{3,}/g)) {
+    if (Number(exponent) > 308) return 'the text has a number that is not finite.';
+  }
+  return undefined;
+}
+
 /** ADR-0097 §3: faceted refuses more faces than this, prismatic more surfaces than this. */
 export const FACETED_FACE_CAP = 2000;
 export const PRISMATIC_SURFACE_CAP = 500;
@@ -1836,6 +1871,88 @@ export class Kernel {
     return out;
   }
 
+  /**
+   * Hidden-line spans of a shape seen from the side `direction` points to
+   * (P6-24, ADR-0143's S0 amendment): OCCT's exact hidden-line removal, one
+   * entry per model edge piece or outline it draws, with the visible and
+   * hidden stretches in the edge's own curve parameter (so a view maps them
+   * through `edgeGeometry`, and a dimension anchors to the edge's name).
+   * Outlines HLR adds carry their face and their curve. Edges seen end-on
+   * and seams HLR doesn't draw are left out. `samples` points describe an
+   * outline that isn't a line, circle or ellipse.
+   */
+  hlrSpans(shape: ShapeHandle, direction: Vec3, samples = 24): HlrEdge[] {
+    this.#solid(shape, 'A drawing view');
+    const f = this.#facade;
+    const n = f.hlrSpans(shape, ...direction, samples);
+    if (n < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
+    const ints = this.#copy(Int32Array, f.hlrIntsPtr(), f.hlrIntsSize());
+    const numbers = this.#copy(Float64Array, f.hlrNumbersPtr(), f.hlrNumbersSize());
+    // Per record: its range, then its spans; the outlines' curves after all of them.
+    let curves = 0;
+    for (let i = 0; i < n; i++) {
+      curves += 2 + 2 * ((ints[6 * i + 3] as number) + (ints[6 * i + 4] as number));
+    }
+    const out: HlrEdge[] = [];
+    let k = 0;
+    const span = (): [number, number] => [numbers[k++] as number, numbers[k++] as number];
+    for (let i = 0; i < n; i++) {
+      const [edge, kind, face, visible, hidden, curve] = ints.subarray(6 * i, 6 * i + 6);
+      const entry: HlrEdge = {
+        kind: HLR_KINDS[kind as number] ?? 'sharp',
+        range: span(),
+        visible: Array.from({ length: visible as number }, span),
+        hidden: Array.from({ length: hidden as number }, span),
+      };
+      if ((edge as number) >= 0) entry.edge = edge as number;
+      if ((face as number) >= 0) entry.face = face as number;
+      if ((curve as number) >= 0) {
+        entry.curve = decodeEdgeGeometry(numbers.subarray(curves + (curve as number)));
+      }
+      out.push(entry);
+    }
+    return out;
+  }
+
+  /**
+   * Polygonal hidden-line removal (HLRBRep_PolyAlgo) of a shape along
+   * `direction`, on its faces' triangulation (made with `deflection` mm
+   * where a face has none): straight pieces in 3D, each with the edge it
+   * comes from (or, for an outline, its face). Measured in S0 as the quick
+   * path for views the exact run makes slow (ADR-0143's S0 amendment).
+   */
+  hlrPolySpans(shape: ShapeHandle, direction: Vec3, deflection = 0.05): HlrPiece[] {
+    this.#solid(shape, 'A drawing view');
+    const f = this.#facade;
+    const n = f.hlrPolySpans(shape, ...direction, deflection);
+    if (n < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
+    const ints = this.#copy(Int32Array, f.hlrIntsPtr(), f.hlrIntsSize());
+    const v = this.#copy(Float64Array, f.hlrNumbersPtr(), f.hlrNumbersSize());
+    const out: HlrPiece[] = [];
+    for (let i = 0; i < n; i++) {
+      const [edge, face, flags] = ints.subarray(3 * i, 3 * i + 3) as unknown as [
+        number,
+        number,
+        number,
+      ];
+      const p = (j: number): Vec3 => [
+        v[6 * i + j] as number,
+        v[6 * i + j + 1] as number,
+        v[6 * i + j + 2] as number,
+      ];
+      const piece: HlrPiece = {
+        visible: (flags & 1) !== 0,
+        kind: flags & 8 ? 'outline' : flags & 4 ? 'seam' : flags & 2 ? 'smooth' : 'sharp',
+        from: p(0),
+        to: p(3),
+      };
+      if (edge >= 0) piece.edge = edge;
+      if (face >= 0) piece.face = face;
+      out.push(piece);
+    }
+    return out;
+  }
+
   count(shape: ShapeHandle, kind: SubShapeKind): number {
     // A mesh body is one face and no edges or vertices (ADR-0066 §3).
     if (this.isMesh(shape)) return kind === 'face' ? 1 : 0;
@@ -2111,6 +2228,36 @@ export class Kernel {
   }
 
   /**
+   * Reads OCCT B-rep text ("CASCADE Topology V1" to V3) into one shape, as
+   * stored: nothing is healed, and its faces and edges keep the order the text
+   * lists them in. Release it when done.
+   */
+  readBrep(text: string): ShapeHandle {
+    // Refused before the text is copied into the WASM heap. A character is at
+    // most three UTF-8 bytes, so the exact count is only needed near the limit.
+    if (
+      text.length > MAX_BREP_BYTES ||
+      (text.length * 3 > MAX_BREP_BYTES && new TextEncoder().encode(text).length > MAX_BREP_BYTES)
+    ) {
+      const mb = (n: number) => Math.round(n / (1024 * 1024));
+      throw new KernelError(
+        `B-rep import failed: the shape is too large (over ${mb(MAX_BREP_BYTES)} MB of text).`,
+      );
+    }
+    // An unbounded line's range is ±2e100, and some writers print it in full:
+    // a hundred digits. OCCT's number reader in this build never returns from
+    // one, so a number with a long integer part goes in as the same number in
+    // its short form. Only at a number's start: digits after a decimal point
+    // (0.00000000000000000061) are no integer part and are left alone.
+    const short = text.replace(/(?<![\d.eE+-])-?\d{18,}(?:\.\d*)?(?:[eE][+-]?\d+)?/g, (number) =>
+      String(Number(number)),
+    );
+    const problem = brepTextProblem(short);
+    if (problem) throw new KernelError(`B-rep import failed: ${problem}`);
+    return this.#check(this.#facade.readBrep(short));
+  }
+
+  /**
    * The colours of a STEP file's solids (P4-12, ADR-0034's amendment), read
    * through XDE: per solid in the order `solids(readStep(text))` lists them,
    * its colour as `#rrggbb` or `undefined` (the solid's own, else its part's,
@@ -2153,6 +2300,23 @@ export class Kernel {
       solids.push(name === undefined || name === '' ? undefined : name);
     }
     return solids;
+  }
+
+  /**
+   * Which of a STEP file's solids the file hides (ADR-0066's amendment of
+   * 2026-11-10): per solid in the order `solids(readStep(text))` lists them,
+   * `true` when one of the file's `INVISIBILITY` entities lists the solid
+   * itself, a styled item of it or a layer it is on. Read with the plain
+   * reader, as `readStep` reads, so the two always list the same solids.
+   */
+  readStepHidden(text: string): boolean[] {
+    const f = this.#facade;
+    const n = f.readStepHidden(text);
+    if (n < 0) {
+      throw new KernelError(f.lastError() || "Couldn't read the STEP file's hidden bodies.");
+    }
+    const values = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    return Array.from({ length: n }, (_, i) => values[i] === 1);
   }
 
   release(...shapes: ShapeHandle[]): void {
@@ -2501,6 +2665,40 @@ export interface EdgeView {
   outline: boolean;
   /** Its faces meet at an angle (no seam, no smooth join). */
   sharp: boolean;
+}
+
+/** How a hidden-line entry is drawn (`Kernel.hlrSpans`). */
+export type HlrKind = 'sharp' | 'smooth' | 'seam' | 'outline';
+const HLR_KINDS: readonly HlrKind[] = ['sharp', 'smooth', 'seam', 'outline'];
+
+/** One model edge piece or outline of a view (`Kernel.hlrSpans`). */
+export interface HlrEdge {
+  /**
+   * The model edge's sub-shape index; left out for an outline HLR added. An
+   * outline can have one: a smooth edge or seam that a face turns away at.
+   */
+  edge?: number;
+  kind: HlrKind;
+  /** An outline's face (sub-shape index); also set on a model edge HLR uses as a face's outline. */
+  face?: number;
+  /** The whole edge's parameter range, [first, last] (a split edge's whole range). */
+  range: [number, number];
+  /** Visible stretches, [t0, t1] in the edge's own curve parameter. */
+  visible: [number, number][];
+  /** Hidden stretches, the same way. */
+  hidden: [number, number][];
+  /** An outline's curve; a model edge's comes from `edgeGeometry`. */
+  curve?: EdgeGeometry;
+}
+
+/** A straight piece of a polygonal view (`Kernel.hlrPolySpans`), in world mm. */
+export interface HlrPiece {
+  edge?: number;
+  face?: number;
+  kind: HlrKind;
+  visible: boolean;
+  from: Vec3;
+  to: Vec3;
 }
 
 /** A curve from `Kernel.faceSilhouettes` or `sectionWithPlane`, in world mm. */

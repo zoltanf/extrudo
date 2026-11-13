@@ -48,6 +48,11 @@ export interface ExpressionInputProps {
    * offers to create an unknown name typed on its own.
    */
   newParameter?(name: string): string;
+  /**
+   * With `newParameter`: the typed name renames the field's own parameter
+   * (its `onCommit` does that), so the row and the link say "Rename to".
+   */
+  renames?: boolean;
   /** Accessible name of the field. */
   label: string;
   /** With a placeholder, an empty field counts as "not filled in yet" rather than an error. */
@@ -72,7 +77,8 @@ export interface ExpressionInputProps {
  * Enter inserts, Esc closes the list first, Ctrl+Space opens it on an empty
  * word. Enter without a pick commits as usual. With `newParameter`, an
  * unknown name alone in the field gets a "New parameter" row and a "Create"
- * link under the error (Ctrl+Enter): both turn it into `name = value`.
+ * link under the error (Ctrl+Enter): both turn it into `name = value`. With
+ * `renames` they read "Rename to" instead (ADR-0142).
  */
 export function ExpressionInput({
   value,
@@ -81,6 +87,7 @@ export function ExpressionInput({
   evaluate,
   format,
   newParameter,
+  renames = false,
   label,
   placeholder,
   allowEmpty,
@@ -388,7 +395,7 @@ export function ExpressionInput({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => completion.create && create(completion.create)}
               >
-                + New parameter {completion.create.name}
+                {renames ? 'Rename to' : '+ New parameter'} {completion.create.name}
                 <span className="text-muted"> = {completion.create.shown}</span>
               </div>
             )}
@@ -408,7 +415,7 @@ export function ExpressionInput({
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => create(creatable)}
         >
-          + Create <code>{creatable.name}</code> = {creatable.shown}{' '}
+          {renames ? 'Rename to' : '+ Create'} <code>{creatable.name}</code> = {creatable.shown}{' '}
           <kbd className="font-mono text-xs text-muted">Ctrl+Enter</kbd>
         </button>
       )}

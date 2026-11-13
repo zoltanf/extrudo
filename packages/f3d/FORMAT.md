@@ -122,7 +122,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `FCBB1707…` | Sweep | op u32 at payload offset 6 (after an empty property block; as an extrude's: 1 join, 2 cut, 3 intersect, 4 new body); an operand group with the sketch-profile operand; an operand group of geometry operands, the path, each naming a sketch curve (`E2CEFD18…`) beside the curve in model space; a body operand per body it joins or cuts. Parameters it owns: `AlongDistance` and `AgainstDistance` (how much of the path it follows from the profile, one way and back, as fractions), `TwistAngle`, `TaperAngle`, and `AlongRailDistance`/`AgainstRailDistance` for a guide rail. The profile need not touch the path |
 | `B0B3D9E5…` | Path pattern | what it copies as a mirror's; a count record (`countU`); the distance a parameter it owns (`PathPatternDelta`); the path an operand group of geometry operands, each naming a sketch curve. Its data record (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), the count record, 4 zero bytes, the distance's parameter owner, 5 zero bytes, the original's reference point (3 f64, cm), four flag bytes (`01 00 01 00` in both files: the first is 1 where the copies turn with the path, which the copied faces in the B-rep confirm), the path group, the distance again (f64, cm), the start group and the instance list. The start group (`69EE2FA7…`, an operand-group subtype): 19 bytes, the start point on the path (3 f64, cm), a geometry operand naming the path's first curve. A copy is the original moved by the way the path went from the start point to the point the distance along it, and turned with it about the start point; its instance code is 1 |
 | `65CA3206…` | Split body | an operand group with a body operand per body it splits; an operand group with the splitting tool: a geometry operand naming a plane (record reference) beside the plane in model space (`CC54ECAD…`), as a mirror's. Both sides are kept |
-| `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
+| `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. The resize spans the whole face, not only the thread's length (verified on the reference STEPs: a 12 mm hole 49 mm long threaded G 1/2 over 16 mm has its bore at the thread's minor, Ø18.9015, along all of it, and a later sketch projects that circle; a Ø51 shaft threaded M50 over 20 of its 30 mm is at the thread's major beyond the thread too). Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
 | `12D00AC0…` | A feature's records in several components | u32 n, n × (wstr GUID, reference: the feature's first record, the one the timeline names); u32 n, n × (wstr GUID, u32 m, m references: every record of the feature, the first among them); a closing reference. A feature acting on bodies of several components (an extrude cutting through two components' bodies, a hole drilled through both) keeps a record per component; the further ones are not on the timeline, are numbered in their own component's count (the timeline's `Extrude5` has an `Extrude3` there), have their own operations (which tag the faces they made in that component's bodies) and a body operand for that component's body, and the same sketch profile and parameter values (checked on one extrude and one hole). Seen in 4 designs (3 extrudes, 1 hole); the record's other instances hold two empty lists |
 | `13BE0EF0…` | Torus primitive (v0) | u32 operation (as an extrude's; 1 join the one seen), a byte, four references (the parameter owners of `MajorDiameter` and `MinorDiameter`, the plane operand `7B6C3C2D…`, a `36D375CD…`), a byte, then a 4 × 4 row-major matrix (cm) in the frame of the plane it was made on; a body operand group for the bodies it joins, then a GUID string. The plane is a geometry operand among its references (`5A1BF548…`, naming an origin plane by `90055C05…`) holding the plane in model space (`CC54ECAD…`): the torus's centre is the matrix's origin and its axis the matrix's Z, taken from that frame (origin, x, y, x × y) into the model. Seen once (the plane YZ, the matrix a move of 7.5 cm along the plane's y): the file's B-rep torus is at (0, 0, 7.5) cm about +X, which the matrix read in model axes, (0, 7.5, 0), is not; the reference STEP agrees (one solid, 91 mm high) |
 | `11F1A5CE…` | Circular pattern | the total angle is a parameter it owns (`TotalAngle`); a count record; an operand group of what it repeats; the axis as a geometry operand with a model line |
@@ -241,13 +241,39 @@ along the boundary are each listed. Members are not in boundary order. A
 curve trimmed after it was drawn keeps its primary id; its pieces get new
 secondary ids.
 
+The record is **not rewritten when the sketch is edited after the pick**: it
+keeps naming curves the sketch no longer holds and counts pieces as they were
+then. Verified 2026-11-06 by scanning every record's `crv_primary_id`: three
+designs' records name curve ids no record of the file carries any more (the
+curves were deleted and redrawn under new ids), two name primary ids whose
+secondaries have changed (a curve trimmed in two); in each, the body the
+replay makes agrees with the file's (volume, box) only with the region whose
+boundary follows the pieces still listed. A sixth counts lines in 2
+pieces that the sketch now cuts in 3: the lines run 0.5 mm past the circle
+they would end on (inferred: they were lengthened after the pick).
+
+Two copies of one circle (same centre and radius) cut each other where each
+one starts: a full circle's seam counts as a cut where the other circle
+touches it, and that cut is the **first** of the turn (piece 1 ends there),
+unlike a crossing at the start, which counts at 2π. Inferred from one design
+(two identical circles and three radial lines; all three of its records
+rebuild exactly by this rule and by no other tried).
+
+A line tangent to an arc (a rounded corner) touches it once: the arc is not
+cut there (verified on a design whose corner arcs are piece 1 of 1).
+
+A text in the sketch is never part of a region's loops (the record lists
+sketch curves only): the region is solid where the text lies. Seen in 7
+regions of 6 designs; on one the file's body is solid there (its volume).
+
 This package cuts the decoded curves the same way (`regions.ts`), checks that
 the pieces close, and takes every region of the Extrudo sketch inside them by
-the even-odd rule. Where the sketch changed after the pick (curves gone, new
-secondary ids, other counts), it falls back to the curves alone: the region
-those curves close, every region inside it; failing that, the region whose
-outline runs along the most listed curves still there. A region whose curves
-are all gone is left out.
+the even-odd rule. Where the record no longer fits the sketch, it takes the
+one region whose boundary best runs along the listed pieces still found as
+counted; failing that, the region those curves close and every region inside
+it; failing that, the region whose outline runs along the most listed curves
+still there (a listed line lying on an outline edge collinearly counts). A
+region whose curves are all gone is left out.
 
 ### Construction curves
 

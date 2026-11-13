@@ -1,0 +1,1 @@
+- 2026-11-11 · **Drawings: the guide, clips and an example**: a Drawings page in the user guide, tooltip clips for every Drawing tool, Finish Drawing and Make › Drawing, the Spool holder example with a finished sheet, and a drawing in the README's pictures (P6-24 S6, ADR-0143).

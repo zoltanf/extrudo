@@ -52,7 +52,7 @@ import { AppMenu } from '../shell/AppMenu';
 import { BugReportDialog } from '../shell/BugReportDialog';
 import { errorLog, watchWindowErrors } from '../shell/bugReport';
 import { docsPath, docsUrl, REPO_URL } from '../shell/docsLinks';
-import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { applyUpdate, useUpdateNotice } from '../shell/useUpdateNotice';
 import { useWhatsNew } from '../shell/useWhatsNew';
 import { useMarkingStyle } from '../shell/viewMenu';
 import { WhatsNewDialog } from '../shell/WhatsNewDialog';
@@ -144,6 +144,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const persistence = usePersistence(platform);
   const { toasts, push, dismiss, keep } = useToasts();
   useUpdateNotice(push, platform);
+  const updates = platform.updates;
   // "Updated to Extrudo X.Y.Z." once per update (ADR-0133).
   useWhatsNew(push, platform);
   const [query, setQuery] = useState('');
@@ -201,7 +202,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
     writeTour(platform.preferences, 'dismissed');
     setTourCard(false);
   };
-  // A design file, an .f3d or a model file (ADR-0083 §4): each opens as a design.
+  // A design file, an .f3d, a FreeCAD file or a model file (ADR-0083 §4): each opens as a design.
   const importFile = () =>
     importAnyFile(platform)
       .then((summary) => summary && open(summary.id))
@@ -275,6 +276,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
             {...(platform.updates?.check && {
               onCheckUpdates: () => platform.updates?.check?.(),
             })}
+            onApplyUpdate={updates && (() => void applyUpdate(updates, push))}
             onSource={() => platform.openSite('repo')}
             onQuit={platform.menus ? () => platform.menus?.quit() : undefined}
           />
@@ -364,7 +366,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                 </div>
                 <StartCard
                   label="Import…"
-                  description=".extrudo, .f3d, STEP, mesh, OpenSCAD."
+                  description=".extrudo, .f3d, FreeCAD, STEP, mesh, OpenSCAD."
                   icon={<Import size={22} strokeWidth={1.75} />}
                   onClick={() => void importFile()}
                 />

@@ -74,6 +74,21 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   joint: ['J'],
   // Section Analysis (P3-09): there is no usual key for it.
   section: ['Shift+S'],
+  // The drawing (P6-24, ADR-0143): its view tools, Export PDF, and the sheet tabs as a
+  // browser's tabs. V is no other command's key; P is Project, offered in a sketch only.
+  baseView: ['V'],
+  projectedView: ['P'],
+  // D is Sketch Dimension's too: a sketch and the drawing are never open together.
+  sheetDimension: ['D'],
+  // Text and Leader Note (S4): T is Trim in a sketch, N Annotate on the model; neither is
+  // offered in the drawing.
+  sheetText: ['T'],
+  sheetLeader: ['N'],
+  // Balloon (S5): B is no other command's key.
+  sheetBalloon: ['B'],
+  exportSheets: ['Mod+E'],
+  nextSheet: ['Mod+PageDown'],
+  previousSheet: ['Mod+PageUp'],
   // Help (P6-06 S9): F1 opens the hovered tool's docs page, else the guide.
   help: ['F1'],
   // View: F6 fits; Shift+1…7 are ours.

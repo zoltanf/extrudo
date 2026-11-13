@@ -107,7 +107,11 @@ extrudo/
 │  ├─ storage/             ProjectStore interface + OPFS/IndexedDB impl +
 │  │                       .extrudo zip (de)serializer
 │  ├─ fonts/               bundled fonts for sketch text (data only; ADR-0058)
+│  ├─ f3d/                 .f3d import (ADR-0083)
+│  ├─ fcstd/               FreeCAD .FCStd import (ADR-0144; reader, final shapes as STEP)
 │  ├─ api/                 public document API, @extrudo/api (P5-01, ADR-0068)
+│  ├─ sheets/              drawing sheets as display lists, PDF/SVG output
+│  │                       (P6-24, ADR-0143). No DOM, runs in Node.
 │  ├─ cli/                 headless recompute and export, `extrudo` (P5-03, ADR-0069)
 │  └─ script/              (P5-02, in progress) the Script feature's sandboxed runner
 ├─ fixtures/               sample projects, benchmark models (B1–B10), golden values
@@ -121,6 +125,8 @@ internal; `kernel → core, sketch, io, fonts` (`io` parses imported meshes,
 ADR-0066); `sketch → core, io, fonts` (P1-13: sketch export builds `io`
 drawings; the text shaper reads the fonts); `storage → core`; `api → core,
 sketch, storage` (and `kernel` as a devDependency for its examples' tests);
+`sheets → core, sketch, io, fonts` (layout reads text through
+`@extrudo/sketch/text` and writes through io's display list, ADR-0143);
 `core`, `io` and `fonts` depend on nothing internal (`io` is MIT, uses fflate
 for 3MF, and must never depend on the GPL packages).
 
