@@ -10,7 +10,7 @@
   (the Script feature's expansion), ADR-0077 (plugin features, the second
   expansion), ADR-0081 (components), ADR-0083/0084 (the `.f3d` import).
 - **Schema change:** a new feature type `insertDesign` and a new input kind
-  `design` (`docs/file-format.md` §6.1 and §6.36). Both are additive: format 2 stays.
+  `design` (`docs/file-format.md` §6.1 and §6.37). Both are additive: format 2 stays.
 
 ## Context
 

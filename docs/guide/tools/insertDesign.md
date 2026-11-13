@@ -13,5 +13,7 @@ Bring another Extrudo design in as a component, named after its file. It is a co
 |---|---|
 | Solid › Assemble | None |
 
+<video src="demo:insertDesign" muted loop autoplay playsinline aria-label="Insert Design demo"></video>
+
 <!-- notes -->
 <!-- /notes -->

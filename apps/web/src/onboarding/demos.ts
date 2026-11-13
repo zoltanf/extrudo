@@ -41,6 +41,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'recordMacro',
   'stopMacro',
   'newComponent',
+  'insertDesign',
   'joint',
   // Modify › Modify, Transform.
   'pressPull',
