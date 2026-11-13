@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./matrix": "./src/matrix.ts",
     "./node": "./src/node.ts",
-    "./worker": "./src/worker-entry.ts"
+    "./worker": "./src/worker-entry.ts",
+    "./brep-test-support": "./src/read-brep-test-support.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

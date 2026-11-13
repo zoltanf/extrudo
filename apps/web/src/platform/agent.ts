@@ -22,11 +22,13 @@ export interface AgentToolResult {
 }
 
 export type AgentExportFormat = 'stl' | '3mf' | 'step';
+/** What main writes for a tool: a model export, or a sheet's PDF (`export_sheet`). */
+export type AgentFileFormat = AgentExportFormat | 'pdf';
 
 /** A tool's answer, with the file an `export` made: main writes it and adds the path. */
 export interface AgentReply {
   result: AgentToolResult;
-  file?: { design: string; format: AgentExportFormat; bytes: Uint8Array };
+  file?: { design: string; format: AgentFileFormat; bytes: Uint8Array };
 }
 
 /** The server's state, as main reports it. */

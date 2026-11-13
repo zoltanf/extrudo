@@ -1,0 +1,146 @@
+/**
+ * A third-party file's stored shape as STEP (P6-25 S3, ADR-0144 decision 5):
+ * read the B-rep text, place it, write STEP with our own writer and read that
+ * STEP back, all in one call, so the caller can compare what it will import
+ * with what the file stored. Only an import's throwaway kernel runs it
+ * (`KernelServiceOptions.importKernel`).
+ */
+import { compose, IDENTITY, type Matrix12 } from './features/matrix';
+import { type Kernel, KernelError, type ShapeHandle } from './kernel';
+
+/** A rigid placement: a move, then a turn by a unit quaternion `[x, y, z, w]` (FreeCAD's form). */
+export interface ShapePlacement {
+  readonly position: readonly [number, number, number];
+  readonly rotation: readonly [number, number, number, number];
+}
+
+/** What a shape measures: the volume of its solids, its faces' area, a tight box. */
+export interface StoredShapeMeasure {
+  solids: number;
+  volume: number;
+  area: number;
+  box: { min: [number, number, number]; max: [number, number, number] };
+}
+
+export interface StoredShapeStep extends StoredShapeMeasure {
+  /** The STEP text our writer made of the placed shape. */
+  step: string;
+  /** The placed shape as read from the B-rep text, before STEP. */
+  read: StoredShapeMeasure;
+}
+
+export interface StoredShapeOptions {
+  /** The STEP product's name. */
+  name?: string;
+  /** `#rrggbb`, written as the solids' colour. */
+  color?: string;
+}
+
+/** The 3 × 4 matrix of one placement: `x ↦ R·x + t`. */
+export function placementMatrix(p: ShapePlacement): Matrix12 {
+  const values = [...p.position, ...p.rotation];
+  if (!values.every(Number.isFinite))
+    throw new KernelError('A placement has a number that is not finite.');
+  const [px, py, pz] = p.position;
+  let [x, y, z, w] = p.rotation;
+  const n = Math.hypot(x, y, z, w);
+  if (n === 0) throw new KernelError('A placement has a zero rotation.');
+  [x, y, z, w] = [x / n, y / n, z / n, w / n];
+  return [
+    1 - 2 * (y * y + z * z),
+    2 * (x * y - z * w),
+    2 * (x * z + y * w),
+    px,
+    2 * (x * y + z * w),
+    1 - 2 * (x * x + z * z),
+    2 * (y * z - x * w),
+    py,
+    2 * (x * z - y * w),
+    2 * (y * z + x * w),
+    1 - 2 * (x * x + y * y),
+    pz,
+  ] as unknown as Matrix12;
+}
+
+/** The placements composed, outermost first: `P0 · P1 · … · Pn`. */
+export function chainMatrix(chain: readonly ShapePlacement[]): Matrix12 {
+  return chain.reduce<Matrix12>((m, p) => compose(m, placementMatrix(p)), IDENTITY);
+}
+
+const isIdentity = (m: Matrix12) =>
+  m.every((v, i) => Math.abs(v - (IDENTITY[i] as number)) < 1e-15);
+
+/**
+ * What a shape measures: its solids (counted, then released), the volume of
+ * those solids, its faces' area and its tight box (`Kernel.properties`). The
+ * one definition both sides of an import's checks use (ADR-0144): a stored
+ * shape and a rebuilt body are measured by this code only.
+ */
+export function measureShape(kernel: Kernel, shape: ShapeHandle): StoredShapeMeasure {
+  const solids = kernel.solids(shape);
+  // One by one: a spread of a huge count overflows the stack and leaks the handles.
+  for (const solid of solids) kernel.release(solid);
+  const { volume, area, bbox } = kernel.properties(shape);
+  return {
+    solids: solids.length,
+    volume,
+    area,
+    box: { min: [...bbox.min], max: [...bbox.max] },
+  };
+}
+
+/**
+ * The header's time stamp set to a fixed one, so the same shape always gives
+ * the same bytes and two copies of it share one attachment (named by SHA-256,
+ * ADR-0066). Only the header's `FILE_NAME` changes.
+ */
+function fixedStamp(step: string): string {
+  return step.replace(/^(FILE_NAME\('(?:[^']|'')*',)'[^']*'/m, "$1'2000-01-01T00:00:00'");
+}
+
+/**
+ * Reads `text` (`Kernel.readBrep`'s checks), places it by `chain`, writes it
+ * as STEP and reads that back. Every shape is released before it returns or
+ * throws. A shape without a solid comes back with no STEP (`step: ''`, `solids: 0`).
+ */
+export function storedShapeToStep(
+  kernel: Kernel,
+  text: string,
+  chain: readonly ShapePlacement[],
+  options: StoredShapeOptions = {},
+): StoredShapeStep {
+  using scope = kernel.scope();
+  const matrix = chainMatrix(chain);
+  const read = scope.track(kernel.readBrep(text));
+  const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
+  const before = measureShape(kernel, placed);
+  // Nothing to import: no STEP, and the caller says so (not a failure).
+  if (before.solids === 0) return { step: '', ...before, read: before };
+  const step = kernel.writeStep([
+    {
+      shape: placed,
+      name: options.name ?? 'Shape',
+      ...(options.color !== undefined && { color: options.color }),
+    },
+  ]);
+  const back = scope.track(kernel.readStep(step));
+  return { step: fixedStamp(step), ...measureShape(kernel, back), read: before };
+}
+
+/**
+ * Reads `text` (`Kernel.readBrep`'s checks), places it by `chain` and
+ * measures it (`measureShape`), with no STEP: the shape a file stores for a
+ * feature, to compare with the body Extrudo rebuilt for it (ADR-0144 S5).
+ * Every shape is released before it returns or throws.
+ */
+export function measureStoredShape(
+  kernel: Kernel,
+  text: string,
+  chain: readonly ShapePlacement[],
+): StoredShapeMeasure {
+  using scope = kernel.scope();
+  const matrix = chainMatrix(chain);
+  const read = scope.track(kernel.readBrep(text));
+  const placed = isIdentity(matrix) ? read : scope.track(kernel.transform(read, matrix).shape);
+  return measureShape(kernel, placed);
+}

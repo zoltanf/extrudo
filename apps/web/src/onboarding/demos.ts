@@ -13,10 +13,11 @@
  */
 
 /**
- * The tools that have a clip: every tile of the Solid, Modify, Construct, Make and
- * Sketch tabs (in the tabs' order), all recorded in the current UI (R3-16), and every tool
- * of the Sketch tab's Create ▾ and Modify ▾ menus but Import Drawing (P6-22, ADR-0116). A
- * menu item has no tooltip, so those clips play on the tools' pages in the docs.
+ * The tools that have a clip: every tile of the Solid, Modify, Construct, Make, Sketch and
+ * Drawing tabs (in the tabs' order), all recorded in the current UI (R3-16, P6-24 S6), the
+ * Drawing mode's Finish Drawing, and every tool of the Sketch tab's Create ▾ and Modify ▾
+ * menus but Import Drawing (P6-22, ADR-0116). A menu item has no tooltip, so those clips
+ * play on the tools' pages in the docs.
  */
 export const DEMO_TOOLS: readonly string[] = [
   // Solid › Create, Primitives, Features, Pattern, Program, Assemble.
@@ -82,6 +83,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'export',
   'slicer',
   'render',
+  'sheets',
   // Sketch › Create, Modify, Constraints, Export.
   'line',
   'rectangle',
@@ -135,10 +137,24 @@ export const DEMO_TOOLS: readonly string[] = [
   'sketchMove',
   'sketchCopy',
   'sketchScale',
+  // Drawing › Views, Dimensions, Notes, Tables, Sheet, Output, and its Finish Drawing tile
+  // (P6-24 S6, ADR-0143).
+  'baseView',
+  'projectedView',
+  'sheetDimension',
+  'sheetCentreMark',
+  'sheetCentreLine',
+  'sheetText',
+  'sheetLeader',
+  'sheetBalloon',
+  'sheetSticky',
+  'sheetPartsList',
+  'sheetTable',
+  'newSheet',
+  'sheetSetup',
+  'exportSheets',
+  'finishDrawing',
 ];
-
-/** Tiles whose clip is still to record: Insert Design (ADR-0140), a pilot. */
-export const DEMO_CLIPS_PENDING: readonly string[] = ['insertDesign'];
 
 /** Where a tool's clip is, or `undefined` if it has none. */
 export function demoUrl(tool: string): string | undefined {

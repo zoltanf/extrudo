@@ -46,6 +46,7 @@ different geometry model (triangle-mesh CSG, whereas we use exact B-rep).
 programs' native files and writes STEP. In v0.6.7 `.ipt .iam .sat .smt .smb
 .sab .sldprt .catpart .pvz` give a connected B-rep (no colours or names),
 `.fcstd` and IGES keep more; `.3dm` and `.prt` are too early to use.
+Since P6-25 S3 (ADR-0144) the app reads `.fcstd` itself, not through cadmpeg.
 
 **How we use it:** the desktop app bundles it as a separate executable,
 pinned by version and per-target SHA-256 in `apps/desktop/cadmpeg.json` and

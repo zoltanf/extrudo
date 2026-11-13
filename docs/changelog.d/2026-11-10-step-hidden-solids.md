@@ -1,0 +1,1 @@
+- 2026-11-10 · **A STEP file's hidden bodies come in hidden**: a solid the file marks as not shown is still imported, with its eye off in the browser, so the intermediate shapes of a converted `.fcstd` part no longer sit on top of the part (ADR-0066's amendment).

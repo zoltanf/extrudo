@@ -1,3 +1,4 @@
+import type { EditMode } from '@extrudo/core';
 import { describe, expect, it, vi } from 'vitest';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
@@ -5,7 +6,7 @@ import { buildCommands, type CommandContext } from './commands';
 import { menuModel } from './menuModel';
 import { defaultTab, FILE_COMMANDS, TABS, TOOLS, tabOfTool, visibleTabs } from './tools';
 
-const labels = (mode: 'model' | 'sketch') => visibleTabs(mode).map((t) => t.label);
+const labels = (mode: EditMode) => visibleTabs(mode).map((t) => t.label);
 
 describe('visibleTabs (ADR-0079 §2)', () => {
   it('shows Home, Solid, Modify, Construct and Make in the model (R3-10: no Inspect tab)', () => {
@@ -21,10 +22,36 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     expect(tabOfTool('exportSketch', 'sketch')).toBe('sketch');
   });
 
-  it('opens on Solid in the model and Sketch in a sketch', () => {
+  it('replaces the model tabs with Drawing in the drawing, with only the tools that exist (P6-24)', () => {
+    expect(labels('sheet')).toEqual(['Home', 'Drawing']);
+    const drawing = TABS.find((t) => t.id === 'sheet');
+    expect(drawing?.groups.map((g) => [g.label, g.tools])).toEqual([
+      ['Views', ['baseView', 'projectedView']],
+      ['Dimensions', ['sheetDimension', 'sheetCentreMark', 'sheetCentreLine']],
+      ['Notes', ['sheetText', 'sheetLeader', 'sheetBalloon', 'sheetSticky']],
+      ['Tables', ['sheetPartsList', 'sheetTable']],
+      ['Sheet', ['newSheet', 'sheetSetup']],
+      ['Output', ['exportSheets']],
+    ]);
+    expect(tabOfTool('parameters', 'sheet')).toBe('home');
+    expect(tabOfTool('extrude', 'sheet')).toBeUndefined();
+    // Make › Output › Drawing is the way in from the model (plan §3.2).
+    const make = TABS.find((t) => t.id === 'print');
+    expect(make?.groups.find((g) => g.label === 'Output')?.tools).toEqual([
+      'export',
+      'slicer',
+      'render',
+      'sheets',
+    ]);
+    // The code says `sheet`, never `drawing`, in an identifier but the Make tile's ID (ADR-0143).
+    expect(TOOLS.finishDrawing.label).toBe('Finish Drawing');
+  });
+
+  it('opens on Solid in the model, Sketch in a sketch and Drawing in the drawing', () => {
     expect(defaultTab('model')).toBe('solid');
     expect(defaultTab('sketch')).toBe('sketch');
-    for (const mode of ['model', 'sketch'] as const) {
+    expect(defaultTab('sheet')).toBe('sheet');
+    for (const mode of ['model', 'sketch', 'sheet'] as const) {
       expect(visibleTabs(mode).some((t) => t.id === defaultTab(mode))).toBe(true);
     }
   });

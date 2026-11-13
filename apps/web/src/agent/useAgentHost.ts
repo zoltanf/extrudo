@@ -14,6 +14,9 @@ import type {
   DocumentStore,
   ModelStore,
   SessionStore,
+  Sheet,
+  SheetAnchors,
+  SheetParts,
 } from '@extrudo/core';
 import {
   type ExportBody,
@@ -28,12 +31,16 @@ import { useEffect, useRef } from 'react';
 import type { OpenSketch } from '../annotations/anchor';
 import type { MeasureKernel } from '../measure/inspection';
 import type { AgentExportFormat } from '../platform/agent';
+import { finishDrawing } from '../sheets/mode';
+import type { SheetFieldExtras } from '../sheets/sheetParts';
+import { sheetSvgSnapshot } from '../sheets/snapshot';
+import type { SheetViewsKernel } from '../sheets/viewRunner';
 import { bodyEntries } from '../shell/bodies';
 import type { AppCommand } from '../shell/commands';
 import type { ToolHost } from '../sketch/tools/host';
 import { APP_VERSION } from '../version';
 import type { ViewportStore } from '../viewport/store';
-import { type AgentBody, type AgentHost, registerAgentHost } from './host';
+import { type AgentBody, type AgentHost, type AgentSheetKernel, registerAgentHost } from './host';
 
 export interface AgentShell {
   enabled: boolean;
@@ -47,6 +54,15 @@ export interface AgentShell {
         Partial<{
           interference(bodies: readonly BodyId[]): Promise<Interference[]>;
           resolveAnnotation(annotation: Annotation): Promise<AnnotationReport | undefined>;
+          // The sheet tools' calls (P6-24 S6): the project's `Recomputer` has them all.
+          sheetViews: SheetViewsKernel['sheetViews'];
+          cancelSheetViews(): void;
+          bodyVersions(): Record<BodyId, string>;
+          resolveSheet(
+            sheet: Sheet,
+            options?: { quiet?: boolean },
+          ): Promise<SheetAnchors | undefined>;
+          sheetParts(sheet: Sheet, options?: { quiet?: boolean }): Promise<SheetParts | undefined>;
         }>)
     | undefined;
   apply(command: Command<unknown>): void;
@@ -56,6 +72,8 @@ export interface AgentShell {
   openSketch?(): OpenSketch | undefined;
   /** The sketch tools' host (loaded lazily): its `apply` solves, once its solver is in. */
   toolHost: Pick<ToolHost, 'whenSolverReady'> | undefined;
+  /** What the export dialog fills a sheet's fields with (the newest version, the filament). */
+  sheetFields(): Promise<SheetFieldExtras>;
 }
 
 /** The bodies an export takes: the shown ones, else all (as the Export dialog starts). */
@@ -175,6 +193,24 @@ function createShellHost(designId: string, current: { current: AgentShell }): Ag
       const meshed = await meshBodies(kernel, bodies, RESOLUTIONS.medium);
       return meshBytes(meshed, format, { application: `Extrudo ${APP_VERSION}`, project: name });
     },
+    sheetKernel() {
+      // `Recomputer.reference` takes a persistent name as well as a mesh index.
+      const k = shell().kernel as (AgentShell['kernel'] & Partial<AgentSheetKernel>) | undefined;
+      return k?.sheetViews &&
+        k.cancelSheetViews &&
+        k.bodyVersions &&
+        k.resolveSheet &&
+        k.sheetParts &&
+        k.reference
+        ? (k as AgentSheetKernel)
+        : undefined;
+    },
+    sheetFields: () => shell().sheetFields(),
+    finishDrawing() {
+      const { store, session, viewport, model } = shell();
+      finishDrawing({ store, session, viewport, model });
+    },
+    sheetPng: (svg, paper, size) => sheetSvgSnapshot(svg, paper, size),
   };
 }
 

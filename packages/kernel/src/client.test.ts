@@ -68,6 +68,9 @@ describe('KernelClient', () => {
       removeFacesPick: async () => undefined,
       exportMeshes: async () => [],
       exportStep: async () => '',
+      storedShapeToStep: () => Promise.reject(new Error('not an import kernel')),
+      measureStoredShape: () => Promise.reject(new Error('not an import kernel')),
+      measureBodies: async () => ({}),
       exportScad: async () => '',
       inspect: async () => ({ items: [] }),
       interference: async () => [],
@@ -75,6 +78,10 @@ describe('KernelClient', () => {
       resolveAnnotation: async (annotation) => ({ id: annotation.id, status: 'ok' }),
       checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
       cancelCheck: async () => {},
+      sheetViews: async () => [],
+      cancelSheetViews: async () => {},
+      resolveSheet: async () => ({}),
+      sheetParts: async () => ({ lists: {}, bodies: {} }),
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -115,6 +122,9 @@ describe('KernelClient', () => {
       removeFacesPick: async () => undefined,
       exportMeshes: async () => [],
       exportStep: async () => '',
+      storedShapeToStep: () => Promise.reject(new Error('not an import kernel')),
+      measureStoredShape: () => Promise.reject(new Error('not an import kernel')),
+      measureBodies: async () => ({}),
       exportScad: async () => '',
       inspect: async () => ({ items: [] }),
       interference: async () => [],
@@ -122,6 +132,10 @@ describe('KernelClient', () => {
       resolveAnnotation: async (annotation) => ({ id: annotation.id, status: 'ok' }),
       checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
       cancelCheck: async () => {},
+      sheetViews: async () => [],
+      cancelSheetViews: async () => {},
+      resolveSheet: async () => ({}),
+      sheetParts: async () => ({ lists: {}, bodies: {} }),
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

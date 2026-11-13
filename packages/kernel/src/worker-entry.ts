@@ -19,6 +19,11 @@ import { workerApi } from './worker-api';
 export interface ServeKernelOptions {
   /** Loads the script runner; without one a Script feature is an error. */
   scripts?: ScriptHostLoader;
+  /**
+   * An import's throwaway kernel (ADR-0144 decision 5): the only kind that
+   * reads third-party B-rep text (`storedShapeToStep`). Never a project's.
+   */
+  importKernel?: boolean;
 }
 
 /** Starts the kernel service in this worker and answers the UI thread. */
@@ -30,6 +35,7 @@ export function serveKernel(options: ServeKernelOptions = {}): void {
       // Shared by the debug and project entries; OpenSCAD stays lazy in a nested worker.
       openscad: async () => (await import('@extrudo/openscad/browser')).createBrowserCompiler(),
       ...(options.scripts && { scripts: options.scripts }),
+      ...(options.importKernel && { importKernel: true }),
     },
   );
   Comlink.expose(workerApi(service));

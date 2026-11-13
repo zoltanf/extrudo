@@ -66,7 +66,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   Settings…, About Extrudo, then Close design on the web or Quit on the
   desktop) and Learn (Help for \<tool\>, User Guide, Tutorial, Online
   Tutorials, Examples, Tool Reference); and **the version strip** (a dot and a
-  word for the update state, the version, Check now on the desktop and GitHub).
+  word for the update state, the version, Restart on the desktop or Reload on
+  the web while an update is ready, Check now on the desktop and GitHub).
   Rail controls leave the panel open; an item runs and closes it. Arrow keys
   move within a rail group or a column, Tab between them, Escape closes.
   **About Extrudo** (ADR-0085, also Ctrl+K "About Extrudo", the home
@@ -95,7 +96,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   printing "mode".
 - **Tabs** (ADR-0079): `HOME` (the design as a whole: New Design, All
   Designs; Save Version, Version History; **Import**: Import .extrudo, Import
-  Model, Import Drawing, Canvas; **Export**: Export .extrudo, Export as Script,
+  Model, Import SVG/DXF, Canvas; **Export**: Export .extrudo, Export as Script,
   Export Model, Save to Linked Folder (two groups since the owner's UI
   review 3, R3-09, where there was one Files group); Parameters, Customizer),
   `SOLID` (default: Create, Primitives, Features, Pattern, Program, Component),
@@ -109,7 +110,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   Export Sketch. A sketch selects SKETCH whichever tab was selected, and
   finishing it brings the model's tabs back with SOLID selected. Home's
   model-only tools (Import, Canvas, Customizer) say "Finish the sketch to use
-  …" in a sketch.
+  …" in a sketch: in search, by their keys, and as a message when their tile is
+  clicked, as the drawing's "Finish the drawing to use …" does.
 - **Toolbars fit the window** (ADR-0079 §3): when the selected tab's groups
   are wider than the window, the group with the most visible tiles moves its
   last tile to the front of its ▾ menu, one at a time (equally full: the
@@ -491,7 +493,9 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   40.00 mm  Ctrl+Enter". The row
   (Enter when it is the only row, or picked) and the link both rewrite the
   field to `width = 40` with the value selected; Enter then creates the
-  parameter and uses it, in one undo step.
+  parameter and uses it, in one undo step. A dimension that has its own
+  parameter (`d1`, every driving one the app makes) gets "Rename to width =
+  40.00 mm" in both places instead: Enter renames `d1` to `width` (ADR-0142).
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as is usual in CAD), so a used profile doesn't float in front of the
@@ -696,7 +700,8 @@ A list on the left, the selected parameter on the right.
 - **List.** User parameters, one flat "User parameters" section until a
   parameter has a group, then a section per group with "General" (no group)
   first; below them "New parameter" and a collapsed "Model parameters"
-  section. A row: a drag grip, a star (filled = in the Customizer), the name
+  section (selecting one of its parameters, from Used by too, opens it; its
+  header collapses it again, the selection and inspector staying). A row: a drag grip, a star (filled = in the Customizer), the name
   in mono, `ƒx` for a formula, the value right-aligned (red "loop" for a
   cycle, "error" otherwise). The selected row is `accent-soft`. Dragging a
   row shows a 2 px accent line where it lands and moves it, into another
@@ -711,7 +716,11 @@ A list on the left, the selected parameter on the right.
   read-only note instead), and a footer with Move up/down and Delete.
 - **New parameter.** The same fields as a form; Add or `Enter` adds it and
   selects it. A design without parameters opens on the form.
-- A refused change shows its message at the top of the inspector.
+- A refused change shows its message where it was made, so nothing moves: a
+  refused name under the name field (red outline, the typed name kept until
+  Esc or the next edit), anything else (a delete of a parameter in use) in place
+  of the footer's hint beside Delete, or under a model parameter's buttons.
+  The footer stays at the pane's bottom while the fields scroll.
 
 ### 3.6 Annotations (P6-23, ADR-0126)
 
@@ -877,6 +886,272 @@ no text shown the tab alone is the callout, rounded on all four corners. A
   cursor. Datum projections are not drawn; they show
   while hovered or selected.
 
+## 4a. Drawing mode (P6-24, ADR-0143)
+
+A design's 2D sheets, made from the model (slice S1: sheets, Sheet Setup, the
+title block, text items and export; S2: views drawn from the model, Base View,
+Projected View, Standard views and the view card; S3: dimensions and the Dimension tool;
+S4: notes, centre marks and lines, snapping; S5: parts lists, balloons, free tables and
+text fields). The UI says "drawing" and "sheet"; code says `sheet`.
+
+- **Ways in:** Make › **Drawing** (New drawing when the design has no sheet,
+  else the sheet edited last); the browser's **Drawings** folder below
+  Annotations (a row "n · name" with its size; double-click or Enter opens;
+  its menu has Open, Rename, Duplicate, Export and Delete); Ctrl+K "New
+  Drawing", "Open Drawing" and "Sheet: name". Entering, and any sheet command
+  run from a sketch, ends the open sketch (one undo step), a waiting Create
+  Sketch and a feature dialog first.
+- **New drawing** (mock-up 2): **Start with** three cards: **Standard views**
+  (front, top, the side and an isometric: one base view and three projected
+  from it, laid out for first or third angle in a 2 × 2 grid with the
+  isometric in the free corner, lined up, at the largest standard scale that
+  fits above the title block, 5:1 and 2:1 included, centred), **One view** (the
+  sheet's scale fitted to the front view; Base View then runs to place it) or
+  **Empty sheet**; then paper, orientation, title block (Simple, Full, None),
+  Bodies ("All shown (n)" or one body), Scale ("Fit the sheet · 1:2" or a
+  standard one) and first or third angle. The summary says what Create makes
+  ("4 views of 3 bodies on one A3 landscape sheet."); while the views are
+  measured it says "Measuring the views…" and Create waits. A design with no
+  shown body starts with Empty sheet (the other cards are off). Create is one
+  undo step ("New drawing"). A new sheet is A3
+  landscape, 1:1, first angle, one decimal, the simple title block, a border
+  without zones, with the design's name, today's date and the units filled in.
+  "Drawn by" is never filled in by itself: the last name typed there is
+  offered as a "Use …" button.
+- **The screen:** tabs Home and **Drawing** (Views: Base View, Projected View; Dimensions:
+  Dimension, Centre Mark, Centreline; Notes: Text, Leader Note, Balloon, Sticky Note; Tables:
+  Parts List, Table; Sheet: New Sheet, Sheet Setup; Output: Export PDF; Finish Drawing). The sheet takes the 3D view's place (the view stays
+  mounted underneath, inert): white paper in both themes with a shadow, a
+  floating bar with Select, Pan, Zoom, Fit, the zoom level, **Snap** (on by default) and
+  **Show sticky notes** (on by default; screen only, never stored). Pan and zoom
+  follow the mouse preset's bindings (no orbit), the wheel zooms at the
+  pointer, F6 fits the sheet. Right-click opens the marking menu with the
+  sheet's wedges. Esc stops Pan or Zoom, then clears the selection; it never
+  leaves the mode.
+- **Sheet tabs** replace the timeline: "n · name" with a page in the sheet's
+  orientation; a click switches, double-click or F2 renames, a drag onto
+  another tab moves the sheet, `+` adds one; the menu has Rename, Duplicate,
+  Export This Sheet and Delete. **Ctrl+PageUp / Ctrl+PageDown** step through
+  them; a browser may keep those keys for its own tabs, and the sheet tabs are
+  always clickable. The status text and the bell stay on the right.
+- **The browser** lists the Sheets tree (each sheet with its views, a Dimensions
+  folder, a **Notes** folder with its texts, leader notes, balloons ("Balloon 2 Front"),
+  sticky notes, centre marks and centre lines, a **Tables** folder with its parts lists
+  ("Parts list Front") and free tables ("Table 3 × 2"), and its title block), then Bodies. The model's folders keep their open or closed state
+  for when the drawing ends.
+- **Selecting on the sheet** (Select, no nav tool), by what each drawn item
+  belongs to, so it is the same for every item kind: the pointer
+  pre-highlights the item, view or title block under it; a click selects it,
+  Shift or Ctrl/⌘ toggles; a drag on empty paper selects what lies wholly in
+  its box; a click on empty paper clears. A drag on a selected item or view
+  moves the selection; the arrow keys nudge it 1 mm (10 mm with Shift). A
+  projected view beside its parent moves only across, one above or below only
+  up and down, so it stays lined up (an isometric one moves freely); **Alt**
+  during the drag frees it. Moving or rescaling a view carries the views
+  projected from it along the line they share (an isometric one fully);
+  Delete deletes the selected items and views (a view with the views
+  projected from it). The paper and the border can't be selected; the title
+  block can't be moved or deleted (Sheet Setup's Title block "None" removes
+  it). A selected view shows its name in a tag above its frame.
+- **Views** are drawn from the model at the timeline marker whenever the
+  drawing is open: each view's lines are computed one view at a time, quick
+  polygonal lines first where a view has nothing current to show, then the
+  exact ones, once the model is computed. While a view is recomputed (a parameter changed, the view turned)
+  it keeps its last lines at a third of their strength; a view drawn for the
+  first time shows its thin frame and name with "Drawing the view…" under it.
+  After a moment a notice at the top middle of the sheet says "Drawing the views",
+  "View 2 of 4", with a bar and **Cancel**, which stops before the next view
+  (the one under way finishes); the views then keep what they show and the
+  notice says "Some views are out of date" with **Draw**. Moving a view,
+  changing its scale or style computes nothing. Under a view the screen says
+  "Box is gone. Choose bodies or delete the view." (a chosen body deleted: the
+  view keeps its frame), "Mesh bodies can't be drawn yet." or "No shown bodies
+  to draw."; these notes are on screen only. A hidden body leaves the views
+  that show all shown bodies and stays in a view that names it. With the
+  marker rolled back the status text ends "Showing the model at feature 5 of
+  7".
+- **Dimensions** (S3): measured from the model, never driving it. The open
+  sheet's anchors are asked of the kernel after the model, a view or an item
+  changes; a dimension (or note) the kernel has not answered for yet is not
+  drawn, so nothing shows as lost while it answers. A **lost** one (its edge
+  gone, or the feature it was measured on deleted, suppressed or failing) is
+  drawn where it was last, in the paper's red with dashed lines; one the
+  kernel found again by its fingerprint ("moved") is drawn as usual. The
+  sheet's folder in the browser has **Dimensions**: a row per dimension with
+  its text and view ("74 Front"), a click selects it; a moved row has a
+  warning triangle and "moved", a lost row is red with "lost its edge" (its
+  tooltip says why). While a lost or moved dimension is selected (else under
+  the pointer) the status text says why: the kernel's reason ("The feature
+  this was measured on is deleted.", "Pocket, the feature this was measured
+  on, is suppressed. Unsuppress it to show the dimension again.", "…, has an
+  error. Fix it to show the dimension again.") or "This dimension lost its
+  edge: drag an end onto an edge, or delete it.". The export resolves the
+  anchors (and the parts lists' rows, and the fields as of now) again and writes only the
+  model as it is now, in black: a lost
+  dimension is its text alone with "?" for the value, a lost leader note its
+  text without the arrow, a lost centre mark or line nothing; its summary adds
+  "· 1 dimension detached, written as ?" when some are. If the model can't be
+  measured, the export stops and says so.
+- **Base View** (`V`): the right column shows its choices (Looking from, Scale,
+  Style), a frame with the view's quick lines follows the pointer, a click
+  places the view with the middle of its lines there (one undo step, "Base
+  view") and selects it, and the tool carries on as Projected View from it;
+  Esc ends the tool. The choices are kept for the next time in the session.
+- **Projected View** (`P`): its parent is the selected view (or the view Base
+  View just placed, or the menu's Projected View from This; with none, a
+  click on a view chooses it). The pointer's place against the parent's
+  middle chooses the side: beside, above or below gives that side's
+  orthographic view for the sheet's projection angle, a diagonal an
+  isometric; the right column (region "Projected view") names what a click
+  makes ("Top", "Isometric"). The frame of that view's lines follows the
+  pointer along the parent's line, exactly lined up; a click places it (one
+  undo step, "Projected view"). The tool stays on for the next one until Esc.
+- **Dimension** (`D`, mock-up 3): one tool for a length, a distance, a radius
+  or diameter and an angle, measured from the model and never driving it.
+  Hovering highlights what a click takes in the accent: an edge, a vertex at
+  a line's end (a diamond), a circle, or a cylinder's or cone's outline. Only
+  a view's exact, current lines can be picked: while a view shows its quick
+  lines (or lines of an older model) nothing on it is, and the panel says
+  "Front is still being drawn: its lines can be picked once they are exact."
+  A line alone is its length, a circle its diameter, an arc its radius, an
+  outline its length; a second pick in the same view makes a distance (two
+  parallel lines, points, a circle's centre), an angle (two lines that cross)
+  or a diameter (a cylinder's two outlines). Once the picks make a dimension
+  it follows the pointer in blue with its value and "Click to place"; where
+  it is placed decides horizontal, vertical or aligned, as in a sketch. A
+  click on empty paper places it (one undo step, "Dimension"); the tool
+  stays on. The first Esc drops the picks, the next ends the tool. The
+  panel says what to pick next and holds the choices the next dimension is
+  placed with: Direction (Auto, Horizontal, Vertical, Aligned), Decimals (empty:
+  the sheet's), Before, After, In brackets (reference).
+- **A dimension selected** shows its card: its text and kind, its view,
+  why it is lost or moved, Direction (a linear one), Decimals, Before, After,
+  In brackets and Delete; each change one undo step. A lost or moved
+  dimension selected has a handle on each end (where its geometry was last
+  drawn; by its text when none was kept): **dragging one onto an edge, a
+  vertex or an outline picks that again** (one undo step, "Pick again"). Show
+  the unit and arrows inside or outside are not offered (no field yet: the
+  arrows go outside by themselves when there is no room).
+- **Centre Mark** (no key): a click on a circle (a hole's rim) or on a cylinder's
+  outline (its face) places a cross on its centre at once (one undo step, "Centre
+  mark"); only those can be hovered. **Centreline** (no key): a cylinder's or cone's
+  outline places a dash-dot line along its axis at once; a straight edge waits for a
+  second, parallel one in the same view (only parallel ones can be hovered) and the
+  line runs midway between them ("Centre line"). What the model says doesn't make one
+  (a cone's outline for a centre mark, an axis seen end-on) is not placed: the tool says
+  why. Both stay on until Esc; neither is ever made by itself.
+- **Leader Note** (`N`): hovering highlights what a click takes, an edge, a vertex at a
+  line's end, an outline, or a **face** under the pointer (a dot at the pointer; the face
+  is the one a ray along the view's direction meets first). After the pick the note
+  follows the pointer in blue; a click places it and its text is typed there. On a face
+  the leader ends in a dot instead of an arrowhead.
+- **Text** (`T`): a click on the paper starts a text there (its top-left), typed in
+  place; the panel's Letter height (empty: 3.5 mm) is used for the next ones. **Sticky
+  Note** (no key): a click starts a 60 × 40 mm note there in the panel's colour (yellow,
+  orange, pink, blue or green), typed in place; it says "On screen only" until its
+  **Print** switch is on. **Typing on the sheet** is the same for the three kinds:
+  **Enter** finishes (one undo step: "Text", "Leader note", "Sticky note"),
+  **Shift+Enter** starts a new line, **Esc** leaves it (a new one is not made); a click
+  elsewhere finishes too, and only finishes (it starts nothing). Blank text makes or
+  changes nothing. **A double-click** on a text, a leader note or a sticky note types it
+  again where it is (one undo step, "Edit text"). All three tools stay on until Esc.
+- **A note selected** shows its card, each change one undo step, every number an
+  expression field: a **text** its Text (Enter writes, Shift+Enter a new line), Letter
+  height and Wrap width ("None": no wrapping); a **leader note** its view, what it points
+  at and its Text; a **sticky note** its Text, Colour, Width, Height (5 to 1000 mm) and
+  Print; a **centre mark or line** its view (and that it is hidden when the view's
+  Centre lines is off). All have Delete. A lost or moved leader note, centre mark or
+  line says why (the kernel's reason when it gives one: "The feature this was drawn on
+  is deleted.") and has a handle per anchor: dragging it onto what its tool takes picks
+  that again ("Pick again"). The browser's row and the status text say why too.
+- **Parts List** (no key): a click on a view chooses it (the view under the pointer is
+  framed, dashed; a view selected when the tool starts is taken at once), then the list
+  follows the pointer in blue by its top-left corner with its rows, and a click places it
+  (one undo step, "Parts list"); the first Esc drops the view, the next ends the tool. Its
+  rows are the view's bodies as the model has them each time it is drawn (nothing derived is
+  stored): equal bodies (volume and box, and the same component or name stem) are one row
+  with a quantity. Columns Item, Qty, Name, Material, Size (each part's box along the model's
+  axes, longest side first, in the design's unit at the sheet's decimals) and Mass (one
+  piece, from Print Info's filament; empty without a density).
+- **Balloon** (`B`): a pick like a Leader Note's (an edge, a point, an outline or a face) on
+  a body of a view that has a parts list, then the balloon follows the pointer with its
+  number and a click places it ("Balloon"). The number is the row of the body it points at.
+  The panel says when the sheet has no parts list yet ("place one with Parts List first")
+  and, per view, which list numbers it: the first one placed for that view when it has
+  several (a balloon's card can choose another list of the sheet). Deleting a parts list
+  deletes its balloons in the same step. A lost balloon is red and dashed, "?" as its
+  number, and is picked again like any anchored item.
+- **Table** (no key): a click places a free table there (two columns of 25 and 45 mm,
+  three empty rows; one undo step, "Table"). **A double-click on a cell** types it in place
+  with the same keys as other text (one undo step, "Edit cell"; a cell may be left empty);
+  a cell's text wraps inside its column and its row grows.
+- **A list selected** shows its card, each change one undo step: a **parts list** its view,
+  which columns are shown (at least one), per row the Name and Material typed over it (the
+  model's name as the placeholder; empty, or the round arrow, goes back to the model's), and
+  how many balloons Delete takes along; a **balloon** its number, the list it is numbered by
+  (a choice when the sheet has several), its view, why it is lost or moved; a **table** its
+  size, Add row, Remove row, Add column, Remove column (at the end; never the last one) and
+  each column's width as an expression field. All have Delete.
+- **Text fields in braces** (S5): a text, a leader note, a table cell and a typed
+  title-block field may hold `{name}` (the design's), `{sheet}`, `{sheets}`, `{scale}`,
+  `{date}` (today), `{version}` (the newest saved version, "V3") and `{= expr}` (a parameter
+  expression with its unit, at the sheet's decimals). The sheet and the export show them
+  filled; typing in place and the cards show what was typed. A field without a value is left
+  as typed. The Text and Leader note cards and Sheet Setup's title block have **Insert
+  field** (the six fields, then each parameter): it writes at the caret of the field left
+  last (in Sheet Setup, the title field left last; the Title when none). Renaming a
+  parameter rewrites it inside `{= …}` in the same step.
+- **Snap** (plan §4.2): a dragged selection snaps to the other items' and views' edges
+  and middles, and a dimension to rows an even 10 mm from another dimension of its
+  direction (or onto its row), each axis on its own, within 5 px; a placed text, note
+  or a dimension, leader, balloon, parts list or table following the pointer snaps the same
+  way. Dashed guides show
+  where. Snap off in the floating bar turns it all off; arrow keys never snap.
+- **A view's menu** (right-click on a view): Projected View from This, Fit
+  Scale (the largest standard scale at which its base view fits inside the
+  border, the views projected from it scaled with it, one undo step, "Fit
+  scale") and Delete.
+- **A body dragged** from the browser onto the sheet makes a front view of
+  those bodies alone (named after the body when it is one), its lines' middle
+  where it is dropped, at the sheet's scale (one undo step), and selects it.
+- **The view label** ("Front (1:2)") sits under the middle of the view's
+  lines, on screen and in the export.
+- **The right column** is Sheet Setup with nothing selected (name, paper or a
+  custom size, orientation, border and zones, default scale, decimals,
+  projection, title block and its typed fields, Finish Drawing); a selection
+  card (its name, Delete) otherwise; the title block alone selected shows its
+  template and fields. **A view alone selected** shows its card (mock-up 1):
+  its name; Looking from (the six standard views, four isometrics named by the
+  faces they show, the model's current view, each named view; "Custom
+  direction" when it matches none); Scale (the sheet's, 1:1 to 1:50, 2:1, 5:1,
+  or Custom with two number fields); Style (Visible edges, Visible and
+  hidden); Show: Tangent edges, Centre lines (hides the view's centre marks and lines),
+  View label; Bodies: All shown, then each body
+  at the marker (the last one can't be unticked); Delete and Finish Drawing.
+  A view still named after its direction takes the new direction's name; a new
+  scale keeps the middle of its lines in place. A projected view's card shows
+  its parent, its Centre lines and its label only. Each change is one undo step.
+- **Undo:** every sheet edit is one undo step with its own label; Finish
+  Drawing is none. Undo in the drawing is a plain undo (it doesn't reopen a
+  sketch finished before). An undo that takes the open sheet away opens its
+  neighbour, or ends the drawing with the last sheet.
+- **Export drawing** (Export PDF, Ctrl+E; Export This Sheet): the sheets as
+  checkboxes, **PDF** (one file, a page per chosen sheet) or **SVG** (a file
+  per sheet), the file name, **Sticky notes** (off: only the notes switched to Print
+  go in, and the summary adds "· 1 sticky note left out"; on: every one) and a summary
+  ("2 pages · A3 landscape, A4 landscape"); no sheet chosen can't export. The format and
+  the switch are remembered. Export
+  first draws every view of the chosen sheets exactly (the summary says
+  "Drawing the views · 2 of 4"; closing the dialog stops it and writes
+  nothing), so a file never holds the quick placeholder lines. Lengths are
+  written in the design's unit.
+- **Model-only tools** (Import, Canvas, Customizer) say "Finish the drawing to
+  use …"; Parameters stays available; camera and named views are not offered.
+  An Edit that opens a sketch or a feature dialog (a recompute error's Edit)
+  ends the drawing first. Repeat last skips Make › Drawing, Finish Drawing,
+  Sheet Setup and Export PDF; New Sheet repeats. Report a Bug attaches the
+  sheet, not the 3D view, in the web build.
+
 ## 5. Default keyboard shortcuts
 
 Follow mainstream CAD tools where they have a shortcut; remappable in settings.
@@ -902,7 +1177,10 @@ position (they work on any layout). The keys live in one table,
 `apps/web/src/commands/keymap.ts`; P is Project (P2-09), Shift+P Intersect in a
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
-ADR-0081 §4).
+ADR-0081 §4). In the drawing (§4a): V Base View, P Projected View, D Dimension (Sketch
+Dimension's key: a sketch and the drawing are never open together), T Text (Trim's in a
+sketch), N Leader Note (Annotate's on the model), B Balloon, Ctrl+E Export PDF,
+Ctrl+PageDown and Ctrl+PageUp the next and previous sheet.
 
 The sketch constraints have no usual keys in mainstream CAD, so they are **K, then a
 letter** (a chord; ADR-0023's amendment of 2026-10-18): K C Coincident, K L Collinear,

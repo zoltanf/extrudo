@@ -62,7 +62,6 @@ import {
   updateFeatureInputs,
   updateParameter,
 } from '@extrudo/core';
-import type { ProjectSummary } from '@extrudo/storage';
 import {
   type AnnotationRef,
   fingerprintedAnchor,
@@ -73,8 +72,21 @@ import { withActiveComponent } from '../components/active';
 import type { AgentExportFormat, AgentReply } from '../platform/agent';
 import { bodyEntries } from '../shell/bodies';
 import type { SnapshotOptions } from '../viewport/snapshotView';
+import {
+  type AgentContext,
+  BUSY,
+  change,
+  failure,
+  json,
+  liveBodies,
+  refusal,
+  resolveBodyRefs,
+  text,
+  timeline,
+} from './change';
 import { type AgentHost, settled } from './host';
 import { type SketchShape, TOOL_SCHEMAS, type ToolInput, type ToolName } from './schemas';
+import { SHEET_HANDLERS } from './sheetTools';
 
 /** Commands `run_command` leaves to their own tools. */
 const UNDO_COMMANDS: ReadonlySet<string> = new Set(['undo', 'redo']);
@@ -118,45 +130,7 @@ export const agentMayRun = (id: string): boolean =>
   !AGENT_DENIED_COMMANDS.has(id) && !id.startsWith('openRecent');
 
 export const NO_DESIGN = 'No design is open: call open_design first.';
-export const BUSY =
-  'Finish the sketch or close the open dialog in Extrudo first: a change now would join it.';
-
-/** What the tools need besides the open design. */
-export interface AgentContext {
-  /** The open design's host, while one is open. */
-  host(): AgentHost | undefined;
-  designs(): Promise<readonly ProjectSummary[]>;
-  /** Makes a new empty design; resolves with its id. */
-  create(name: string | undefined): Promise<string>;
-  /** Opens a design and resolves with its host once it is ready. */
-  open(id: string): Promise<AgentHost>;
-  /** Waits its turn: screenshots at most one a second. */
-  screenshotTurn(): Promise<void>;
-  /** Waits its turn: exports at most one every 2 s. */
-  exportTurn(): Promise<void>;
-  /** How long a change waits for the recompute (ms). */
-  settleMs?: number;
-}
-
-const text = (value: string): AgentReply => ({
-  result: { content: [{ type: 'text', text: value }] },
-});
-const json = (value: unknown): AgentReply => text(JSON.stringify(value, null, 2));
-const failure = (message: string): AgentReply => ({
-  result: { content: [{ type: 'text', text: message }], isError: true },
-});
-
-/** An `ApiError` as an agent reads it: the input path first. */
-function apiMessage(error: ApiError): string {
-  return error.path ? `${error.path}: ${error.message}` : error.message;
-}
-
-/** A thrown refusal as a tool error; anything else is a bug and propagates. */
-function refusal(error: unknown): string | undefined {
-  if (error instanceof ApiError) return apiMessage(error);
-  if (error instanceof CommandError) return error.message;
-  return undefined;
-}
+export { type AgentContext, BUSY, resolveBodyRefs, timeline } from './change';
 
 /** A pacer: each call resolves no sooner than `ms` after the previous one did. */
 export function createPacer(ms: number, now = () => Date.now()): () => Promise<void> {
@@ -170,28 +144,6 @@ export function createPacer(ms: number, now = () => Date.now()): () => Promise<v
 }
 
 // --- Reading -----------------------------------------------------------------
-
-/** The timeline with each feature's status, as `get_design` lists it. */
-export function timeline(host: AgentHost) {
-  const { doc } = host.store.getState();
-  const { features } = host.model.getState();
-  const marker = doc.timelineMarker ?? doc.features.length;
-  return doc.features.map((feature, index) => {
-    const status = features[feature.id];
-    return {
-      id: feature.id,
-      type: feature.type,
-      name: feature.name,
-      status: feature.suppressed
-        ? 'suppressed'
-        : index >= marker
-          ? 'rolled back'
-          : (status?.status ?? 'pending'),
-      ...(status?.message && { message: status.message }),
-      suppressed: feature.suppressed,
-    };
-  });
-}
 
 function designSummary(host: AgentHost) {
   const { doc } = host.store.getState();
@@ -521,52 +473,6 @@ async function storedAnchor(
 
 // --- Changing ----------------------------------------------------------------
 
-/**
- * Runs `body` as one undo step named "Agent: <label>", then waits for the
- * recompute and answers `body`'s summary with any feature that failed. A
- * refusal (`ApiError`, `CommandError`) cancels the step: nothing changes.
- */
-async function change(
-  ctx: AgentContext,
-  host: AgentHost,
-  /** The step's name; a function is read once the step can begin (after `ready`). */
-  label: string | (() => string),
-  body: () => unknown,
-  /** Adds to the summary what is known only once the model is computed. */
-  after?: (summary: unknown) => unknown,
-): Promise<AgentReply> {
-  const { store, session } = host;
-  if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
-    return failure(BUSY);
-  }
-  await host.ready();
-  if (store.getState().transactionDepth > 0 || session.getState().mode === 'sketch') {
-    return failure(BUSY);
-  }
-  let summary: unknown;
-  const name = typeof label === 'function' ? label() : label;
-  store.getState().beginTransaction(`Agent: ${name}`);
-  try {
-    summary = body();
-    store.getState().commitTransaction();
-  } catch (error) {
-    store.getState().cancelTransaction();
-    const message = refusal(error);
-    if (message !== undefined) return failure(message);
-    throw error;
-  }
-  await settled(host, ctx.settleMs);
-  if (after) summary = after(summary);
-  const problems = timeline(host).filter((f) => f.status === 'error' || f.status === 'warning');
-  const model = host.model.getState();
-  return json({
-    done: `Agent: ${name}`,
-    ...(summary !== undefined && { result: summary }),
-    ...(model.status === 'failed' && { recomputeFailed: model.error }),
-    problems,
-  });
-}
-
 /** The feature `id`, or a refusal naming it. */
 function featureOf(doc: ExtrudoDocument, id: string): Feature {
   const feature = doc.features.find((f) => f.id === id || f.name === id);
@@ -748,55 +654,6 @@ export function expandShorthands(value: unknown): unknown {
   return Object.fromEntries(entries.map(([key, inner]) => [key, expandShorthands(inner)]));
 }
 
-/**
- * The bodies at the marker, once the model is computed for the document as it
- * is; `undefined` while it isn't (no kernel, a failed recompute), when body
- * references go to the feature unchecked and its status says what is wrong.
- */
-function liveBodies(host: AgentHost): ReadonlySet<string> | undefined {
-  const model = host.model.getState();
-  if (model.status !== 'ready' || model.doc !== host.store.getState().doc) return undefined;
-  return new Set(Object.keys(model.bodies));
-}
-
-/**
- * Body references as the kernel names bodies, `<feature id>:<n>` (ADR-0030):
- * a bare feature id (or name) stands for the one body that feature made, and
- * a body that isn't there is refused with the input's path, so a mistaken
- * reference changes nothing instead of adding a feature in error (#84).
- */
-export function resolveBodyRefs(
-  value: unknown,
-  live: ReadonlySet<string>,
-  doc: ExtrudoDocument,
-  path: readonly (string | number)[] = [],
-): unknown {
-  if (Array.isArray(value)) return value.map((v, i) => resolveBodyRefs(v, live, doc, [...path, i]));
-  if (value === null || typeof value !== 'object') return value;
-  const ref = value as { kind?: unknown; id?: unknown };
-  if (ref.kind === 'body' && typeof ref.id === 'string') {
-    if (live.has(ref.id)) return value;
-    const at = path.length > 0 ? `${path.join('.')}: ` : '';
-    const feature = doc.features.find((f) => f.id === ref.id || f.name === ref.id);
-    const made = feature ? [...live].filter((b) => b.startsWith(`${feature.id}:`)) : [];
-    if (made.length === 1) return { ...value, id: made[0] };
-    if (made.length > 1) {
-      throw new CommandError(
-        `${at}${feature?.name} made ${made.length} bodies: name one, ${made.join(', ')}.`,
-      );
-    }
-    throw new CommandError(
-      `${at}There is no body "${ref.id}": bodies are named <feature id>:<n>, and get_bodies lists them.`,
-    );
-  }
-  return Object.fromEntries(
-    Object.entries(value).map(([key, inner]) => [
-      key,
-      resolveBodyRefs(inner, live, doc, [...path, key]),
-    ]),
-  );
-}
-
 /** An agent's inputs as the API takes them: shorthands expanded, body references checked. */
 function agentInputs(host: AgentHost, inputs: Record<string, unknown>): Record<string, unknown> {
   const expanded = expandShorthands(inputs) as Record<string, unknown>;
@@ -821,6 +678,14 @@ type Handler<T extends ToolName> = (
 const need = (host: AgentHost | undefined): AgentHost => host as AgentHost;
 
 const HANDLERS: { [T in ToolName]: Handler<T> } = {
+  // The sheet tools (P6-24 S6) need the open design, as every tool but four.
+  ...(Object.fromEntries(
+    Object.entries(SHEET_HANDLERS).map(([name, handler]) => [
+      name,
+      (input: never, ctx: AgentContext, host: AgentHost | undefined) =>
+        (handler as Handler<ToolName>)(input, ctx, need(host)),
+    ]),
+  ) as { [T in keyof typeof SHEET_HANDLERS]: Handler<T> }),
   list_designs: async (_input, ctx, host) =>
     json(
       (await ctx.designs())
@@ -888,6 +753,10 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
   screenshot: async ({ view, bodies, section, overlays, annotations, size }, ctx, host) => {
     const h = need(host);
     await ctx.screenshotTurn();
+    // A picture of the model is of the 3D view: an open drawing is finished first, as
+    // Finish Drawing does (plan §8), so the view the person sees is the one drawn.
+    const closed = h.session.getState().mode === 'sheet';
+    if (closed) h.finishDrawing();
     await settled(h, ctx.settleMs);
     const options: SnapshotOptions = {
       ...(view !== undefined && { view }),
@@ -932,7 +801,10 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
         }));
     }
     const plain = Object.keys(options).length === 0;
-    return screenshot(h, size, plain ? undefined : options);
+    const shot = await screenshot(h, size, plain ? undefined : options);
+    if (!closed || shot.result.isError) return shot;
+    const note = 'The drawing was open: it was finished first (back to the model).';
+    return { result: { content: [...shot.result.content, { type: 'text', text: note }] } };
   },
   list_commands: (_input, _ctx, host) =>
     json(

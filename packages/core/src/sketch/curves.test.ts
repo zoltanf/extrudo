@@ -18,6 +18,7 @@ import {
   normalizeSpline,
   splineCurve,
   splineDerivative,
+  splineFolds,
   splinePoint,
   splinePolyline,
   splineRange,
@@ -886,5 +887,92 @@ describe('end tangents and degree (ADR-0063, third amendment)', () => {
       'the first six knots must be 0 and the last six 1',
     );
     expect(knotProblem([0, 0, 0.5, 0.5, 1, 1], 4, 1)).toBe('an inner knot may repeat at most once');
+  });
+});
+
+describe('splineFolds (ADR-0025, amendment of 2026-11-09)', () => {
+  const bezier = (poles: Vec2[]) => ({ degree: 3, poles, knots: [0, 0, 0, 0, 1, 1, 1, 1] });
+
+  it('finds where poles in a line go back before they go on', () => {
+    // x(t) = 3·0.01·t(1−t)² − 3·0.01·t²(1−t) − 0.02·t³ turns where x'(t) = 0.
+    const spline = bezier([
+      [10, 5],
+      [10.01, 5],
+      [9.99, 5],
+      [9.98, 5],
+    ]);
+    const folds = splineFolds(spline);
+    expect(folds).toHaveLength(1);
+    const u = folds[0] as number;
+    expect(splineTangentAt(spline, u)[0]).toBeCloseTo(0, 9);
+    expect(splineTangentAt(spline, u - 0.01)[0]).toBeGreaterThan(0);
+    expect(splineTangentAt(spline, u + 0.01)[0]).toBeLessThan(0);
+  });
+
+  it('finds a cusp, and every fold of a curve that folds twice', () => {
+    // (t², t³) for t in [−1, 1]: a cusp at t = 0.
+    const cusp = bezier([
+      [1, -1],
+      [-1 / 3, 1],
+      [-1 / 3, -1],
+      [1, 1],
+    ]);
+    expect(splineFolds(cusp)).toEqual([expect.closeTo(0.5, 9)]);
+    const zigzag = {
+      degree: 1,
+      poles: [
+        [0, 0],
+        [2, 0],
+        [1, 0],
+        [3, 0],
+      ] as Vec2[],
+      knots: [0, 0, 1 / 3, 2 / 3, 1, 1],
+    };
+    expect(splineFolds(zigzag)).toEqual([expect.closeTo(1 / 3, 9), expect.closeTo(2 / 3, 9)]);
+  });
+
+  it('finds none on smooth curves, sharp bends and corners short of a turn back', () => {
+    expect(
+      splineFolds(
+        fitSpline([
+          [0, 0],
+          [10, 5],
+          [20, -5],
+          [30, 5],
+          [40, 0],
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      splineFolds(
+        controlSpline([
+          [0, 0],
+          [10, 0],
+          [10, 10],
+          [0, 10],
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      splineFolds(
+        bezier([
+          [0, 0],
+          [1, 0],
+          [1, 0],
+          [1, 1],
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      splineFolds({
+        degree: 1,
+        poles: [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+        ],
+        knots: [0, 0, 0.5, 1, 1],
+      }),
+    ).toEqual([]);
   });
 });

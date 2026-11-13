@@ -4,6 +4,7 @@
  */
 
 export { kernelFeatures } from './features';
+export { importRebuilder } from './import-rebuild';
 export { loadManifold, type ManifoldLoadOptions } from './manifold';
 export { type LoadOptions, loadOcct } from './occt/load';
 export { type OcctObject, OcctScope } from './occt/scope';

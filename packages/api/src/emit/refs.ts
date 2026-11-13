@@ -6,6 +6,7 @@
  * (inside a Script feature they are `<script>.f<n>`).
  */
 import {
+  type GeomFingerprint,
   type GeomRef,
   isConstructionType,
   parseProfileRefId,
@@ -14,7 +15,7 @@ import {
 } from '@extrudo/core';
 import { detectProfiles, interiorPoint, profileCentroid } from '@extrudo/sketch/profiles';
 import type { EmitContext } from './context';
-import { arr, call, type Expr, num, raw, str, tmpl } from './print';
+import { arr, call, type Expr, num, obj, raw, str, tmpl } from './print';
 
 /** The origin plane, axis and point, as `design.origin.*`. */
 const ORIGIN: Readonly<Record<string, string>> = {
@@ -261,4 +262,19 @@ function matchesAt(text: string, at: number, id: string): boolean {
   const before = at === 0 ? '' : (text[at - 1] as string);
   const after = at + id.length >= text.length ? '' : (text[at + id.length] as string);
   return BEFORE.has(before) && AFTER.has(after);
+}
+
+export const numbers = (values: readonly number[]): Expr => arr(values.map(num));
+
+/** A fingerprint as an object literal, its neighbours' names through their handles' IDs. */
+export function fingerprintExpr(print: GeomFingerprint, ctx: EmitContext): Expr {
+  return obj([
+    ['type', str(print.type)],
+    ['at', numbers(print.at)],
+    ...(print.dir ? ([['dir', numbers(print.dir)]] as [string, Expr][]) : []),
+    ...(print.size !== undefined ? ([['size', num(print.size)]] as [string, Expr][]) : []),
+    ...(print.adj
+      ? ([['adj', arr(print.adj.map((name) => idExpr(name, ctx)))]] as [string, Expr][])
+      : []),
+  ]);
 }

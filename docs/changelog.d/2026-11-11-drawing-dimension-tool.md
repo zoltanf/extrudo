@@ -1,0 +1,1 @@
+- 2026-11-11 · **Drawings: the Dimension tool**: `D` on the Drawing tab places a length, a distance, a radius or diameter or an angle picked from a view's lines, with a preview that follows the pointer; a selected dimension has its card (direction, decimals, text before and after, brackets), and a lost one is picked again by dragging its end onto an edge (P6-24 S3, ADR-0143).

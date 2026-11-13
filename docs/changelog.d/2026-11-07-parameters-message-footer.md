@@ -1,0 +1,1 @@
+- 2026-11-07 · **Parameters dialog messages in place**: a refusal shows where you acted (a taken name under the name field, which keeps what you typed; a delete of a parameter in use beside the Delete button) instead of in a line that pushed the whole inspector down (ADR-0086).

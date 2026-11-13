@@ -15,6 +15,7 @@
 import {
   type BodyId,
   bodyDisplay,
+  type EditMode,
   type Feature,
   type FeatureId,
   isConstructionType,
@@ -58,7 +59,7 @@ import type { AppCommand } from './commands';
 import type { GroupActions } from './groupActions';
 
 export interface ContextInput {
-  mode: 'model' | 'sketch';
+  mode: EditMode;
   /** The session's selection, after the right-click selected what was under the pointer. */
   selection: readonly SelectionItem[];
   /** The commands offered now (`buildCommands`). */
@@ -90,7 +91,13 @@ const small = { size: 14 } as const;
 
 /** The overflow entries for this selection, in groups (a group's first entry has a separator). */
 export function contextEntries(input: ContextInput): MarkingEntry[] {
-  const groups = input.mode === 'sketch' ? sketchGroups(input) : modelGroups(input);
+  // The drawing's sheet has no model selection to act on (P6-24): its menu is the ring alone.
+  const groups =
+    input.mode === 'sheet'
+      ? []
+      : input.mode === 'sketch'
+        ? sketchGroups(input)
+        : modelGroups(input);
   const out: MarkingEntry[] = [];
   for (const group of groups) {
     group.forEach((entry, i) => {

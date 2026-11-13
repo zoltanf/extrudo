@@ -377,3 +377,44 @@ describe('an older reader and annotations (P6-23, ADR-0126 §1)', () => {
     expect(parsed.doc).toEqual(plain);
   });
 });
+
+describe('an older reader and sheets (P6-24, ADR-0143)', () => {
+  /** DocumentSchema as it was before sheets. */
+  const { sheets: _s, ...shape } = DocumentSchema.shape;
+  const olderSchema = z.strictObject(shape) as unknown as z.ZodType<ExtrudoDocument>;
+
+  it('drops `sheets` and keeps everything else', () => {
+    const plain = sampleDocument();
+    const raw = JSON.parse(
+      JSON.stringify({
+        ...plain,
+        sheets: [
+          {
+            id: 'sh1',
+            name: 'Sheet 1',
+            size: 'A3',
+            orientation: 'landscape',
+            scale: [1, 2],
+            projection: 'first',
+            decimals: 1,
+            views: [
+              {
+                id: 'v1',
+                name: 'Front',
+                at: [100, 100],
+                from: { kind: 'base', direction: [0, 1, 0], up: [0, 0, 1] },
+              },
+            ],
+            items: [{ kind: 'text', id: 't1', at: [10, 10], text: 'Bracket' }],
+          },
+        ],
+      }),
+    );
+    expect(FORMAT_VERSION).toBe(2);
+    expect(DocumentSchema.safeParse(raw).success).toBe(true);
+    const parsed = parseLeniently(raw, olderSchema);
+    if (!parsed.ok) throw new Error('the older reader refused the file');
+    expect(parsed.dropped).toEqual(['sheets']);
+    expect(parsed.doc).toEqual(plain);
+  });
+});

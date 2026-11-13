@@ -30,6 +30,13 @@
  * all-digits one) are left out, and two bodies with the same name get
  * " (2)", " (3)"….
  *
+ * **Hidden solids** (ADR-0066's amendment of 2026-11-10): a STEP file that
+ * has an `INVISIBILITY` entity is read once more for which solids it hides
+ * (the facade's `readStepHidden`). Every solid is still a body; the ones the
+ * file hides are listed in `ImportReport.hidden`, and the app hides such a
+ * body once, when it first names it, as it takes a colour. A file that hides
+ * every solid hides none here.
+ *
  * **Names:** a STEP file's face `n` (1-based, in the order `TopExp` lists the
  * file's faces before splitting) is `import:<id>:face:<n>`; a mesh body's one
  * face is `mesh:<id>`, numbered `#n` for the bodies after the first, so two
@@ -144,15 +151,17 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   const read = scope.track(ctx.kernel.readStep(text));
   // A surface model has solids to count, and we only want to know whether it
   // has any: the handles go straight back (after saying which faces each
-  // holds, when the file's colours or names need it).
+  // holds, when the file's colours, names or hidden solids need it).
   const solids = ctx.kernel.solids(read);
   let colors: StepSolidColors | undefined;
   let reportNames: (string | undefined)[] | undefined;
   let faceSolid: Map<number, number> | undefined;
+  let hidden: boolean[] | undefined;
   try {
     const wantColors = STEP_COLOR.test(text);
     const wantNames = STEP_NAME.test(text);
-    if ((wantColors || wantNames) && solids.length > 0) {
+    hidden = stepHiddenSolids(ctx, text, solids);
+    if ((wantColors || wantNames || hidden) && solids.length > 0) {
       faceSolid = stepFaceSolid(ctx, read, solids);
       if (wantColors) colors = stepSolidColors(ctx, text, solids);
       if (wantNames) reportNames = stepSolidNames(ctx, text, solids);
@@ -184,8 +193,8 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   const names = new Map<BodyId, TopoNames>([[id, importNames(ctx, placed)]]);
   bodies.set(id, scope.keep(placed));
   const output = splitSolids(ctx, scope, { bodies, names });
-  return colors || reportNames
-    ? { ...output, report: importReport(ctx, colors, reportNames, faceSolid, output) }
+  return colors || reportNames || hidden
+    ? { ...output, report: importReport(ctx, colors, reportNames, hidden, faceSolid, output) }
     : output;
 }
 
@@ -246,6 +255,30 @@ function stepSolidNames(
   return found;
 }
 
+/**
+ * Which solids the file hides (ADR-0066's amendment of 2026-11-10), per solid
+ * in `solids(read)` order, or `undefined` when none is to be hidden: a file
+ * without an `INVISIBILITY` entity (it is not read again, so it computes
+ * exactly as before), one that hides no solid, and one that hides every solid
+ * (an import that shows nothing would look like one that failed). The same
+ * count guard as colours: a list that ever mismatched `solids(read)` would
+ * hide the wrong bodies, so it is ignored.
+ */
+function stepHiddenSolids(
+  ctx: EvalContext,
+  text: string,
+  solids: readonly ShapeHandle[],
+): boolean[] | undefined {
+  if (!STEP_HIDDEN.test(text)) return undefined;
+  const hidden = ctx.kernel.readStepHidden(text);
+  if (hidden.length !== solids.length) return undefined;
+  const count = hidden.filter(Boolean).length;
+  return count === 0 || count === solids.length ? undefined : hidden;
+}
+
+/** A STEP file's entity that hides items (`INVISIBILITY`, `CONTEXT_DEPENDENT_INVISIBILITY`). */
+const STEP_HIDDEN = /INVISIBILITY\s*\(/;
+
 /** The entities a STEP file colours with (AP214/AP242: `COLOUR_RGB`, `DRAUGHTING_PRE_DEFINED_COLOUR`). */
 const STEP_COLOR = /COLOUR_RGB|DRAUGHTING_PRE_DEFINED_COLOUR/i;
 
@@ -265,7 +298,8 @@ function isGenericStepName(name: string): boolean {
 
 /**
  * What the import reports about each body (ADR-0034's amendment): its solid's
- * colour and its solid's name. A body's faces are named
+ * colour, its solid's name, and whether the file hides its solid (ADR-0066's
+ * amendment of 2026-11-10). A body's faces are named
  * `import:<feature>:face:<n>` after the read shape's face `n`, which says which
  * of the file's solids it came from, whatever order `splitSolids` gave the
  * bodies. A name is trimmed; an empty or generic one is left out; two bodies
@@ -275,18 +309,21 @@ function importReport(
   ctx: EvalContext,
   colors: StepSolidColors | undefined,
   reportNames: (string | undefined)[] | undefined,
+  hidden: boolean[] | undefined,
   faceSolid: Map<number, number> | undefined,
   output: Pick<FeatureOutput, 'bodies' | 'names'>,
 ): ImportReport {
   const prefix = `import:${ctx.feature.id}:face:`;
   const outColors: Record<BodyId, string> = {};
   const outNames: Record<BodyId, string> = {};
+  const outHidden: BodyId[] = [];
   const usedNames = new Set<string>();
   for (const [body, table] of output.names ?? []) {
     const first = table.faces.find((name) => name.startsWith(prefix));
     const n = first === undefined ? Number.NaN : Number.parseInt(first.slice(prefix.length), 10);
     const solid = faceSolid?.get(n - 1);
     if (solid === undefined) continue;
+    if (hidden?.[solid]) outHidden.push(body);
     const color = colors?.solids[solid];
     if (color !== undefined) outColors[body] = color;
     const raw = reportNames?.[solid]?.trim();
@@ -300,6 +337,7 @@ function importReport(
     kind: 'import',
     colors: outColors,
     names: outNames,
+    hidden: outHidden,
     coloredFaces: colors?.coloredFaces ?? 0,
   };
 }

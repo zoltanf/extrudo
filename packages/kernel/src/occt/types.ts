@@ -166,6 +166,12 @@ export interface FacadeBinding {
     bnz: number,
   ): number;
   edgeVisibility(shape: number, dx: number, dy: number, dz: number): number;
+  hlrSpans(shape: number, dx: number, dy: number, dz: number, samples: number): number;
+  hlrPolySpans(shape: number, dx: number, dy: number, dz: number, deflection: number): number;
+  hlrIntsPtr(): number;
+  hlrIntsSize(): number;
+  hlrNumbersPtr(): number;
+  hlrNumbersSize(): number;
   geometryPtr(): number;
   geometrySize(): number;
   sketchClear(): void;
@@ -234,6 +240,7 @@ export interface FacadeBinding {
   pushStepGroupName(name: string): void;
   writeStep(): number;
   readStep(text: string): number;
+  readBrep(text: string): number;
   meshNodes(count: number): number;
   meshNodesPtr(): number;
   meshTriangles(count: number): number;
@@ -260,6 +267,7 @@ export interface FacadeBinding {
   meshRefusalDebug(): number;
   readStepColors(text: string): number;
   readStepNames(text: string): number;
+  readStepHidden(text: string): number;
   clearExport(): void;
   exportPositionsPtr(): number;
   exportPositionsSize(): number;

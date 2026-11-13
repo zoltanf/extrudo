@@ -2,7 +2,14 @@
 // with a stand-in for the kernel: which builds are tried, in what order, and
 // what is warned. The real rounds are in fillet.test.ts and chamfer.test.ts.
 import { describe, expect, it } from 'vitest';
-import { buildRound, type RoundBuild, type RoundLimit } from './round-fallback';
+import {
+  buildRound,
+  diagnosisCost,
+  MAX_ROUND_BUILDS,
+  type RoundBudget,
+  type RoundBuild,
+  type RoundLimit,
+} from './round-fallback';
 
 interface Pick {
   index: number;
@@ -95,5 +102,56 @@ describe('buildRound', () => {
     const { options, tried } = round(() => new Failed([1]), false);
     expect(() => buildRound(picks, options)).toThrow(Failed);
     expect(tried).toHaveLength(1);
+  });
+
+  describe('a budget of builds', () => {
+    // A crafted round: `n` edges, each its own chain, every one too large
+    // alone (a bisection each in the facade's diagnosis), near its limit, so
+    // every retry is tried and fails again, diagnosing again; one edge can't
+    // be rounded at all, which costs the stuck retry first.
+    const hostile = (n: number) => {
+      const many: Pick[] = Array.from({ length: n }, (_, index) => ({ index, size: 10 }));
+      const { options, tried } = round((kept) => {
+        if (kept.some((p) => p.index === n - 1)) return new Failed([n - 1]);
+        return new Failed([], [0], { edges: kept.map((p) => p.index), share: 0.995 });
+      });
+      // What the facade's diagnosis took for each failure: nothing for the stuck
+      // edge (refused before building), nine builds a chain otherwise.
+      const cost = (error: unknown) =>
+        error instanceof Failed && error.stuck.length > 0
+          ? diagnosisCost([])
+          : diagnosisCost(Array.from({ length: n - 1 }, () => ({ kind: 'too-large', max: 9.95 })));
+      return { many, options: { ...options, cost }, tried };
+    };
+
+    it('counts what every retry took without one (the crafted round: 4 diagnoses)', () => {
+      const { many, options, tried } = hostile(200);
+      expect(() => buildRound(many, options)).toThrow(Failed);
+      // Stuck, then the rest, a hair under, just under, and without edge 0.
+      expect(tried).toHaveLength(5);
+      const builds =
+        1 + 4 * diagnosisCost(Array.from({ length: 199 }, () => ({ kind: 'too-large', max: 1 })));
+      expect(builds).toBe(7169);
+    });
+
+    it('stops the retries of a failing round at the budget, and says so', () => {
+      const { many, options, tried } = hostile(200);
+      const budget: RoundBudget = { builds: 0 };
+      expect(() => buildRound(many, { ...options, budget })).toThrow(Failed);
+      // The stuck edge's retry costs nothing; the rest's diagnosis spends the budget.
+      expect(tried).toHaveLength(2);
+      expect(budget.builds).toBe(1 + 1792);
+      expect(budget.cutShort).toBe(true);
+    });
+
+    it('leaves a round within the budget as it was', () => {
+      const { many, options, tried } = hostile(8);
+      const budget: RoundBudget = { builds: 0 };
+      expect(() => buildRound(many, { ...options, budget })).toThrow(Failed);
+      expect(tried).toHaveLength(5);
+      expect(budget.builds).toBe(1 + 4 * 64);
+      expect(budget.builds).toBeLessThanOrEqual(MAX_ROUND_BUILDS);
+      expect(budget.cutShort).toBeUndefined();
+    });
   });
 });

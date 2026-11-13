@@ -597,3 +597,27 @@ describe('annotations (ADR-0126 §8)', () => {
     expect(again.annotate('b', [0, 0, 0]).id).toBe('n2');
   });
 });
+
+describe('setBody (ADR-0030)', () => {
+  it("sets a body's name, colour, opacity and visibility, before any recompute", () => {
+    const d = Design.create();
+    const box = d.box({ length: '10 mm', width: '10 mm', height: '10 mm' });
+    d.setBody(box.body(), { name: 'Base', color: '#FF8800', opacity: 0.5, visible: false });
+    expect(d.doc.bodies[`${box.id}:0` as never]).toEqual({
+      name: 'Base',
+      color: '#ff8800',
+      opacity: 0.5,
+      visible: false,
+    });
+    d.setBody(`${box.id}:0`, { visible: true });
+    expect(d.doc.bodies[`${box.id}:0` as never]).toMatchObject({ name: 'Base', visible: true });
+  });
+
+  it('refuses a colour or opacity the document cannot hold', () => {
+    const d = Design.create();
+    const box = d.box({ length: '10 mm', width: '10 mm', height: '10 mm' });
+    expect(() => d.setBody(box.body(), { name: 'A', color: 'red' })).toThrow(ApiError);
+    expect(() => d.setBody(box.body(), { name: 'A', opacity: 0 })).toThrow(ApiError);
+    expect(d.doc.bodies).toEqual({});
+  });
+});

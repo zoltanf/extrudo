@@ -20,6 +20,8 @@ import {
   meshToSolidInputs,
   originPlaneRef,
   renameFeature,
+  type SheetId,
+  type SheetViewId,
   type SketchData,
   sketchInputs,
 } from '@extrudo/core';
@@ -39,7 +41,7 @@ import {
   withExpr,
 } from './recompute/testing';
 import type { RecomputeRequest } from './recompute/types';
-import { type FileSource, type FontSource, Recomputer } from './recomputer';
+import { type FileSource, type FontSource, MAX_CRASHED_FEATURES, Recomputer } from './recomputer';
 import { NO_SCRIPT_HOST } from './script-host';
 import { KernelService } from './service';
 
@@ -121,10 +123,12 @@ function setup(
           events.push(
             `command:${request.fileId}:${request.commandId}:${request.doc.features.map((f) => f.id).join(',')}:${request.selection.map((r) => r.id).join(',')}`,
           );
-          // What the command's document carries of the annotations (ADR-0126): nothing.
+          // What the command's document carries of the annotations (ADR-0126) and the
+          // sheets (ADR-0143): nothing.
           if ('annotations' in request.doc || 'annotationCounter' in request.doc) {
             events.push('command-doc:annotations');
           }
+          if ('sheets' in request.doc) events.push('command-doc:sheets');
           return service.runPluginCommand(request);
         },
         reference: async (...args: Parameters<KernelService['reference']>) => {
@@ -185,6 +189,9 @@ function bind(service: KernelService) {
     removeFacesPick: service.removeFacesPick.bind(service),
     exportMeshes: service.exportMeshes.bind(service),
     exportStep: service.exportStep.bind(service),
+    storedShapeToStep: service.storedShapeToStep.bind(service),
+    measureStoredShape: service.measureStoredShape.bind(service),
+    measureBodies: service.measureBodies.bind(service),
     exportScad: service.exportScad.bind(service),
     inspect: service.inspect.bind(service),
     interference: service.interference.bind(service),
@@ -192,6 +199,10 @@ function bind(service: KernelService) {
     resolveAnnotation: service.resolveAnnotation.bind(service),
     checkJoint: service.checkJoint.bind(service),
     cancelCheck: () => service.cancelCheck(),
+    sheetViews: service.sheetViews.bind(service),
+    cancelSheetViews: () => service.cancelSheetViews(),
+    resolveSheet: service.resolveSheet.bind(service),
+    sheetParts: service.sheetParts.bind(service),
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),
@@ -347,6 +358,47 @@ describe('Recomputer', () => {
     document.getState().dispatch(renameFeature({ id: 'boom' as FeatureId, name: 'Boom' }));
     await until(() => spawned() === 3 && ready(model));
     expect(requests.at(-1)?.crashed).toEqual(['boom']);
+  });
+
+  // Review finding: four features that trap the kernel used to spend the
+  // restart budget (3 a minute) and leave it failed, on every open (the
+  // crashed list lives in memory only).
+  it('goes past more crashing features than the restart budget, naming each once', {
+    timeout: 120_000,
+  }, async () => {
+    const booms = ['boom1', 'boom2', 'boom3', 'boom4', 'boom5'];
+    const doc = testDocument([
+      testFeature('a', 'test-box', { size: '10 mm' }),
+      ...booms.map((id) => testFeature(id, 'test-crash')),
+      testFeature('grow', 'test-grow', { height: '1 mm' }),
+    ]);
+    const { model, requests, spawned } = setup(doc);
+    await until(() => ready(model) || model.getState().status === 'failed', 100_000);
+    expect(model.getState().status).toBe('ready');
+    // One kernel per crash, and the one that built the rest.
+    expect(spawned()).toBe(booms.length + 1);
+    expect(requests.at(-1)?.crashed).toEqual(booms);
+    for (const id of booms)
+      expect(model.getState().features[id as FeatureId]).toEqual({
+        status: 'error',
+        message: expect.stringMatching(/^The kernel stopped/),
+      });
+    expect(model.getState().features['grow' as FeatureId]).toEqual({ status: 'ok' });
+  });
+
+  it('gives up once more features crash than MAX_CRASHED_FEATURES and the budget allow', {
+    timeout: 120_000,
+  }, async () => {
+    const booms = Array.from({ length: MAX_CRASHED_FEATURES + 4 }, (_, i) => `boom${i + 1}`);
+    const doc = testDocument([
+      testFeature('a', 'test-box', { size: '10 mm' }),
+      ...booms.map((id) => testFeature(id, 'test-crash')),
+    ]);
+    const { model, spawned } = setup(doc);
+    await until(() => model.getState().status === 'failed', 100_000);
+    // The named ones were free; the next three are the budget; the fourth gives up.
+    expect(spawned()).toBe(MAX_CRASHED_FEATURES + 4);
+    expect(model.getState().error).toMatch(/^The kernel stopped/);
   });
 
   it('sends a font once, before the recompute that needs it, and again after a restart', {
@@ -522,6 +574,28 @@ describe('Recomputer', () => {
         },
       ],
       annotationCounter: 1,
+      // A sheet whose view shows b: the command's document leaves the sheets out too.
+      sheets: [
+        {
+          id: 'sh1' as SheetId,
+          name: 'Sheet 1',
+          size: 'A4',
+          orientation: 'landscape',
+          scale: [1, 1],
+          projection: 'first',
+          decimals: 1,
+          views: [
+            {
+              id: 'v1' as SheetViewId,
+              name: 'Front',
+              at: [100, 100],
+              from: { kind: 'base', direction: [0, 1, 0], up: [0, 0, 1] },
+              bodies: ['b:0' as BodyId],
+            },
+          ],
+          items: [],
+        },
+      ],
     };
     const { model, events, spawned } = setup(doc);
     await until(() => ready(model));
@@ -546,6 +620,7 @@ describe('Recomputer', () => {
     ]);
     expect(asked).toBe(1);
     expect(events).not.toContain('command-doc:annotations');
+    expect(events).not.toContain('command-doc:sheets');
     // A new kernel has none of it: the next command sends the file again.
     await recomputer?.client.restart();
     await until(() => spawned() >= 2);

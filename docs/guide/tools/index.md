@@ -25,8 +25,8 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Import
 
 - [Import .extrudo](./importProject.md) — Open an .extrudo file as a new design.
-- [Import STEP, mesh, OpenSCAD or .f3d](./importBody.md) — Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d file opens as a new design.
-- [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
+- [Import STEP, mesh, OpenSCAD or .f3d](./importBody.md) — Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d or FreeCAD file opens as a new design.
+- [Import SVG/DXF](./importDrawing.md) — Bring an SVG or DXF file into the sketch as ordinary curves.
 - [Canvas](./canvas.md) — Lay a picture on a plane as a reference to trace, and calibrate it to real scale.
 
 ### Export
@@ -161,7 +161,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Control Point Spline](./splineControl.md) — A smooth curve guided by the points you click. Enter to finish.
 - [Conic](./conic.md) — A conic from its two ends and the shoulder point. Rho sets how full it is.
 - [Text](./text.md) — Type text on the sketch. Its letters are closed regions like any other profile.
-- [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
+- [Import SVG/DXF](./importDrawing.md) — Bring an SVG or DXF file into the sketch as ordinary curves.
 - [Project](./project.md) — Bring body edges, faces, vertices and bodies, and curves of earlier sketches, into the sketch; they follow their source.
 - [Intersect](./intersect.md) — Bring in the curves where a face or body meets the sketch plane; they follow the model.
 - [Mirror](./sketchMirror.md) — Mirror curves about a line; the copies stay symmetric.
@@ -220,3 +220,38 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 
 - [Export](./export.md) — STL, 3MF, STEP or OpenSCAD code for printing and sharing.
 - [Render Picture](./render.md) — Render a presentable picture of the design.
+- [Drawing](./sheets.md) — Sheets of the design to print or send: open the drawing, or start one.
+
+## Drawing
+
+### Views
+
+- [Base View](./baseView.md) — A view of the model from a direction you choose: the frame follows the pointer, a click places it.
+- [Projected View](./projectedView.md) — Views lined up with a view: beside, above or below it for that side, diagonally for an isometric.
+
+### Dimensions
+
+- [Dimension](./sheetDimension.md) — A length, distance, radius, diameter or angle measured from the model: pick, then click where the number goes.
+- [Centre Mark](./sheetCentreMark.md) — A cross on the centre of a circle: click a circle, or a cylinder seen from the side.
+- [Centreline](./sheetCentreLine.md) — A dash-dot line midway between two parallel edges, or along the axis of a cylinder or cone.
+
+### Notes
+
+- [Text](./sheetText.md) — Text on the sheet: click where it starts and type. Enter finishes, Shift+Enter starts a new line.
+- [Leader Note](./sheetLeader.md) — A note with an arrow to the model: pick an edge, a point or a face, click where the text goes, then type.
+- [Balloon](./sheetBalloon.md) — A numbered circle pointing at a part, numbered by the view’s parts list: pick the part, then click where it goes.
+- [Sticky Note](./sheetSticky.md) — A coloured note for yourself: on screen only until its Print switch is on.
+
+### Tables
+
+- [Parts List](./sheetPartsList.md) — A table of a view’s bodies, equal ones in one row with a quantity: click the view, then where the list goes.
+- [Table](./sheetTable.md) — A free table: click where it goes, then double-click a cell to type in it.
+
+### Sheet
+
+- [New Sheet](./newSheet.md) — Add an empty sheet after this one.
+- [Sheet Setup](./sheetSetup.md) — The sheet’s name, paper, border, title block, scale and projection.
+
+### Output
+
+- [Export PDF](./exportSheets.md) — Export the drawing’s sheets: one PDF with a page per sheet, or an SVG per sheet.

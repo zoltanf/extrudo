@@ -100,13 +100,27 @@ selected, `Alt+↑` and `Alt+↓` move it within its group. The order is also th
 and sketch dimensions. Click a parameter there to go to it.
 
 **Model parameters** are the values in the design that already have names, in the collapsed
-section below the list, each with the feature it belongs to. A dimension you placed in a sketch
+section below the list (click its heading to open or close it), each with the feature it belongs to. A dimension you placed in a sketch
 is `d1`, `d2` and so on, and so are the values in feature dialogs. You can edit them here, and
-use them in other expressions. Rename a dimension by typing `name = value` in its editor, as
-described in [sketching](./sketching.md).
+use them in other expressions. To rename one, select it and edit **Name**, or double-click its row.
+Every expression that used the old name follows, in one undo step. A name that is taken, or is a
+unit or function, is refused with a message under the field, which keeps what you typed so you can
+fix it (Esc puts the old name back). You can also type `name = value` in a dimension's
+editor, as described in [sketching](./sketching.md).
+
+**Reset name** gives a renamed model parameter the lowest free `d1`, `d2`… name again, usually
+the one it started with. **Make user parameter** turns a model parameter into a user parameter
+of the same name and value, so it gets a slider and a group; the dimension or input keeps
+using it and gets a new `d` name. That can't be turned back into a model parameter, only undone.
+
+A model parameter that is just a user parameter's name, such as `d3 = width`, says nothing new, so
+the list leaves it out. **Show 2 that follow a user parameter**, under the model parameters, lists
+them again, each with a link mark instead of **ƒx**, and the user parameter's **Used by** lists
+them too. Once anything else uses `d3`, or
+its expression is more than the name, it is back in the list.
 
 Changing a parameter is one undo step, however many sketches and features it moves. Deleting one
-that something uses is refused, and the message lists what uses it.
+that something uses is refused, and the message beside **Delete parameter** lists what uses it.
 
 ## The Customizer
 

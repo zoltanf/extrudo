@@ -11,8 +11,9 @@
  * grammar `timeline.ts` reads dependencies with.
  */
 import { nextFeatureName } from './features';
-import type { FeatureId } from './ids';
+import type { BodyId, FeatureId } from './ids';
 import type { Annotation, ExtrudoDocument, Feature, FeatureInputs, GeomRef } from './schema';
+import { mapSheetItemAnchors, type Sheet } from './sheet-schema';
 
 /** The characters of one token in a stored reference's ID (`timeline.ts`'s separators' complement). */
 const TOKEN = /[A-Za-z0-9_.~-]+/g;
@@ -85,4 +86,35 @@ export function remintAnnotations(
     }
     return annotation;
   });
+}
+
+/**
+ * Sheets that came with reminted features (ADR-0143): a view's `bodies`
+ * (`<feature>:<n>`), every item's anchor references (`sheetItemAnchors`) and
+ * the body IDs a parts list's typed-over `rows` are keyed by name the new IDs,
+ * like `remintFeatures`' references.
+ */
+export function remintSheets(
+  sheets: readonly Sheet[],
+  features: readonly Pick<Feature, 'id'>[],
+  ids: readonly FeatureId[],
+): Sheet[] {
+  const rename = renamer(features, ids);
+  return sheets.map((sheet) => ({
+    ...sheet,
+    views: sheet.views.map((view) =>
+      view.bodies ? { ...view, bodies: view.bodies.map((b) => rename(b) as BodyId) } : view,
+    ),
+    items: sheet.items.map((item) => {
+      const out = mapSheetItemAnchors(item, (anchor) =>
+        'ref' in anchor ? { ...anchor, ref: { ...anchor.ref, id: rename(anchor.ref.id) } } : anchor,
+      );
+      // What was typed over a parts list's rows is keyed by body ID.
+      if (out.kind !== 'partsList' || !out.rows) return out;
+      const rows = Object.fromEntries(
+        Object.entries(out.rows).map(([body, row]) => [rename(body), row]),
+      );
+      return { ...out, rows };
+    }),
+  }));
 }

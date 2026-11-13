@@ -11,7 +11,14 @@
  * contours are holes. Curves stay exact: circular and elliptical arcs as `A`
  * (split into half turns or less), Béziers as `Q`/`C`.
  */
-import { type Drawing, drawingBounds, ellipseAt, ellipseParam, type Point } from './drawing';
+import {
+  type Contour,
+  type Drawing,
+  drawingBounds,
+  ellipseAt,
+  ellipseParam,
+  type Point,
+} from './drawing';
 import { num, xmlText } from './format';
 
 export interface SvgOptions {
@@ -49,9 +56,15 @@ export function writeSvg(drawing: Drawing, options: SvgOptions = {}): string {
   return lines.join('\n');
 }
 
-const pt = (p: Point) => `${num(p[0])} ${num(-p[1])}`;
-
-function pathData(contours: Drawing['shapes'][number]['contours']): string {
+/**
+ * SVG path data. `ySign` −1 writes y negated (a y-up drawing in SVG's y-down
+ * frame, as `writeSvg` does); 1 writes the coordinates as they are (a y-down
+ * page, `writeDisplaySvg` and the screen).
+ */
+export function pathData(contours: readonly Contour[], ySign: 1 | -1 = -1): string {
+  const pt = (p: Point) => `${num(p[0])} ${num(ySign * p[1])}`;
+  // A positive sweep turns towards +y: SVG's positive-angle direction unless y is flipped.
+  const sweepFlag = (sweep: number) => (sweep > 0 === ySign > 0 ? 1 : 0);
   const out: string[] = [];
   for (const contour of contours) {
     out.push(`M${pt(contour.start)}`);
@@ -66,7 +79,7 @@ function pathData(contours: Drawing['shapes'][number]['contours']): string {
           const r = Math.hypot(at[0] - center[0], at[1] - center[1]);
           const a0 = Math.atan2(at[1] - center[1], at[0] - center[0]);
           // Counter-clockwise with y up is the negative-angle direction once y points down.
-          const flag = sweep > 0 ? 0 : 1;
+          const flag = sweepFlag(sweep);
           const n = pieces(sweep);
           for (let i = 1; i <= n; i++) {
             const a = a0 + (sweep * i) / n;
@@ -78,8 +91,8 @@ function pathData(contours: Drawing['shapes'][number]['contours']): string {
         }
         case 'ellipse': {
           const t0 = ellipseParam(segment, at);
-          const flag = segment.sweep > 0 ? 0 : 1;
-          const rotation = num((-segment.rotation * 180) / Math.PI);
+          const flag = sweepFlag(segment.sweep);
+          const rotation = num((ySign * segment.rotation * 180) / Math.PI);
           const n = pieces(segment.sweep);
           for (let i = 1; i <= n; i++) {
             const to = i === n ? segment.to : ellipseAt(segment, t0 + (segment.sweep * i) / n);

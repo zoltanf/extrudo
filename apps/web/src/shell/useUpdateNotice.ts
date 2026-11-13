@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import type { Platform } from '../platform';
-import { type Push, showUpdateReady } from '../platform/updateNotice';
-import { createUpdateStore } from '../platform/updates';
+import { type Push, reloadForUpdate, showUpdateReady } from '../platform/updateNotice';
+import { createUpdateStore, type PlatformUpdates } from '../platform/updates';
 import { saveEverything } from '../project/autosave';
 
 /** A store that never has an update, for a platform without `updates`. */
@@ -21,4 +21,12 @@ export function useUpdateNotice(push: Push, platform: Pick<Platform, 'updates'>)
   useEffect(() => {
     if (waiting && updates) showUpdateReady({ updates, saveEverything, push });
   }, [waiting, push, updates]);
+}
+
+/**
+ * The app menu strip's Restart (desktop) or Reload (web): the ready toast's button without the
+ * toast. Saves every open design first and applies nothing when a save failed (it says so).
+ */
+export function applyUpdate(updates: PlatformUpdates, push: Push): Promise<boolean> {
+  return reloadForUpdate({ updates, saveEverything, push });
 }

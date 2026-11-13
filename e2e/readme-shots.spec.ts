@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
@@ -26,6 +27,12 @@ test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 120_000 });
 
 const IMAGES = join(process.cwd(), 'docs', 'images', 'readme');
+/** The app's version: an example opened as the first thing is a returning visit (ADR-0133). */
+const VERSION = (
+  JSON.parse(readFileSync(join(process.cwd(), 'apps', 'web', 'package.json'), 'utf8')) as {
+    version: string;
+  }
+).version;
 const STYLE = join(process.cwd(), 'e2e', 'screenshot.css');
 
 /** Re-encodes a PNG screenshot as WebP in a blank page of the same browser. */
@@ -134,6 +141,22 @@ const scenes: Record<string, (page: Page) => Promise<void>> = {
     await expect(page).toHaveURL(/#\/p\/[^/]+$/);
     await kernelReady(page);
     await page.keyboard.press('F6');
+  },
+  async sheet(page) {
+    // The spool holder example's drawing (P6-24 S6): its sheet with every item drawn.
+    await page.addInitScript(([key, value]) => localStorage.setItem(key, value), [
+      'extrudo.whatsNew.lastVersion',
+      JSON.stringify(VERSION),
+    ] as const);
+    await page.goto('./#/example/spool-holder');
+    await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+    await kernelReady(page);
+    await selectTab(page, 'Make');
+    await pickTool(page, 'Drawing');
+    const sheet = page.getByRole('region', { name: 'Sheet', exact: true });
+    await expect
+      .poll(() => sheet.locator('[data-sheet-text] text').allTextContents(), { timeout: 60_000 })
+      .toEqual(expect.arrayContaining(['80.0', 'Ø12.4', 'Bracket', 'Axle']));
   },
   async print(page) {
     await bracket(page);

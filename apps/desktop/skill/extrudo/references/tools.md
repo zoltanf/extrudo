@@ -88,7 +88,7 @@ The design's numbered notes (#1, #2, …) in number order, ticked-off ones last:
 
 ## `screenshot`
 
-A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), the annotations' numbered badges, and the size. Sizes come from get_bodies, not pictures. At most one per second.
+A picture of the model as a PNG, framed on the bodies, drawn apart from the person's view (which doesn't move). Without inputs: the app's current view direction, sketches and construction shown, 768 px. Inputs pick another side, only some bodies (framed on them), a section that cuts away what lies past a plane (a floor plan: view 'top', section on 'xy' at the floor's height), the annotations' numbered badges, and the size. Sizes come from get_bodies, not pictures. An open drawing is finished first (back to the model). At most one per second.
 
 | Input | Type | Required | What it is |
 | --- | --- | --- | --- |
@@ -98,6 +98,92 @@ A picture of the model as a PNG, framed on the bodies, drawn apart from the pers
 | `overlays` | `boolean` | no | Sketches and construction geometry; default true. |
 | `annotations` | `boolean` | no | The annotations' numbered badges (#1, #2, …) at their anchors, not hidden ones; default false. No text: list_annotations has it. |
 | `size` | `integer` | no | Width and height in px; default 768. |
+
+## `list_sheets`
+
+The design's drawing sheets and which one is open in the app: { open, sheets: [{ id, name, paper { size, orientation, width, height } (mm), scale, projection, decimals, titleBlock?, views: [{ id, name, at (sheet mm from the top-left, y down), from ('front', … | { direction, up } | { parent, side }), scale, right, up (world directions of the view's x and y), bodies? }], items: [{ id, kind, view?, text?, type?, value? (mm or degrees, measured now), state, message? }] }] }. state: ok, moved (found again by its fingerprint: check it), detached (its geometry is gone; the message says why; the export writes ?), invalid (the geometry doesn't make it). Changes nothing.
+
+No inputs.
+
+## `add_sheet`
+
+**Changes the design.**
+
+Adds a drawing sheet and answers it as list_sheets does. start 'standard' (the default) puts the Front view and the Top, side and Isometric views projected from it on the sheet, laid out and scaled to fit as the app's New drawing does; 'empty' adds none. Doesn't open the drawing. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `name` | `string` | no | The sheet's name; default 'Sheet <n>'. |
+| `size` | `"A4" \| "A3" \| "A2" \| "A1" \| "A0" \| "letter" \| "legal" \| "tabloid" \| [number, number]` | no | A paper (default 'A3') or [width, height] in mm. |
+| `orientation` | `"landscape" \| "portrait"` | no | Default landscape. |
+| `projection` | `"first" \| "third"` | no | The projection angle projected views follow; default 'first'. |
+| `scale` | `string` | no | The sheet's scale; default: the largest standard one that fits ('standard'), else 1:1. |
+| `start` | `"standard" \| "empty"` | default `"standard"` | 'standard': the four standard views, fitted; 'empty': none. |
+| `bodies` | `string[]` | no | The bodies the views draw ('<feature id>:<n>'); default: every shown body. |
+| `titleBlock` | `"simple" \| "full" \| "none"` | no | Default 'simple'. |
+| `fields` | `object` | no | The title block's fields (title, drawnBy, …); default: the design's name as title and its units. '{date}', '{version}' and '{= width}' are filled when it is drawn. Never put a person's name in unasked. |
+
+## `add_view`
+
+**Changes the design.**
+
+Adds a view to a sheet: a base view looking along a standard direction (from: 'front', 'top', …) or { direction, up }, or a view projected from another (parent and side), which stays lined up with it. Answers { id, name }. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `sheet` | `string` | yes | The sheet's name or id, as list_sheets gives them. |
+| `at` | `[number, number]` | yes | Where the view's origin (the model's origin, projected) goes: sheet mm from the paper's top-left corner, y down. |
+| `from` | `"front" \| "back" \| "left" \| "right" \| "top" \| "bottom" \| { direction: [number, number, number], up: [number, number, number] }` | no | A base view's direction; default 'front'. |
+| `parent` | `string` | no | A projected view: the view (name or id) it is projected from. |
+| `side` | `"left" \| "right" \| "above" \| "below" \| "iso-above-left" \| "iso-above-right" \| "iso-below-left" \| "iso-below-right"` | no | A projected view: where it sits from its parent; the 'iso-…' ones are isometric. |
+| `name` | `string` | no | The view's name; default as the app names it. |
+| `scale` | `string` | no | A base view's own scale; default the sheet's. |
+| `style` | `"visible" \| "hidden"` | no | A base view's lines: 'visible' edges only, or 'hidden' (the default): and hidden edges dashed. |
+| `bodies` | `string[]` | no | A base view's bodies ('<feature id>:<n>'); default every shown body. |
+
+## `add_dimension`
+
+**Changes the design.**
+
+Adds a dimension to a view, measured from the model each time it is drawn, and answers { id, value (model mm, degrees for an angle), text (as printed), state }: read it to check the model's sizes. linear: two anchors (vertices or edge points), or one straight edge (its length); radius and diameter: one circular edge; angle: two straight edges. A name not in the view's bodies, or anchors that measure nothing, are refused and nothing changes. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `sheet` | `string` | yes | The sheet's name or id, as list_sheets gives them. |
+| `view` | `string` | yes | The view (name or id). |
+| `type` | `"linear" \| "radius" \| "diameter" \| "angle"` | yes | What it measures. |
+| `anchors` | `({ edge: string, at?: "start" \| "end" \| "middle" \| "centre", body?: string } \| { edgeBetween: string[], at?: "start" \| "end" \| "middle" \| "centre", body?: string } \| { face: string, silhouette?: 1 \| -1, body?: string } \| { vertex: string, body?: string } \| { free: [number, number] })[]` | yes | What it measures from: one or two anchors, as the type takes them. |
+| `at` | `[number, number]` | yes | Where its text goes (off the part, so it doesn't sit on the lines): view mm, at model size from the view's origin, x along the view's right and y along its up (list_sheets gives both as world directions). |
+| `direction` | `"horizontal" \| "vertical" \| "aligned"` | no | A linear one: measured horizontally, vertically or along the anchors; default from where the text is. |
+| `decimals` | `integer` | no | Decimals shown; default the sheet's. |
+| `before` | `string` | no | Text before the value, e.g. '4× '. |
+| `after` | `string` | no | Text after the value. |
+
+## `add_note`
+
+**Changes the design.**
+
+Adds a note to a sheet: a text at a place on the sheet, or, with view and anchor, a leader note whose arrow points at the model. Fields in braces ('{date}', '{= width}') are filled when it is drawn. Answers { id }. One undo step.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `sheet` | `string` | yes | The sheet's name or id, as list_sheets gives them. |
+| `text` | `string` | yes | The note, plain text; new lines allowed. |
+| `at` | `[number, number]` | yes | A text's top-left corner in sheet mm (from the paper's top-left, y down); a leader note's text in view mm, as add_dimension's at. |
+| `view` | `string` | no | A leader note: the view (name or id) it points into. |
+| `anchor` | `{ edge: string, at?: "start" \| "end" \| "middle" \| "centre", body?: string } \| { edgeBetween: string[], at?: "start" \| "end" \| "middle" \| "centre", body?: string } \| { face: string, silhouette?: 1 \| -1, body?: string } \| { vertex: string, body?: string } \| { free: [number, number] }` | no | A leader note: what its arrow points at. |
+| `size` | `number` | no | A text's letter height, mm; default 3.5. |
+
+## `export_sheet`
+
+Exports sheets as the app's Export drawing does, every view drawn exactly and every dimension measured now (a detached one is written as its text with ?): format 'pdf' writes one PDF (a page per sheet) and answers its path; 'png' answers a picture of each sheet to look at. At most one export every 2 s. Changes nothing.
+
+| Input | Type | Required | What it is |
+| --- | --- | --- | --- |
+| `format` | `"pdf" \| "png"` | yes | 'pdf': a file, its path answered; 'png': a picture of each sheet. |
+| `sheets` | `string[]` | no | The sheets (names or ids), written in the design's order; default: the open one (else the first) for png, every sheet for pdf. |
+| `size` | `integer` | no | png: the picture's longer side in px; default 1600. |
+| `stickies` | `boolean` | no | Also the sticky notes on screen only; default: only those switched to Print. |
 
 ## `list_commands`
 

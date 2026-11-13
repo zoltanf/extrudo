@@ -1,0 +1,1 @@
+- 2026-11-11 · **FreeCAD bodies come in with their history**: a PartDesign body's pads, pockets, revolutions and grooves arrive as Extrudo sketches and features, each rebuilt and checked against the shape the file stores for it; a body whose history Extrudo can't rebuild all the way keeps what it could and takes the rest from the file's own shape (ADR-0144's S5 amendment).

@@ -269,6 +269,9 @@ importers:
       '@extrudo/f3d':
         specifier: workspace:*
         version: link:../../packages/f3d
+      '@extrudo/fcstd':
+        specifier: workspace:*
+        version: link:../../packages/fcstd
       '@extrudo/fonts':
         specifier: workspace:*
         version: link:../../packages/fonts
@@ -281,6 +284,9 @@ importers:
       '@extrudo/script':
         specifier: workspace:*
         version: link:../../packages/script
+      '@extrudo/sheets':
+        specifier: workspace:*
+        version: link:../../packages/sheets
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../../packages/sketch
@@ -400,6 +406,9 @@ importers:
       '@extrudo/script':
         specifier: workspace:*
         version: link:../script
+      '@extrudo/sheets':
+        specifier: workspace:*
+        version: link:../sheets
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch
@@ -443,6 +452,28 @@ importers:
       fzstd:
         specifier: ^0.1.1
         version: 0.1.1
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+
+  packages/fcstd:
+    dependencies:
+      '@extrudo/api':
+        specifier: workspace:*
+        version: link:../api
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
+      '@extrudo/storage':
+        specifier: workspace:*
+        version: link:../storage
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
     devDependencies:
       '@extrudo/kernel':
         specifier: workspace:*
@@ -516,6 +547,25 @@ importers:
       sucrase:
         specifier: ^3.35.0
         version: 3.35.1
+
+  packages/sheets:
+    dependencies:
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/fonts':
+        specifier: workspace:*
+        version: link:../fonts
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../io
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/sketch:
     dependencies:

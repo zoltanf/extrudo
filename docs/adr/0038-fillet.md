@@ -516,3 +516,39 @@ edges no round can take), none built → error. Body check (ADR-0084, all 250):
 bodies editable 195 → 198, frozen 159 → 156, no design harmed. Tests:
 `fillet.test.ts` "two rounds that between them eat a face …", "leaves out
 edges no round can take …"; `round-fallback.test.ts`.
+
+## Amendment 2026-11-10: a budget of builds for a failing round's retries
+
+A failed fillet or chamfer build runs the facade's diagnosis in the same call
+(`explainFillet`, `explainChamfer`): each chain built alone, and for a chain
+that fails, one probe at 1/128 of its size and, when that works, seven
+halvings; for chains that only fail together, the same bisection of the
+common scale. That is about nine builds a failing chain. `buildRound` could
+call the facade five times for one body (the first build, the build without
+the edges no round can take, two builds at the limit, the build without the
+blamed chains), and each failure diagnosed again, so a crafted round of many
+chains could keep the worker busy for hours (the security review of
+2026-10-15, finding B4).
+
+- A round feature's builds share one budget across its bodies,
+  `MAX_ROUND_BUILDS` = 1,000 (`round-fallback.ts`): a build that works costs
+  one, a failure what its diagnosis shows it took at least (`diagnosisCost`:
+  one, plus nine for each chain too large alone with a size that works, two
+  when none works, eight or one for chains failing together; chains that
+  build alone aren't listed, so it is a lower bound). A retry is tried only
+  while the budget holds the cost of the failure before it; otherwise the
+  feature fails with the original error and its message ends "The diagnosis
+  was cut short: the round took too many builds to try the rest." The first
+  build of each body always runs.
+- Measured with the budget lifted: the dearest round of the kernel and f3d
+  tests takes 37 builds, of the f3d corpus's replay 181, so no message
+  changes. The stand-in test (`round-fallback.test.ts`): 200 one-edge chains,
+  all too large near their limit, and one edge no round can take: five calls
+  and 7,169 builds without the budget, two calls and 1,793 builds with it.
+- Not done, as it needs the facade: the diagnosis itself is not budgeted (one
+  failing call still builds about nine times per failing chain; the `.f3d`
+  import caps a round at 2,000 edges, ADR-0083's amendment of this day), and a
+  retry can't ask the facade to skip the diagnosis whose result `buildRound`
+  throws away. A facade flag for that is the next step.
+
+The chamfer takes the same path (ADR-0043).

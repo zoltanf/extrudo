@@ -35,7 +35,18 @@ import {
   type ParameterEvaluation,
   type ReferenceIssue,
   referencedFeatures,
+  type Sheet,
+  type SheetAnchoredItem,
+  type SheetAnchorReport,
+  type SheetAnchors,
+  type SheetItemId,
+  type SheetParts,
+  type SheetRefAnchor,
+  type SheetSilhouetteAnchor,
   scriptOfGenerated,
+  sheetBaseFrame,
+  sheetItemAnchors,
+  sheetViewFrame,
   valuesByName,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
@@ -60,6 +71,15 @@ import { type ScadExportOptions, writeScad } from '../scad-export/file';
 import { liveScalar, scadParameters } from '../scad-export/live';
 import type { ScadSource, ScadStep } from '../scad-export/versions';
 import { type ScriptHost, ScriptRunError } from '../script-host';
+import { faceAs, lostFeature, resolveSheetAnchor } from '../sheets/anchors';
+import { exactView, quickView, type ViewBody } from '../sheets/evaluate';
+import type { SkippedBody, ViewGeometry } from '../sheets/geometry';
+import {
+  type SheetViewRequest,
+  type SheetViewResult,
+  sheetListBodies,
+  shownBodies,
+} from '../sheets/views';
 import { hashOf } from './hash';
 import {
   type BodyResult,
@@ -77,6 +97,9 @@ import {
 } from './types';
 
 export const DEFAULT_TESSELLATION: MeshOptions = { linearDeflection: 0.05, angularDeflection: 0.3 };
+
+/** Sheet views the engine keeps (plain data, no shapes): a few sheets' worth of views. */
+export const SHEET_VIEW_CACHE = 64;
 
 export interface EngineOptions {
   /** Cache entries kept besides those the latest recompute and preview use. Default 256. */
@@ -163,6 +186,12 @@ interface AtMarker {
    * References only, kept as the walk passes; nothing is computed for it.
    */
   steps: readonly ScadStep[];
+  /**
+   * The features whose status was an error in that recompute (a script's
+   * own, not its generated ones'): a sheet anchor on their geometry is
+   * detached (P6-24 S3, `lostFeature`).
+   */
+  failed: ReadonlySet<FeatureId>;
 }
 
 export class RecomputeEngine {
@@ -192,6 +221,12 @@ export class RecomputeEngine {
   readonly #runs = new Map<string, ScriptRun>();
   /** The last finished recompute at its marker, for joints (`resolveJoint`). */
   #atMarker: AtMarker | undefined;
+  /** Shapes this engine gave a display mesh (`#meshAll`): their faces carry its triangulation. */
+  readonly #meshed = new Set<ShapeHandle>();
+  /** The tessellation of the last recompute's display meshes. */
+  #tessellation: MeshOptions = DEFAULT_TESSELLATION;
+  /** Sheet views by bodies, versions, frame and method, least recently used first (P6-24 S2). */
+  readonly #sheetViews = new Map<string, ViewGeometry>();
 
   constructor(
     kernel: Kernel,
@@ -254,13 +289,21 @@ export class RecomputeEngine {
    * persistent name and fingerprint, ready to store in a feature's `ref`
    * input. Undefined if there is no such body or sub-shape.
    */
-  reference(body: BodyId, kind: SubShapeKind, index: number, base = false): GeomRef | undefined {
+  reference(
+    body: BodyId,
+    kind: SubShapeKind,
+    index: number | string,
+    base = false,
+  ): GeomRef | undefined {
     const shape = (base ? this.#previewBase : this.#latest).get(body);
     const names = shape === undefined ? undefined : this.#names.get(shape);
     if (shape === undefined || !names) return undefined;
-    const id = namesOf(names, kind)[index];
+    const all = namesOf(names, kind);
+    // By its persistent name (a sheet view's curve, P6-24 S3), or by its index.
+    const at = typeof index === 'string' ? all.indexOf(index) : index;
+    const id = all[at];
     if (id === undefined) return undefined;
-    const fingerprint = fingerprintOf(this.#describe(shape), names, kind, index);
+    const fingerprint = fingerprintOf(this.#describe(shape), names, kind, at);
     return { kind, id, fingerprint };
   }
 
@@ -370,6 +413,188 @@ export class RecomputeEngine {
   }
 
   /**
+   * A sheet's anchors (`sheetItemAnchors`: dimensions, leader notes, centre
+   * marks and lines, balloons) against the bodies at the marker of the last finished
+   * recompute (P6-24 S3 and S4, ADR-0143's S3 and S4 amendments), resolved
+   * like an annotation's (`ok`, `moved`, `detached`), each with the 3D
+   * geometry it stands for, except that an anchor on a deleted, suppressed
+   * or failed feature is `detached` with no search (`lostFeature`).
+   * Nothing is evaluated or cached, and nothing throws for a lost anchor:
+   * everything is `detached` before the first recompute.
+   */
+  resolveSheet(sheet: Sheet): SheetAnchors {
+    const at = this.#atMarker;
+    const out: SheetAnchors = {};
+    for (const item of sheet.items) {
+      const anchors = sheetItemAnchors(item);
+      if (anchors.length === 0 || !('view' in item)) continue;
+      const kind = item.kind as SheetAnchoredItem['kind'];
+      const frame = sheetViewFrame(sheet, item.view);
+      out[item.id] = anchors.map((anchor): SheetAnchorReport => {
+        if ('free' in anchor) return { status: 'ok' };
+        if (!at) return { status: 'detached' };
+        // An item is never worth a failed call: whatever goes wrong
+        // resolving an anchor leaves it detached, and the rest stand.
+        try {
+          return this.#sheetAnchor(item.id, kind, anchor, frame, at);
+        } catch {
+          return { status: 'detached' };
+        }
+      });
+    }
+    return out;
+  }
+
+  /**
+   * What a sheet's parts lists need of the bodies at the marker of the last
+   * finished recompute (P6-24 S5, ADR-0143's S5 amendment): per list, its
+   * view's bodies in order (`sheetListBodies`), and each one's volume and
+   * tight box, as Print Info measures them (`Kernel.properties`). A body
+   * whose measure fails has none (its row has no size). Nothing is
+   * evaluated or cached; empty before the first recompute.
+   */
+  sheetParts(sheet: Sheet): SheetParts {
+    const out: SheetParts = { lists: {}, bodies: {} };
+    const at = this.#atMarker;
+    if (!at) return out;
+    const live = new Set(this.#latest.keys());
+    for (const item of sheet.items) {
+      if (item.kind !== 'partsList') continue;
+      const ids = sheetListBodies(at.doc, sheet, item.view, live);
+      out.lists[item.id] = ids;
+      for (const id of ids) {
+        const shape = this.#latest.get(id);
+        if (!shape || id in out.bodies) continue;
+        try {
+          const { volume, bbox } = this.#kernel.properties(shape);
+          out.bodies[id] = { volume, box: { min: [...bbox.min], max: [...bbox.max] } };
+        } catch (error) {
+          if (!(error instanceof KernelError)) throw error;
+        }
+      }
+    }
+    return out;
+  }
+
+  #sheetAnchor(
+    id: SheetItemId,
+    kind: SheetAnchoredItem['kind'],
+    anchor: SheetRefAnchor | SheetSilhouetteAnchor,
+    frame: ReturnType<typeof sheetViewFrame>,
+    at: AtMarker,
+  ): SheetAnchorReport {
+    const { doc } = at;
+    const feature: Feature = {
+      id: id as unknown as FeatureId,
+      type: 'annotation',
+      name: 'Sheet item',
+      suppressed: false,
+      inputs: { anchor: { kind: 'ref', refs: [anchor.ref] } },
+    };
+    // On geometry of a feature the marker has rolled back: nothing there yet.
+    const ids = new Set<string>(doc.features.map((f) => f.id));
+    const position = new Map<string, number>(doc.features.map((f, i) => [f.id, i]));
+    const rolledBack = referencedFeatures(feature, ids).some(
+      (fid) => (position.get(fid) ?? 0) >= doc.timelineMarker,
+    );
+    if (rolledBack) return { status: 'detached' };
+    // On geometry of a deleted, suppressed or failed feature: detached, never
+    // a closest match (the owner, 2026-11-11; annotations still look for one).
+    const lost = lostFeature(anchor.ref, doc.features, kind, at.failed);
+    if (lost) return lost;
+    const { names, resolve } = this.#references(feature, at.bodies);
+    return resolveSheetAnchor(
+      { kernel: this.#kernel, describe: (shape) => this.#describe(shape), names, resolve },
+      anchor,
+      frame,
+      faceAs(kind),
+    );
+  }
+
+  /**
+   * One sheet view of the bodies at the marker of the last finished
+   * recompute (P6-24 S2, ADR-0143's S2 amendment): its 2D lines, exact
+   * (`hlrSpans`) or with `quick` the polygonal placeholder. Cached by the
+   * bodies' versions, the frame and the method; scale and position aren't in
+   * the key (the app applies them), and every kind of line comes back, so
+   * the style and the tangent-edge switch are the app's filters too. A mesh
+   * body or one the model no longer has is skipped (`partial`), never an
+   * error. One synchronous kernel run: nothing interrupts it.
+   */
+  sheetView(request: SheetViewRequest): SheetViewResult {
+    const at = this.#atMarker;
+    if (!at) return { id: request.id, error: 'The model is still being computed.' };
+    let frame: ReturnType<typeof sheetBaseFrame>;
+    try {
+      frame = sheetBaseFrame(request.direction, request.up);
+    } catch (error) {
+      return { id: request.id, error: error instanceof Error ? error.message : String(error) };
+    }
+    const ids = request.bodies
+      ? [...new Set(request.bodies)].sort()
+      : shownBodies(at.doc, this.#latest.keys());
+    const bodies: ViewBody[] = [];
+    const skipped: SkippedBody[] = [];
+    const versions: Record<BodyId, string> = {};
+    for (const id of ids) {
+      const shape = this.#latest.get(id);
+      if (shape === undefined) skipped.push({ body: id, reason: 'missing' });
+      else if (this.#kernel.isMesh(shape)) skipped.push({ body: id, reason: 'mesh' });
+      else {
+        const names = this.#names.get(shape);
+        bodies.push({ id, shape, ...(names && { names }) });
+        versions[id] = this.#versions.get(shape) ?? hashOf('shape', shape);
+      }
+    }
+    const keyOf = (quick: boolean) =>
+      hashOf('sheet-view', quick, frame.direction, frame.up, versions, skipped);
+    const exactKey = keyOf(false);
+    const key = request.quick ? keyOf(true) : exactKey;
+    // A quick request takes the exact lines when they are there.
+    for (const k of request.quick ? [exactKey, key] : [key]) {
+      const hit = this.#sheetViews.get(k);
+      if (!hit) continue;
+      this.#sheetViews.delete(k);
+      this.#sheetViews.set(k, hit);
+      return { id: request.id, geometry: hit, versions, ms: 0 };
+    }
+    const start = performance.now();
+    let geometry: ViewGeometry;
+    try {
+      if (request.quick) {
+        // hlrPolySpans meshes a face that has no triangulation and leaves that
+        // mesh on it, which the display mesh would then keep (finer or coarser
+        // than asked): give such a body its display mesh first.
+        for (const body of bodies) {
+          if (this.#meshed.has(body.shape)) continue;
+          this.#kernel.mesh(body.shape, this.#tessellation);
+          this.#meshed.add(body.shape);
+        }
+        geometry = quickView(
+          this.#kernel,
+          bodies,
+          frame,
+          this.#tessellation.linearDeflection,
+          skipped,
+        );
+      } else {
+        geometry = exactView(this.#kernel, bodies, frame, skipped);
+      }
+    } catch (error) {
+      if (!(error instanceof KernelError)) throw error;
+      return { id: request.id, error: error.message };
+    }
+    const ms = performance.now() - start;
+    this.#sheetViews.set(key, geometry);
+    while (this.#sheetViews.size > SHEET_VIEW_CACHE) {
+      const oldest = this.#sheetViews.keys().next().value;
+      if (oldest === undefined) break;
+      this.#sheetViews.delete(oldest);
+    }
+    return { id: request.id, geometry, versions, ms };
+  }
+
+  /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): the timeline replayed as body versions through the features'
    * `csg` hooks, polyhedra where they can't follow. Synchronous, so the
@@ -434,6 +659,7 @@ export class RecomputeEngine {
     this.#runs.clear();
     this.#latest = new Map();
     this.#atMarker = undefined;
+    this.#sheetViews.clear();
     this.#previewBase = new Map();
     this.#pinned.recompute.clear();
     this.#pinned.preview.clear();
@@ -703,13 +929,25 @@ export class RecomputeEngine {
     let annotations: Record<AnnotationId, AnnotationReport> | undefined;
     if (channel === 'recompute') {
       this.#latest = bodies;
+      this.#tessellation = request.tessellation ?? DEFAULT_TESSELLATION;
       // The joint pass (ADR-0081 §4): every unsuppressed joint's frames at the
       // marker. Not cached and in no key, so editing a joint recomputes nothing.
       const outputs = new Map<FeatureId, FeatureOutput>();
       for (const [id, p] of passed) {
         if (p.state === 'done' && p.entry.output) outputs.set(id, p.entry.output);
       }
-      this.#atMarker = { doc, bodies, outputs, featureName: (id) => byId.get(id)?.name, steps };
+      const failed = new Set<FeatureId>();
+      for (const [id, status] of Object.entries(features) as [FeatureId, FeatureStatus][]) {
+        if (status.status === 'error') failed.add(id);
+      }
+      this.#atMarker = {
+        doc,
+        bodies,
+        outputs,
+        featureName: (id) => byId.get(id)?.name,
+        steps,
+        failed,
+      };
       joints = {};
       for (const joint of doc.joints ?? []) {
         if (!joint.suppressed) joints[joint.id] = this.#joint(joint, this.#atMarker);
@@ -766,6 +1004,7 @@ export class RecomputeEngine {
       }
       try {
         const mesh = this.#kernel.mesh(shape, request.tessellation ?? DEFAULT_TESSELLATION);
+        this.#meshed.add(shape);
         const names = this.#names.get(shape);
         if (names) {
           mesh.faceIds = [...names.faces];
@@ -829,8 +1068,9 @@ export class RecomputeEngine {
     starting: () => void,
   ): ScriptRun {
     const own = doc.features.findIndex((f) => f.id === feature.id);
-    // Annotations may name sketches after the script (ADR-0126); the script can't read them.
-    const { annotations: _notes, annotationCounter: _counter, ...rest } = doc;
+    // Annotations may name sketches after the script (ADR-0126) and sheets bodies after
+    // it (ADR-0143); the script can't read either.
+    const { annotations: _notes, annotationCounter: _counter, sheets: _sheets, ...rest } = doc;
     const before: ExtrudoDocument = {
       ...rest,
       features: doc.features.slice(0, Math.max(own, 0)),
@@ -1378,6 +1618,7 @@ export class RecomputeEngine {
       return;
     }
     this.#refs.delete(h);
+    this.#meshed.delete(h);
     this.#versions.delete(h);
     this.#makers.delete(h);
     this.#names.delete(h);

@@ -206,7 +206,7 @@ unchanged.
 
 ## Consequences
 
-- `docs/file-format.md` §6.1 gains the `design` kind and §6.36 the `insertDesign`
+- `docs/file-format.md` §6.1 gains the `design` kind and §6.37 the `insertDesign`
   feature. An older Extrudo reads a design with an insert leniently: the unknown
   input is left out and the feature is "This version of Extrudo can't compute…".
 - **A future format bump must migrate the features inside a `design` input too**

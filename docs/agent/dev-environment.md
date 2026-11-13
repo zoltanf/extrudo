@@ -148,6 +148,23 @@ tools only work on some of them. Notes further down that name a machine apply to
   `NCollection_*`), `Standard_False`, and `Standard_Failure::GetMessageString`
   (use `what()`); `DynamicType()` isn't available on `Standard_Failure`.
   `mallinfo()` doesn't link, so the memory probe is `sbrk(0)` (`heapTop()`).
+- **OCCT's B-rep text reader (`BRepTools_ShapeSet`) trusts its input**
+  (P6-25 S1, ADR-0144's amendment). In this WASM build it never returns from
+  a number with a hundred-digit integer part (old FreeCAD files print ±2e100
+  in full; `Kernel.readBrep` passes such numbers in their short form). It runs
+  a table loop as often as the header says, on a failed stream too (a count of
+  10^9 took 25 s, 2^31 never ended); it re-tests loop variables a failed
+  stream no longer writes (text cut off inside a shape read forever); it looks
+  sub-shape and root references up with no range check (out-of-bounds reads);
+  it skips a curve or surface index of 0 or past the table, leaving a shape
+  that traps on its first check; it copies tokens into 255-byte buffers; and
+  it sizes a B-spline's arrays from the record's counts before reading a pole
+  (a pole count of 10^9 or -1 writes past the array). Its nested shapes
+  are walked recursively (10^5 nested compounds overflow the stack). A
+  degenerate edge holds a 3D-curve record with a null curve: that one is
+  legitimate. The facade's `CheckedShapeSet`, a stream that throws on a
+  failed read, and the wrapper's scan stop everything here but the B-spline
+  pole count.
 - Biome needs `css.parser.tailwindDirectives` for Tailwind's `@theme` and
   `@custom-variant`, and the icon sources are exempt from
   `noSvgWithoutTitle` (they are decorative; controls carry the label).

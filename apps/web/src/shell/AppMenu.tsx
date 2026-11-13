@@ -27,6 +27,7 @@ import { useStore } from 'zustand';
 import { useKeysFor } from '../commands/keymapStore';
 import { shortcutLabel } from '../commands/shortcuts';
 import { IconButton, type ThemeChoice, Tooltip } from '../design-system';
+import { RELOAD_ACTION } from '../platform/updateNotice';
 import type { PlatformUpdates, UpdateState } from '../platform/updates';
 import { type DisplayAccess, useDisplaySettings } from '../settings/displaySettings';
 import { NAV_PRESETS, type NavPreset } from '../viewport/navigation';
@@ -80,6 +81,11 @@ export interface AppMenuProps {
   updates?: PlatformUpdates | undefined;
   /** The strip's "Check now" (desktop only, ADR-0075's 2026-10-09 amendment). */
   onCheckUpdates?: (() => void) | undefined;
+  /**
+   * The strip's Restart (desktop) or Reload (web), shown while an update is ready: saves every
+   * design, then applies it (`applyUpdate`, the update toast's button).
+   */
+  onApplyUpdate?: (() => void) | undefined;
   /** The strip's "GitHub" (Source on GitHub). */
   onSource(): void;
   /** Desktop only: saves everything, then quits. */
@@ -170,8 +176,11 @@ const toggle =
   'inline-grid h-7 w-[30px] place-items-center rounded-input border border-transparent text-muted outline-none hover:text-ink focus-visible:ring-2 focus-visible:ring-accent aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-ink';
 const itemClass =
   'flex h-8 w-full cursor-default select-none items-center gap-2 rounded-input px-2 text-left outline-none hover:bg-accent-soft focus-visible:bg-accent-soft';
-const link =
-  'rounded-input text-ink underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent';
+const linkBase =
+  'rounded-input underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-accent';
+const link = `${linkBase} text-ink`;
+/** The strip's Restart / Reload: the one action there, in the accent like a toast's button. */
+const actionLink = `${linkBase} font-medium text-accent`;
 
 /**
  * The app menu (ADR-0090): the four-squares button opens one panel, the same on the home
@@ -281,6 +290,7 @@ export function MenuPanel({
   version,
   updates,
   onCheckUpdates,
+  onApplyUpdate,
   onSource,
   onQuit,
   onCloseDesign,
@@ -470,6 +480,7 @@ export function MenuPanel({
         version={version}
         updates={updates}
         onCheckUpdates={onCheckUpdates}
+        onApplyUpdate={onApplyUpdate && choose(onApplyUpdate)}
         onSource={choose(onSource)}
       />
     </>
@@ -546,15 +557,28 @@ function UpdateStrip({
   version,
   updates,
   onCheckUpdates,
+  onApplyUpdate,
   onSource,
 }: {
   version: string;
   updates: PlatformUpdates | undefined;
   onCheckUpdates: (() => void) | undefined;
+  onApplyUpdate: (() => void) | undefined;
   onSource(): void;
 }) {
   const state = useUpdateState(updates);
   const { word, dot } = updateWord(state);
+  // The group's first button is its Tab stop; arrows move between them (`rove`).
+  const links: { label: string; run(): void; className: string }[] = [];
+  if (state.waiting && onApplyUpdate) {
+    links.push({
+      label: updates?.action ?? RELOAD_ACTION,
+      run: onApplyUpdate,
+      className: actionLink,
+    });
+  }
+  if (onCheckUpdates) links.push({ label: 'Check now', run: onCheckUpdates, className: link });
+  links.push({ label: 'GitHub', run: onSource, className: link });
   return (
     <div
       data-update-strip=""
@@ -568,22 +592,20 @@ function UpdateStrip({
         {version}
       </span>
       <div className="flex-1" />
-      {/* biome-ignore lint/a11y/useSemanticElements: two links, not a form fieldset */}
+      {/* biome-ignore lint/a11y/useSemanticElements: a few links, not a form fieldset */}
       <div role="group" aria-label="Links" className="flex gap-2" onKeyDown={rove('x')}>
-        {onCheckUpdates && (
-          <button type="button" data-rove="" className={link} onClick={onCheckUpdates}>
-            Check now
+        {links.map((l, i) => (
+          <button
+            key={l.label}
+            type="button"
+            data-rove=""
+            tabIndex={i === 0 ? 0 : -1}
+            className={l.className}
+            onClick={l.run}
+          >
+            {l.label}
           </button>
-        )}
-        <button
-          type="button"
-          data-rove=""
-          tabIndex={onCheckUpdates ? -1 : 0}
-          className={link}
-          onClick={onSource}
-        >
-          GitHub
-        </button>
+        ))}
       </div>
     </div>
   );
