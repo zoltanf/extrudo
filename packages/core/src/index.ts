@@ -96,6 +96,7 @@ export * from './sheet-frame';
 export * from './sheet-schema';
 export * from './sheets';
 export * from './shell';
+export * from './simplify-for-print';
 export * from './sketch/commands';
 export * from './sketch/curves';
 export * from './sketch/dimensions';

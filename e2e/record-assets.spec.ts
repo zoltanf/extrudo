@@ -1844,6 +1844,26 @@ test('demo: wallThickness', async ({ page }) => {
   });
 });
 
+test('demo: simplifyForPrint', async ({ page }) => {
+  await demoDesign(page, 'simplifyForPrint');
+  await turnView(page, 'Shift+1');
+  const { at, clip } = await frameWorld(page, boxPoints([-20, -13, 0], [20, 13, 8]));
+  const p = pointer(page);
+  await p.jump({ x: clip.x + clip.width - 50, y: clip.y + clip.height - 30 });
+  const dialog = page.getByRole('region', { name: 'Simplify for Print dialog' });
+  await record(page, 'simplifyForPrint', clip, async () => {
+    await page.waitForTimeout(300);
+    await runTool(page, 'simplifyForPrint', 'print');
+    await expect(dialog).toBeVisible();
+    // The plate's top, clear of the holes: the rounds, the chamfer and the Ø3 holes turn red.
+    await pickModel(page, p, at, [-6, 8, 8], /^body:/);
+    await previewed(dialog);
+    await page.waitForTimeout(1200);
+    await commit(page, dialog);
+    await page.waitForTimeout(500);
+  });
+});
+
 /** The frame of the panel a print tool opens in the right column, with the view beside it. */
 const PANEL_FRAME = { x: 1030, y: 283, width: 400, height: 250 } as const;
 

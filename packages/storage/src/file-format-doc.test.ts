@@ -110,6 +110,7 @@ import {
   SWEEP_ORIENTATIONS,
   scaleFeature,
   shellFeature,
+  simplifyForPrintFeature,
   sketchFeature,
   sphereFeature,
   splitBodyFeature,
@@ -188,6 +189,7 @@ const FEATURES = [
   ribFeature,
   meshToSolidFeature,
   insertDesignFeature,
+  simplifyForPrintFeature,
   ...Object.values(CONSTRUCTION_FEATURES),
 ];
 

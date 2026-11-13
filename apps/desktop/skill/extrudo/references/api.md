@@ -846,6 +846,18 @@ Faces: `<label>:from:(<face>)` (A face of a copy: the label is the instance's ow
 | --- | --- | --- | --- |
 | `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The faces to remove; their neighbours are extended to close the gap. A round or a hole needs all its faces. |
 
+### `simplifyForPrint` — Simplify for Print
+
+| Input | Type | Required or default | What it does |
+| --- | --- | --- | --- |
+| `bodies` | `GeomRef \| GeomRef[]` (`body`) | **required** | The solid bodies to simplify. |
+| `rounds` | `boolean` | optional | Remove rounds (fillets: cylinder, torus and sphere faces in a smooth chain) up to maxRoundRadius; false keeps them and the limit. Absent: on while maxRoundRadius is given. |
+| `maxRoundRadius` | `string \| number \| ParameterHandle` | optional | The largest round radius removed, in mm (a torus by its tube radius). Absent: no round is removed. |
+| `chamfers` | `boolean` | optional | Remove chamfers (narrow flat or conical bevels between two faces that meet at an angle) up to maxChamferSize; false keeps them and the limit. Absent: on while maxChamferSize is given. |
+| `maxChamferSize` | `string \| number \| ParameterHandle` | optional | The largest chamfer removed, in mm, by its longer leg (how far it cuts back into either face). Absent: no chamfer is removed. |
+| `holes` | `boolean` | optional | Remove holes (closed cylindrical walls, the faces they enclose and the round at their mouth) up to maxHoleDiameter; false keeps them and the limit. Absent: on while maxHoleDiameter is given. |
+| `maxHoleDiameter` | `string \| number \| ParameterHandle` | optional | The largest hole diameter removed, in mm (a counterbored hole by its widest wall). Absent: no hole is removed. |
+
 ### `splitBody` — Split Body
 
 | Input | Type | Required or default | What it does |

@@ -32,6 +32,7 @@ import { ribDialog } from './rib';
 import { scaleDialog } from './scale';
 import { scriptDialog } from './script';
 import { shellDialog } from './shell';
+import { simplifyForPrintDialog } from './simplify-for-print';
 import { commandId, type FeatureDialogSpec } from './spec';
 import { splitBodyDialog } from './split-body';
 import { sweepDialog } from './sweep';
@@ -60,6 +61,7 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(offsetFaceDialog);
   // Remove Faces (P4-13, ADR-0099): the defeaturing tool.
   dialogs.register(removeFacesDialog);
+  dialogs.register(simplifyForPrintDialog);
   // Rectangular, circular and path patterns (P3-07, ADR-0047).
   for (const spec of PATTERN_DIALOGS) dialogs.register(spec);
   // Split Body, Scale and Draft (P3-08, second half).

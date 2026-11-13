@@ -30,6 +30,7 @@ import type {
   GeomRefKind,
   MeshToSolidReport,
   PatternReport,
+  SimplifyReport,
   SketchReport,
   SweepReport,
   ThreadReport,
@@ -142,6 +143,50 @@ export interface ExpressionField extends FieldBase {
   kind: 'expression';
   unit: UnitKind;
   default: string;
+  /**
+   * The field's own name where rows share a label (Simplify for Print's
+   * "Remove up to", one per kind): the input's and slider's accessible name,
+   * and the name its errors give. Default: the label.
+   */
+  inputName?: string;
+  /**
+   * Values a slider under the field stops at, ascending, in the unit's base
+   * (mm, degrees): Simplify for Print's found sizes (ADR-0141 §4). With
+   * `empty`, the slider's first stop is the empty field. Fewer than two stops
+   * in all: no slider. Dragging shows the stop in the field; letting go sets
+   * it, so the preview runs once per drag, not per move. A typed value is
+   * kept, and the slider sits at the last stop at or under it.
+   */
+  stops?(values: DialogValues, ctx: DialogContext): readonly number[] | undefined;
+  /**
+   * An empty field is a value, and this says what it means (Simplify for
+   * Print's "Keep"): it shows as the placeholder, makes no input (an absent
+   * input reads back as empty), and is the slider's first stop.
+   */
+  empty?: string;
+  /** The field as a card instead of a label and a control (ADR-0141 §6). */
+  card?: FieldCard;
+}
+
+/**
+ * A field drawn as a card (Simplify for Print's kinds): the label as its
+ * title with `icon`, `badge` at the right, the slider and the field on one
+ * line, and `notes` under them.
+ */
+export interface FieldCard {
+  icon?: ComponentType<{ size?: number; className?: string }>;
+  /** The pill right of the title ("2 go"). */
+  badge?(values: DialogValues, ctx: ManipulatorContext): CardNote | undefined;
+  /** Small lines under the slider ("R1.2 mm goes · R3.6 mm stays"); `ctx.value` reads a limit. */
+  notes?(values: DialogValues, ctx: ManipulatorContext): readonly CardNote[];
+  /** In place of the slider and the field once the stops are known and there are none. */
+  none?: string;
+}
+
+/** A card's badge or note: its text, and a tone (default `muted`). */
+export interface CardNote {
+  text: string;
+  tone?: 'accent' | 'muted' | 'warning';
 }
 
 /** A dropdown (an `enum` input). */
@@ -285,6 +330,8 @@ export interface DialogContext {
   draftSweep?: SweepReport;
   /** The draft's Mesh to Solid report (ADR-0097 §4). Absent for anything else and while the draft fails. */
   draftMeshToSolid?: MeshToSolidReport;
+  /** The draft's Simplify for Print report (ADR-0141 §4). Absent for anything else and while the draft fails. */
+  draftSimplify?: SimplifyReport;
   /**
    * The region preview's latest answer (`FeatureDialogSpec.regions`, ADR-0097
    * §5). Absent while there is none, for any other dialog, and when the spec

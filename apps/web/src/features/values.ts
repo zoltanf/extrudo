@@ -120,8 +120,12 @@ function fieldInput(field: DialogField, values: DialogValues): Input | undefined
     case 'selection':
     case 'features':
       return { kind: 'ref', refs: [...(values.refs[field.name] ?? [])] };
-    case 'expression':
-      return { kind: 'expr', expr: values.exprs[field.name] ?? field.default, unit: field.unit };
+    case 'expression': {
+      const expr = values.exprs[field.name] ?? field.default;
+      // An empty field that means something ("Keep") makes no input.
+      if (field.empty !== undefined && expr.trim() === '') return undefined;
+      return { kind: 'expr', expr, unit: field.unit };
+    }
     case 'choice':
       return { kind: 'enum', value: values.choices[field.name] ?? field.default };
     case 'toggle':
@@ -153,6 +157,9 @@ export function defaultFromInputs(
       refs[field.name] = [...input.refs];
     } else if (field.kind === 'expression' && input?.kind === 'expr')
       exprs[field.name] = input.expr;
+    // No input for a field whose empty value means something: it was left empty.
+    else if (field.kind === 'expression' && field.empty !== undefined && input === undefined)
+      exprs[field.name] = '';
     else if (field.kind === 'choice' && input?.kind === 'enum') choices[field.name] = input.value;
     else if (field.kind === 'toggle' && input?.kind === 'bool') toggles[field.name] = input.value;
     else if (field.kind === 'labels' && input?.kind === 'labels')

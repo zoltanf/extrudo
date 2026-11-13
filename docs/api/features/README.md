@@ -55,6 +55,7 @@ What changes the bodies a design already has.
 - [Path Pattern](pathPattern.md) — `d.pathPattern(inputs?, options?)`
 - [Offset Face](offsetFace.md) — `d.offsetFace(inputs, options?)`
 - [Remove Faces](removeFaces.md) — `d.removeFaces(inputs, options?)`
+- [Simplify for Print](simplifyForPrint.md) — `d.simplifyForPrint(inputs, options?)`
 - [Split Body](splitBody.md) — `d.splitBody(inputs, options?)`
 - [Scale](scale.md) — `d.scale(inputs, options?)`
 - [Draft](draft.md) — `d.draft(inputs, options?)`

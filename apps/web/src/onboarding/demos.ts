@@ -81,6 +81,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'tolerance',
   'overhang',
   'wallThickness',
+  'simplifyForPrint',
   'export',
   'slicer',
   'render',

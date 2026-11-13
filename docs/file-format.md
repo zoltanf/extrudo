@@ -1878,6 +1878,34 @@ no plane, cylinder, cone, sphere or torus. The feature's report of kind
 `spheres`, `tori`, `unfit` (`regions`, `triangles`, `fraction`) and, when a
 region fits nothing, a `suggestedTolerance`.
 
+### 6.36 `simplifyForPrint`
+
+Finds the small rounds, chamfers and holes of the chosen bodies and removes
+them with Remove Faces' defeaturing (6.34; ADR-0141). **It stores no faces**:
+the kernel finds them on every recompute from the limits, so a changed limit
+or an upstream edit finds them again. No new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `bodies` | `ref` | yes | Refs of kind `body`: the solid bodies to simplify. Empty: an error until one is picked. A mesh body is refused |
+| `rounds` | `bool` | no | `false` keeps the rounds whatever `maxRoundRadius` says. Absent: rounds are removed while `maxRoundRadius` is given |
+| `maxRoundRadius` | `expr` | no | Length in millimetres, greater than 0: the largest round radius removed (a torus by its tube radius). Absent: rounds stay |
+| `chamfers` | `bool` | no | `false` keeps the chamfers whatever `maxChamferSize` says. Absent: chamfers are removed while `maxChamferSize` is given |
+| `maxChamferSize` | `expr` | no | Length in millimetres, greater than 0: the largest chamfer removed, by its longer leg (how far it cuts back into either face). Absent: chamfers stay |
+| `holes` | `bool` | no | `false` keeps the holes whatever `maxHoleDiameter` says. Absent: holes are removed while `maxHoleDiameter` is given |
+| `maxHoleDiameter` | `expr` | no | Length in millimetres, greater than 0: the largest hole diameter removed (a counterbored hole by its widest wall, a tapered one by its wider end). Absent: holes stay |
+
+A kind is removed while its limit is given and its toggle isn't `false`;
+none removed is an error. The app's dialog writes no toggles: a kind it
+keeps has no limit. Each round, chamfer or hole is all or nothing; one that
+can't be removed stays and the rest still go (a warning). Removed faces'
+names are gone; **a face that was extended or trimmed keeps its name**, as
+with `removeFaces`. The feature's report of kind `simplifyForPrint` carries
+`groups` (each round, chamfer or hole found: `kind`, `body`, `size` in mm,
+`faces` as a count, `removed`) and `sizes` (`round`, `chamfer`, `hole`: the
+sizes found on the bodies, for the dialog's sliders). Reports are derived,
+never stored.
+
 ### 6.37 `insertDesign`
 
 Another design, **copied** into this one as one feature (P6-26, ADR-0140, label

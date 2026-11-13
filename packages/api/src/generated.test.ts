@@ -219,6 +219,7 @@ describe('the whole registry', () => {
       removeFaces: { faces: design.ref('face', 'f1:face#1') },
       scale: { bodies: [design.ref('body', 'f1')] },
       shell: { thickness: '2 mm' },
+      simplifyForPrint: { bodies: [design.ref('body', 'f1')] },
       splitBody: { bodies: [design.ref('body', 'f1')], plane: design.origin.yz },
       thread: { faces: design.ref('face', 'f1:wall') },
       // A file input names an attachment of the design (P4-06), which the

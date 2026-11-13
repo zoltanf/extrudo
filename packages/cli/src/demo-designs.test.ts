@@ -223,6 +223,24 @@ export const DEMO_DESIGNS: Record<string, (d: Design) => void> = {
     d.cylinder({ diameter: '10 mm', height: '16 mm' });
     d.box({ length: '36 mm', width: '36 mm', height: '6 mm', offset: '16 mm', operation: 'join' });
   },
+  // A plate with two r 1 rounds, a 1 mm chamfer, two Ø3 holes and a Ø8 one: Simplify for Print
+  // takes out all but the Ø8 hole.
+  simplifyForPrint: (d) => {
+    const plate = d.box({ length: '40 mm', width: '26 mm', height: '8 mm' });
+    const name = (role: Parameters<typeof plate.faceName>[0]) => plate.faceName(role);
+    d.fillet({
+      edges: [
+        plate.edge([name('side:front'), name('side:left')]),
+        plate.edge([name('side:front'), name('side:right')]),
+      ],
+      radius: '1 mm',
+    });
+    d.chamfer({ edges: plate.edge([name('cap:end'), name('side:back')]), distance: '1 mm' });
+    for (const x of ['-13 mm', '13 mm']) {
+      d.cylinder({ x, y: '-5 mm', diameter: '3 mm', height: '8 mm', operation: 'cut' });
+    }
+    d.cylinder({ y: '2 mm', diameter: '8 mm', height: '8 mm', operation: 'cut' });
+  },
   // Two plates, 0.6 and 3 mm thick: the thin one is under the 0.9 mm minimum.
   wallThickness: (d) => {
     d.box({ y: '5 mm', length: '30 mm', width: '0.6 mm', height: '18 mm' });

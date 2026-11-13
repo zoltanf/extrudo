@@ -26,6 +26,7 @@ import { kernelRib } from './rib';
 import { kernelScale } from './scale';
 import { kernelScript } from './script';
 import { kernelShell } from './shell';
+import { kernelSimplifyForPrint } from './simplify-for-print';
 import { kernelSketch } from './sketch';
 import { kernelSplitBody } from './split-body';
 import { kernelSweep } from './sweep';
@@ -68,6 +69,8 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelOffsetFace as unknown as KernelFeatureDefinition);
   // Remove Faces (ADR-0099).
   registry.register(kernelRemoveFaces as unknown as KernelFeatureDefinition);
+  // Simplify for Print (ADR-0141, #79).
+  registry.register(kernelSimplifyForPrint as unknown as KernelFeatureDefinition);
   // Split Body, Scale and Draft (P3-08, second half).
   registry
     .register(kernelSplitBody as unknown as KernelFeatureDefinition)
