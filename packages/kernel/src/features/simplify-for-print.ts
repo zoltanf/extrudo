@@ -14,9 +14,9 @@
  *   hole rule takes with it (`removeFacesPick`: floor, counterbore,
  *   countersink, drill point) and the round at its mouth (a torus on its
  *   axis next to its wall); its size is the widest wall's diameter;
- * - a **round** is a run of cylinder (not all the way round), torus and
- *   sphere faces under the radius, joined across smooth edges; a face with
- *   no smooth neighbour is no round;
+ * - a **round** is a run of cylinder (not all the way round, alone or in a
+ *   ring), torus and sphere faces under the radius, joined across smooth
+ *   edges; a face with no smooth neighbour is no round;
  * - a **chamfer** is a narrow flat strip between two flat faces that meet
  *   at an angle, or a cone between two circles that meets its neighbours
  *   at an angle; its size is its longer leg (how far it cuts back into
@@ -129,8 +129,8 @@ const SMOOTH_COS = Math.cos((2 * Math.PI) / 180);
  * The rounds, chamfers and holes of a body under the limits (ADR-0141 §2),
  * in that order, each its faces once: no face is in two groups. `surface`
  * answers for curved faces, asked only for faces that need it. `seen` hears
- * each size the limits are held against: a hole's diameter, each round face's
- * radius and each chamfer face's leg (a group's size is its largest).
+ * the sizes of what is found: each hole's diameter, each of a round's faces'
+ * radii and each of a chamfer's faces' legs (a group's size is its largest).
  */
 export function findSimplifyGroups(
   description: ShapeDescription,
@@ -169,7 +169,8 @@ export function findSimplifyGroups(
   };
 
   // Hole walls: whole inside cylinders, rings of coaxial inside pieces of one radius, and
-  // tapered walls (steep whole inside cones), each by its widest radius.
+  // tapered walls (steep whole inside cones), each by its widest radius. A ring of outside
+  // pieces (a pin split at its seam) is, like a whole outside cylinder, no round.
   const walls: number[][] = [];
   const pieces = new Set<number>();
   const taperedWidest = new Map<number, number>();
@@ -183,18 +184,21 @@ export function findSimplifyGroups(
       }
       continue;
     }
-    if (s?.type !== 'cylinder' || !s.inside) continue;
-    if (s.whole) walls.push([face]);
-    else pieces.add(face);
+    if (s?.type !== 'cylinder') continue;
+    if (!s.whole) pieces.add(face);
+    else if (s.inside) walls.push([face]);
   }
+  /** Inside rings' faces (hole walls), and every ring's (inside or out). */
   const ringFaces = new Set<number>();
+  const closed = new Set<number>();
   for (const ring of components(pieces, around, (a, b) =>
     sameCylinder(surfaceOf(a), surfaceOf(b)),
   )) {
-    if (ring.length >= 2 && sharedEdges(description, new Set(ring)) >= ring.length) {
-      walls.push(ring);
-      for (const face of ring) ringFaces.add(face);
-    }
+    if (ring.length < 2 || sharedEdges(description, new Set(ring)) < ring.length) continue;
+    for (const face of ring) closed.add(face);
+    if (!surfaceOf(ring[0] ?? -1)?.inside) continue;
+    walls.push(ring);
+    for (const face of ring) ringFaces.add(face);
   }
   const holes: FoundGroup[] = [];
   if (limits.maxHoleDiameter !== undefined) {
@@ -232,18 +236,20 @@ export function findSimplifyGroups(
   if (max !== undefined) {
     const candidates = new Set<number>();
     for (let face = 0; face < faceCount; face++) {
-      if (taken.has(face) || ringFaces.has(face)) continue;
+      if (taken.has(face) || closed.has(face)) continue;
       const s = surfaceOf(face);
       if (!s || s.type === 'cone' || s.radius > max + SIZE_TOLERANCE) continue;
       if (s.type === 'cylinder' && s.whole) continue;
       if (smoothOf(face).size === 0) continue;
       candidates.add(face);
-      seen?.('round', s.radius);
     }
     for (const faces of components(candidates, around, (a, b) => smoothOf(a).has(b))) {
       if (faces.length >= faceCount) continue;
-      const size = Math.max(...faces.map((face) => surfaceOf(face)?.radius ?? 0));
-      rounds.push({ kind: 'round', faces: faces.sort((a, b) => a - b), size });
+      const radii = faces.map((face) => surfaceOf(face)?.radius ?? 0);
+      rounds.push({ kind: 'round', faces: faces.sort((a, b) => a - b), size: Math.max(...radii) });
+      // A round's faces are no chamfer's corner patch.
+      for (const face of faces) taken.add(face);
+      for (const radius of radii) seen?.('round', radius);
     }
   }
 
@@ -253,7 +259,7 @@ export function findSimplifyGroups(
   if (maxChamfer !== undefined) {
     const bevels = new Map<number, Bevel>();
     for (let face = 0; face < faceCount; face++) {
-      if (taken.has(face) || ringFaces.has(face)) continue;
+      if (taken.has(face) || closed.has(face)) continue;
       const bevel = bevelOf(face, description, index, surfaceOf, smoothOf);
       if (bevel) bevels.set(face, bevel);
     }
@@ -263,11 +269,10 @@ export function findSimplifyGroups(
       if (size > maxChamfer + NEAR) continue;
       if (between.some((other) => (bevels.get(other)?.size ?? Infinity) <= size + NEAR)) continue;
       sizes.set(face, size);
-      seen?.('chamfer', size);
     }
     const members = new Set(sizes.keys());
     for (let face = 0; face < faceCount; face++) {
-      if (members.has(face) || taken.has(face) || ringFaces.has(face)) continue;
+      if (members.has(face) || taken.has(face) || closed.has(face)) continue;
       // A corner patch: chamfers on most sides (two at least), and about their size (not the face
       // they ring). Where unequal chamfers meet, OCCT's patch is a B-spline that also touches a
       // flat face; one left behind is stretched along the edges the chamfers leave.
@@ -282,8 +287,13 @@ export function findSimplifyGroups(
     }
     for (const faces of components(members, around, () => true)) {
       if (faces.length >= faceCount || !faces.some((face) => sizes.has(face))) continue;
-      const size = Math.max(...faces.map((face) => sizes.get(face) ?? 0));
-      chamfers.push({ kind: 'chamfer', faces: faces.sort((a, b) => a - b), size });
+      const legs = faces.flatMap((face) => sizes.get(face) ?? []);
+      chamfers.push({
+        kind: 'chamfer',
+        faces: faces.sort((a, b) => a - b),
+        size: Math.max(...legs),
+      });
+      for (const leg of legs) seen?.('chamfer', leg);
     }
   }
   return [...rounds, ...chamfers, ...holes];
@@ -678,7 +688,7 @@ function evaluateSimplify(ctx: EvalContext<SimplifyForPrintInputs>): FeatureOutp
     }
     const description = ctx.describe(shape);
     const surface = memo(kernelSimplifySurface(kernel, shape, description));
-    for (const kind of KINDS) sizes[kind].push(...foundSizes(description, surface, kind));
+    for (const kind of KINDS) sizes[kind].push(...foundSizes(description, surface, kind, limits));
     const found = findSimplifyGroups(description, surface, limits);
     if (found.length === 0) continue;
     const result = removeGroups(ctx, shape, ctx.names(id), found);
@@ -722,23 +732,33 @@ function evaluateSimplify(ctx: EvalContext<SimplifyForPrintInputs>): FeatureOutp
 
 const KINDS = ['round', 'chamfer', 'hole'] as const;
 
+/** Each kind's limit in `DetectLimits`. */
+const LIMIT = {
+  round: 'maxRoundRadius',
+  chamfer: 'maxChamferSize',
+  hole: 'maxHoleDiameter',
+} as const satisfies Record<(typeof KINDS)[number], keyof DetectLimits>;
+
 /**
- * One kind's sizes on a body, with no limit and the other kinds off: where its
- * slider stops. Per face, not per group: touching chamfers of 0.5, 1 and 3 mm
- * are one group with no limit, but a limit of 1 takes two of them.
+ * One kind's sizes on a body with no limit on it and the other kinds' limits
+ * as they are: where its slider stops. A hole's countersink or rounded mouth
+ * that goes with the hole is no chamfer or round stop while holes are on.
+ * Per face, not per group: touching chamfers of 0.5, 1 and 3 mm are one
+ * group with no limit, but a limit of 1 takes two of them.
  */
 function foundSizes(
   description: ShapeDescription,
   surface: (face: number) => SimplifySurface | undefined,
   kind: (typeof KINDS)[number],
+  limits: DetectLimits,
 ): number[] {
-  const limits: DetectLimits = {
-    maxRoundRadius: kind === 'round' ? Infinity : undefined,
-    maxChamferSize: kind === 'chamfer' ? Infinity : undefined,
-    maxHoleDiameter: kind === 'hole' ? Infinity : undefined,
-  };
   const out: number[] = [];
-  findSimplifyGroups(description, surface, limits, (k, size) => k === kind && out.push(size));
+  findSimplifyGroups(
+    description,
+    surface,
+    { ...limits, [LIMIT[kind]]: Infinity },
+    (k, size) => k === kind && out.push(size),
+  );
   return out;
 }
 

@@ -1161,11 +1161,12 @@ function sameStatuses(
   );
 }
 
-/** Mesh to Solid's feature report as the status and the preview carry it: without its `kind`. */
+/** Simplify for Print's feature report as the status and the preview carry it: without its `kind`. */
 function simplifyOf({ kind: _, ...report }: SimplifyFeatureReport): SimplifyReport {
   return report;
 }
 
+/** Mesh to Solid's feature report as the status and the preview carry it: without its `kind`. */
 function withoutKind({ kind: _, ...report }: MeshToSolidFeatureReport): MeshToSolidReport {
   return report;
 }

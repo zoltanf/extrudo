@@ -107,6 +107,92 @@ describe('the Simplify for Print detection rule (plain data)', () => {
     });
     expect(groups).toEqual([{ kind: 'round', faces: [2, 3], size: 1.5 }]);
   });
+
+  it('a pin split at its seam (two outside halves closing a ring) is no round', () => {
+    const outside = (face: number) => (face >= 2 ? { ...half(1), inside: false } : undefined);
+    const limits = { maxRoundRadius: 5, maxHoleDiameter: 5 };
+    expect(findSimplifyGroups(splitHole(), outside, limits)).toEqual([]);
+  });
+
+  it('sizes are heard only from what is found: not from a round that is every face', () => {
+    const open = splitHole();
+    open.faces = open.faces.slice(2);
+    open.edges = [{ type: 'line', length: 1, midpoint: [0, 1.5, 5], faces: [0, 1] }];
+    const heard: number[] = [];
+    const groups = findSimplifyGroups(
+      open,
+      () => half(1.5),
+      { maxRoundRadius: 5, maxHoleDiameter: undefined },
+      (_, size) => heard.push(size),
+    );
+    expect(groups).toEqual([]);
+    expect(heard).toEqual([]);
+  });
+
+  it("a round is never also a chamfer's corner patch", () => {
+    // A top (0), front (1) and right (2), 1 mm chamfers between the top and each side (3, 4), and
+    // a round (5) smooth with the front that touches both chamfers: chamfers on most of its sides.
+    const s2 = Math.SQRT1_2;
+    const plane = (direction: Vec3) => ({
+      type: 'plane' as const,
+      area: 1,
+      centroid: [0, 0, 0] as Vec3,
+      direction,
+    });
+    const line = (midpoint: Vec3, direction: Vec3, faces: number[]) => ({
+      type: 'line' as const,
+      length: 1,
+      midpoint,
+      direction,
+      faces,
+    });
+    const X: Vec3 = [1, 0, 0];
+    const Y: Vec3 = [0, 1, 0];
+    const description: ShapeDescription = {
+      faces: [
+        plane(Z),
+        plane([0, -1, 0]),
+        plane(X),
+        plane([0, -s2, s2]),
+        plane([s2, 0, s2]),
+        { type: 'cylinder', area: 1, centroid: [39.5, 0.5, 9] },
+      ],
+      edges: [
+        line([20, 1, 10], X, [0, 3]),
+        line([20, 0, 9], X, [1, 3]),
+        line([39, 15, 10], Y, [0, 4]),
+        line([40, 15, 9], Y, [2, 4]),
+        line([39, 0, 5], Z, [5, 1]),
+        line([39.5, 0.2, 9.5], X, [5, 3]),
+        line([39.8, 0.5, 9.5], Y, [5, 4]),
+      ],
+      // The top's far corners: it is no corner patch itself.
+      vertices: [
+        { point: [0, 30, 10], faces: [0] },
+        { point: [40, 30, 10], faces: [0] },
+      ],
+    };
+    const round = (face: number): SimplifySurface | undefined =>
+      face === 5
+        ? {
+            type: 'cylinder',
+            radius: 1,
+            axis: { origin: [39, 1, 0], direction: Z },
+            inside: false,
+            whole: false,
+          }
+        : undefined;
+    const groups = findSimplifyGroups(description, round, {
+      maxRoundRadius: 2,
+      maxChamferSize: 2,
+      maxHoleDiameter: undefined,
+    });
+    expect(groups).toEqual([
+      { kind: 'round', faces: [5], size: 1 },
+      { kind: 'chamfer', faces: [3], size: expect.closeTo(1, 6) },
+      { kind: 'chamfer', faces: [4], size: expect.closeTo(1, 6) },
+    ]);
+  });
 });
 
 // ------------------------------------------------------------- with OCCT
@@ -487,11 +573,16 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     expect(
       [5 + flare, 5 - flare].some((d) => Math.abs((groups[0]?.size ?? 0) - Math.max(d, 5)) < 1e-3),
     ).toBe(true);
-    // The cone is no chamfer, even with holes off.
     expect(report(result)?.sizes.chamfer).toEqual([]);
     expect(report(result)?.sizes.hole).toHaveLength(1);
     expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
     expect(faceNames(result, B0)).toHaveLength(6);
+    // The cone is no chamfer, even with holes off.
+    const chamfersOnly = await run(
+      testDocument([...features, simplify(['B:0'], { maxChamferSize: '5 mm' })]),
+    );
+    expect(report(chamfersOnly)?.groups).toEqual([]);
+    expect(report(chamfersOnly)?.sizes.chamfer).toEqual([]);
   });
 
   it("(f) a countersink is a chamfer with holes off, and the hole's with them on", async () => {
@@ -515,6 +606,7 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     expect(report(chamferOnly)?.groups).toEqual([
       { kind: 'chamfer', body: 'B:0', size: expect.closeTo(1.5, 6), faces: 1, removed: true },
     ]);
+    expect(report(chamferOnly)?.sizes).toEqual({ round: [], chamfer: [1.5], hole: [3] });
     // A plain Ø3 hole is left.
     expect(relative(volume(B0), BOX - Math.PI * 1.5 ** 2 * 10)).toBeLessThan(1e-6);
     const both = await run(
@@ -526,6 +618,8 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     expect(report(both)?.groups).toEqual([
       { kind: 'hole', body: 'B:0', size: expect.closeTo(3, 6), faces: 2, removed: true },
     ]);
+    // With holes on, the countersink goes with its hole: no chamfer stop.
+    expect(report(both)?.sizes).toEqual({ round: [], chamfer: [], hole: [3] });
     expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
   });
 
@@ -553,6 +647,40 @@ describe('simplify for print', { timeout: 120_000 }, () => {
     expect(report(result)?.groups).toEqual([
       { kind: 'hole', body: 'B:0', size: expect.closeTo(3, 6), faces: 2, removed: true },
     ]);
+    // The mouth goes with the hole, so it is no round stop ("R1 mm stays" would be wrong).
+    expect(report(result)?.sizes).toEqual({ round: [], chamfer: [], hole: [3] });
     expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
+  });
+
+  it('(i) filleted verticals under chamfered top edges: each face in one group', async () => {
+    const { front, right, back, left } = block().lines;
+    const loop = [front, right, back, left];
+    const vertical = loop.map(
+      (line, i): GeomRef => ({
+        kind: 'edge',
+        id: edgeName([side(line), side(loop[(i + 1) % 4] ?? '')]),
+      }),
+    );
+    const features = [
+      ...chamfered([{ edges: loop.map(topEdge), distance: '1 mm' }]),
+      {
+        ...testFeature('F', 'fillet'),
+        inputs: filletInputs([{ edges: vertical, radius: '1 mm' }]),
+      },
+    ];
+    const result = await run(
+      testDocument([
+        ...features,
+        simplify(['B:0'], { maxRoundRadius: '2 mm', maxChamferSize: '2 mm' }),
+      ]),
+    );
+    expect(status(result, 'P')).toMatchObject({ status: 'ok' });
+    const groups = report(result)?.groups ?? [];
+    expect(groups.map((g) => [g.kind, g.faces, g.removed])).toEqual([
+      ...loop.map(() => ['round', 1, true]),
+      ['chamfer', 4, true],
+    ]);
+    expect(relative(volume(B0), BOX)).toBeLessThan(1e-6);
+    expect(faceNames(result, B0)).toHaveLength(6);
   });
 });

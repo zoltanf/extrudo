@@ -6,9 +6,11 @@
  *
  * The feature stores the bodies and the limits, never faces: the kernel
  * finds them on every recompute, so a changed limit or an
- * upstream edit finds them again. Each round or hole is its own attempt, so
- * one that can't be removed doesn't stop the rest; the report says which
- * went and which stayed. Each kind can be off (`rounds` / `chamfers` / `holes`).
+ * upstream edit finds them again. All go in one defeaturing when they can;
+ * else the ones that fail are tried alone, so one that can't be removed
+ * doesn't stop the rest; the report says which went and which stayed. Each
+ * kind can be kept: its limit absent, or its toggle (`rounds` / `chamfers` /
+ * `holes`) false.
  *
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `SIMPLIFY_FOR_PRINT_TYPE` (ADR-0003).

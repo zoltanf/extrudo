@@ -398,10 +398,12 @@ export function stopSlider(
  */
 function useStops(field: ExpressionField, open: OpenDialog, controller: DialogController) {
   const [dragged, setDragged] = useState<string>();
-  const ctx = controller.context();
+  // A field without stops asks the controller nothing.
+  const ctx = field.stops ? controller.context() : undefined;
   const values = ctx ? field.stops?.(open.values, ctx) : undefined;
   const expr = dragged ?? open.values.exprs[field.name] ?? '';
-  const evaluated = expr.trim() === '' ? undefined : controller.evaluate(field.name, expr);
+  const evaluated =
+    values === undefined || expr.trim() === '' ? undefined : controller.evaluate(field.name, expr);
   const slider = stopSlider(field, values, expr, evaluated?.ok ? evaluated.value : undefined);
   const drag = (index: number) => {
     const stop = slider?.stops[index];

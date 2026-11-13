@@ -4353,7 +4353,8 @@ pieces of one radius (shared edges ≥ pieces), or a **tapered wall** (an inside
 steeper than 45°, Δheight > Δradius: `coneOf(...).tapered`; sized by its wider end, never a
 chamfer; a countersink isn't one), with `removeFacesPick`'s hole faces and its mouth
 torus (coaxial, next to a wall: `withMouth`, whatever the round limit); size = twice
-the widest inside cylinder's radius, over the limit the whole hole stays; rounds = cylinders
+the widest inside cylinder's radius, over the limit the whole hole stays; a closed ring of
+**outside** pieces (a pin split at its seam) is no round, like a whole outside cylinder; rounds = cylinders
 not all the way round, tori (minor radius), spheres, ≤ the limit, not in a hole, meeting a
 neighbour smoothly, joined across smooth edges; cones never; chamfers
 (`bevelOf`) = a plane strip between two parallel straight edges on two non-parallel flat
@@ -4364,14 +4365,15 @@ size; touching chamfers are one group with **corner patches** (chamfers on more 
 its sides, two at least, vertices within 2× their size of the centroid; **any surface type**:
 unequal chamfers meet in a B-spline patch that also touches a flat face, and one left behind is
 stretched along the edges); no face in two groups; holes found first (a
-countersink is the hole's); output rounds, chamfers, holes; a group of every face is skipped. Removal per body: **all groups in
+countersink is the hole's), then rounds (**a round's faces go into `taken`**: never a chamfer's corner patch); output rounds, chamfers, holes; a group of every face is skipped. Removal per body: **all groups in
 one `removeFaces` first; on `RemoveFacesError` all but the groups `error.failed` names in one,
 then those alone; if that fails too, each group alone**, on the shape the earlier ones
 left, its faces found again **by name**; a failure leaves the shape and goes on (other errors
 propagate); keep shapes only after the last throwing call. Report `{ kind: 'simplifyForPrint',
 groups, sizes }` (`SimplifyGroup`: kind, body, size, faces, removed; `sizes`: every size per kind
-whatever the limits, **per face** via `findSimplifyGroups`'s `seen` with that kind's limit at
-infinity and the others off, `distinctSizes` to 0.001 mm never rounded below) goes to `FeatureStatus.simplify`
+whatever its own limit, **per face** via `findSimplifyGroups`'s `seen` (which hears only groups
+found, never one skipped for being every face) with that kind's limit at infinity and **the
+others' limits as set** (a hole's countersink or mouth that goes with it is no chamfer or round stop), `distinctSizes` to 0.001 mm never rounded below) goes to `FeatureStatus.simplify`
 and `Preview.simplify` → `DialogContext.draftSimplify`; nothing found and failures are
 **warnings**, not errors. Preview: one `cut` preview tool, the compound of the removed faces of
 the input. The dialog is Bodies plus **a card per kind** (`ExpressionField.card`: title, icon,
@@ -4384,7 +4386,9 @@ empty; a stored toggle that is off reads back as Keep via the spec's `fromInputs
 kept is a `validate` issue. The slider shows the stop while dragging and **sets it on release**
 (pointer capture, keyup, blur: one preview per drag); a typed value is kept, the slider at the
 stop at or under it, a value under every size at Keep (`stopSlider`, `stopIndex`,
-`stopExpression` in `FeatureDialog.tsx`); `ExpressionInput.allowEmpty` lets an empty field commit. Tooltip
+`stopExpression` in `FeatureDialog.tsx`; `useStops` asks the controller nothing for a field
+without `stops`); `ExpressionInput.allowEmpty` lets a blank field (spaces too) commit as `''`
+with no error shown. File format: `docs/file-format.md` §6.36. Tooltip
 clip `demo: simplifyForPrint` (frames the model, not the dialog). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
 fillets, through and blind holes, a stadium's ends that can't be removed, on another body and
 on the same body, chamfers by longer leg and the octagon rule, every edge chamfered with corner

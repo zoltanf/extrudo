@@ -140,4 +140,18 @@ describe("a slider at an expression field's stops", () => {
     expect(html).toContain('None on these bodies');
     expect(html).not.toContain('data-stops="maxHoleDiameter"');
   });
+
+  it('a field without stops evaluates only its own draft: no slider work per render', () => {
+    const t = setupDialogs();
+    t.controller.start('fake-press');
+    const evaluate = t.controller.evaluate.bind(t.controller);
+    const asked: string[] = [];
+    t.controller.evaluate = (field, expr) => {
+      asked.push(field);
+      return evaluate(field, expr);
+    };
+    render(t.open() as OpenDialog, t);
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.length).toBe(new Set(asked).size);
+  });
 });

@@ -103,15 +103,17 @@ export function ExpressionInput({
   }, [value, editing]);
 
   const result = evaluate(draft);
-  const pending = draft === '' && placeholder !== undefined;
+  // A blank field with `allowEmpty` is a value (spaces too); with a placeholder, not filled in yet.
+  const empty = allowEmpty === true && draft.trim() === '';
+  const pending = empty || (draft === '' && placeholder !== undefined);
   const error = result.ok || pending ? undefined : result.error;
 
   // An invalid draft stays in the field (still "editing") so it can be fixed.
-  const empty = allowEmpty === true && draft.trim() === '';
   const commit = () => {
     if (!result.ok && !empty) return;
     setEditing(false);
-    if (draft !== value) onCommit(empty ? '' : draft);
+    const next = empty ? '' : draft;
+    if (next !== value) onCommit(next);
   };
 
   // In scope for this field: the field's own evaluation knows the name and it

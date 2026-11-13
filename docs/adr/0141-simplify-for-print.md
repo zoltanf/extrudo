@@ -8,8 +8,9 @@
   `removeFacesPick`), ADR-0005 (topological naming), ADR-0027 (live preview,
   preview tools), ADR-0068 (the document API), ADR-0097 (Mesh to Solid: a
   feature report on the status and in the dialog's preview).
-- **No schema or file-format change**: a new feature type with `ref`, `bool`
-  and `expr` inputs. **No new facade method, no new WASM.**
+- **A new feature type and nothing else in the schema**: `simplifyForPrint`
+  with `ref`, `bool` and `expr` inputs, documented in `docs/file-format.md`
+  §6.36. **No new facade method, no new WASM.**
 
 ## Context
 
@@ -38,8 +39,8 @@ detection.
    `maxRoundRadius` (length expr), `chamfers` (bool) with
    `maxChamferSize` (length expr), `holes` (bool) with `maxHoleDiameter`
    (length expr). A kind is on while its limit is given and its toggle isn't
-   false (`simplifyKinds`); none on is an error ("Turn on rounds, chamfers
-   or holes to simplify."); a limit ≤ 0 is an error. **The feature stores
+   false (`simplifyKinds`); none on is an error ("Rounds, chamfers and holes
+   are all kept: give at least one a limit."); a limit ≤ 0 is an error. **The feature stores
    no faces**: the kernel finds them on every recompute, so
    a changed limit or an upstream edit finds them again, and there is no
    face reference to lose. Helpers: `simplifyForPrintInputs(bodies,
@@ -66,8 +67,12 @@ detection.
      already in the hole rule). The hole's size is
      **twice the widest inside cylinder's radius** among its faces, so a
      counterbore counts by its counterbore; over the limit, the whole hole
-     stays (never a part of it). Ring pieces are never rounds.
-   - **Rounds**: candidates are cylinder faces **not** all the way round,
+     stays (never a part of it). Ring pieces are never rounds, and neither
+     are the pieces of an **outside ring** (a pin split at its seam, as STEP
+     files have it): like a whole outside cylinder, it blends nothing
+     (amended 2026-11-13, review).
+   - **Rounds**: candidates are cylinder faces **not** all the way round
+     (alone or in a ring),
      torus faces (by their minor radius) and sphere faces (corner blends),
      with the radius at most the limit, not in a hole, and meeting at least
      one neighbour smoothly (a face with no tangent neighbour is no round). A
@@ -95,9 +100,11 @@ detection.
      of unequal sizes meet OCCT's patch is a B-spline that also touches a
      flat face, and a patch left behind is stretched along the edges the
      chamfers leave. Size: the largest.
-   - A group of every face of the body is skipped. No face is in two groups.
-     Groups come rounds, chamfers, then holes; holes are found first, so a
-     countersink is the hole's.
+   - A group of every face of the body is skipped. No face is in two groups:
+     holes are found first, so a countersink is the hole's, then rounds, so a
+     round is never a chamfer's corner patch (amended 2026-11-13, review: a
+     torus blend could be both, and its faces went to `removeFaces` twice).
+     Groups come rounds, chamfers, then holes.
 3. **Removal**, per body: **all groups in one `removeFaces`** first (one
    defeaturing, the common case). When that throws `RemoveFacesError`,
    **all but the groups with a face OCCT named** (`error.failed`) in one,
@@ -114,10 +121,10 @@ detection.
    theirs (Remove Faces' history). A mesh body is refused ("Mesh to Solid
    first").
 4. **Report and status.** The evaluator's report is
-   `{ kind: 'simplifyForPrint', groups }`, one `SimplifyGroup` per round or
-   chamfer or hole: `kind`, `body`, `size` (radius, longer leg or diameter,
-   mm), `faces` (count),
-   `removed`. The recomputer puts it on `FeatureStatus.simplify` and on the
+   `{ kind: 'simplifyForPrint', groups, sizes }`: one `SimplifyGroup` per
+   round or chamfer or hole (`kind`, `body`, `size`: radius, longer leg or
+   diameter, mm; `faces`: count; `removed`), and `sizes` (`round`,
+   `chamfer`, `hole`: the slider stops, §6). The recomputer puts it on `FeatureStatus.simplify` and on the
    preview (`Preview.simplify` → `DialogContext.draftSimplify`), as Mesh to
    Solid's. Warnings: nothing found ("Nothing under the limits: the body is
    unchanged."), some failed ("N of the M found couldn't be removed; the
@@ -144,7 +151,10 @@ detection.
    (`ExpressionField.inputName`), and a **slider** under it
    (`ExpressionField.stops`) that stops at **every size of that kind on the
    bodies**: the report's `sizes`, found with that kind's limit at infinity and
-   the other kinds off, **per face** (a round face's radius, a chamfer face's
+   the other kinds' limits as set (amended 2026-11-13, review: with them off, a
+   hole's countersink or rounded mouth was a chamfer or round stop, "R1 mm
+   stays", while it goes with the hole), only from what is found (not a group
+   skipped for being every face), **per face** (a round face's radius, a chamfer face's
    leg, a hole's diameter; touching chamfers of 0.5, 1 and 3 mm are one group
    with no limit, but a limit of 1 takes two of them), to 0.001 mm and never
    rounded below a size (`distinctSizes`). Dragging shows the stop in the field
@@ -222,6 +232,6 @@ detection.
 - A thin plate with both edges of a side chamfered can leave a side strip
   narrower than the chamfers: the strip is then taken as the chamfer and
   the chamfers stay. Geometry alone can't tell these apart.
-- Tooltip clip still to record (`DEMO_CLIPS_PENDING`).
+- Tooltip clip recorded (`apps/web/public/demos/simplifyForPrint.webm`).
 - No pick in the view to keep one found round or hole: a follow-up (an
   "except" list of faces by name).
