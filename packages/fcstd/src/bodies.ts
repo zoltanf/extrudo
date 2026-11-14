@@ -28,7 +28,9 @@ import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon } from '@extrudo/sketch/profiles';
 import type { CallOutcome, KernelBudget } from './budget';
 import { combined, type Drift, drift, historyDisagreement, saneMeasure } from './check';
+import { addDressUp, type ReferenceTally } from './dressups';
 import {
+  type DecodedDressUp,
   type DecodedFeature,
   decodeFeature,
   type FeatureKind,
@@ -41,6 +43,7 @@ import {
   type FcDocument,
   type FcExpression,
   type FcObject,
+  type FcPlacement,
   storedShapeText,
 } from './model';
 import { cleanName, clip } from './names';
@@ -48,6 +51,9 @@ import { setBodies } from './shapes';
 import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import { containerChain, forgetRemovedPlanes } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
+
+/** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
+const named = (name: string) => cleanName(name, name);
 
 /** The most features one body's history walks (the library's longest chain is in ADR-0144's S5 amendment). */
 export const MAX_BODY_FEATURES = 500;
@@ -87,7 +93,9 @@ export type HistoryStop =
   /** The import's time ran out. */
   | 'import-time'
   /** The kernel failed too often. */
-  | 'restarts';
+  | 'restarts'
+  /** A dress-up's edge or face has no counterpart on the rebuilt body, or several (S6). */
+  | 'reference';
 
 /** A feature that came in with its history: rebuilt and equal to the stored shape. */
 export interface MappedFeature {
@@ -96,8 +104,10 @@ export interface MappedFeature {
   readonly kind: FeatureKind;
   /** The Extrudo feature it became. */
   readonly feature: string;
-  /** The Extrudo sketch its profile is. */
-  readonly sketch: string;
+  /** The Extrudo sketch its profile is (not for a fillet or chamfer). */
+  readonly sketch?: string;
+  /** A fillet's or chamfer's: how its edges were found on the rebuilt body (S6). */
+  readonly references?: ReferenceTally;
   /** Which FreeCAD property each Extrudo input came from (for S10). */
   readonly sources: Readonly<Record<string, string>>;
   /** The feature's expressions, as stored (not evaluated; S10), at most `MAX_FEATURE_EXPRESSIONS`. */
@@ -125,6 +135,8 @@ export interface BodyHistory {
     readonly detail?: string;
     /** For `differs`: how far the rebuilt body was from the stored shape. */
     readonly drift?: Drift;
+    /** A fillet's or chamfer's: how its edges were found, as far as the lookup went. */
+    readonly references?: ReferenceTally;
   };
   /** The Extrudo bodies the mapped features made, when some did. */
   readonly bodies: readonly string[];
@@ -173,12 +185,12 @@ export function bodyChain(
     if (seen.has(name)) return { broken: 'its features lead back to themselves' };
     seen.add(name);
     const o = doc.byName.get(name);
-    if (!o) return { broken: `its feature ${name} isn't in the file` };
-    if (!members.has(name)) return { broken: `its feature ${name} is not in the body` };
+    if (!o) return { broken: `its feature ${named(name)} isn't in the file` };
+    if (!members.has(name)) return { broken: `its feature ${named(name)} is not in the body` };
     out.push(o);
     const base = o.properties.BaseFeature?.value;
     if (base !== undefined && base.kind !== 'link')
-      return { broken: `the feature before ${name} can't be read` };
+      return { broken: `the feature before ${named(name)} can't be read` };
     name = base?.object;
   }
   return { features: out.reverse(), ...(startsFrom ? { startsFrom } : {}) };
@@ -402,6 +414,8 @@ export async function importBodies(
   /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
   const owner = new Map<string, string>();
   const decodedSketches = new Map<string, DecodedSketch>();
+  /** The kernel's restarts when a feature last held: a dress-up describes that rebuild's bodies. */
+  let restartsAtHold = -1;
 
   for (const shape of shapes) {
     if (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body') continue;
@@ -416,13 +430,20 @@ export async function importBodies(
     let mine: string[] = [];
     let stopped: BodyHistory['stop'];
     /** The one place that decides where a body's history stops (S8 carries on instead). */
-    const stop = (o: FcObject | undefined, reason: HistoryStop, detail?: string, off?: Drift) => {
+    const stop = (
+      o: FcObject | undefined,
+      reason: HistoryStop,
+      detail?: string,
+      off?: Drift,
+      references?: ReferenceTally,
+    ) => {
       stopped = {
         object: o?.name ?? body.name,
         type: o?.type ?? body.type,
         reason,
         ...(detail ? { detail: clip(detail) } : {}),
         ...(off ? { drift: off } : {}),
+        ...(references ? { references } : {}),
       };
     };
     if ('broken' in chain) stop(undefined, 'chain', chain.broken);
@@ -443,20 +464,30 @@ export async function importBodies(
         decodedSketch = decodeSketch(sketchObject);
         decodedSketches.set(sketchObject.name, decodedSketch);
       }
+      const previous = features[i - 1]?.name;
       const decoded = decodeFeature(doc, f, {
         body,
         moved: frame.moved,
         ...(decodedSketch ? { sketch: decodedSketch } : {}),
+        ...(previous !== undefined ? { previous } : {}),
       });
       if (!decoded.ok) {
         stop(f, decoded.reason, decoded.detail);
         return;
       }
       const feature = decoded.feature;
+      if (feature.kind === 'fillet' || feature.kind === 'chamfer') {
+        await walkDressUp(f, feature, frame.chain);
+        return;
+      }
       // A sketch is imported for one body only: another body's sketch is not tried again.
       const of = owner.get(feature.sketch);
       if (of !== undefined && of !== body.name) {
-        stop(f, 'chain', `its sketch ${feature.sketch} belongs to another body, ${of}`);
+        stop(
+          f,
+          'chain',
+          `its sketch ${named(feature.sketch)} belongs to another body, ${named(of)}`,
+        );
         return;
       }
       owner.set(feature.sketch, body.name);
@@ -472,7 +503,7 @@ export async function importBodies(
         return;
       }
       if (i === 0 && 'startsFrom' in chain && chain.startsFrom) {
-        stop(f, 'chain', `it builds on ${chain.startsFrom}, a solid outside the body`);
+        stop(f, 'chain', `it builds on ${named(chain.startsFrom)}, a solid outside the body`);
         return;
       }
       const additive = feature.kind === 'pad' || feature.kind === 'revolution';
@@ -480,6 +511,57 @@ export async function importBodies(
         stop(f, 'no-base', 'there is nothing before it to cut');
         return;
       }
+      await hold(f, frame.chain, feature, async () =>
+        addFeature(doc, design, f, feature, sketches, mine, options.solver, decodedSketch),
+      );
+    };
+
+    /** A fillet or chamfer: its base's stored shape described, its edges found, then held as any feature. */
+    const walkDressUp = async (
+      f: FcObject,
+      feature: DecodedDressUp,
+      chain: readonly FcPlacement[],
+    ): Promise<void> => {
+      const base = doc.byName.get(feature.base) as FcObject;
+      const baseStored = storedText(doc, base);
+      if (!('text' in baseStored)) {
+        stop(f, 'stored', `its base's ${baseStored.detail}`);
+        return;
+      }
+      if (budget.restarts !== restartsAtHold) {
+        stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
+        return;
+      }
+      const own = new Set(mapped.map((m) => m.feature));
+      await hold(f, chain, feature, async () => {
+        const added = await addDressUp(design, feature, {
+          budget,
+          baseText: baseStored.text,
+          chain,
+          mine,
+          own,
+          name: cleanName(f.label, f.name),
+        });
+        return 'stop' in added
+          ? {
+              stop: added.stop,
+              detail: added.detail,
+              ...(added.references ? { references: added.references } : {}),
+            }
+          : { feature: added.feature, references: added.references };
+      });
+    };
+
+    /**
+     * Adds a feature (`add`) in one transaction, rebuilds, and keeps it only
+     * when the rebuilt body is the shape the file stores for it.
+     */
+    const hold = async (
+      f: FcObject,
+      chain: readonly FcPlacement[],
+      feature: DecodedFeature,
+      add: () => Promise<Added>,
+    ): Promise<void> => {
       const stored = storedText(doc, f);
       if (!('text' in stored)) {
         stop(f, 'stored', stored.detail);
@@ -491,22 +573,13 @@ export async function importBodies(
       design.state.beginTransaction(`Import ${cleanName(f.label, f.name)}`);
       let committed = false;
       try {
-        const added = addFeature(
-          doc,
-          design,
-          f,
-          feature,
-          sketches,
-          mine,
-          options.solver,
-          decodedSketch,
-        );
+        const added = await add();
         if ('stop' in added) {
-          stop(f, added.stop, added.detail);
+          stop(f, added.stop, added.detail, undefined, added.references);
           return;
         }
         const measuredStored = await budget.call(
-          () => budget.kernel.measureStoredShape(stored.text, frame.chain),
+          () => budget.kernel.measureStoredShape(stored.text, chain),
           saneMeasure,
         );
         if (measuredStored.kind !== 'done') {
@@ -548,11 +621,12 @@ export async function importBodies(
         const rebuiltBody = combined(measures as ShapeMeasure[]);
         const wrong = historyDisagreement(rebuiltBody, measuredStored.value);
         if (wrong) {
-          stop(f, 'differs', wrong, drift(rebuiltBody, measuredStored.value));
+          stop(f, 'differs', wrong, drift(rebuiltBody, measuredStored.value), added.references);
           return;
         }
         design.state.commitTransaction();
         committed = true;
+        restartsAtHold = budget.restarts;
         known = [...r.ids];
         mine = now;
         if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
@@ -560,7 +634,8 @@ export async function importBodies(
           object: f.name,
           kind: feature.kind,
           feature: added.feature,
-          sketch: added.sketch,
+          ...(added.sketch !== undefined ? { sketch: added.sketch } : {}),
+          ...(added.references ? { references: added.references } : {}),
           sources: feature.sources,
           ...expressionsOf(f, feature.sources),
           drift: drift(rebuiltBody, measuredStored.value),
@@ -593,7 +668,7 @@ export async function importBodies(
       // A feature of another body (a chain that crosses bodies) is never mapped twice.
       const other = owner.get(f.name);
       if (other !== undefined && other !== body.name) {
-        stop(f, 'chain', `it is a feature of another body, ${other}`);
+        stop(f, 'chain', `it is a feature of another body, ${named(other)}`);
         break;
       }
       owner.set(f.name, body.name);
@@ -631,11 +706,12 @@ function sketchOfFeature(doc: FcDocument, f: FcObject): FcObject | undefined {
 }
 
 type Added =
-  | { stop: HistoryStop; detail: string }
+  | { stop: HistoryStop; detail: string; references?: ReferenceTally }
   | {
       feature: string;
-      sketch: string;
+      sketch?: string;
       newSketch?: Extract<AddSketchResult, { imported: true }>;
+      references?: ReferenceTally;
     };
 
 /** Adds the feature's sketch (once per sketch) and the feature itself, or says why it can't. */
@@ -643,7 +719,7 @@ function addFeature(
   doc: FcDocument,
   design: Design,
   f: FcObject,
-  feature: DecodedFeature,
+  feature: Exclude<DecodedFeature, DecodedDressUp>,
   sketches: Map<string, Extract<AddSketchResult, { imported: true }>>,
   mine: readonly string[],
   solver: SketchSolver | undefined,

@@ -259,4 +259,5 @@ export const measureText = (m: {
   volume: number;
   area: number;
   box: { min: number[]; max: number[] };
+  centre: number[];
 }) => `CASCADE Topology V1, (c) Matra-Datavision\nMEASURE ${JSON.stringify(m)}\n`;

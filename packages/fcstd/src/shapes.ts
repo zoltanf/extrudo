@@ -148,11 +148,12 @@ export function disagreement(read: ShapeMeasure, back: ShapeMeasure): string | u
 
 /**
  * Whether one measure from the import kernel has the shape it must: a whole
- * solid count from 0 to `MAX_SOLIDS_PER_SHAPE`, finite volume, area and box.
+ * solid count from 0 to `MAX_SOLIDS_PER_SHAPE`, finite volume, area, box
+ * and centre of mass.
  */
 export function saneMeasure(m: unknown): m is ShapeMeasure {
   if (typeof m !== 'object' || m === null) return false;
-  const { solids, volume, area, box } = m as Partial<ShapeMeasure>;
+  const { solids, volume, area, box, centre } = m as Partial<ShapeMeasure>;
   return (
     Number.isInteger(solids) &&
     (solids as number) >= 0 &&
@@ -165,7 +166,10 @@ export function saneMeasure(m: unknown): m is ShapeMeasure {
     Array.isArray(box.max) &&
     box.min.length === 3 &&
     box.max.length === 3 &&
-    [...box.min, ...box.max].every(Number.isFinite)
+    [...box.min, ...box.max].every(Number.isFinite) &&
+    Array.isArray(centre) &&
+    centre.length === 3 &&
+    centre.every(Number.isFinite)
   );
 }
 

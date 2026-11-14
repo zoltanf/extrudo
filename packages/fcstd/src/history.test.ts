@@ -249,6 +249,8 @@ describe('a vent plate of 60 slots', () => {
       volume: face * h,
       area: 2 * face + (2 * (130 + 50) + 60 * rim) * h,
       box: { min: [0, 0, 0], max: [130, 50, h] },
+      // The slots' centres average x = 64, y = 25; the plate's are 65, 25.
+      centre: [(130 * 50 * 65 - 60 * slot * 64) / face, 25, h / 2],
     });
     const r0 = await run([
       {
@@ -354,29 +356,40 @@ describe('a revolution and a groove', () => {
   const r10 = 10;
   const cx = -59.16;
   const cy = 59.16;
-  const quarter = (box: { min: number[]; max: number[] }) =>
+  const quarter = (box: { min: number[]; max: number[] }, centre: number[]) =>
     measureText({
       solids: 1,
       volume: (Math.PI * r10 * r10 * 100) / 4,
       area: 2 * r10 * 100 + (Math.PI * r10 * r10) / 2 + (2 * Math.PI * r10 * 100) / 4,
       box,
+      centre,
     });
-  const angles: [string, Partial<FeatureSpec>, { min: number[]; max: number[] }][] = [
-    ['an angle', { angle: 90 }, { min: [cx - r10, cy, 0], max: [cx, cy + r10, 100] }],
+  // A quarter disc's centre is 4r/3π from both its straight sides; a sector of ±45°'s is 2r·sin(π/4)/(3π/4) out.
+  const q = (4 * r10) / (3 * Math.PI);
+  const s = (2 * r10 * Math.SQRT1_2) / ((3 * Math.PI) / 4);
+  const angles: [string, Partial<FeatureSpec>, { min: number[]; max: number[] }, number[]][] = [
+    [
+      'an angle',
+      { angle: 90 },
+      { min: [cx - r10, cy, 0], max: [cx, cy + r10, 100] },
+      [cx - q, cy + q, 50],
+    ],
     [
       'an angle, reversed',
       { angle: 90, reversed: true },
       { min: [cx, cy, 0], max: [cx + r10, cy + r10, 100] },
+      [cx + q, cy + q, 50],
     ],
     [
       'an angle, symmetric',
       { angle: 90, midplane: true },
       { min: [cx - r10 * Math.SQRT1_2, cy, 0], max: [cx + r10 * Math.SQRT1_2, cy + r10, 100] },
+      [cx, cy + s, 50],
     ],
   ];
-  for (const [what, extra, box] of angles)
+  for (const [what, extra, box, centre] of angles)
     it(`turns by ${what}`, async () => {
-      const r = await run([turn(extra, quarter(box))]);
+      const r = await run([turn(extra, quarter(box, centre))]);
       expect(only(r).stop).toBeUndefined();
       expect(only(r).outcome).toBe('history');
     });
@@ -398,9 +411,9 @@ describe('where a history stops', () => {
   });
 
   it('keeps what came before, then a Remove and the final shape (a feature it cannot map)', async () => {
-    const r = await run([padThen({ name: 'Fillet', type: 'PartDesign::Fillet' })]);
+    const r = await run([padThen({ name: 'Hole', type: 'PartDesign::Hole' })]);
     const body = only(r);
-    expect(body.stop).toMatchObject({ object: 'Fillet', reason: 'type' });
+    expect(body.stop).toMatchObject({ object: 'Hole', reason: 'type' });
     expect(body.outcome).toBe('shape');
     expect(r.features).toEqual([
       'sketch Sketch',

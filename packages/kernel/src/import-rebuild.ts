@@ -9,7 +9,7 @@
  * so a rebuild meshes only the bodies the newest feature changed. A new
  * kernel (after a restart) needs a new `importRebuilder`.
  */
-import type { AttachmentId, BodyId, ExtrudoDocument } from '@extrudo/core';
+import type { AttachmentId, BodyId, ExtrudoDocument, GeomRef } from '@extrudo/core';
 import type { KernelApi } from './service';
 import type { StoredShapeMeasure } from './stored-shape';
 
@@ -67,4 +67,27 @@ export function importRebuilder(
       return { ids, bodies, failed };
     },
   };
+}
+
+/** One sub-shape of a body of the last recompute, for `importReferences`. */
+export interface ImportSubShape {
+  body: string;
+  kind: 'edge' | 'face';
+  index: number;
+}
+
+/**
+ * The persistent reference of each sub-shape (P6-25 S6, ADR-0144 decision
+ * 4): `KernelApi.reference` on the last recompute's bodies, the call the
+ * app makes for a picked edge or face, so an import stores what a user's
+ * pick would. `undefined` where the body or the sub-shape is gone.
+ */
+export async function importReferences(
+  api: Pick<KernelApi, 'reference'>,
+  items: readonly ImportSubShape[],
+): Promise<(GeomRef | undefined)[]> {
+  const out: (GeomRef | undefined)[] = [];
+  for (const item of items)
+    out.push(await api.reference(item.body as BodyId, item.kind, item.index));
+  return out;
 }
