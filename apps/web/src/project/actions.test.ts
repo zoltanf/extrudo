@@ -577,6 +577,52 @@ describe('fcstdNotices', () => {
     ]);
   });
 
+  it('gives bodies that carry on from a stored shape their own line, and the counts still add up (S8)', () => {
+    const step = (reason: HistoryStop, after: number) => ({
+      features: [{ object: 'Draft', name: 'Draft', type: 'PartDesign::Draft' }],
+      reason,
+      shape: 'Draft',
+      feature: 'i',
+      after,
+    });
+    const stepped = (name: string, steps: ReturnType<typeof step>[]) => ({
+      ...body(name, 'history', undefined, ['i:0']),
+      steps,
+    });
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        bodies: [stepped('Bracket', [step('type', 2)])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with part of its history (sketches and features).',
+      "Rebuilt on the file's own shape part way through: Bracket, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the body.",
+    ]);
+    // Nothing before the step (a primitive first): no word of features before it.
+    expect(
+      fcstdNotices({ ...base, finalShapes: 1, bodies: [stepped('Box', [step('type', 0)])] })[1],
+    ).toBe(
+      "Rebuilt on the file's own shape part way through: Box, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history.",
+    );
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 5,
+      shapes: [shape('Clip'), shape('Box')],
+      bodies: [
+        body('Plate', 'history'),
+        stepped('Bracket', [step('type', 2), step('option', 3)]),
+        stepped('Lid', [step('type', 1)]),
+        body('Clip', 'shape', 'type'),
+      ],
+    });
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 5 of 5 shapes, 1 with its history, 2 with part of their history and 2 as bodies without history.',
+      "Rebuilt on the file's own shapes part way through: Bracket; Lid. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a feature has a setting Extrudo can't rebuild. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the bodies.",
+      "Taken from the file's own shapes, without their whole history: Clip, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet.",
+    ]);
+  });
+
   it("words S7's stops and says how many threaded holes came in plain", () => {
     const hole = (threadLost: boolean) => ({
       object: 'Hole',

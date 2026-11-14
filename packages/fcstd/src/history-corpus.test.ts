@@ -169,6 +169,32 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       holeCut: {} as Record<string, number>,
       references: {} as Record<string, number>,
     };
+    // S8: the stored-shape steps, what holds after them, and what they cost.
+    const s8 = {
+      steps: {} as Record<string, number>,
+      longerRuns: 0,
+      mostSteps: 0,
+      bodiesWithSteps: 0,
+      heldAfterStep: {} as Record<string, number>,
+      notHeldAfterStep: {} as Record<string, number>,
+      /** Attachment bytes with steps, and with steps turned off (every body ends as before S8). */
+      bytes: 0,
+      bytesWithoutSteps: 0,
+      largestStepFile: 0,
+    };
+    const verdict = (x: { reason?: string }) =>
+      x.reason === undefined
+        ? 'not tried'
+        : x.reason === 'differs'
+          ? 'differed'
+          : `stop:${x.reason}`;
+    const bytesOf = (d: {
+      doc: { attachments?: Record<string, { sha256: string; size: number }> };
+    }) => {
+      const seen = new Map<string, number>();
+      for (const a of Object.values(d.doc.attachments ?? {})) seen.set(a.sha256, a.size);
+      return [...seen.values()].reduce((n, b) => n + b, 0);
+    };
     for (const file of files) {
       const bytes = new Uint8Array(readFileSync(file));
       const doc = readFcstd(bytes);
@@ -237,8 +263,10 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       mostFeatures = Math.max(mostFeatures, walked);
       // S3's way first, for what is not a body.
       const s3 = await importFcstd(bytes, 'X', { kernel, maxFileFeatures: 0 });
+      const withoutSteps = await importFcstd(bytes, 'X', { kernel, solver, maxSteps: 0 });
+      s8.bytesWithoutSteps += bytesOf(withoutSteps.design);
       const t = performance.now();
-      const { report } = await importFcstd(bytes, 'X', {
+      const { report, design } = await importFcstd(bytes, 'X', {
         kernel,
         solver,
         onUntouched: (d) => {
@@ -252,6 +280,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         },
       });
       times.push(performance.now() - t);
+      s8.bytes += bytesOf(design);
       restarts += report.restarts;
       importsS3 += s3.report.shapes.length;
       importsS5 += report.shapes.length;
@@ -279,6 +308,39 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         const body = doc.byName.get(b.object);
         const chain = body ? bodyChain(doc, body) : { broken: '' };
         const features = 'features' in chain ? chain.features : [];
+        // S8: each step's run, and what held after the first step.
+        s8.mostSteps = Math.max(s8.mostSteps, b.steps.length);
+        if (b.steps.length > 0) s8.bodiesWithSteps++;
+        b.steps.forEach((st, k) => {
+          const [head] = st.features;
+          bump(s8.steps, `${kindOf(head?.type ?? '')} (${st.reason})`);
+          if (st.features.length > 1) s8.longerRuns++;
+          bump(
+            of(byKind, kindOf(head?.type ?? '')),
+            st.reason === 'differs' ? 'differed' : `stop:${st.reason}`,
+          );
+          st.features.forEach((x, j) => {
+            if (j > 0) bump(of(byKind, kindOf(x.type)), verdict(x));
+            if (k > 0 || j > 0) {
+              bump(s8.notHeldAfterStep, `${kindOf(x.type)} ${verdict(x)}`);
+              lines.push(JSON.stringify({ file, body: b.object, afterStep: x }));
+            }
+          });
+          const sizes = Object.values(design.doc.attachments ?? {});
+          s8.largestStepFile = Math.max(s8.largestStepFile, ...sizes.map((a) => a.size));
+        });
+        const firstStep = b.steps[0]?.after;
+        if (firstStep !== undefined)
+          for (const m of b.mapped.slice(firstStep)) bump(s8.heldAfterStep, m.kind);
+        if (b.steps.length > 0 && b.stop) {
+          for (const x of [
+            { type: b.stop.type, reason: b.stop.reason, detail: b.stop.detail },
+            ...(b.stop.run ?? []),
+          ]) {
+            bump(s8.notHeldAfterStep, `${kindOf(x.type)} ${verdict(x)}`);
+            lines.push(JSON.stringify({ file, body: b.object, afterStep: x }));
+          }
+        }
         for (const m of b.mapped) {
           bump(of(byKind, m.kind), 'equal');
           tally(m.references);
@@ -301,7 +363,10 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         const kind = kindOf(b.stop.type);
         bump(fellBackAt, `${kind} (${b.stop.reason})`);
         bump(of(byKind, kind), b.stop.reason === 'differs' ? 'differed' : `stop:${b.stop.reason}`);
-        for (const f of features.slice(at + 1)) bump(of(byKind, kindOf(f.type)), 'not reached');
+        // The rest of a run that reached the tip was tried, or not (S8); what follows a stop that ends the body wasn't reached.
+        for (const x of b.stop.run ?? []) bump(of(byKind, kindOf(x.type)), verdict(x));
+        for (const f of features.slice(at + 1 + (b.stop.run?.length ?? 0)))
+          bump(of(byKind, kindOf(f.type)), 'not reached');
         if (b.stop.drift)
           differed.push({
             volume: b.stop.drift.volume,
@@ -398,6 +463,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       notBodies: { same: otherSame, differ: otherDiffer },
       s7,
       untouched,
+      s8,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

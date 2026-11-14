@@ -391,28 +391,44 @@ export function fcstdNotices(
   if (report.finalShapes === 0)
     return ['The FreeCAD file has no shapes to import, so the design is empty.'];
   const bodies = report.bodies ?? [];
-  const history = bodies.filter((b) => b.outcome === 'history').length;
-  const came = report.shapes.length + history;
+  // Bodies with their whole history, and with the part after a stored-shape step (S8).
+  const stepped = bodies.filter((b) => b.outcome === 'history' && b.steps.length > 0);
+  const whole = bodies.filter((b) => b.outcome === 'history').length - stepped.length;
   const plain = report.shapes.length;
+  const came = plain + whole + stepped.length;
   const total = `${report.finalShapes} shape${report.finalShapes === 1 ? '' : 's'}`;
-  const out = [
-    history === 0
-      ? `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`
-      : plain === 0
-        ? `Imported from the FreeCAD file: ${came} of ${total}, with ${history === 1 ? 'its' : 'their'} history (sketches and features).`
-        : `Imported from the FreeCAD file: ${came} of ${total}, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
+  const its = (n: number) => (n === 1 ? 'its' : 'their');
+  const parts = [
+    ...(whole > 0 ? [`${whole} with ${its(whole)} history`] : []),
+    ...(stepped.length > 0
+      ? [`${stepped.length} with part of ${its(stepped.length)} history`]
+      : []),
+    ...(plain > 0 ? [`${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history`] : []),
   ];
+  const out = [
+    parts.length > 1
+      ? `Imported from the FreeCAD file: ${came} of ${total}, ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}.`
+      : stepped.length > 0
+        ? `Imported from the FreeCAD file: ${came} of ${total}, with part of ${its(came)} history (sketches and features).`
+        : whole > 0
+          ? `Imported from the FreeCAD file: ${came} of ${total}, with ${its(whole)} history (sketches and features).`
+          : `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`,
+  ];
+  if (stepped.length > 0) {
+    const reasons = stepped.flatMap((b) => b.steps.map((st) => st.reason));
+    const before = stepped.some((b) => b.steps.some((st) => st.after > 0));
+    const one = stepped.length === 1;
+    out.push(
+      `Rebuilt on the file's own ${one ? 'shape' : 'shapes'} part way through: ${listed(stepped.map((b) => b.name))}${one ? `, because ${commonest(reasons).join(', and ')}` : `. Most often because ${commonest(reasons).join(', or ')}`}. The features after that point come in with their history${
+        before
+          ? `; the ones before it stay in the timeline but no longer shape the ${one ? 'body' : 'bodies'}`
+          : ''
+      }.`,
+    );
+  }
   const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);
   if (short.length > 0) {
-    const why = new Map<HistoryStop, number>();
-    for (const b of short) {
-      const reason = b.stop?.reason as HistoryStop;
-      why.set(reason, (why.get(reason) ?? 0) + 1);
-    }
-    const common = [...why]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 2)
-      .map(([reason]) => HISTORY_STOP[reason]);
+    const common = commonest(short.map((b) => b.stop?.reason as HistoryStop));
     const partial = short.filter((b) => b.bodies.length > 0);
     out.push(
       `Taken from the file's own shapes, without their whole history: ${listed(short.map((b) => b.name))}${short.length === 1 ? ', because' : '. Most often because'} ${common.join(', or ')}.${
@@ -453,6 +469,16 @@ export function fcstdNotices(
       `${unread} thing${unread === 1 ? '' : 's'} in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…`,
     );
   return out;
+}
+
+/** The two commonest reasons, in the app's words. */
+function commonest(reasons: readonly HistoryStop[]): string[] {
+  const why = new Map<HistoryStop, number>();
+  for (const reason of reasons) why.set(reason, (why.get(reason) ?? 0) + 1);
+  return [...why]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([reason]) => HISTORY_STOP[reason]);
 }
 
 /** At most six items, then "and N more". */
