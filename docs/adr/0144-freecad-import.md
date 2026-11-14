@@ -1629,3 +1629,345 @@ stop, never a kernel failure, a restart or a throw out of the import.
   the one library shape it rules out drifts 1.5e-5. A B-rep attachment kind was
   rejected (above); a per-shape tolerance from the STEP drift S3 already measures
   is the cheaper option if more files need it.
+
+## Amendment (S9, 2026-11-14): up-to extents, datums, tilted sketch planes, projected geometry
+
+Four kinds of reference a feature or sketch makes now come in, each found on
+the body the walk has rebuilt or brought in from the file's own numbers, and
+each feature is still rebuilt and checked against its stored shape with S5's
+and S6's tolerances (none loosened); a feature this slice can't prove is a
+refusal of the closed set and so a stored-shape step (S8). `packages/fcstd`:
+`features.ts` (the up-to sides and the axes as typed data), `upto.ts` (the
+faces "up to first" and "last" try), `transforms.ts` (`TransformMapper`
+gains `face`, `datum`, `sketchPlane` and `externals`), `attach.ts` (the map
+mode list and the supports), `sketch-decode.ts` (external links and stored
+projections), `sketch-map.ts` (projections drawn and vetted),
+`sketch-place.ts` (a given plane for a tilted frame), `bodies.ts` (the walk:
+`walkUpTo`, `walkAxis`, `sketchExtras`, the checks of datums and
+projections). In `packages/kernel`, `importRebuilder.rebuild` returns the
+kernel's reports of the features asked for (`reports`, at most 64): a
+construction feature's plane or axis and a sketch's projections. No facade
+change, no schema change. Fixtures: 28 small parts we made with FreeCAD 1.1.4
+through our own script (`packages/fcstd/scripts/make-reference-fixtures.py`;
+data in `reference-fixtures.ts`, 36 distinct stored shapes once each, spaces
+collapsed, 359 KB, written into files by S7's `pattern-parts.ts` with
+`REF_FIXTURES`, which now also writes a sketch's constraints, external links,
+stored projections, supports and map mode, and an object's own placement).
+**All 28 come in with their whole history.**
+
+The fixture writer had written every placement with `A="0"`, and FreeCAD's
+reader (and ours, S2) takes the angle and axis before the quaternion: S7's
+and S8's parts were all unrotated, so nothing changed for them, but a turned
+sketch or datum read as unturned. It now writes the angle and axis of the
+same rotation.
+
+### Up-to extents (Pad, Pocket)
+
+- **Up to a face** (`UpToFace` a feature's `FaceN`, or `UpToShape` with
+  exactly one face): the face is described on that feature's stored shape and
+  found on the rebuilt body by S6's matcher (exactly one candidate, flat or
+  curved; the reference must name this body's own features after a step,
+  `own()`), and the side becomes Extrudo's `to-object` on it. An origin plane
+  is `to-object` on that plane; a datum plane on its construction (below).
+- **Offset:** FreeCAD's `Offset` is Extrudo's `offset`, the same sign:
+  positive ends past the face along the sweep, for a pad and a pocket alike.
+  The fixtures with 1.5 hold; read with −1.5 or 0 they are refused by the
+  check, and an offset that leaves no length (−18 on the 18 mm bridge) is
+  Extrudo's refusal ("With this offset the extrude would end at or behind the
+  profile"), a `failed` stop.
+- **Up to first, up to last:** FreeCAD works the face out when it computes the
+  feature (the faces of the body before it that a line through the profile's
+  centre along the sweep meets, the nearest or the farthest). Extrudo's
+  `to-object` on a **body** stops where the sweep first meets it, which is
+  FreeCAD's "first" for a pad (the sweep's piece touching the profile), but not
+  for a pocket that starts outside the body (its first piece is outside, so it
+  cuts nothing); `through-all` goes just past the last face, not to it. So the
+  importer picks the face as FreeCAD does: the flat faces of the rebuilt body
+  whose plane the line from the profile's centre (the middle of the box of what
+  the sketch draws) meets ahead of the profile, inside the box their edges can
+  reach (a superset of the face: the check decides), one per plane, ordered
+  along the sweep (nearest first for "first", farthest first for "last"). A
+  pad up to the first face tries `to-object` on the body first (the one
+  meaning that follows the model). Each target is a whole try, a transaction
+  and a rebuild, kept only when the check holds; Extrudo's refusal of a target
+  ("it lies behind the profile") moves to the next as `differs` does. **At
+  most 4 tries a feature** (`MAX_UP_TO_TRIES`); the references of every
+  target are asked for at once before the first try, since a try's rebuild
+  renumbers the body. The tries count as second attempts in S7's sense and
+  are reported per body (`BodyHistory.upToTries`) and per feature
+  (`MappedFeature.upTo`: method, target, the try that held). The fixtures hold
+  at the first try: the pad on the body, the pocket on the first wall's far
+  face, the pad up to the last face on the third wall's far face. Read as up to
+  the first face, the "last" fixture holds at the fourth try, on the third
+  wall's near face: the solid up to it is the same solid, the walls filling the
+  rest.
+- **A second side** (1.1's `Type2` with `UpToFace2` / `UpToShape2`) maps to
+  Extrudo's `toObject2` by the same rule; a second side up to the first or last
+  face, and a symmetric up-to side, stay `up-to`. S5's mappings are unchanged.
+- **Revolution and Groove** up to a face stay refused (`up-to`): Extrudo's
+  revolve has `to-object` too, but no fixture or library file has one to prove
+  it.
+
+### An edge or a datum line as a revolve's axis
+
+`ReferenceAxis` may name a straight edge (`EdgeN` of a feature walked before:
+described on its stored shape, found by the matcher, given to the revolve as
+the `edge` reference itself, which Extrudo's revolve takes) or a datum line
+(its construction). FreeCAD turns right-handed about the line's own direction
+(an edge's curve from its first parameter to its last, a datum's local Z);
+Extrudo about its reference's (an edge's canonical direction, a construction
+axis's first point to its second). Where they disagree the revolve's `flip`
+turns, except for a symmetric one: the half turn about a datum line holds, and
+the same datum turned round is refused by the check.
+
+### Datum lines and planes
+
+`PartDesign::Line` and `PartDesign::Plane` come in as Extrudo construction
+features when a feature that comes in uses one (an axis, a pattern's direction
+or axis, a mirror plane, an up-to target, a sketch's plane), **once per datum
+per import**, in the transaction of its first user (cancelled with it, and
+then forgotten), named after the datum. The truth is the datum's stored
+placement, moved by its containers as a sketch's is: the line through the
+position along local Z, the plane through it with local Z as its normal. The
+attachment (`MapMode`, supports) only chooses the construction:
+
+| Map mode | Comes in as | Relation |
+|---|---|---|
+| any, the line or plane on an origin axis or plane | that origin axis or plane | kept |
+| `FlatFace` on an origin plane, moved along its normal only (any `AttachmentOffset` that leaves the plane parallel) | `offsetPlane` of that origin plane by the distance | kept |
+| `TwoPointLine` on one straight edge of a feature walked before | `axisAlongEdge` of the edge the matcher finds | kept |
+| `TwoPointLine` on one line of a sketch of this body that came in | `axisAlongEdge` of the drawn line | kept |
+| every other mode (`TwoPointLine` on two vertices, `FlatFace` on a face, `ObjectXY` …, `ThreePointsPlane`, `NormalToEdge`, `TangentPlane`, …) | construction points from the placement's numbers, an `axisThroughPoints` through two or a `planeThroughPoints` through three | fixed |
+
+No mode is refused for want of a construction: fixed points express any line
+or plane. What Extrudo lacks to keep the other relations: a construction point
+on a body's **vertex** that the import can name (the matcher describes edges
+and faces only, so a line through two vertices comes in fixed, the library's
+one datum line among them), and an offset plane on a **face** whose normal's
+sense the importer knows before the rebuild (left fixed rather than guessed).
+
+**Each datum is checked:** the rebuild returns the construction's report, and
+its axis must lie along the file's line (directions within 1e-9 as a sine, the
+point within 1e-7 mm + 1e-9 of its distance from the origin) or its plane on
+the file's plane (normals likewise, either sense): S7's tolerances for a line
+or plane, which the constructions meet to rounding (their numbers are the
+placement's to 15 significant digits). A datum that isn't stops its user with
+the new reason **`datum`** ("its datum DatumLine came in at another place");
+a report that is missing or isn't a construction's is a kernel failure. A
+datum whose placement disagrees with its attachment takes the placement (the
+mirror fixture with its offset changed to 7 mm still mirrors at 3 mm and
+holds); a datum placed elsewhere than the stored shapes say is refused by the
+check. `transforms.ts` takes a datum as one more source of a world line or
+plane: the pattern, the polar pattern and the mirror then work as with a
+sketch axis.
+
+### Sketches on tilted planes and on faces
+
+A sketch whose frame none of S4's planes holds (tilted off every origin axis)
+now comes in on a plane made in its feature's transaction: its **datum
+plane's construction** when it is attached (`FlatFace`) to a datum plane of
+this body, else a **plane through three fixed points of its own frame**
+(`planeThroughPoints`, named "<sketch> plane"). A construction plane's sketch
+frame is `faceSketchFrame` of its point and normal, so the importer knows it
+before the rebuild and S4's 2D map moves FreeCAD's geometry into it (turned in
+the plane: horizontal and vertical become parallels, as in S4's turned
+frames); the feature's check proves the profile lands where the file has it
+(moved 1 mm in its plane, the tilted pad is refused). Sketches S4 places today
+are unchanged.
+
+**A sketch on a body's face** sits on a plane, not on the face: S4's planes
+where they hold (as before), the fixed plane through its frame otherwise. A
+sketch on the face itself would follow the model, but its frame is the face's
+`faceSketchFrame`, whose normal's sense comes from the face's orientation in
+the rebuilt body, which the importer can't prove before the rebuild; the plane
+is provably the file's. `SketchOutcome.plane` says `datum` or `points`, and
+the app says such planes don't follow the model (below).
+
+**The library's two tilted sketches** are attached (`TangentPlane`) to a
+vertex of another sketch and an origin plane; their placement is that
+attacher's result, so they come in on planes through their own frames, and
+the two pads on them hold (below).
+
+### Projected (external) geometry in sketches
+
+A constraint that names external geometry was left out (`external`), the
+geometry where the file has it. Now, for each external curve a constraint of
+a sketch names (at most `MAX_EXTERNAL_PER_SKETCH` = 64 per sketch and
+`MAX_EXTERNAL_PER_FILE` = 1,000 per import; the rest stay out as before):
+
+- **Its source**, by the link that made it (FORMAT.md: the stored projection's
+  `ref`, or the link's place before 1.0): an `EdgeN` of a feature walked before
+  in this body, described on its stored shape and found by the matcher on the
+  body as it is when the sketch is made (the reference must name this body's
+  own features, `own()`); or a line of another sketch of this body that came
+  in (ADR-0125's sketch-curve projection). Vertices (the matcher describes
+  none), other bodies, ShapeBinders, Part features and anything before a step
+  stay out.
+- **Its curve** is where FreeCAD stored its projection (1.0+), else the source
+  projected along the sketch's normal (a line's ends, a circle whose axis is
+  the normal); a line, a circle or a point, in the sketch's map. It is drawn
+  as construction (FreeCAD's external geometry never bounds a profile) and
+  registered as the sketch's projection (`addProjection`, then its curve under
+  the kernel's key: `edge`, `curve`), so the app's projection sync owns it
+  afterwards; while the constraints are vetted the solver holds it fixed, as
+  the app's solver holds projected curves.
+- **The check:** the rebuild returns the sketch's report, and each projected
+  curve must be where it is drawn (the same kind, ends in order, centre and
+  radius, within 1e-6 mm + 1e-9 of the distance from the origin: S4's
+  tolerance for what may move). A line the kernel projects the other way round
+  is drawn its way at the next try; anything else elsewhere, another kind or
+  lost stays out at the next try (at most two tries more,
+  `MAX_PROJECTION_REPEATS`). So a projection never costs a sketch: the worst
+  case is today's outcome. A report missing or not a sketch's is a kernel
+  failure.
+- **The constraints** that name it then go through S4's mapping and vetting
+  (nothing kept may move the sketch), and the counts still add up: each
+  FreeCAD constraint has one outcome, `mapped` included those through a
+  projection. A projection no kept constraint names comes out again, record
+  and curve. `SketchOutcome.external`: the external curves its constraints
+  name, those projected, and the mapped constraints through them.
+
+All seven projected fixtures keep every constraint (the dimension from a
+projected top edge, the one from a bottom edge not on the sketch's plane, the
+corner on two projected edges, the counterbore concentric with a projected
+rim, the dimension from another sketch's line, the face sketch with two
+projected edges); the unused link makes no projection. A stored projection 1 mm
+off the edge, or a link changed to another edge, comes back elsewhere from the
+kernel: the constraint stays out and the sketch is as before.
+
+### Limits (hostile files)
+
+| Limit | Value | What happens past it |
+|---|---|---|
+| Up-to tries per feature | 4 (`MAX_UP_TO_TRIES`) | the targets past it are not tried |
+| Datums per import | 200 (`MAX_DATUMS`) | the feature needing one more stops with `limit` |
+| External curves projected per sketch / per import | 64 / 1,000 | the rest stay out (`external`), as before S9 |
+| Projection tries per feature | 2 more (`MAX_PROJECTION_REPEATS`) | — |
+| Feature reports per rebuild | 64 (`MAX_REBUILD_REPORTS`) | — |
+
+Refused before any kernel work: an offset past 10 km or not finite (`value`),
+a datum at a position past 10 km (`transform-reference`, no construction
+made), an `UpToFace` naming the feature itself, two elements, an edge, an
+object not in the file (`up-to`) or a face past its feature's count
+(`element`), a feature after it or outside the body (`up-to`), an
+`UpToShape` of more than one face (`up-to`), a revolve axis naming itself,
+a face or two edges (`axis`), a datum outside the body. A rotation of all
+zeros reads as no rotation, as FreeCAD's reader takes it (a zero axis keeps
++Z), so a datum always has a direction; read so, the fixtures' features are
+refused by Extrudo or the check, a clean stop. A kernel that names another
+feature for an up-to face (a restart and `kernel`), throws or hangs while the
+first face is looked for (`kernel`, `time`), answers a sketch report without
+projections, reports a feature it wasn't asked about, or reports a datum
+elsewhere (`datum`), each stops that feature cleanly (`reference-hostile.test.ts`).
+
+**Measured** (Ubuntu machine, shared, one run each, the whole import,
+`reference-limits.test.ts`, `BENCH=1`): a body of pads each up to a datum
+plane of its own (one offset plane each, checked against its report): 11
+datums 0.86 s, 51 datums 2.1 s, **200 datums (the cap) 9.7 s**, and the 201st
+stops with `limit`. An up-to feature costs at most four tries, each one
+rebuild (the library's slowest try sequence, three tries, adds under 0.3 s).
+A projection costs no extra kernel call when it holds (the sketch's report
+comes with the feature's rebuild); the worst case is two more tries of the
+feature. The import's time and kernel budgets (S3, S5) stay the judges of the
+whole.
+
+### The report and the app
+
+`BodyHistory.upToTries`; `MappedFeature.upTo` (method, target, try) and
+`datums` (map mode, how it came in); `SketchOutcome.plane` (`datum`,
+`points`) and `external` (named, projected, constraints). The app's notices
+change in two places: `HISTORY_STOP['up-to']` now reads "a feature goes up to
+a face or a shape Extrudo can't find or use" (most up-to features come in), a
+new reason `datum` reads "a datum line or plane didn't come in where the file
+has it", and one new sentence when datums or sketch planes came in fixed: "A
+datum line or plane came in fixed where the file has it: it doesn't follow
+what it was attached to in FreeCAD when the model changes." (plural: "2 datum
+lines and planes and the plane of a sketch on a tilted face came in fixed
+where the file has them: they don't follow …").
+
+### The library (60 files, `history-corpus.test.ts`)
+
+| | In the files | In a body's chain | Equal | Differed | Refused | Not reached |
+|---|---|---|---|---|---|---|
+| Pad | 70 | 41 | 40 | 1 | 0 | 0 |
+| Pocket | 67 | 30 | 28 | 1 | 0 | 0 (1 not tried) |
+| Revolution | 11 | 8 | 8 | 0 | 0 | 0 |
+| Groove | 3 | 3 | 3 | 0 | 0 | 0 |
+| Fillet | 19 | 13 | 11 | 0 | 2 (`failed`) | 0 |
+| Chamfer | 13 | 5 | 5 | 0 | 0 | 0 |
+| LinearPattern | 9 | 4 | 4 | 0 | 0 | 0 |
+| PolarPattern | 8 | 4 | 3 | 0 | 1 (`original`) | 0 |
+| Mirrored | 19 | 1 | 1 | 0 | 0 | 0 |
+| MultiTransform | 10 | 10 | 8 | 0 | 2 (`multi-transform`, `original`) | 0 |
+| Hole | 4 | 4 | 3 | 1 (another body) | 0 | 0 |
+| Other PartDesign | | | | | 5 (`type`), 4 (`chain`) | 0 |
+
+- **Up-to features: 6 of 6 come in** (S8: 0): a pad up to a face that is a
+  datum plane and two pockets likewise (`to-object` on its construction, the
+  first try), a pad up to the last face (the first try), two pockets up to the
+  first face (one at the first try, one at the third: the two nearer faces gave
+  another solid). 5 up-to tries in all.
+- **Datums:** in the files 1 line (`TwoPointLine` on two vertices), 1 plane
+  (`FlatFace`), 4 planes (`Deactivated`, in two files of the 0.14 builds,
+  whose bodies list their members in `Model`); brought in 3, all fixed: the
+  line (a linear pattern's direction, now equal) and the two datum planes the
+  three up-to features go to. Nothing that came in uses the `FlatFace` plane.
+- **Axes:** 12 revolves about a sketch's V axis, 1 about an origin axis and 1
+  about a datum line: all 11 in a chain come in, the groove about the datum line
+  (S5's `axis` refusal) among them.
+- **Tilted sketches: 2 of 2 come in** on planes through their own frames
+  (`TangentPlane` on another sketch's vertex and an origin plane), and the two
+  pads on them hold after the additive sphere's step.
+- **External geometry:** links in the files by source: pads' edges 18,
+  pockets' 24, MultiTransforms' 5, chamfers' 4, linear patterns' 3, a polar
+  pattern's 1, a fillet's 1, a subtractive pipe's 1, pads' vertices 2, other
+  sketches' lines 6, ShapeBinders' edges 12, Part features 3. In the bodies the
+  walk reaches, 17 sketches have links: their constraints name 27 external
+  curves, **7 came in as projections and 9 constraints through them** (a
+  fillet's, two pads' and four pockets' edges), 25 constraints stay out:
+  ShapeBinders (9 curves, S12's), a vertex (the matcher describes none), and 11
+  curves of pads', pockets' and MultiTransforms' edges and one sketch line in
+  files from before 1.0, which store no projection: the importer projects the
+  stored edge itself only for a line or a circle whose axis is the sketch's
+  normal, and an arc or a curve the kernel projects elsewhere stays out (each
+  case was not traced one by one). Two of those edges have no counterpart on the
+  rebuilt body (the `none` 2 below); none is ambiguous.
+- **Bodies (35): 25 with their history** (21 before; 21 whole and 4 with part
+  of it), **6 from the file's shape** (10 before), 4 empty left out. **266
+  `import`s** (270 before); the 348 shapes that aren't bodies come in exactly as
+  in S3. Steps: 5 (6 before), by the first feature's reason `type` 3,
+  `multi-transform` 1, `differs` 1, each body at most one; 12 features hold
+  after a step.
+- **References: 126 found** (118 before), 2 none (two projected edges, which
+  stay out), 0 several, the furthest match 7.8e-13 mm. Construction features
+  made: 19. Restarts 0. Second attempts 2 (the up-to pocket's two extra
+  tries), up-to tries 5. Untouched
+  checks 5, as S8. Time per file: median 0.1 s, slowest 14.5 s.
+- **Drift of the equal ones:** at most 1.4e-8 in volume and 2.5e-8 in area (the
+  pad joined to a step's import, as S8), box 9.4e-10 and centre 1.6e-8 of the
+  diagonal: no tolerance changes.
+- **What changed in S5's to S8's rows:** 4 pads and 4 pockets more are equal
+  (the up-to ones and the two pads on tilted sketches), 1 groove (about a datum
+  line), 1 linear pattern (along a datum line), and a mirror and a polar pattern
+  that repeat features which now come in; the `up-to`, `transform-reference` and
+  `axis` refusals are gone. Nothing of S5 to S8 that held before stops now.
+- **What doesn't come in yet, and why:** no up-to, axis, datum or tilted-sketch
+  feature. The rest: two fillets Extrudo can't build, a hole that cuts another
+  body, a MultiTransform of a linear pattern then a mirror, two patterns that
+  repeat a feature that didn't come in, a pocket that differs by 1.5e-5 after a
+  step (S8's), five features of kinds not mapped and four bodies' own chains.
+- **A plain distance in place of an up-to extent** would save no feature: all
+  six come in with their meaning.
+
+### What S10 to S13 inherit
+
+- A feature's `sources` now name `UpToFace`, `UpToShape`, `Offset` and their
+  second-side twins: S10 can bind an offset's expression like a length's.
+- The fixed datums and planes carry the file's numbers as expressions of
+  construction points: S10 may bind a datum's `AttachmentOffset` expressions
+  only where the relation is kept (`offsetPlane`'s distance).
+- S12 (other bodies, ShapeBinders, Part features as sources): the external
+  links to them stay out today, counted in the library table.
+- A body's vertex as a reference (datum lines through vertices, projected
+  vertices) needs the kernel to describe vertices for the matcher: one
+  `describe` change in `stored-shape.ts`, no facade change.

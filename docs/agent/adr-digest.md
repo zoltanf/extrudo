@@ -5030,7 +5030,8 @@ costs a sketch. Report: `BodyHistory.upToTries`, `MappedFeature.upTo` / `.datums
 `.external`; the app's new sentence for fixed datums and sketch planes. Fixtures `reference-fixtures.ts` (28 FreeCAD
 1.1.4 parts, `make-reference-fixtures.py`, `REF_FIXTURES` in `reference-parts.ts`; the writer now writes a placement's
 angle and axis, which a reader takes first); tests `reference.test.ts`, `reference-hostile.test.ts`,
-`reference-limits.test.ts` (`BENCH=1`).
+`reference-limits.test.ts` (`BENCH=1`). `history-corpus.test.ts` keeps 25 bodies with history, 266 imports, 126
+references found, all 6 up-to features in, 5 steps, unless a change explains it.
 
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
