@@ -2259,7 +2259,18 @@ Amendment (#259): a render target of the view takes its samples from
 `watchContext` calls `noteContextLost()`, and a picture nobody asked for goes
 through `automaticThumbnail(snapshot, contextLosses())` in `project/autosave.ts`,
 which takes none after a lost context (a second loss makes Chrome block WebGL
-for the site). Snapshots somebody asks for are not gated.
+for the site). Snapshots somebody asks for are not gated. Second amendment
+(#259): **every multisampled offscreen target asks `targetSamples`**; Render's Draft
+takes its HDR target from `draftTarget` (`render/app/appRenderer.ts`: 4 samples, or
+twice the size without samples where antialiasing was refused, up to 4096 px), and a
+render that loses its context returns `RESET` and disposes the renderer. `detectWebgl`
+reads `webglcontextcreationerror`'s reason into `{ kind: 'none', blocked: true }`;
+`heldBack()` (that, or `contextLosses() > 0`) makes `NoWebgl` draw `ViewPaused`
+(region "3D view paused", `data-webgl="paused"`), which must not offer a page reload
+(`location.reload()` does not lift Chrome's block; the browser's reload button does).
+The bug report's Rendering row carries "no antialiasing" and `resetNote(contextLosses())`.
+A change to WebGL contexts, render targets or automatic GPU work is checked on a weak
+GPU with `scripts/gpu-check.mjs` (`docs/agent/dev-environment.md`).
 
 ADR-0077 (P6-03, slice 1) added **the plugin API's core, sandbox, kernel and
 CLI**. A plugin is a `.extrudo-plugin` zip of `plugin.json` (core's strict

@@ -40,6 +40,7 @@ import type {
   RenderProgress,
   RenderResult,
 } from '../../platform/render';
+import { targetSamples } from '../../viewport/webglSupport';
 import { viewToThreeCamera } from './camera';
 import { woodTexture, worktopTexture } from './finishes';
 import {
@@ -61,6 +62,7 @@ export interface AppRenderer extends PictureRenderer {
 export interface RendererLike {
   capabilities: { maxTextureSize: number };
   dispose(): void;
+  getContext?(): { isContextLost(): boolean };
 }
 
 /** Draws one picture; returns the PNG, or undefined when cancelled. */
@@ -77,6 +79,30 @@ export interface AppRendererOptions {
 }
 
 const BUSY = 'A render is already running.';
+/** A lost context: three's read-back then rejects with nothing, which read "undefined" (#259). */
+export const RESET =
+  'The graphics driver reset during the render. Try again, or pick a smaller size.';
+
+/**
+ * Draft's HDR target (#259): 4 samples, or where the browser refused the
+ * antialiasing asked of the renderer's context, a plain target of twice the
+ * size that the output pass's linear lookup averages down (four texels a
+ * pixel). Pictures whose doubled side passes `SUPERSAMPLE_MAX` or the GPU's
+ * largest texture are drawn at their own size, with stair-stepped edges.
+ */
+export function draftTarget(
+  width: number,
+  height: number,
+  granted: boolean | undefined,
+  maxTextureSize: number,
+): { width: number; height: number; samples: number } {
+  const samples = targetSamples(true, granted);
+  const doubled = 2 * Math.max(width, height);
+  const scale = samples === 0 && doubled <= Math.min(maxTextureSize, SUPERSAMPLE_MAX) ? 2 : 1;
+  return { width: width * scale, height: height * scale, samples };
+}
+
+const SUPERSAMPLE_MAX = 4096;
 
 // One WebGLPathTracer per renderer (it prints a deprecation warning when made,
 // and builds its BVH and uniforms): made on the first traced render, kept
@@ -123,6 +149,13 @@ export function createAppRenderer(options: AppRendererOptions = {}): AppRenderer
         if (!png || cancelled) return { ok: false, message: 'Render cancelled.', cancelled: true };
         return { ok: true, png };
       } catch (error) {
+        if (renderer?.getContext?.().isContextLost()) {
+          // A lost context is not used again: the next render makes a new renderer.
+          disposeTracer(renderer);
+          renderer.dispose();
+          renderer = undefined;
+          return { ok: false, message: RESET };
+        }
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
       } finally {
         running = false;
@@ -261,7 +294,16 @@ async function drawDraft(
     worktop: worktopTexture,
     environment: makeEnvironment(renderer),
   });
-  const hdr = new WebGLRenderTarget(width, height, { samples: 4, type: HalfFloatType });
+  const target = draftTarget(
+    width,
+    height,
+    renderer.getContextAttributes()?.antialias,
+    renderer.capabilities.maxTextureSize,
+  );
+  const hdr = new WebGLRenderTarget(target.width, target.height, {
+    samples: target.samples,
+    type: HalfFloatType,
+  });
   const out = new WebGLRenderTarget(width, height);
   const output = new OutputPass();
   try {
