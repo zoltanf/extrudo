@@ -147,7 +147,7 @@ Decisions:
   which the output pass's linear lookup averages down to the picture (four
   texels a pixel). A doubled side above 4096 px or the GPU's largest texture
   keeps the picture's size, with stair-stepped edges. Standard and High trace
-  into targets without samples and were not tried on that machine.
+  into targets without samples; for them see the next amendment.
 - **A lost context ends a render with a sentence** (`RESET`), and the renderer
   is disposed so the next render makes a new one.
 - **A page the browser holds back gets its own panel.** `detectWebgl` reads
@@ -170,6 +170,34 @@ Decisions:
 - **A check on the real machine before a release** (`scripts/gpu-check.mjs`,
   `docs/agent/dev-environment.md`): CI draws with SwiftShader and cannot show
   a driver that loses contexts.
+
+## Amendment: the path tracer crashes that GPU's driver (#259, 2026-11-14)
+
+Standard at 1280 × 720 on the same machine, against the build with both
+amendments above, twice: after about 30 s of "Rendering" the tracer's program
+is invalid and the render's context and the 3D view's are lost together. The
+browser's log says "GPU process exited unexpectedly" and the system kept two
+core dumps of the GPU process, a segmentation fault inside Mesa's driver
+library (`libgallium` 26.2.5). After the second crash the browser gave no
+WebGL at all until it was restarted. High was not run: it is the same tracer
+with more samples.
+
+This is a driver fault that the tracer's shader sets off; the app can only
+warn and say the right thing afterwards:
+
+- **A warning under Quality.** `refusesAntialiasing()` (`viewport/webglSupport.ts`,
+  one probe context a page) is true where the browser gives a context none of
+  the antialiasing it asks for, which Chrome does on the old integrated GPUs
+  it rates slow or broken at multisampling. There the Render dialog says, for
+  the app's Standard and High (`TRACE_RISK`, `[data-render-trace-risk]`), that
+  they can crash the graphics driver and reset the 3D view, and that Draft is
+  safe. It warns and does not block: the signal stands in for "the tracer
+  crashes here" on the evidence of one machine.
+- **The message after a lost context names Draft** for Standard and High
+  (`RESET_TRACED`), not a smaller size.
+
+Rejected: switching Standard and High off on that signal (a GPU that is
+refused antialiasing may trace fine), and a list of GPU names.
 
 ## Rejected
 

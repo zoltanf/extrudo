@@ -454,6 +454,27 @@ describe('phaseText', () => {
   });
 });
 
+describe('a graphics card the path tracer may crash (#259)', () => {
+  it('says so under Quality for Standard and High, not for Draft', () => {
+    setup({ traceRisk: () => true }, undefined, { web: true });
+    const risk = () => document.querySelector('[data-render-trace-risk]')?.textContent;
+    fireEvent.click(screen.getByLabelText('Draft'));
+    expect(risk()).toBeUndefined();
+    fireEvent.click(screen.getByLabelText('Standard'));
+    expect(risk()).toBe(
+      'On this graphics card Standard and High can crash the graphics driver and reset the 3D view. Draft is safe.',
+    );
+    fireEvent.click(screen.getByLabelText('High'));
+    expect(risk()).toBeDefined();
+  });
+
+  it('stays quiet on other graphics cards', () => {
+    setup({ traceRisk: () => false }, undefined, { web: true });
+    fireEvent.click(screen.getByLabelText('Standard'));
+    expect(document.querySelector('[data-render-trace-risk]')).toBeNull();
+  });
+});
+
 describe('a view from below', () => {
   const below = {
     projection: 'perspective' as const,

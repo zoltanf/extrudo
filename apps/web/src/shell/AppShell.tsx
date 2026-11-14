@@ -250,6 +250,7 @@ import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { ViewportBoundary } from '../viewport/ViewportBoundary';
+import { refusesAntialiasing } from '../viewport/webglSupport';
 import { AboutDialog } from './AboutDialog';
 import { AppBar, type FileActions } from './AppBar';
 import { actionLog, watchActions } from './actionLog';
@@ -3734,6 +3735,7 @@ function Shell({
         request={renderRequest}
         files={platform.files}
         appRender={appRenderer}
+        traceRisk={refusesAntialiasing}
         {...(platform.render && { render: platform.render })}
         viewportCamera={() => {
           const { view, projection } = viewport.getState();

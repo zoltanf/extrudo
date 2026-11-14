@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   contextLosses,
+  detectAntialiasRefusal,
   detectWebgl,
   heldBack,
   isContextError,
@@ -168,5 +169,29 @@ describe('heldBack (#259)', () => {
     expect(heldBack({ kind: 'hardware' }, 0)).toBe(false);
     expect(heldBack({ kind: 'hardware' }, 1)).toBe(true);
     expect(heldBack({ kind: 'none', reason: 'x', blocked: true }, 0)).toBe(true);
+  });
+});
+
+describe('detectAntialiasRefusal (#259)', () => {
+  const canvas = (antialias: boolean | undefined, lost: string[] = []) =>
+    (() => ({
+      getContext: () => ({
+        getContextAttributes: () => (antialias === undefined ? null : { antialias }),
+        getExtension: (name: string) =>
+          name === 'WEBGL_lose_context' ? { loseContext: () => lost.push('lost') } : null,
+      }),
+    })) as unknown as () => HTMLCanvasElement;
+
+  it('is true only where the context got no antialiasing, and loses the probe', () => {
+    const lost: string[] = [];
+    expect(detectAntialiasRefusal(canvas(false, lost))).toBe(true);
+    expect(lost).toEqual(['lost']);
+    expect(detectAntialiasRefusal(canvas(true))).toBe(false);
+    expect(detectAntialiasRefusal(canvas(undefined))).toBe(false);
+  });
+
+  it('is false without WebGL 2 or when the browser throws', () => {
+    expect(detectAntialiasRefusal(canvasFactory({ none: true }).create)).toBe(false);
+    expect(detectAntialiasRefusal(canvasFactory({ throws: true }).create)).toBe(false);
   });
 });

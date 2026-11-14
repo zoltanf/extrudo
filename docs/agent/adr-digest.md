@@ -2270,7 +2270,12 @@ reads `webglcontextcreationerror`'s reason into `{ kind: 'none', blocked: true }
 (`location.reload()` does not lift Chrome's block; the browser's reload button does).
 The bug report's Rendering row carries "no antialiasing" and `resetNote(contextLosses())`.
 A change to WebGL contexts, render targets or automatic GPU work is checked on a weak
-GPU with `scripts/gpu-check.mjs` (`docs/agent/dev-environment.md`).
+GPU with `scripts/gpu-check.mjs` (`docs/agent/dev-environment.md`). Third amendment
+(#259): the path tracer crashed that GPU's Mesa driver (the browser's GPU process), so
+where `refusesAntialiasing()` is true the Render dialog warns under Quality for the
+app's Standard and High (`traceRisk` prop from AppShell, `TRACE_RISK`,
+`[data-render-trace-risk]`; a warning, never a block), and a traced render that loses
+its context returns `RESET_TRACED` (try Draft), Draft `RESET`.
 
 ADR-0077 (P6-03, slice 1) added **the plugin API's core, sandbox, kernel and
 CLI**. A plugin is a `.extrudo-plugin` zip of `plugin.json` (core's strict

@@ -80,6 +80,11 @@ export interface RenderDialogProps {
   groundLevel?: () => number | undefined;
   /** Opens a link in the system browser (`Platform.openLink`). */
   openLink?(url: string): void;
+  /**
+   * Whether the app's Standard and High may crash this graphics card's driver
+   * (`refusesAntialiasing`, #259); the dialog then says so under Quality.
+   */
+  traceRisk?: () => boolean;
   onClose(): void;
   notify?(tone: 'info' | 'error', text: string): void;
 }
@@ -133,6 +138,9 @@ const QUALITY_HINTS: Record<RenderQuality, string> = {
   standard: 'A minute or two',
   high: 'Several minutes, finest',
 };
+/** Under Quality where the app's path tracer may crash the graphics driver (#259). */
+export const TRACE_RISK =
+  'On this graphics card Standard and High can crash the graphics driver and reset the 3D view. Draft is safe.';
 const QUALITY_LABELS: Record<RenderQuality, string> = {
   draft: 'Draft',
   standard: 'Standard',
@@ -171,6 +179,7 @@ export function RenderForm({
   render,
   viewportCamera,
   groundLevel,
+  traceRisk,
   openLink,
   onClose,
   onBusy,
@@ -534,6 +543,11 @@ export function RenderForm({
             {QUALITY_HINTS[chosen.quality]}
           </span>
         </div>
+        {engine === 'app' && chosen.quality !== 'draft' && traceRisk?.() && (
+          <p className="text-xs text-muted" data-render-trace-risk>
+            {TRACE_RISK}
+          </p>
+        )}
       </Section>
 
       <fieldset className="flex flex-col gap-1" disabled={busy}>
