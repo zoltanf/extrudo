@@ -326,9 +326,27 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
               lines.push(JSON.stringify({ file, body: b.object, afterStep: x }));
             }
           });
-          const sizes = Object.values(design.doc.attachments ?? {});
-          s8.largestStepFile = Math.max(s8.largestStepFile, ...sizes.map((a) => a.size));
+          const imp = design.doc.features.find((f) => f.id === st.feature);
+          const fileId = (imp?.inputs as { file?: { id?: string } } | undefined)?.file?.id;
+          const size = fileId ? design.doc.attachments?.[fileId as never]?.size : undefined;
+          s8.largestStepFile = Math.max(s8.largestStepFile, size ?? 0);
         });
+        if (b.stop || b.steps.length > 0)
+          lines.push(
+            JSON.stringify({
+              file,
+              body: b.object,
+              outcome: b.outcome,
+              features: b.features,
+              mapped: b.mapped.map((m) => m.kind),
+              steps: b.steps.map((st) => ({ after: st.after, run: st.features })),
+              stop: b.stop && {
+                ...b.stop,
+                at: features.findIndex((f) => f.name === b.stop?.object),
+              },
+              chain: features.map((f) => kindOf(f.type)),
+            }),
+          );
         const firstStep = b.steps[0]?.after;
         if (firstStep !== undefined)
           for (const m of b.mapped.slice(firstStep)) bump(s8.heldAfterStep, m.kind);

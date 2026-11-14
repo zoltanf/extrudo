@@ -4964,6 +4964,33 @@ other-bodies check compares solids, faces and edges exactly (`ShapeMeasure.faces
 measures within `UNTOUCHED_TOLERANCE` 1e-12 (`untouchedDisagreement`; measured drift 0 on 37 fixture and 2 library
 checks). Extrudo's `operate` itself ignores a cut under 1e-6 of a body's volume, so no smaller sliver can reach another body.
 
+**ADR-0144, S8 (the stored-shape step):** in `bodies.ts` **`stop` no longer ends a body**: a feature that doesn't hold
+joins a **run** (`Run`), and only when the next feature has decoded and is about to be tried does `ensureBase` →
+`applyStep` bring the run's **last** stored shape in: one transaction with `Remove <body>` of the body's bodies so far
+(none when it has none) and `Import <feature>` of that shape, converted by **`convertStored`** (`shapes.ts`, the one
+conversion of a stored shape, shared with `importShapes`: S3's checks and 25 MB / 100 MB), rebuilt with the step's file
+(the walk's `files`, returned through `BodyWalkOptions.files` and merged into the import's files), checked by the same
+`check` as a feature with **the history tolerances** against the shape as read, and the other FreeCAD bodies untouched.
+Rules: **never convert a run's shape before a feature after it is tried** (a run's earlier shapes never are); a feature
+that fails on a step moves the step forward (its import and attachment replaced, the attachment removed when no import
+uses it, `importFiles`; `usedAttachments` sees only fonts); a shape that can't come in lets the next feature join the run
+untried; **a run that reaches the tip (or the body's end) takes its step back** (`undoStep`) so the body ends exactly as
+before S8, through the shapes import (`stop` = the run's first, `stop.run` its later features); `chain`, the feature caps,
+`restarts`, `import-time` and S8's caps end the body (`ENDS_BODY`, `end`); `no-base` and a feature's own `limit` are
+steps. After a step a reference must name the last step's import or a feature held after it (`own()`), never a superseded
+step's; a pattern of a feature from before a step replays onto the import (holds equal on the fixture); a pattern of the
+body's first feature after a step is `original` (`bodyMaker` only before any step). A step's commit updates `known`,
+`mine`, `lastMeasures`, `restartsAtHold` like a feature's; `undoStep` restores `mine`/`known` and clears
+`restartsAtHold`. Caps: **`MAX_BODY_STEPS` 8**, **`MAX_STEP_TEXT_BYTES` 256 MB** of stored text converted by steps per
+import (a run of tried features converts once per feature). Report: `BodyHistory.steps` (`HistoryStep`: the run's
+`FeatureNamed`s with each tried one's reason, the first's reason, `shape`, `feature`, `remove`, `after`),
+`heldAfterLastStep`; the app's `fcstdNotices` counts bodies with steps and `outcome` `history` apart ("with part of its
+history") so the first notice adds up, and gives them the "Rebuilt on the file's own shape part way through" line.
+Fixtures `step-fixtures.ts` (ten FreeCAD 1.1.4 parts, `make-step-fixtures.py`, `STEP_FIXTURES` in `step-parts.ts` for
+`pattern-parts.ts`); tests `step.test.ts`, `step-bodies.test.ts`, `step-hostile.test.ts`. `history-corpus.test.ts`
+keeps 21 bodies with history (17 whole), 270 imports, 118 references found, 6 steps, 12 features held after a step,
+unless a change explains it.
+
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,

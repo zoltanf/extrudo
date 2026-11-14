@@ -1,10 +1,11 @@
 /**
  * `importFcstd`: a FreeCAD file as a new Extrudo design (P6-25, ADR-0144).
  * Each PartDesign body comes in with its history as far as it can be rebuilt
- * and proven equal to what the file stores (S5, `bodies.ts`); every other
- * final shape, and a body whose history stopped before its last feature,
- * comes in as a STEP attachment on an `import` feature (S3, `shapes.ts`),
- * with one Remove taking out what was rebuilt of such a body.
+ * and proven equal to what the file stores (S5, `bodies.ts`), carrying on from
+ * a stored shape where a feature can't be (S8); every other final shape, and
+ * a body whose features up to its last couldn't be rebuilt, comes in as a STEP
+ * attachment on an `import` feature (S3, `shapes.ts`), with one Remove taking
+ * out what was rebuilt of such a body.
  */
 import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';

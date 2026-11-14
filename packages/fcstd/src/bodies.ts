@@ -3,12 +3,13 @@
  * walked in the body's order, are mapped one by one, the design so far is
  * rebuilt in the import's kernel and the body measured against the shape the
  * file stores for that feature (decision 3). Equal: the feature stays. Any
- * other outcome stops the body's history there (`stop`, the one place that
- * decides it; S8 will carry on from the stored shape instead), and what was
- * added for that feature is taken back. A body whose history stopped after
- * at least one feature keeps those features; the importer then brings the
- * body's final shape in as S3 does and takes the rebuilt body out with one
- * Remove (`import.ts`).
+ * other outcome takes back what was added for it, and the feature joins a
+ * run (`stop`); before the next feature is tried, the run's last stored shape
+ * takes the body's place (S8, `applyStep`: one Remove of the rebuilt bodies,
+ * one `import` of that shape) and the walk carries on from it. A run that
+ * reaches the body's end is taken back, and the importer brings the body's
+ * final shape in as S3 does, with one Remove of what was rebuilt
+ * (`import.ts`).
  *
  * Linear in the file: the chain is followed once (cycles end it), features
  * are capped per body and per file, and every kernel call runs under the
