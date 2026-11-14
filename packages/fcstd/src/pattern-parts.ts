@@ -37,6 +37,11 @@ function externalGeoXml(geo: readonly (readonly (string | number)[])[]): string 
       records.push(
         `<Geometry type="Part::GeomCircle" id="${id}" ref="${esc(g[4] as string)}" migrated="1">${ext(id, g[4] as string)}<Circle CenterX="${f(g[1] as number)}" CenterY="${f(g[2] as number)}" CenterZ="0" NormalX="0" NormalY="0" NormalZ="1" AngleXU="0" Radius="${f(g[3] as number)}"/><Construction value="1"/></Geometry>`,
       );
+    else if (g[0] === 'arc')
+      // An arc as FreeCAD 1.x stores it: centre, radius, AngleXU, start and end angles, the normal's Z.
+      records.push(
+        `<Geometry type="Part::GeomArcOfCircle" id="${id}" ref="${esc(g[8] as string)}" migrated="1">${ext(id, g[8] as string)}<ArcOfCircle CenterX="${f(g[1] as number)}" CenterY="${f(g[2] as number)}" CenterZ="0" NormalX="0" NormalY="0" NormalZ="${f(g[7] as number)}" AngleXU="${f(g[4] as number)}" Radius="${f(g[3] as number)}" StartAngle="${f(g[5] as number)}" EndAngle="${f(g[6] as number)}"/><Construction value="1"/></Geometry>`,
+      );
     else records.push(g[1] as string);
   });
   return prop(

@@ -64,7 +64,7 @@ import {
   MAX_SKETCH_GEOMETRY,
   type Vec2,
 } from './sketch-decode';
-import { type ExternalPlan, MAX_CANDIDATES } from './sketch-map';
+import { arcEnds, type ExternalPlan, MAX_CANDIDATES } from './sketch-map';
 import {
   containerChain,
   fitsOriginPlane,
@@ -198,8 +198,10 @@ export type Found =
  * Why a named external curve didn't come in as a projection (S9's fix round):
  * reported elsewhere by the kernel, past a cap, its link not found, a vertex,
  * a source outside the body's walked features (another body, a ShapeBinder, a
- * Part feature, a later feature), a sketch line that didn't come in, an arc, a
- * curve the importer doesn't project, a stored shape that can't be read, or
+ * Part feature, a later feature), a sketch line that didn't come in, a curve
+ * the importer doesn't project (`kind`: not a line, nor a circle or an arc of
+ * one square to the sketch, or one whose numbers make none), a stored shape
+ * that can't be read, or
  * no or several counterparts on the rebuilt body. `unused`: projected, but no
  * constraint naming it was kept.
  */
@@ -210,12 +212,73 @@ export type ExternalCause =
   | 'vertex'
   | 'source'
   | 'sketch-line'
-  | 'arc'
   | 'kind'
   | 'stored'
   | 'none'
   | 'several'
   | 'unused';
+
+/** How far (mm) an arc's ends and middle may be off its circle, plus 1e-9 of the centre's distance from the origin (S9's arcs). */
+const ARC_ON = 1e-6;
+
+/**
+ * An arc of a circle in the sketch from a stored edge projected along the
+ * sketch's normal (S9's arcs): its centre, radius, two ends and the point at
+ * its middle, in the sketch's coordinates. Which of the two arcs between the
+ * ends it is comes from the middle point, never from the order of the ends;
+ * it runs counter-clockwise from its start, as FreeCAD's arcs do.
+ * `undefined` when they make no arc: a radius of zero, not finite or past
+ * `MAX_FEATURE_LENGTH`, an end or the middle off the circle, the two ends on
+ * each other, or the middle on an end.
+ */
+export function arcThrough(
+  center: Vec2,
+  radius: number,
+  a: Vec2,
+  b: Vec2,
+  mid: Vec2,
+): Extract<FcGeometry, { kind: 'arc' }> | undefined {
+  const all = [...center, radius, ...a, ...b, ...mid];
+  if (!all.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_FEATURE_LENGTH)) return undefined;
+  const tol = ARC_ON + 1e-9 * Math.hypot(center[0], center[1]);
+  if (!(radius > tol)) return undefined;
+  const off = (p: Vec2) => Math.hypot(p[0] - center[0], p[1] - center[1]);
+  if (![a, b, mid].every((p) => Math.abs(off(p) - radius) <= tol)) return undefined;
+  if (Math.hypot(b[0] - a[0], b[1] - a[1]) <= tol) return undefined;
+  const angle = (p: Vec2) => Math.atan2(p[1] - center[1], p[0] - center[0]);
+  const turn = 2 * Math.PI;
+  const ccw = (from: number, to: number) => (((to - from) % turn) + turn) % turn;
+  const a0 = angle(a);
+  const sweep = ccw(a0, angle(b));
+  const m = ccw(a0, angle(mid));
+  const gap = tol / radius;
+  if (m <= gap || Math.abs(m - sweep) <= gap || turn - m <= gap) return undefined;
+  // Counter-clockwise from a to b passes the middle, or the arc runs from b to a.
+  const [startAngle, span] = m < sweep ? [a0, sweep] : [angle(b), turn - sweep];
+  return {
+    kind: 'arc',
+    center,
+    radius,
+    angleXU: 0,
+    reversed: false,
+    startAngle,
+    endAngle: startAngle + span,
+    construction: true,
+    internal: 0,
+  };
+}
+
+/** Whether a planned arc is one to draw: its ends apart (a sweep of more than nothing), its radius not zero (S9's arcs). */
+function arcFits(c: Extract<FcGeometry, { kind: 'arc' }>): boolean {
+  const tol = ARC_ON + 1e-9 * Math.hypot(c.center[0], c.center[1]);
+  const { start, end } = arcEnds(c);
+  return (
+    c.radius > tol &&
+    Number.isFinite(c.startAngle) &&
+    Number.isFinite(c.endAngle) &&
+    Math.hypot(end[0] - start[0], end[1] - start[1]) > tol
+  );
+}
 
 /** The most external links of one sketch that are projected (S9): the rest stay out as before. */
 export const MAX_EXTERNAL_PER_SKETCH = 64;
@@ -1050,7 +1113,7 @@ export class TransformMapper {
    * made) or a line of another sketch of this body that came in. The curve is
    * where FreeCAD stored its projection (1.0+), else the source projected
    * onto the sketch's plane along its normal (a line's ends, a circle whose
-   * axis is the normal). Anything else is not planned and stays out, as
+   * axis is the normal, an arc of one through the edge's middle). Anything else is not planned and stays out, as
    * before S9. `reversed` and `off` come from an earlier try (`bodies.ts`).
    */
   async externals(
@@ -1143,6 +1206,7 @@ export class TransformMapper {
           e.type === 'circle' &&
           e.ends?.length === 2 &&
           norm(sub(e.ends[1] as Vec3, e.ends[0] as Vec3)) > 1e-9;
+        const square = !!e.direction && norm(cross(unit(e.direction), f.n)) <= PARALLEL;
         if (!curve) {
           // Before 1.0 the file stores no projection: the stored edge projected along the normal.
           if (e.type === 'line' && e.ends?.length === 2)
@@ -1153,14 +1217,7 @@ export class TransformMapper {
               construction: true,
               internal: 0,
             };
-          else if (
-            e.type === 'circle' &&
-            !arc &&
-            e.centre &&
-            e.radius !== undefined &&
-            e.direction &&
-            norm(cross(unit(e.direction), f.n)) <= PARALLEL
-          )
+          else if (e.type === 'circle' && !arc && e.centre && e.radius !== undefined && square)
             curve = {
               kind: 'circle',
               center: uv(e.centre),
@@ -1170,9 +1227,18 @@ export class TransformMapper {
               construction: true,
               internal: 0,
             };
+          else if (arc && e.centre && e.radius !== undefined && square)
+            // Which of the two arcs between the ends: the one through the edge's middle.
+            curve = arcThrough(
+              uv(e.centre),
+              e.radius,
+              uv(e.ends?.[0] as Vec3),
+              uv(e.ends?.[1] as Vec3),
+              uv(e.midpoint),
+            );
         }
         if (!curve) {
-          causes.set(g, arc ? 'arc' : 'kind');
+          causes.set(g, 'kind');
           continue;
         }
         const r = await this.#match(
@@ -1191,14 +1257,14 @@ export class TransformMapper {
         }
         ref = r;
       }
-      if (curve.kind !== 'line' && curve.kind !== 'circle') {
-        causes.set(g, curve.kind === 'arc' ? 'arc' : 'kind');
+      if (curve.kind !== 'line' && curve.kind !== 'circle' && curve.kind !== 'arc') {
+        causes.set(g, 'kind');
         continue;
       }
       const finite = (
         curve.kind === 'line' ? [...curve.start, ...curve.end] : [...curve.center, curve.radius]
       ).every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_FEATURE_LENGTH);
-      if (!finite) {
+      if (!finite || (curve.kind === 'arc' && !arcFits(curve))) {
         causes.set(g, 'kind');
         continue;
       }
