@@ -18,7 +18,7 @@
  * constraint uses them.
  */
 import type { SketchBuilder } from '@extrudo/api';
-import { isReservedName, type SketchData } from '@extrudo/core';
+import { type GeomRef, isReservedName, type SketchData } from '@extrudo/core';
 // Types only from the main entry: its solver loads planegcs, which the caller owns.
 import type { DimensionValues, SketchSolver } from '@extrudo/sketch';
 import { tangentReversed } from '@extrudo/sketch/inference';
@@ -155,9 +155,44 @@ export interface SketchMapResult {
   readonly axes: { readonly h?: string; readonly v?: string };
   /** The Extrudo point at each FreeCAD circle's or arc's centre, or each point (S7: a hole's centres), by geometry index. */
   readonly centres: readonly (string | undefined)[];
+  /** S9: the projections kept (a kept constraint names their curve). */
+  readonly projected: readonly ProjectedEntity[];
+  /** S9: their records, by projection ID, for the caller to add once the sketch is stored. */
+  readonly projections: Readonly<Record<string, { ref: GeomRef; curves: Record<string, string> }>>;
+  /** S9: how many mapped FreeCAD constraints name a projected curve. */
+  readonly throughExternal: number;
+}
+
+/**
+ * External geometry to bring in as a projection (S9), by geometry index
+ * (−3 − k): the curve where FreeCAD has it, in the sketch's own coordinates,
+ * and the Extrudo projection that makes it (its source and curve key).
+ * `reversed`: Extrudo's projected line runs from FreeCAD's end to its start.
+ */
+export interface ExternalPlan {
+  readonly curve: FcGeometry;
+  readonly ref: GeomRef;
+  /** The projection's key for its one curve (`edge`, `vertex`, `curve`, `point`). */
+  readonly key: string;
+  readonly reversed?: boolean;
+}
+
+/** A projection that came in (S9): its record and curve, and where the curve is drawn (Extrudo sketch coordinates). */
+export interface ProjectedEntity {
+  /** The geometry index (−3 − k) it stands for. */
+  readonly geo: number;
+  readonly projection: string;
+  readonly key: string;
+  readonly entity: string;
+  readonly kind: 'line' | 'circle' | 'point';
+  /** A line's ends (start, end), a circle's centre, a point. */
+  readonly points: readonly Vec2[];
+  readonly radius?: number;
 }
 
 export interface SketchMapOptions {
+  /** S9: external geometry to project, by geometry index; any other is left out (`external`). */
+  readonly external?: ReadonlyMap<number, ExternalPlan>;
   /** Vets the constraints; without one none is imported. */
   readonly solver?: SketchSolver;
   /** Parameter names already taken in the design; a FreeCAD name kept for a dimension is added. */
@@ -413,6 +448,45 @@ export function mapSketch(
 
   for (const which of options.axes ?? []) axis(which);
 
+  // External geometry (S9): drawn as a projection when a candidate names it, taken out again when none stays.
+  const externalDrawn = new Map<
+    number,
+    Drawn & { parts: string[]; projection: string; key: string }
+  >();
+  /** The projection records the sketch gets (the builder stores no projections: `addSketch` adds them after). */
+  const projections: Record<string, { ref: GeomRef; curves: Record<string, string> }> = {};
+  const external = (g: number): Drawn => {
+    const known = externalDrawn.get(g);
+    if (known) return known;
+    const plan = options.external?.get(g);
+    if (!plan) return leave('external');
+    const c = plan.curve;
+    let d: Drawn & { parts: string[] };
+    if (c.kind === 'line') {
+      const [a, b] = plan.reversed ? [c.end, c.start] : [c.start, c.end];
+      const h = k.line(m(a), m(b));
+      d = {
+        kind: 'line',
+        id: h.id,
+        pos: plan.reversed ? { 1: h.end.id, 2: h.start.id } : { 1: h.start.id, 2: h.end.id },
+        parts: [h.id, h.start.id, h.end.id],
+      };
+    } else if (c.kind === 'circle') {
+      const h = k.circle(m(c.center), c.radius);
+      d = { kind: 'circle', id: h.id, pos: { 3: h.center.id }, parts: [h.id, h.center.id] };
+    } else if (c.kind === 'point') {
+      const h = k.point(m(c.at));
+      d = { kind: 'point', id: h.id, pos: { 1: h.id }, parts: [h.id] };
+    } else return leave('external');
+    const e = entities[d.id];
+    if (e && d.kind !== 'point') e.construction = true;
+    const projection = `fcx${-g - 2}`;
+    projections[projection] = { ref: plan.ref, curves: { [plan.key]: d.id } };
+    const full = { ...d, projection, key: plan.key };
+    externalDrawn.set(g, full);
+    return full;
+  };
+
   // Reading the drawn geometry -------------------------------------------------
   const pointAt = (id: string): Vec2 => [entities[id]?.x as number, entities[id]?.y as number];
   const lineAt = (id: string): [Vec2, Vec2] => {
@@ -434,7 +508,7 @@ export function mapSketch(
   // References ---------------------------------------------------------------------
   const drawnAt = (g: number): Drawn => {
     if (g === GEO_UNDEF) return leave('unsupported');
-    if (g <= -3) return leave('external');
+    if (g <= -3) return external(g);
     if (g >= sketch.geometry.length) return leave('geometry');
     const d = drawn[g];
     if (!d) return leave(missing[g] ?? 'geometry');
@@ -810,7 +884,7 @@ export function mapSketch(
       if (c.name) options.taken.delete(c.name);
     };
     try {
-      const result = vet(k, candidates, values, solver, take);
+      const result = vet(k, candidates, values, solver, take, projections);
       maxDisplacement = result.displacement;
       dof = result.dof;
     } catch {
@@ -833,6 +907,39 @@ export function mapSketch(
       delete (k.data.constraints as Record<string, unknown>)[part];
     }
   }
+  // Projections no kept constraint names come out again, record and curve (S9).
+  const projected: ProjectedEntity[] = [];
+  const externalIds = new Set<string>();
+  for (const [g, d] of externalDrawn) {
+    const kept = d.parts.some((p) => used.has(p));
+    if (!kept) {
+      for (const part of d.parts) delete (k.data.entities as Record<string, unknown>)[part];
+      delete projections[d.projection];
+      continue;
+    }
+    for (const part of d.parts) externalIds.add(part);
+    const at = (id: string): Vec2 => [entities[id]?.x as number, entities[id]?.y as number];
+    const e = entities[d.id];
+    projected.push({
+      geo: g,
+      projection: d.projection,
+      key: d.key,
+      entity: d.id,
+      kind: d.kind as 'line' | 'circle' | 'point',
+      points:
+        d.kind === 'line'
+          ? [at(e?.start as string), at(e?.end as string)]
+          : d.kind === 'circle'
+            ? [at(e?.center as string)]
+            : [at(d.id)],
+      ...(d.kind === 'circle' ? { radius: e?.radius as number } : {}),
+    });
+  }
+  const throughExternal = candidates.filter(
+    (c) =>
+      constraintOutcomes[c.index] === 'mapped' &&
+      c.ids.some((id) => refsOf(k.data, id).some((e) => externalIds.has(e))),
+  ).length;
 
   return {
     drawn: drawnCount,
@@ -864,6 +971,9 @@ export function mapSketch(
           ? d.id
           : undefined;
     }),
+    projected,
+    projections,
+    throughExternal,
   };
 }
 
@@ -880,8 +990,13 @@ function vet(
   values: Record<string, number>,
   solver: SketchSolver,
   take: (c: Candidate, why: LeftOut) => void,
+  projections: Readonly<Record<string, unknown>> = {},
 ): { displacement: number; dof: number } {
-  const data = () => k.data;
+  // Projected curves are fixed in the solve, as the app's solver holds them (S9).
+  const data = (): SketchData =>
+    Object.keys(projections).length > 0
+      ? ({ ...k.data, projections } as unknown as SketchData)
+      : k.data;
   const before = solver.solve(data(), {});
   const already = new Set([...before.conflicting, ...before.redundant]);
   const failing = new Set(before.components.filter((r) => !r.ok).flatMap((r) => r.entities));

@@ -62,9 +62,12 @@ export function workerImportKernel(
       const c = connection ?? start();
       return Promise.race([c.api.measureStoredShape(text, [...chain]), died]);
     },
-    rebuild: (doc, files, skip) => {
+    rebuild: (doc, files, skip, reports) => {
       if (!connection) start();
-      return Promise.race([(rebuilder as ImportRebuilder).rebuild(doc, files, skip), died]);
+      return Promise.race([
+        (rebuilder as ImportRebuilder).rebuild(doc, files, skip, reports),
+        died,
+      ]);
     },
     describeStoredShape: (text, chain, ask) => {
       const c = connection ?? start();

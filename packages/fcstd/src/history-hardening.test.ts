@@ -160,11 +160,8 @@ describe('one object, one body, once per file', () => {
   });
 
   it("does not try another body's sketch again, imported or not", async () => {
-    const tilted = {
-      name: 'Shared',
-      geometry: rectangle(0, 0, 10, 20),
-      placement: [0, 0, 0, 0.3, [1, 1, 0]] as BodySpec['sketches'][number]['placement'],
-    };
+    // An open sketch: it comes in, but makes no profile (S9 brings a tilted one in on a plane of its own).
+    const tilted = { name: 'Shared', geometry: [line(0, 0, 10, 0)] };
     const a: BodySpec = { ...padBody('A', 'First', 'Shared'), sketches: [tilted] };
     const b: BodySpec = { ...padBody('B', 'Second', 'Shared'), sketches: [] };
     const r = await run([a, b]);

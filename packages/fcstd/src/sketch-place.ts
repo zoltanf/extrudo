@@ -24,8 +24,13 @@ import { linkedObjects, rotate } from './final-shapes';
 import type { FcDocument, FcObject, FcPlacement, Vec3 } from './model';
 import type { Vec2 } from './sketch-decode';
 
-/** What kind of Extrudo plane a sketch took. */
-export type PlaneKind = 'origin' | 'offset' | 'angle' | 'angle-offset';
+/**
+ * What kind of Extrudo plane a sketch took: an origin plane, moved along its
+ * normal, turned about an origin axis (and moved); since S9 on a tilted
+ * frame, a datum plane's construction (`datum`) or a plane through three
+ * fixed points of the sketch's own frame (`points`).
+ */
+export type PlaneKind = 'origin' | 'offset' | 'angle' | 'angle-offset' | 'datum' | 'points';
 
 export interface SketchPlacement {
   readonly plane: GeomRef;
@@ -188,6 +193,9 @@ export function forgetRemovedPlanes(d: Design): void {
 /** Why a sketch has no Extrudo plane. */
 export const NO_PLANE =
   'its plane is tilted off every origin axis, and Extrudo has no plane for it';
+/** Why a tilted sketch has none (S9): the plane for it couldn't be made. */
+export const NO_TILTED_PLANE =
+  "its plane is tilted off every origin axis, and its plane couldn't be made";
 
 /** Why a sketch whose frame is not a rigid one has no plane. */
 export const BAD_FRAME = 'its placement is not a position and a rotation Extrudo can use';
@@ -212,10 +220,31 @@ export function frameIsSound(global: FcPlacement): boolean {
  * shared by sketches of the same design. `undefined`: no plane fits
  * ({@link NO_PLANE}), or the frame is not sound ({@link frameIsSound}).
  */
+/**
+ * Whether one of S4's planes holds a frame: its normal along an origin
+ * plane's, or square to an origin axis. A frame none holds is tilted (S9).
+ */
+export function fitsOriginPlane(global: FcPlacement): boolean {
+  const N = rotate(global.rotation, [0, 0, 1]);
+  return (
+    ORIGIN_PLANES.some((p) => Math.abs(Math.abs(dot(N, p.frame.normal as Vec3)) - 1) <= EPS) ||
+    ORIGIN_AXES.some((a) => Math.abs(dot(N, a.direction as Vec3)) <= EPS)
+  );
+}
+
+/** A plane made for a tilted frame by the caller (S9): the plane, its kind, and a point and normal of its frame. */
+export interface GivenPlane {
+  readonly plane: GeomRef;
+  readonly kind: 'datum' | 'points';
+  readonly point: Vec3;
+  readonly normal: Vec3;
+}
+
 export function placeSketch(
   d: Design,
   global: FcPlacement,
   name: string,
+  given?: GivenPlane,
 ): SketchPlacement | undefined {
   if (!frameIsSound(global)) return undefined;
   const q = global.rotation;
@@ -297,5 +326,7 @@ export function placeSketch(
       faceSketchFrame(scale(N, offset), N),
     );
   }
+  // A tilted frame (S9): the plane the caller made, whose frame is a construction plane's.
+  if (given) return placed(given.plane, given.kind, faceSketchFrame(given.point, given.normal));
   return undefined;
 }

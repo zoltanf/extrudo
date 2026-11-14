@@ -527,6 +527,7 @@ describe('fcstdNotices', () => {
     secondAttempts: 0,
     steps: [],
     heldAfterLastStep: 0,
+    upToTries: 0,
     outcome,
     ...(stop ? { stop: { object: 'F', type: 'PartDesign::Fillet', reason: stop } } : {}),
   });
@@ -571,7 +572,7 @@ describe('fcstdNotices', () => {
     });
     expect(notices).toEqual([
       'Imported from the FreeCAD file: 1 of 2 shapes, as a body without history.',
-      "Taken from the file's own shapes, without their whole history: Clip, because a feature goes up to a face or a shape.",
+      "Taken from the file's own shapes, without their whole history: Clip, because a feature goes up to a face or a shape Extrudo can't find or use.",
       "Not imported: Housing (its shape didn't come through unchanged).",
       'Only partly rebuilt, up to the feature where the history stopped: Housing. It is not the whole shape from the file.',
     ]);
@@ -667,5 +668,52 @@ describe('fcstdNotices', () => {
       "Taken from the file's own shapes, without their whole history: Lid; Base. Most often because a pattern of patterns combines steps Extrudo can't rebuild yet, or a pattern or mirror repeats a feature Extrudo can't repeat. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
       '2 threaded holes came in as plain holes of the size the file stores: the thread itself is not modelled.',
     ]);
+  });
+
+  it('says which datums and sketch planes came in fixed (S9)', () => {
+    const feature = (how: 'fixed' | 'offset' | 'edge') => ({
+      object: 'Groove',
+      kind: 'groove' as const,
+      feature: 'g',
+      sources: {},
+      expressions: [],
+      drift: { volume: 0, area: 0, corner: 0, diagonal: 1, centre: 0 },
+      datums: [{ object: 'DatumLine', mode: 'TwoPointLine', how }],
+    });
+    const sketch = (plane: 'points' | 'datum') =>
+      ({ sketch: 'S', label: 'S', plane }) as unknown as ReturnType<
+        typeof body
+      >['sketches'][number];
+    const one = fcstdNotices({
+      ...base,
+      finalShapes: 1,
+      shapes: [],
+      bodies: [{ ...body('Plate', 'history'), mapped: [feature('fixed'), feature('offset')] }],
+    });
+    expect(one.at(-1)).toBe(
+      "A datum line or plane came in fixed where the file has it: it doesn't follow what it was attached to in FreeCAD when the model changes.",
+    );
+    const more = fcstdNotices({
+      ...base,
+      finalShapes: 1,
+      shapes: [],
+      bodies: [
+        {
+          ...body('Plate', 'history'),
+          mapped: [feature('fixed'), feature('fixed')],
+          sketches: [sketch('points'), sketch('datum')],
+        },
+      ],
+    });
+    expect(more.at(-1)).toBe(
+      "2 datum lines and planes and the plane of a sketch on a tilted face came in fixed where the file has them: they don't follow what they were attached to in FreeCAD when the model changes.",
+    );
+    const none = fcstdNotices({
+      ...base,
+      finalShapes: 1,
+      shapes: [],
+      bodies: [{ ...body('Plate', 'history'), mapped: [feature('edge')] }],
+    });
+    expect(none.some((n) => n.includes('came in fixed'))).toBe(false);
   });
 });

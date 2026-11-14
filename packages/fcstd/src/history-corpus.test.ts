@@ -11,6 +11,7 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
 import { describe, expect, it } from 'vitest';
+import { mapModeOf } from './attach';
 import { bodyChain } from './bodies';
 import type { ReferenceTally } from './dressups';
 import { decodeFeature, FEATURE_TYPES } from './features';
@@ -20,7 +21,17 @@ import type { ShapeElements } from './import-kernel';
 import { edgeDistance, toleranceAt } from './match';
 import { floatList, readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
-import { containerChain } from './sketch-place';
+import { containerChain, fitsOriginPlane, frameIsSound, sketchFrame } from './sketch-place';
+
+const PAD_TYPE_NAMES = ['Length', 'UpToLast', 'UpToFirst', 'UpToFace', 'TwoLengths', 'UpToShape'];
+const POCKET_TYPE_NAMES = [
+  'Length',
+  'ThroughAll',
+  'UpToFirst',
+  'UpToFace',
+  'TwoLengths',
+  'UpToShape',
+];
 
 const root = process.env.FCSTD_SAMPLES;
 const reportFile = process.env.FCSTD_REPORT;
@@ -182,6 +193,19 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       bytesWithoutSteps: 0,
       largestStepFile: 0,
     };
+    // S9: up-to extents, datums, tilted sketches and projected geometry: in the files and as they came in.
+    const s9 = {
+      upToInFiles: {} as Record<string, number>,
+      upTo: {} as Record<string, number>,
+      upToTries: 0,
+      axesInFiles: {} as Record<string, number>,
+      datumsInFiles: {} as Record<string, number>,
+      datums: {} as Record<string, number>,
+      tiltedInFiles: 0,
+      tilted: {} as Record<string, number>,
+      externalLinks: {} as Record<string, number>,
+      external: { sketches: 0, named: 0, projected: 0, constraints: 0, leftOutExternal: 0 },
+    };
     const verdict = (x: { reason?: string }) =>
       x.reason === undefined
         ? 'not tried'
@@ -201,6 +225,38 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       let walked = 0;
       for (const o of doc.objects) {
         if (FEATURE_TYPES[o.type]) bump(census, `${kindOf(o.type)} in the file`);
+        // S9's census.
+        if (o.type.startsWith('PartDesign::Line') || o.type.startsWith('PartDesign::Plane'))
+          bump(s9.datumsInFiles, `${o.type.slice('PartDesign::'.length)} ${mapModeOf(o)}`);
+        if (o.type === 'PartDesign::Pad' || o.type === 'PartDesign::Pocket') {
+          const t = o.properties.Type?.value;
+          const names = o.type === 'PartDesign::Pad' ? PAD_TYPE_NAMES : POCKET_TYPE_NAMES;
+          const i = t?.kind === 'enum' ? t.index : t?.kind === 'integer' ? t.value : 0;
+          const name = t?.kind === 'enum' && t.values ? t.values[i] : names[i];
+          if (name?.startsWith('UpTo')) bump(s9.upToInFiles, `${kindOf(o.type)} ${name}`);
+        }
+        if (o.type === 'PartDesign::Revolution' || o.type === 'PartDesign::Groove') {
+          const v = o.properties.ReferenceAxis?.value;
+          const target = v?.kind === 'linkSub' && v.object ? doc.byName.get(v.object) : undefined;
+          const sub = v?.kind === 'linkSub' ? (v.subs[0]?.name ?? '') : '';
+          bump(
+            s9.axesInFiles,
+            `${target?.type.startsWith('Sketcher') ? 'sketch' : (target?.type ?? 'none')} ${sub.replace(/\d+$/, 'N') || '(whole)'}`,
+          );
+        }
+        if (o.type.startsWith('Sketcher::SketchObject')) {
+          const ext = o.properties.ExternalGeometry?.value;
+          if (ext?.kind === 'linkSubList')
+            for (const item of ext.items) {
+              const target = doc.byName.get(item.object);
+              bump(
+                s9.externalLinks,
+                `${target?.type ?? 'missing'} ${item.sub.name.replace(/\d+$/, 'N') || '(whole)'}`,
+              );
+            }
+          const g = sketchFrame(doc, o).global;
+          if (frameIsSound(g) && !fitsOriginPlane(g)) s9.tiltedInFiles++;
+        }
         const kind = FEATURE_TYPES[o.type];
         if (kind === 'multi') {
           const t = o.properties.Transformations?.value;
@@ -300,6 +356,22 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       for (const b of report.bodies) {
         bump(bodies, b.outcome);
         s7.secondAttempts += b.secondAttempts;
+        s9.upToTries += b.upToTries;
+        for (const m of b.mapped) {
+          if (m.upTo)
+            bump(s9.upTo, `${m.kind} ${m.upTo.method} → ${m.upTo.target} (try ${m.upTo.tries})`);
+          for (const d of m.datums ?? []) bump(s9.datums, `${d.mode} → ${d.how}`);
+        }
+        for (const sk of b.sketches) {
+          if (sk.plane === 'datum' || sk.plane === 'points') bump(s9.tilted, sk.plane);
+          if (sk.external) {
+            s9.external.sketches++;
+            s9.external.named += sk.external.named;
+            s9.external.projected += sk.external.projected;
+            s9.external.constraints += sk.external.constraints;
+          }
+          s9.external.leftOutExternal += sk.constraints.leftOut.external ?? 0;
+        }
         for (const m of b.mapped) {
           if (m.secondAttempt) s7.heldAtSecond++;
           if (m.threadLost) s7.threadsLost++;
@@ -482,6 +554,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       s7,
       untouched,
       s8,
+      s9,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

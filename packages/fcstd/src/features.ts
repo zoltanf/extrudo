@@ -87,13 +87,32 @@ export type FeatureRefusal =
   /** A pattern's direction or axis, or a mirror's plane, that the importer doesn't map (S7). */
   | 'transform-reference'
   /** A MultiTransform whose chain of steps the importer doesn't map (S7). */
-  | 'multi-transform';
+  | 'multi-transform'
+  /** A datum line or plane whose construction didn't come in where the file has it (S9). */
+  | 'datum';
 
-/** One side of a pad or pocket: a length, or through all (pocket). */
+/**
+ * Where an up-to side ends (S9): a face or a plane the file names (`UpToFace`,
+ * or `UpToShape` with one face), or the first or last face of the body the
+ * sweep meets, which the walk picks (`bodies.ts`).
+ */
+export type DecodedUpTo =
+  | {
+      readonly kind: 'face';
+      readonly method: 'face' | 'shape';
+      readonly reference: DecodedReference;
+    }
+  | { readonly kind: 'first' | 'last' };
+
+/** One side of a pad or pocket: a length, through all (pocket), or up to a face (S9). */
 export interface DecodedSide {
-  readonly extent: 'length' | 'through-all';
+  readonly extent: 'length' | 'through-all' | 'up-to';
   /** mm, for `length`. */
   readonly length?: number;
+  /** For `up-to`. */
+  readonly upTo?: DecodedUpTo;
+  /** mm past the face along the sweep (FreeCAD's `Offset`; negative stops short), for `up-to`. */
+  readonly offset?: number;
 }
 
 /** A revolve's axis, in the terms this slice maps. */
@@ -103,7 +122,9 @@ export type DecodedAxis =
   /** A line of the sketch, by its geometry index. */
   | { readonly kind: 'sketch-line'; readonly geometry: number }
   /** An origin axis of the feature's body (which must not be moved). */
-  | { readonly kind: 'origin'; readonly axis: 'x' | 'y' | 'z' };
+  | { readonly kind: 'origin'; readonly axis: 'x' | 'y' | 'z' }
+  /** S9: a straight edge of a feature (`EdgeN`), or a datum line; the walk finds it (`transforms.ts`). */
+  | { readonly kind: 'reference'; readonly reference: DecodedReference };
 
 interface Common {
   /** The FreeCAD object's internal name. */
@@ -311,7 +332,12 @@ function common(doc: FcDocument, o: FcObject) {
   };
 }
 
-function extrusion(doc: FcDocument, o: FcObject, kind: 'pad' | 'pocket'): DecodedFeature {
+function extrusion(
+  doc: FcDocument,
+  o: FcObject,
+  kind: 'pad' | 'pocket',
+  context: FeatureContext,
+): DecodedFeature {
   const base = common(doc, o);
   const types = kind === 'pad' ? PAD_TYPES : POCKET_TYPES;
   const type = choice(o, 'Type', types);
@@ -327,8 +353,8 @@ function extrusion(doc: FcDocument, o: FcObject, kind: 'pad' | 'pocket'): Decode
         refuse('direction', 'its direction comes from a reference');
     }
   }
-  const side = (t: string, lengthName: string): DecodedSide => {
-    if (UP_TO.has(t)) return refuse('up-to', `it goes ${upTo(t)}`);
+  const side = (t: string, lengthName: string, second = false): DecodedSide => {
+    if (UP_TO.has(t)) return upToSide(doc, o, t, second, context);
     if (t === 'ThroughAll') return { extent: 'through-all' };
     return { extent: 'length', length: length(o, lengthName) };
   };
@@ -349,14 +375,30 @@ function extrusion(doc: FcDocument, o: FcObject, kind: 'pad' | 'pocket'): Decode
       sources.direction = base.midplane ? 'Midplane' : 'SideType';
     } else if (sideType === 'Two sides') {
       direction = 'two-sides';
-      side2 = side(choice(o, 'Type2', types, 'Length'), 'Length2');
+      side2 = side(choice(o, 'Type2', types, 'Length'), 'Length2', true);
       sources.direction = 'SideType';
     } else direction = 'one-side';
   }
   if (side1.extent === 'length') sources.distance = 'Length';
   if (side2?.extent === 'length') sources.distance2 = 'Length2';
+  if (side1.extent === 'up-to') {
+    sources.toObject =
+      side1.upTo?.kind === 'face' && side1.upTo.method === 'shape'
+        ? 'UpToShape'
+        : side1.upTo?.kind === 'face'
+          ? 'UpToFace'
+          : 'Type';
+    if (side1.offset !== 0) sources.offset = 'Offset';
+  }
+  if (side2?.extent === 'up-to') {
+    sources.toObject2 =
+      side2.upTo?.kind === 'face' && side2.upTo.method === 'shape' ? 'UpToShape2' : 'UpToFace2';
+    if (side2.offset !== 0) sources.offset2 = 'Offset2';
+  }
   if (tapered(o, 'TaperAngle') || (direction === 'two-sides' && tapered(o, 'TaperAngle2')))
     refuse('taper', 'it is tapered');
+  if (direction === 'symmetric' && side1.extent === 'up-to')
+    refuse('up-to', `it goes ${upTo(type)} on both sides of its sketch`);
   const total = (side1.length ?? 0) + (side2?.length ?? 0);
   if (
     side1.extent === 'length' &&
@@ -374,6 +416,101 @@ function extrusion(doc: FcDocument, o: FcObject, kind: 'pad' | 'pocket'): Decode
     direction,
     side1,
     ...(side2 ? { side2 } : {}),
+  };
+}
+
+/**
+ * An up-to side (S9): `UpToFace` (a face of a feature, a datum plane, an
+ * origin plane), `UpToShape` with exactly one face, or up to the first or
+ * last face; with `Offset` (`Offset2` for the second side). The second side
+ * takes a face or a plane only: its first and last are refused.
+ */
+function upToSide(
+  doc: FcDocument,
+  o: FcObject,
+  t: string,
+  second: boolean,
+  context: FeatureContext,
+): DecodedSide {
+  const n = second ? '2' : '';
+  const offset = number(o, `Offset${n}`, 0);
+  if (!(Math.abs(offset) <= MAX_FEATURE_LENGTH))
+    refuse('value', `its Offset${n} of ${offset} mm is out of range`);
+  if (t === 'UpToFirst' || t === 'UpToLast') {
+    if (second) refuse('up-to', `its second side goes ${upTo(t)}`);
+    return { extent: 'up-to', upTo: { kind: t === 'UpToFirst' ? 'first' : 'last' }, offset };
+  }
+  if (t === 'UpToFace') {
+    const v = value(o, `UpToFace${n}`);
+    if (v === undefined) return refuse('up-to', `it goes up to a face but names none`);
+    if (v.kind !== 'linkSub') return refuse('value', `its UpToFace${n} is not a link`);
+    if (v.object === undefined || v.object === '')
+      return refuse('up-to', 'it goes up to a face but names none');
+    const subs = v.subs.map((x) => x.name).filter((x) => x !== '');
+    return {
+      extent: 'up-to',
+      upTo: {
+        kind: 'face',
+        method: 'face',
+        reference: upToTarget(doc, o, v.object, subs, context),
+      },
+      offset,
+    };
+  }
+  // UpToShape (FreeCAD 1.x): exactly one face is "up to a face".
+  const v = value(o, `UpToShape${n}`);
+  if (v === undefined) return refuse('up-to', 'it goes up to a shape but names none');
+  const items: { object: string; sub: string }[] =
+    v.kind === 'linkSubList'
+      ? v.items.slice(0, 2).map((x) => ({ object: x.object, sub: x.sub.name }))
+      : v.kind === 'linkSub' && v.object
+        ? v.subs.slice(0, 2).map((x) => ({ object: v.object as string, sub: x.name }))
+        : refuse('value', `its UpToShape${n} is not a list of links`);
+  const count =
+    v.kind === 'linkSubList' ? v.items.length : v.kind === 'linkSub' ? v.subs.length : 0;
+  if (count !== 1 || !items[0])
+    return refuse('up-to', `it goes up to a shape of ${count} elements, not one face`);
+  const subs = items[0].sub === '' ? [] : [items[0].sub];
+  const reference = upToTarget(doc, o, items[0].object, subs, context);
+  if (reference.kind === 'element' && reference.element.kind !== 'face')
+    return refuse('up-to', 'it goes up to a shape that is not a face');
+  return { extent: 'up-to', upTo: { kind: 'face', method: 'shape', reference }, offset };
+}
+
+/** The face or plane an up-to side names: a feature's `FaceN`, a datum plane, an origin plane. */
+function upToTarget(
+  doc: FcDocument,
+  o: FcObject,
+  object: string,
+  subs: readonly string[],
+  context: FeatureContext,
+): DecodedReference {
+  if (object === o.name) return refuse('up-to', 'it goes up to a face of itself');
+  if (subs.length > 1)
+    return refuse('up-to', `it goes up to ${subs.length} elements, not one face`);
+  const target = doc.byName.get(object);
+  if (!target) return refuse('up-to', `it goes up to ${named(object)}, which isn't in the file`);
+  if (target.type === 'App::Plane' || target.type === 'App::Line') {
+    const r = originReference(doc, target, 'face', context);
+    if (r.kind !== 'origin-plane') return refuse('up-to', 'it goes up to an origin axis');
+    return r;
+  }
+  if (target.type.startsWith('PartDesign::Plane')) {
+    if (subs.length > 0)
+      return refuse('up-to', `it goes up to ${clipName(subs[0] as string)} of a datum plane`);
+    return { kind: 'datum', object: target.name };
+  }
+  const sub = subs[0] ?? '';
+  const m = ELEMENT.exec(sub);
+  if (!m || m[1] !== 'Face')
+    return refuse(
+      'up-to',
+      `it goes up to ${sub ? clipName(sub) : 'a whole object'} of ${named(object)}, not a face`,
+    );
+  return {
+    kind: 'element',
+    object,
+    element: { kind: 'face', index: Number(m[2]) - 1, name: sub },
   };
 }
 
@@ -442,8 +579,30 @@ function axisOf(
   }
   const target = doc.byName.get(v.object);
   if (!target) return refuse('axis', `its axis ${named(v.object)} isn't in the file`);
-  if (target.type !== 'App::Line' || subs.length > 0)
-    return refuse('axis', 'its axis is an edge or a datum line');
+  if (v.object === o.name) return refuse('axis', 'its axis is an edge of itself');
+  if (subs.length > 1) return refuse('axis', `its axis names ${subs.length} elements`);
+  if (target.type.startsWith('PartDesign::Line')) {
+    if (subs.length > 0)
+      return refuse('axis', `its axis is ${clipName(subs[0] as string)} of a datum line`);
+    return { kind: 'reference', reference: { kind: 'datum', object: target.name } };
+  }
+  if (target.type !== 'App::Line') {
+    const m = ELEMENT.exec(subs[0] ?? '');
+    if (!m || m[1] !== 'Edge')
+      return refuse(
+        'axis',
+        `its axis is ${subs[0] ? clipName(subs[0]) : 'a whole object'} of ${named(target.name)}, not an edge`,
+      );
+    return {
+      kind: 'reference',
+      reference: {
+        kind: 'element',
+        object: target.name,
+        element: { kind: 'edge', index: Number(m[2]) - 1, name: subs[0] as string },
+      },
+    };
+  }
+  if (subs.length > 0) return refuse('axis', 'its axis is a part of an origin axis');
   // An origin axis of this feature's own body.
   const originName = context.body.properties.Origin?.value;
   const origin =
@@ -624,7 +783,7 @@ export function decodeFeature(
   try {
     const feature =
       kind === 'pad' || kind === 'pocket'
-        ? extrusion(doc, object, kind)
+        ? extrusion(doc, object, kind, context)
         : kind === 'fillet' || kind === 'chamfer'
           ? dressUp(doc, object, kind, context)
           : kind === 'hole'
@@ -670,7 +829,9 @@ export type DecodedReference =
   /** An origin plane of the feature's body. */
   | { readonly kind: 'origin-plane'; readonly plane: 'xy' | 'xz' | 'yz' }
   /** An edge or a face of a feature's stored shape. */
-  | { readonly kind: 'element'; readonly object: string; readonly element: DressUpElement };
+  | { readonly kind: 'element'; readonly object: string; readonly element: DressUpElement }
+  /** A datum line or plane (`PartDesign::Line`, `PartDesign::Plane`, S9). */
+  | { readonly kind: 'datum'; readonly object: string };
 
 /** One direction of a linear pattern. */
 export interface DecodedRow {
@@ -808,30 +969,13 @@ function referenceOf(
       `its ${what} ${clipName(sub) || 'the whole sketch'} is not one this importer maps`,
     );
   }
-  if (target.type === 'App::Line' || target.type === 'App::Plane') {
-    const origin = bodyOrigin(doc, context.body);
-    if (!origin || !originFeatures(origin).has(target.name))
-      return refuse(
-        'transform-reference',
-        `its ${what} is not an origin feature of the feature's body`,
-      );
-    if (context.moved)
-      return refuse('transform-reference', `its ${what} is an origin feature of a moved body`);
-    const role = target.properties.Role?.value;
-    const r = role?.kind === 'string' ? role.value : target.name;
-    const axis = ORIGIN_ROLE.exec(r);
-    if (target.type === 'App::Line' && axis)
-      return { kind: 'origin-axis', axis: (axis[1] as string).toLowerCase() as 'x' | 'y' | 'z' };
-    const p = ORIGIN_PLANE_ROLE.exec(r);
-    if (target.type === 'App::Plane' && p)
-      return {
-        kind: 'origin-plane',
-        plane: (p[1] as string).toLowerCase() as 'xy' | 'xz' | 'yz',
-      };
-    return refuse('transform-reference', `its ${what} is not an origin axis or plane`);
+  if (target.type === 'App::Line' || target.type === 'App::Plane')
+    return originReference(doc, target, what, context, 'transform-reference');
+  if (target.type.startsWith('PartDesign::Line') || target.type.startsWith('PartDesign::Plane')) {
+    if (sub !== '')
+      return refuse('transform-reference', `its ${what} is ${clipName(sub)} of a datum`);
+    return { kind: 'datum', object: target.name };
   }
-  if (target.type.startsWith('PartDesign::Line') || target.type.startsWith('PartDesign::Plane'))
-    return refuse('transform-reference', `its ${what} is a datum line or plane`);
   const element = ELEMENT.exec(sub);
   if (!element)
     return refuse(
@@ -847,6 +991,29 @@ function referenceOf(
       name: sub,
     },
   };
+}
+
+/** An origin axis or plane of the feature's body (which must not be moved), or a refusal. */
+function originReference(
+  doc: FcDocument,
+  target: FcObject,
+  what: string,
+  context: FeatureContext,
+  reason: FeatureRefusal = 'up-to',
+): DecodedReference {
+  const origin = bodyOrigin(doc, context.body);
+  if (!origin || !originFeatures(origin).has(target.name))
+    return refuse(reason, `its ${what} is not an origin feature of the feature's body`);
+  if (context.moved) return refuse(reason, `its ${what} is an origin feature of a moved body`);
+  const role = target.properties.Role?.value;
+  const r = role?.kind === 'string' ? role.value : target.name;
+  const axis = ORIGIN_ROLE.exec(r);
+  if (target.type === 'App::Line' && axis)
+    return { kind: 'origin-axis', axis: (axis[1] as string).toLowerCase() as 'x' | 'y' | 'z' };
+  const p = ORIGIN_PLANE_ROLE.exec(r);
+  if (target.type === 'App::Plane' && p)
+    return { kind: 'origin-plane', plane: (p[1] as string).toLowerCase() as 'xy' | 'xz' | 'yz' };
+  return refuse(reason, `its ${what} is not an origin axis or plane`);
 }
 
 /** A count of instances: a whole number from 1 to `MAX_TRANSFORM_INSTANCES`. */

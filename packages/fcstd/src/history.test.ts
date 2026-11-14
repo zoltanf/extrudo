@@ -468,20 +468,7 @@ describe('where a history stops', () => {
       'sketch',
       { sketches: [{ name: 'Sketch', geometry: [line(0, 0, 10, 0)] }] },
     ],
-    [
-      'a sketch with no Extrudo plane',
-      {},
-      'sketch',
-      {
-        sketches: [
-          {
-            name: 'Sketch',
-            geometry: rectangle(0, 0, 10, 20),
-            placement: [0, 0, 0, 0.3, [1, 1, 0]],
-          },
-        ],
-      },
-    ],
+    // A sketch tilted off every origin axis comes in on a plane of its own since S9 (reference.test.ts).
     ['a taper angle', { props: [num('TaperAngle', 5, 'App::PropertyAngle')] }, 'taper'],
     ['a custom direction', { props: [bool('UseCustomVector', true)] }, 'direction'],
     [

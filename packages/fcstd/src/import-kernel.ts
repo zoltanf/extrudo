@@ -41,6 +41,8 @@ export interface RebuildResult {
   readonly bodies: Readonly<Record<string, ShapeMeasure>>;
   /** The features whose status is an error, with the kernel's message. */
   readonly failed: readonly { readonly feature: string; readonly message: string }[];
+  /** S9: the kernel's reports of the features asked for (`rebuild`'s `reports`), unchecked. */
+  readonly reports?: Readonly<Record<string, unknown>>;
 }
 
 type Vec3 = readonly [number, number, number];
@@ -115,11 +117,14 @@ export interface ImportKernel {
    * Recomputes `doc` (the design so far) and measures every body at the end
    * of its timeline but the `skip`ped ones (bodies the importer has settled).
    * `files` are the attachments' bytes; the kernel is sent each one once.
+   * `reports` (S9): features whose kernel report to return (a construction
+   * feature's plane or axis, a sketch's projections), at most 64.
    */
   rebuild(
     doc: ExtrudoDocument,
     files: ReadonlyMap<AttachmentId, Uint8Array>,
     skip?: readonly string[],
+    reports?: readonly string[],
   ): Promise<RebuildResult>;
   /**
    * Reads B-rep text, places it by `chain` and describes the edges and faces

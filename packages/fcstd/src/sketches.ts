@@ -11,20 +11,31 @@
  * Nothing throws past `addSketch`: a sketch that can't come in returns why.
  */
 import type { Design } from '@extrudo/api';
-import { type FeatureId, type GeomRef, parameterNames } from '@extrudo/core';
+import {
+  addProjection,
+  type FeatureId,
+  type GeomRef,
+  type ProjectionId,
+  parameterNames,
+  type SketchEntityId,
+  syncProjections,
+} from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import type { FcDocument, FcObject } from './model';
-import { type DecodedSketch, decodeSketch } from './sketch-decode';
+import { type DecodedSketch, decodeSketch, GEO_UNDEF } from './sketch-decode';
 import {
   type ConstraintOutcome,
+  type ExternalPlan,
   type LeftOut,
   mapSketch,
+  type ProjectedEntity,
   type SketchMapResult,
   typeName,
 } from './sketch-map';
 import {
   BAD_FRAME,
   frameIsSound,
+  type GivenPlane,
   NO_PLANE,
   type PlaneKind,
   placeSketch,
@@ -81,6 +92,15 @@ export interface SketchOutcome {
   readonly bindings: readonly ExpressionBinding[];
   /** What couldn't be read, one line each. */
   readonly problems: readonly string[];
+  /**
+   * S9: its external links its constraints name, how many came in as
+   * projections, and how many mapped constraints name a projected curve.
+   */
+  readonly external?: {
+    readonly named: number;
+    readonly projected: number;
+    readonly constraints: number;
+  };
 }
 
 export type AddSketchResult =
@@ -96,6 +116,8 @@ export type AddSketchResult =
       readonly centres: readonly (string | undefined)[];
       /** The Extrudo plane the sketch is on (S7: a hole's plane, a mirror in the sketch's plane). */
       readonly plane: GeomRef;
+      /** The projections it got (S9). */
+      readonly projected: readonly ProjectedEntity[];
     }
   | { readonly imported: false; readonly reason: string; readonly outcome: SketchOutcome };
 
@@ -108,9 +130,26 @@ export interface AddSketchOptions {
   readonly decoded?: DecodedSketch;
   /** Sketch axes to draw as fixed construction lines even when no constraint names them (S5: a revolve's axis). */
   readonly axes?: readonly ('h' | 'v')[];
+  /** The plane for a frame tilted off every origin axis (S9), made by the caller. */
+  readonly tilted?: GivenPlane;
+  /** External geometry to project, by geometry index (S9); any other is left out. */
+  readonly external?: ReadonlyMap<number, ExternalPlan>;
 }
 
 /** The document's sketch objects, in document order. */
+/** S9's counts for a sketch with external links: the links its constraints name, projected, constraints through them. */
+function externalStats(decoded: DecodedSketch, mapped: SketchMapResult | undefined) {
+  const named = new Set<number>();
+  for (const c of decoded.constraints)
+    for (const g of c ? [c.first, c.second, c.third] : [])
+      if (g <= -3 && g !== GEO_UNDEF) named.add(g);
+  return {
+    named: named.size,
+    projected: mapped?.projected.length ?? 0,
+    constraints: mapped?.throughExternal ?? 0,
+  };
+}
+
 export function sketchObjects(doc: FcDocument): FcObject[] {
   return doc.objects.filter((o) => o.type.startsWith('Sketcher::SketchObject'));
 }
@@ -215,7 +254,7 @@ export function addSketch(
   if (!frameIsSound(frame.global)) return refuse(BAD_FRAME, 'geometry');
   let placement: ReturnType<typeof placeSketch>;
   try {
-    placement = placeSketch(design, frame.global, options.name ?? object.label);
+    placement = placeSketch(design, frame.global, options.name ?? object.label, options.tilted);
   } catch (error) {
     return refuse(`its plane could not be made: ${(error as Error).message}`, 'failed');
   }
@@ -237,17 +276,45 @@ export function addSketch(
           taken,
           ...(options.solver ? { solver: options.solver } : {}),
           ...(options.axes ? { axes: options.axes } : {}),
+          ...(options.external ? { external: options.external } : {}),
         });
       },
       { name: options.name ?? object.label },
     );
+    // The projections (S9): their records, then each curve the importer drew put under its key.
+    const records = Object.entries(mapped?.projections ?? {});
+    for (const [id, p] of records)
+      design.state.dispatch(
+        addProjection({ feature: handle.id, id: id as ProjectionId, ref: p.ref }),
+      );
+    if (records.length > 0)
+      design.state.dispatch(
+        syncProjections({
+          feature: handle.id,
+          entities: {},
+          points: {},
+          radii: {},
+          remove: [],
+          curves: Object.fromEntries(
+            records.map(([id, p]) => [id, p.curves as Record<string, SketchEntityId>]),
+          ),
+        }),
+      );
     return {
       imported: true,
       id: handle.id,
-      outcome: tally(object, names, types, mapped, placed, undefined),
+      outcome: tally(
+        object,
+        names,
+        types,
+        mapped,
+        decoded.external ? { ...placed, external: externalStats(decoded, mapped) } : placed,
+        undefined,
+      ),
       lines: mapped?.lines ?? [],
       axes: mapped?.axes ?? {},
       centres: mapped?.centres ?? [],
+      projected: mapped?.projected ?? [],
       plane: where.plane,
     };
   } catch (error) {

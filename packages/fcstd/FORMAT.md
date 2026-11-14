@@ -467,11 +467,86 @@ an empty list): a little-endian 32-bit count, then that many little-endian
 | `Tapered`, `TaperedAngle` | `Bool`, `Float` | A tapered (pipe-thread) hole |
 | `Reversed` | `Bool` | Drill along the sketch's normal (FreeCAD drills against it) |
 
+## References: up-to extents, datums, attachments, external geometry (S9)
+
+### Up-to extents (Pad, Pocket)
+
+| Property | Element | Meaning |
+|---|---|---|
+| `Type` | enumeration | Pad: `Length`, `UpToLast`, `UpToFirst`, `UpToFace`, `TwoLengths`, `UpToShape` (1.x). Pocket: `Length`, `ThroughAll`, `UpToFirst`, `UpToFace`, `TwoLengths`, `UpToShape`: a pocket has no "up to last" |
+| `UpToFace` (`UpToFace2`, 1.1's second side) | `LinkSub` | The face to go to: a feature and `FaceN` of its stored shape, or a datum plane or origin plane with no element |
+| `UpToShape` (`UpToShape2`) | `LinkSubList` | 1.x: the faces or shapes to go to; one face means the same as `UpToFace` |
+| `Offset` (`Offset2`) | `Float` | How far past the face the side ends, along the sweep: positive goes past it, negative stops short (the fixtures: 1.5 mm past the face for a pad and a pocket alike) |
+
+"Up to first" and "last" are worked out when FreeCAD computes the feature:
+the faces of the body before it that a line through the profile's centre
+along the sweep meets, ordered by distance; the nearest or the farthest.
+
+### Attachment (`MapMode`, supports)
+
+`MapMode` is stored as a bare index into FreeCAD's attacher mode list, whose
+numbers never change: 0 `Deactivated`, 1 `Translate`, 2–4 `ObjectXY`,
+`ObjectXZ`, `ObjectYZ`, 5 `FlatFace`, 6 `TangentPlane`, 7 `NormalToEdge`,
+8–10 `FrenetNB`, `FrenetTN`, `FrenetTB`, 11 `Concentric`, 12
+`SectionOfRevolution`, 13 `ThreePointsPlane`, 14 `ThreePointsNormal`, 15
+`Folding`, 16–18 `ObjectX`, `ObjectY`, `ObjectZ`, 19 `AxisOfCurvature`, 20–23
+`Directrix1`, `Directrix2`, `Asymptote1`, `Asymptote2`, 24–28 `Tangent`,
+`Normal`, `Binormal`, `TangentU`, `TangentV`, 29 `TwoPointLine`, 30
+`IntersectionLine`, 31 `ProximityLine`, 32 `ObjectOrigin`, … 39 `Vertex`, …,
+46 `FaceNormal`, 47–52 `OZX` … `OYX`, and after 1.1 53 `ParallelPlane`, 54
+`MidPoint`, 55 `MidPlane` (`attach.ts` has the whole list). The supports are
+`AttachmentSupport` (1.0+; `Support` before), a `LinkSubList`, and
+`AttachmentOffset` a placement applied in the attached frame. The stored
+`Placement` is always the attacher's result at save time, so the importer
+takes the geometry from it and reads the mode only to choose a construction.
+
+### Datums (`PartDesign::Line`, `PartDesign::Plane`)
+
+A datum is attached like a sketch. Its line runs through its placement's
+position along the placement's local Z; its plane goes through the position
+with local Z as its normal and local X as its x direction. A `TwoPointLine`
+on two vertices puts the position half way between them. `Length` and
+`Width` (and `ResizeMode`) only size what FreeCAD draws.
+
+### A revolve's axis
+
+`ReferenceAxis` (`LinkSub`) may also name an edge of a feature's stored shape
+(`EdgeN`, a straight edge) or a datum line (no element). FreeCAD turns
+right-handed about the line's own direction: a datum line's local Z, an
+edge's curve from its first parameter to its last.
+
+### External geometry in sketches
+
+- **Links:** `ExternalGeometry` (`LinkSubList`), one entry per linked element:
+  an object and `EdgeN` or `VertexN` (of a feature's stored shape, or of
+  another sketch's geometry, `EdgeN` being its geometry N − 1), with 1.0's
+  topological name in `shadow` (`;#16:3;…E.Edge10`). 1.1 adds
+  `ExternalTypes`, one integer per link: 0 a projection, 1 an intersection
+  with the sketch plane, 2 both.
+- **Numbering:** a constraint names the sketch's own geometry by its index
+  from 0, the H axis −1, the V axis −2, and the external curves from −3 down:
+  external curve k is −3 − k. Before 1.0 each link makes exactly one curve, so
+  −3 − k is link k.
+- **Stored projections (1.0+):** `ExternalGeo` (a `GeometryList`) holds the
+  projected curves themselves, in the sketch's own coordinates: its first two
+  records are the H and V axes (ids −1 and −2, no reference), and record 2 + k
+  is external curve k. Each carries `ref` (and the same as `Ref` in its
+  `Sketcher::ExternalGeometryExtension`): the linked object's name, a dot and
+  the element's topological name without its `.EdgeN` tail (or the plain
+  element name), which is how a curve finds its link: one link may make no
+  curve or several, so record order and link order need not agree. The
+  extension's `Flags` bits are 0 defining (the curve may bound a profile), 1
+  frozen, 2 detached, 3 missing, 4 sync. Before 1.0 nothing is stored: FreeCAD
+  projects the linked element again on every recompute.
+- **What a projection is:** the element projected onto the sketch plane along
+  its normal: a line or circle parallel to the plane comes through as itself,
+  a line square to it becomes a point.
+
 ## Not read yet
 
-- Sketches: external geometry (`ExternalGeometry`, `ExternalGeo`), `MapMode`
-  and the attachment (the stored placement is enough), the 1.1 n-ary element
-  lists past the first three, geometry ids and layers.
+- Sketches: `ExternalTypes`' intersections, external geometry from objects
+  outside the body, `Defining` external curves, the 1.1 n-ary element lists
+  past the first three, geometry ids and layers.
 - Mesh kernels, colour lists past the first entry, vector/float/placement
   list entries, the 1.0 element maps and string hasher, thumbnails.
 - Link arrays (`ElementCount`, `PlacementList`, `LinkElement`s) and links to
