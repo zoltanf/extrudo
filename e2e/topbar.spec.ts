@@ -152,7 +152,8 @@ async function measure(page: Page) {
 test('the toolbar moves tiles into their group menus to fit a narrow window, and back', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
+  // Solid's full row needs about 1475 px since Insert Design (ADR-0140); at 1440 Coil is in Create's ▾.
+  await page.setViewportSize({ width: 1600, height: 900 });
   await openProject(page);
   const toolbar = page.locator('#toolbar-groups');
   await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0,0');
@@ -188,7 +189,8 @@ test('the toolbar moves tiles into their group menus to fit a narrow window, and
     await fieldset.getByRole('button', { name: group.name, exact: true }).click();
     const items = page.getByRole('menuitem');
     for (const [k, name] of group.names.slice(group.names.length - hidden).entries()) {
-      await expect(items.nth(k)).toHaveText(new RegExp(`^${name}`));
+      // \s*: an icon's SVG can bring whitespace text (Joint's does).
+      await expect(items.nth(k)).toHaveText(new RegExp(`^\\s*${name}`));
     }
     await page.keyboard.press('Escape');
     await expect(items).toHaveCount(0);
@@ -197,7 +199,7 @@ test('the toolbar moves tiles into their group menus to fit a narrow window, and
   expect(expected[0]).toBeGreaterThan(0);
 
   // Widening brings every tile back.
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1600, height: 900 });
   await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0,0');
   for (const id of wide.groups.flatMap((g) => g.ids)) {
     await expect(page.locator(`#toolbar-groups [data-tool="${id}"]`)).toBeVisible();

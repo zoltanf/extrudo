@@ -112,3 +112,28 @@ export function isContextError(
   const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   return CONTEXT_ERROR.test(text) || probe().kind === 'none';
 }
+
+/**
+ * Samples of an offscreen render target (the thumbnail's): none when the
+ * browser refused the antialiasing asked of the screen's context, since a
+ * multisampled target then asks the same of a driver that can't (#259).
+ */
+export function targetSamples(requested: boolean, granted: boolean | undefined): number {
+  return requested && granted === false ? 0 : 4;
+}
+
+let losses = 0;
+
+/** Counts a lost context of the 3D view (`webglcontextlost`). */
+export function noteContextLost(): void {
+  losses++;
+}
+
+/**
+ * Lost contexts since the page loaded. After one, the pictures nobody asked
+ * for (the autosave's thumbnail) stop: a second loss soon after the first
+ * makes the browser block WebGL for the site (#259).
+ */
+export function contextLosses(): number {
+  return losses;
+}

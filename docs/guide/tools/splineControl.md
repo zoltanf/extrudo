@@ -2,7 +2,7 @@
 title: Control Point Spline
 section: Tools
 category: Sketch
-order: 87
+order: 88
 ---
 
 # Control Point Spline

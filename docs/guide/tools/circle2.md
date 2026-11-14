@@ -2,7 +2,7 @@
 title: 2-Point Circle
 section: Tools
 category: Sketch
-order: 75
+order: 76
 ---
 
 # 2-Point Circle

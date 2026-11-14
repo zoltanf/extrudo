@@ -89,6 +89,37 @@ inside the Canvas and the page stayed empty. That is the `none` case, so:
 - **Desktop:** `--software-rendering` also appends `use-angle=swiftshader`,
   for the same measured reason.
 
+## Amendment: a GPU that loses the context when the thumbnail is drawn (#259, 2026-11-12)
+
+On an Intel HD Graphics 4000 (Mesa, Chrome on ANGLE's OpenGL ES backend) the 3D
+view lost its context a second or two after each sketch edit, twice in a row,
+and Chrome then blocked WebGL for the site. The context came back without the
+antialiasing we ask for, and each loss followed four programs used for the first
+time, which is what the autosave's thumbnail does: it draws the scene into a
+render target of its own, and three.js builds a program per material for it.
+Measured on that machine (2026-11-14, Chromium 155, `MAX_SAMPLES` 8, the screen's
+context without antialiasing): with the thumbnail's 4-sample target the context
+is lost about a second after the first edit; with a plain target it is not, in
+three runs of a rectangle and two dimensions.
+
+- **No multisampled target where the browser refused antialiasing.**
+  `createRenderer` compares what it asked for with
+  `getContextAttributes().antialias` and keeps the samples for the renderer's
+  offscreen targets (`targetSamples` in `viewport/webglSupport.ts`): 0 when
+  antialiasing was asked for and refused, or when creation only worked without
+  it; 4 otherwise, software rendering included (there we never ask, and its
+  thumbnails were fine).
+- **No automatic thumbnail after a lost context.** `watchContext` counts every
+  `webglcontextlost` (`noteContextLost`, `contextLosses`; per page, not saved).
+  `automaticThumbnail` in `project/autosave.ts` (the autosave's thumbnail and a
+  new project's first) returns none once the count is above zero. A snapshot
+  somebody asks for (the agent's, the bug report's) is still taken. The project
+  card keeps its last picture until the page is loaded again.
+
+Rejected: turning thumbnails off for a list of GPU names (the list would always
+be behind), and a thumbnail read from the screen's own canvas (it shows the
+grid and the current camera, not the framed model).
+
 ## Rejected
 
 - **A non-WebGL renderer.** three.js has none, and a 2D/SVG view would be a

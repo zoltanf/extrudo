@@ -1,7 +1,7 @@
 import { createDocument, createDocumentStore, renameDocument } from '@extrudo/core';
 import { memoryProjectStore, type ProjectStore } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type Autosaver, createAutosaver, saveEverything } from './autosave';
+import { type Autosaver, automaticThumbnail, createAutosaver, saveEverything } from './autosave';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -272,5 +272,25 @@ describe('autosave', () => {
       // A disposed autosaver no longer counts.
       expect(await saveEverything()).toBe(true);
     });
+  });
+});
+
+describe('automaticThumbnail', () => {
+  const png = new Blob(['png']);
+
+  it('takes the snapshot while the 3D view never lost its context', async () => {
+    const snapshot = vi.fn(async () => png);
+    expect(await automaticThumbnail(snapshot, 0)).toBe(png);
+    expect(snapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes none after a lost context (#259)', async () => {
+    const snapshot = vi.fn(async () => png);
+    expect(await automaticThumbnail(snapshot, 1)).toBeNull();
+    expect(snapshot).not.toHaveBeenCalled();
+  });
+
+  it('takes none before the view offers a snapshot', async () => {
+    expect(await automaticThumbnail(undefined, 0)).toBeNull();
   });
 });

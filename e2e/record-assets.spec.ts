@@ -999,6 +999,48 @@ test('demo: newComponent', async ({ page }) => {
   });
 });
 
+test('demo: insertDesign', async ({ page }) => {
+  // Another design comes in as a component (ADR-0140): the hinge fixture, whose two leaves
+  // span x ±20, y ±25.5, z -3…7, into a blank design. The clip shows the browser's new
+  // component row beside the hinge; the file chooser is answered off screen.
+  await demoProject(page, 'blank');
+  await turnView(page, 'Shift+1');
+  const hinge = join(process.cwd(), 'fixtures', 'components', 'hinge.extrudo');
+  const insert = async () => {
+    const chooser = page.waitForEvent('filechooser');
+    await runTool(page, 'insertDesign', 'solid');
+    await (await chooser).setFiles(hinge);
+    await expect(viewportOf(page)).toHaveAttribute('data-components', 'hinge:Base,Leaf');
+    await kernelReady(page);
+  };
+  // Inserted once to find where the component's row lands, then undone: the clip frames it.
+  await insert();
+  const row = await page
+    .getByRole('complementary', { name: 'Browser' })
+    .locator('[data-component]')
+    .first()
+    .boundingBox();
+  if (!row) throw new Error('no component row');
+  await page.keyboard.press('Control+z');
+  await expect(viewportOf(page)).not.toHaveAttribute('data-components');
+  const clip: Clip = {
+    x: 36,
+    y: Math.round(clamp(row.y - 60, 140, 900 - FRAME.height - 60)),
+    width: FRAME.width,
+    height: FRAME.height,
+  };
+  await frameWorld(page, boxPoints([-20, -25.5, -3], [20, 25.5, 7]), 0.38, {
+    place: { x: clip.x + 300, y: clip.y + 130 },
+  });
+  const p = pointer(page);
+  await p.jump({ x: clip.x + 330, y: clip.y + 30 });
+  await record(page, 'insertDesign', clip, async () => {
+    await page.waitForTimeout(700);
+    await insert();
+    await page.waitForTimeout(1800);
+  });
+});
+
 test('demo: joint', async ({ page }) => {
   await demoScripts(page);
   await page.goto('./');

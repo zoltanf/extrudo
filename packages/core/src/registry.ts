@@ -22,6 +22,7 @@ import { type FeatureDefinition, FeatureRegistry } from './features';
 import { filletFeature } from './fillet';
 import { holeFeature } from './hole';
 import { importFeature } from './import';
+import { insertDesignFeature } from './insert-design';
 import { loftFeature } from './loft';
 import { meshToSolidFeature } from './mesh-to-solid';
 import { mirrorFeature } from './mirror';
@@ -101,5 +102,7 @@ export function documentFeatures(): FeatureRegistry<FeatureDefinition> {
   registry.register(scriptFeature as FeatureDefinition);
   // A plugin's custom feature (P6-03, ADR-0077 §3): a Script packaged with inputs.
   registry.register(pluginFeature as unknown as FeatureDefinition);
+  // Insert Design (P6-26, ADR-0140): another design, copied in as one feature.
+  registry.register(insertDesignFeature);
   return registry;
 }

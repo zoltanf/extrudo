@@ -2,7 +2,7 @@
 title: Sketch Dimension
 section: Tools
 category: Sketch
-order: 72
+order: 73
 ---
 
 # Sketch Dimension

@@ -1,0 +1,1 @@
+- 2026-11-12 · **3D view on old graphics chips**: the thumbnail taken after a save no longer asks for antialiasing the browser refused the 3D view, and no thumbnail is taken after the graphics driver reset the view, so a first reset is not followed by a second that makes the browser block 3D for the site (#259).
