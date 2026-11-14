@@ -4872,7 +4872,8 @@ the flip, matched on the rebuilt body and required to bound the matched edge, on
 several**: none or several stops with `reference`; `saneElements`/`saneBodies`/`saneReference`: known keys only,
 indices in range, finite numbers, every asked stored edge present and detailed, exactly the bodies asked;
 `checkReference`: the asked kind, an ID that reads as the kernel's builders write names and `featuresOfName` reads them
-(`checkName`: roles with colons, parenthesised sources that may or may not be names, `#n` read from the end by hand,
+(`checkName`: roles with colons, parenthesised sources that may or may not be names, **one that is not a name only without a
+colon outside brackets and not an `e[`/`v[` name**, so the features read are exactly `featuresOfName`'s; `#n` read from the end by hand,
 only a name's characters), every feature in the document sent and one among the FreeCAD body's mapped features; the
 fingerprint's `adj` cut to `MAX_FINGERPRINT_ADJ` 64, entries that aren't names of the document dropped).
 **A limit of ours is a clean stop, never a kernel failure:** a reply at a kernel cap (`over` + `limit`: `edges`,

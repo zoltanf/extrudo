@@ -295,4 +295,23 @@ describe('the reference check and the kernel read the same names', () => {
     ])
       expect(checkName(n).ok, n).toBe(false);
   });
+
+  it('refuses a source the kernel would read a feature from although it is not a name', () => {
+    // `featuresOfName` reads Z from each of these sources; as "a source that names none" they
+    // would let a reference name a feature outside the document that was sent.
+    const partly = [
+      'fillet:F:from:(x|y:Z:r)',
+      'fillet:F:from:(extrude:Z:side:a(b))',
+      'fillet:F:from:(e[extrude:Z:side:a(b)])',
+    ];
+    for (const n of partly) {
+      expect(featuresOfName(n), n).toContain('Z');
+      expect(checkName(n).ok, n).toBe(false);
+    }
+    // A source without a colon outside brackets names none, for the kernel too.
+    for (const n of ['extrude:F:side:(S/c1)', 'extrude:F:side:(a|b)']) {
+      expect(featuresOfName(n), n).toEqual(['F']);
+      expect(checkName(n).ok, n).toBe(true);
+    }
+  });
 });

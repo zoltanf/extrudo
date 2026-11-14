@@ -923,7 +923,10 @@ kernel share `importReferences`.
   `op:feature:role…` with `#n` splits, whose role may have colons of its own
   (`cap:start`, `clip:2`) and whose parts after the feature are tokens or a
   parenthesised source; a source that is itself a name has its features
-  counted, one that is not (a `sketch/curve`) names none. Only a name's
+  counted, one that is not (a `sketch/curve`) names none, and is taken only
+  where the kernel reads no feature from it either (no colon outside brackets,
+  not an edge or vertex name: `featuresOfName` takes features from a name it
+  reads only in part, and such a source would name one outside the check). Only a name's
   characters (a token's, `: | ( ) [ ] # @ /`) and brackets that pair up. Every
   feature it names must be one of the document sent, and at least one the
   FreeCAD body's own mapped feature, and its kind the one asked. Core has no

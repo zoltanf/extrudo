@@ -485,7 +485,8 @@ const DEEP = Symbol('deep');
  * role may have colons of its own (`cap:start`, `clip:2`) and whose parts
  * after the feature are tokens or a parenthesised source; a source that
  * parses as a name has its features collected, one that doesn't (a
- * `sketch/curve` source) names none. `false` for anything else, `DEEP` past
+ * `sketch/curve` source) names none and is taken only where the kernel reads
+ * none from it either. `false` for anything else, `DEEP` past
  * `MAX_NAME_DEPTH`.
  */
 function collect(name: string, depth: number, out: Set<string>): boolean | typeof DEEP {
@@ -516,11 +517,14 @@ function collect(name: string, depth: number, out: Set<string>): boolean | typeo
     if (!part.startsWith('(') || closing(part, 0) !== part.length - 1) return false;
     const inner = part.slice(1, -1);
     if (inner === '') return false;
-    // A nested name has its features counted; anything else is a source that names none.
+    // A nested name has its features counted. Anything else is a source that names none, but
+    // only where the kernel reads none from it either: no colon outside brackets, and not an
+    // edge or vertex name (`featuresOfName` takes features from a name it reads only in part).
     const nested = new Set<string>();
     const r = collect(inner, depth + 1, nested);
     if (r === DEEP) return DEEP;
     if (r === true) for (const f of nested) out.add(f);
+    else if (/^[ev]\[/.test(inner) || splitTop(inner, ':').length > 1) return false;
   }
   return true;
 }
