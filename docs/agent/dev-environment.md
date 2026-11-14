@@ -33,6 +33,27 @@ tools only work on some of them. Notes further down that name a machine apply to
   need be. A hostname in history is a home-network detail (see below).
 - CI uses Node 24 LTS; `engines.node` is `>=24`. Both machines' Node
   versions work.
+- **Vitest's cache keeps `import.meta.glob` lists.** After a pull or rebase
+  that adds files a test globs (a tool's icon, a tooltip clip),
+  `icons.test.tsx` and `demos.test.ts` fail with the new name missing on one
+  side. Delete `node_modules/.vitest-cache` and run them again.
+- **Checking on a real, old GPU** (`scripts/gpu-check.mjs`, #259, ADR-0076): CI
+  and e2e draw with SwiftShader, which never loses a context, so a change to
+  WebGL contexts, render targets or GPU work the page starts by itself is
+  tried on a machine with an old integrated GPU (the first case was an Intel
+  HD Graphics 4000 with Mesa: the browser refuses its contexts antialiasing,
+  and a 4-sample render target lost the context). On that machine start a
+  second Chromium on its desktop session, with a profile of its own:
+  `chromium --user-data-dir=/tmp/gpu-check --remote-debugging-port=9333
+  about:blank`. From the dev machine forward the port here and the dev server
+  there (`ssh -N -L 9333:127.0.0.1:9333 -R 5173:127.0.0.1:5173 <machine>`),
+  then `node scripts/gpu-check.mjs`. It draws a sketch with two dimensions,
+  orbits the Wall bracket and renders a Draft; it prints the GPU and every
+  lost context and exits 1 on a loss (about 2.5 min). Close every page of
+  that browser and restart the dev server after editing a file with a page
+  open: Vite then serves the module under two URLs and module state (the
+  count of lost contexts) is split in two. After two losses in a row Chrome
+  blocks the page for a few minutes; the browser's reload lifts it.
 - **pnpm 12 refuses packages published less than a day or so ago**
   (`minimumReleaseAge`). If an install adds a `minimumReleaseAgeExclude` entry
   to `pnpm-workspace.yaml`, don't keep it: relax the version range (e.g.

@@ -120,6 +120,57 @@ Rejected: turning thumbnails off for a list of GPU names (the list would always
 be behind), and a thumbnail read from the screen's own canvas (it shows the
 grid and the current camera, not the framed model).
 
+## Amendment: the same GPU in Render, and the state after the browser blocks the page (#259, 2026-11-14)
+
+Measured on the same machine through `scripts/gpu-check.mjs` and one-off
+scripts of its kind:
+
+- **Render Picture, Draft** lost its own context 1.8 s after Render and the
+  dialog showed "undefined" (three's read-back rejects with nothing once the
+  context is gone). Its HDR target had 4 samples on a renderer whose context
+  the browser gave no antialiasing.
+- **After two losses in a row** Chrome refused the page every new context with
+  the reason "Web page caused context loss and was blocked" (readable in
+  `webglcontextcreationerror`, fired while `getContext` runs). It gave one
+  again after between one and four and a half minutes, and right after the
+  page was reloaded from the browser (twice). After `location.reload()` it
+  still refused (once).
+- **Orbiting the Wall bracket** drew 150 frames at a median of 1.3 ms, the
+  longest 3.5 ms. The "2-4 fps" in the issue came from reading the frame
+  counter of a view that draws on demand.
+
+Decisions:
+
+- **One rule for every offscreen target: `targetSamples`.** Render's Draft
+  takes its HDR target from `draftTarget` (`render/app/appRenderer.ts`): 4
+  samples, or where antialiasing was refused a plain target of twice the size,
+  which the output pass's linear lookup averages down to the picture (four
+  texels a pixel). A doubled side above 4096 px or the GPU's largest texture
+  keeps the picture's size, with stair-stepped edges. Standard and High trace
+  into targets without samples and were not tried on that machine.
+- **A lost context ends a render with a sentence** (`RESET`), and the renderer
+  is disposed so the next render makes a new one.
+- **A page the browser holds back gets its own panel.** `detectWebgl` reads
+  the browser's reason and reports `{ kind: 'none', blocked: true }`;
+  `heldBack(support, losses)` is true for that or once this page lost a
+  context. `NoWebgl` then draws `ViewPaused` (region "3D view paused",
+  `data-webgl="paused"`): wait a few minutes and try again, or use the
+  browser's reload button. It has no button that reloads the page, since a
+  reload from the page did not lift the block.
+- **Bug reports say it.** The Rendering row adds "no antialiasing" where a
+  default context gets none, and "3D view reset once/twice/N times"
+  (`resetNote`).
+- **No reduced tier for old GPUs.** The issue proposed a lower pixel ratio and
+  cheaper passes for them. The measurement above shows nothing to gain on this
+  one, and it already runs at pixel ratio 1 without antialiasing.
+- **No back-off after a restore.** With the thumbnail gone, nothing draws by
+  itself after a restore. The automatic pictures were the only GPU work the
+  page starts unasked: the other snapshots (agent, bug report) and Render are
+  asked for, and the probes lose their contexts at once.
+- **A check on the real machine before a release** (`scripts/gpu-check.mjs`,
+  `docs/agent/dev-environment.md`): CI draws with SwiftShader and cannot show
+  a driver that loses contexts.
+
 ## Rejected
 
 - **A non-WebGL renderer.** three.js has none, and a 2D/SVG view would be a

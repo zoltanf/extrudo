@@ -129,3 +129,24 @@ test('a lost context shows the reset overlay and clears when restored', async ({
   await page.evaluate('window.__lose.restoreContext()');
   await expect(lostOverlay).toHaveCount(0);
 });
+
+test('a view that cannot be made again after a lost context is paused, not unavailable (#259)', async ({
+  page,
+}) => {
+  const viewport = await openProject(page);
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  // Lose the context, then refuse every new one, as Chrome does for a page it blocked.
+  await page.evaluate(`(() => {
+    document.querySelector('canvas').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+    ${NO_WEBGL}
+  })()`);
+  await page.locator('[data-webgl="lost"]').getByRole('button', { name: 'Reload view' }).click();
+  const paused = page.getByRole('region', { name: '3D view paused' });
+  await expect(paused).toHaveAttribute('data-webgl', 'paused');
+  await expect(
+    paused.getByRole('heading', { name: 'The browser paused the 3D view' }),
+  ).toBeVisible();
+  await expect(paused.getByText("press your browser's reload button")).toBeVisible();
+  await expect(page.getByRole('region', { name: '3D view unavailable' })).toHaveCount(0);
+  await expect(paused.getByRole('button', { name: 'Try again' })).toBeVisible();
+});

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../design-system/Button';
 import { currentSwiftshaderLaunch, gpuPage, type SwiftshaderLaunch } from './swiftshader';
+import { heldBack } from './webglSupport';
 
 /** The launch command for this browser, or undefined (not Chromium, or no desktop OS). */
 function browserLaunch(): SwiftshaderLaunch | undefined {
@@ -47,13 +48,17 @@ export function NoWebgl({
   detail,
   launch = browserLaunch(),
   gpu = browserGpuPage(),
+  paused = heldBack(),
 }: {
   onRetry(): void;
   detail?: string;
   launch?: SwiftshaderLaunch | undefined;
   gpu?: string;
+  /** The browser holds WebGL back from this page after lost contexts (`heldBack`, `ViewPaused`). */
+  paused?: boolean;
 }) {
   const command = launch && 'command' in launch ? launch.command : undefined;
+  if (paused) return <ViewPaused onRetry={onRetry} {...(detail && { detail })} />;
   return (
     <section
       aria-label="3D view unavailable"
@@ -127,6 +132,40 @@ export function NoWebgl({
         <p className="text-muted">
           Your design is safe. The timeline, browser, parameters, customizer and export still work;
           only the picture is missing.
+        </p>
+        {detail && <p className="font-mono text-field text-muted">{detail}</p>}
+        <div>
+          <Button variant="primary" onClick={onRetry}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * In place of the 3D view when the browser holds WebGL back from this page
+ * after lost contexts (`heldBack`, #259): the software-rendering help of
+ * `NoWebgl` does not fit. There is no button that reloads the page: only the
+ * browser's own reload lifts the block, a reload from the page does not.
+ */
+export function ViewPaused({ onRetry, detail }: { onRetry(): void; detail?: string }) {
+  return (
+    <section
+      aria-label="3D view paused"
+      data-webgl="paused"
+      className="absolute inset-0 grid place-items-center overflow-auto p-6 text-ink"
+    >
+      <div className="flex max-w-[34rem] flex-col gap-3 rounded-dialog border border-line bg-raised p-6">
+        <h2 className="text-lg font-semibold">The browser paused the 3D view</h2>
+        <p className="text-muted">
+          The graphics driver reset the 3D view, so the browser holds 3D back from this page for a
+          few minutes.
+        </p>
+        <p className="text-muted">
+          Wait a few minutes and try again, or press your browser's reload button. Your design is
+          safe, and the rest of Extrudo still works.
         </p>
         {detail && <p className="font-mono text-field text-muted">{detail}</p>}
         <div>
