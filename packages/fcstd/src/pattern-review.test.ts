@@ -353,5 +353,6 @@ describe('8. other bodies come out exactly as they were', () => {
     expect(drifts.length).toBeGreaterThan(30);
     for (const v of [summary.volume, summary.area, summary.corner, summary.centre])
       expect(v).toBeLessThanOrEqual(UNTOUCHED_TOLERANCE / 1000);
-  });
+    // About 3 s unloaded (35 imports), which the default 5 s doesn't leave a loaded runner room for.
+  }, 60_000);
 });
