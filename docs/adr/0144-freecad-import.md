@@ -1246,7 +1246,7 @@ The library's largest pattern makes 28 instances.
 
 ### Review round (2026-11-14)
 
-The owner's independent review of the S7 diff found eight things; the rule
+An independent review of the S7 diff found eight things; the rule
 for each, as in S6: a value or a reply the importer can't use is a refusal
 with the right reason before the work it would cause, a limit of ours a clean
 stop. Tests: `pattern-review.test.ts` (18).
