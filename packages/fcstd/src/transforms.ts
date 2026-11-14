@@ -129,6 +129,14 @@ export interface TransformContext {
   readonly originFirst?: boolean;
 }
 
+/** What a transform repeats: features' tools, or (its originals are every feature of the body) the body. */
+export type Repeated =
+  | { readonly features: readonly string[] }
+  | { readonly bodies: readonly string[] };
+
+const objectsOf = (what: Repeated) =>
+  'features' in what ? { features: what.features } : { bodies: what.bodies, join: true };
+
 /** A line as an Extrudo reference, with the direction Extrudo reads from it. */
 interface LineRef {
   readonly ref: GeomRef;
@@ -532,13 +540,13 @@ export class TransformMapper {
     };
   }
 
-  async #linear(features: readonly string[], first: DecodedRow, second: DecodedRow | undefined) {
+  async #linear(what: Repeated, first: DecodedRow, second: DecodedRow | undefined) {
     const a = await this.#row(first, 'direction');
     if ('stop' in a) return a;
     const b = second ? await this.#row(second, 'second direction') : undefined;
     if (b && 'stop' in b) return b;
     const inputs = rectangularPatternInputs({
-      features,
+      ...objectsOf(what),
       direction1: a.ref,
       count1: a.count,
       distance1: a.distance,
@@ -550,7 +558,7 @@ export class TransformMapper {
     return this.#add('rectangularPattern', inputs);
   }
 
-  async #polar(features: readonly string[], s: Extract<DecodedStep, { kind: 'polar' }>) {
+  async #polar(what: Repeated, s: Extract<DecodedStep, { kind: 'polar' }>) {
     const line = await this.line(s.reference, 'axis');
     if ('stop' in line) return line;
     const sense = (dot(line.along, line.fc) < 0 ? -1 : 1) * (s.reversed ? -1 : 1);
@@ -559,7 +567,7 @@ export class TransformMapper {
     const turn = s.measure === 'total' && Math.abs(s.angle) === 360 && s.angle < 0;
     const angle = turn && s.count > 1 ? s.angle / (s.count - 1) : s.angle;
     const inputs = circularPatternInputs({
-      features,
+      ...objectsOf(what),
       axis: line.ref,
       count: `${s.count}`,
       angle: `${literal(sense * angle)} deg`,
@@ -568,14 +576,14 @@ export class TransformMapper {
     return this.#add('circularPattern', inputs);
   }
 
-  async #mirror(
-    features: readonly string[],
-    s: Extract<DecodedStep, { kind: 'mirrored' }>,
-    name?: string,
-  ) {
+  async #mirror(what: Repeated, s: Extract<DecodedStep, { kind: 'mirrored' }>, name?: string) {
     const plane = await this.plane(s.reference);
     if ('stop' in plane) return plane;
-    return this.#add('mirror', mirrorInputs([], plane, { features: [...features] }), name);
+    const inputs =
+      'features' in what
+        ? mirrorInputs([], plane, { features: [...what.features] })
+        : mirrorInputs([...what.bodies], plane, { copy: true, join: true });
+    return this.#add('mirror', inputs, name);
   }
 
   #add(type: string, inputs: unknown, name?: string): { feature: string } | TransformStop {
@@ -589,17 +597,25 @@ export class TransformMapper {
     }
   }
 
-  /** Adds the transform's features (one, or two mirrors for a MultiTransform). */
+  /**
+   * Adds the transform's features: one, or for a MultiTransform of two
+   * mirrors at right angles three (a mirror in each plane and a turn of 180°
+   * about the line where they meet: the diagonal copy). Extrudo's mirror of
+   * a mirror would replay only the first mirror's first tool. `what` is the
+   * originals' features, or the body itself when the originals are every
+   * feature it has (its first feature made the body: there is no tool to
+   * replay).
+   */
   async add(
     t: DecodedTransform,
-    features: readonly string[],
+    what: Repeated,
   ): Promise<{ feature: string; extra?: readonly string[] } | TransformStop> {
-    if (t.kind === 'linear') return this.#linear(features, t.first, t.second);
-    if (t.kind === 'polar') return this.#polar(features, t);
-    if (t.kind === 'mirrored') return this.#mirror(features, t);
+    if (t.kind === 'linear') return this.#linear(what, t.first, t.second);
+    if (t.kind === 'polar') return this.#polar(what, t);
+    if (t.kind === 'mirrored') return this.#mirror(what, t);
     const steps = t.steps;
     const [one, two] = steps as [DecodedStep, DecodedStep | undefined];
-    if (steps.length === 1) return this.add({ ...t, ...one } as DecodedTransform, features);
+    if (steps.length === 1) return this.add({ ...t, ...one } as DecodedTransform, what);
     if (
       steps.length === 2 &&
       one.kind === 'linear' &&
@@ -607,16 +623,30 @@ export class TransformMapper {
       !one.second &&
       !two.second
     )
-      return this.#linear(features, one.first, two.first);
+      return this.#linear(what, one.first, two.first);
     if (steps.length === 2 && one.kind === 'mirrored' && two?.kind === 'mirrored') {
-      const square = await this.#square(one, two);
-      if (square !== true) return square;
-      // The second mirror takes the first among its features: its copy's mirror is the diagonal one.
-      const first = await this.#mirror(features, one, `${this.#c.name} (1)`);
+      const meet = this.#square(one, two);
+      if ('stop' in meet) return meet;
+      const first = await this.#mirror(what, one, `${this.#c.name} (1)`);
       if ('stop' in first) return first;
-      const second = await this.#mirror([...features, first.feature], two, `${this.#c.name} (2)`);
+      const second = await this.#mirror(what, two, `${this.#c.name} (2)`);
       if ('stop' in second) return second;
-      return { feature: second.feature, extra: [first.feature] };
+      // A body mirrored with its copy fused in: the second mirror already has the diagonal.
+      if ('bodies' in what) return { feature: second.feature, extra: [first.feature] };
+      const axis = this.#originAxis(meet) ?? { ref: this.#axisOf(meet) };
+      const turn = this.#add(
+        'circularPattern',
+        circularPatternInputs({
+          ...objectsOf(what),
+          axis: axis.ref,
+          count: '2',
+          angle: '180 deg',
+          measure: 'total',
+        }),
+        `${this.#c.name} (3)`,
+      );
+      if ('stop' in turn) return turn;
+      return { feature: turn.feature, extra: [first.feature, second.feature] };
     }
     return {
       stop: 'multi-transform',
@@ -624,33 +654,40 @@ export class TransformMapper {
     };
   }
 
-  /** Two mirror planes at right angles, worked out from the file where it can. */
-  async #square(
+  /** Two mirror planes at right angles, worked out from the file: the line where they meet. */
+  #square(
     a: Extract<DecodedStep, { kind: 'mirrored' }>,
     b: Extract<DecodedStep, { kind: 'mirrored' }>,
-  ): Promise<true | TransformStop> {
-    const n = (r: DecodedReference): Vec3 | undefined => {
-      if (r.kind === 'origin-plane')
-        return ORIGIN_PLANES.find((p) => p.id === `origin:${r.plane}`)?.frame.normal as Vec3;
+  ): Line | TransformStop {
+    const plane = (r: DecodedReference): Plane | undefined => {
+      if (r.kind === 'origin-plane') {
+        const n = ORIGIN_PLANES.find((p) => p.id === `origin:${r.plane}`)?.frame.normal as Vec3;
+        return { origin: [0, 0, 0], normal: n };
+      }
       if (r.kind === 'sketch-axis') {
         const f = this.#frame(r.sketch);
-        return r.axis === 'n' ? f.n : r.axis === 'h' ? f.y : f.x;
+        return { origin: f.origin, normal: r.axis === 'n' ? f.n : r.axis === 'h' ? f.y : f.x };
       }
       if (r.kind === 'sketch-line') {
         const l = this.#sketchLine(r.sketch, r.geometry);
-        return 'stop' in l ? undefined : cross(l.direction, this.#frame(r.sketch).n);
+        if ('stop' in l) return undefined;
+        return { origin: l.origin, normal: unit(cross(l.direction, this.#frame(r.sketch).n)) };
       }
       return undefined;
     };
-    const na = n(a.reference);
-    const nb = n(b.reference);
-    if (!na || !nb)
+    const pa = plane(a.reference);
+    const pb = plane(b.reference);
+    if (!pa || !pb)
       return {
         stop: 'multi-transform',
         detail: 'its two mirror planes are not both sketch or origin planes',
       };
-    if (Math.abs(dot(unit(na), unit(nb))) > PARALLEL)
+    const na = unit(pa.normal);
+    const nb = unit(pb.normal);
+    if (Math.abs(dot(na, nb)) > PARALLEL)
       return { stop: 'multi-transform', detail: 'its two mirror planes are not at right angles' };
-    return true;
+    // Planes n·x = h square to each other meet in the line through h₁n₁ + h₂n₂ along n₁ × n₂.
+    const origin = add(scale(na, dot(pa.origin, na)), scale(nb, dot(pb.origin, nb)));
+    return { origin, direction: unit(cross(na, nb)) };
   }
 }

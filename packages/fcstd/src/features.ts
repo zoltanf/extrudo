@@ -647,11 +647,12 @@ export const MAX_ORIGINALS = 100;
 /**
  * The most instances one transform may make, originals counted in: its
  * instances (both directions, every step of a MultiTransform multiplied)
- * times its originals. Extrudo's own pattern makes at most 1,000
- * (`MAX_PATTERN_INSTANCES`); the measured worst case at this cap is in
- * ADR-0144's S7 amendment.
+ * times its originals. Half of what Extrudo's own pattern makes
+ * (`MAX_PATTERN_INSTANCES`, 1,000): measured at 1,000 overlapping pockets
+ * round a turn the import took 55 s, next to the 60 s a kernel call may take;
+ * at 500 it took 22 s (ADR-0144's S7 amendment). The library's largest is 28.
  */
-export const MAX_TRANSFORM_INSTANCES = 1_000;
+export const MAX_TRANSFORM_INSTANCES = 500;
 /** The most steps a MultiTransform may have, checked before any is looked at. */
 export const MAX_TRANSFORM_STEPS = 16;
 

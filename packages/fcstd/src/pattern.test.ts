@@ -146,7 +146,8 @@ describe('references', () => {
     // The plane through the sketch's V axis square to it: a plane at 90° about the drawn line.
     ['mirrored_v_axis', 'planeAtAngle', 1],
     ['mirrored_h_axis', 'planeAtAngle', 1],
-    ['multi_mirror_mirror', 'planeAtAngle', 2],
+    // Two planes at 90° about the drawn lines, and the line where they meet through two points.
+    ['multi_mirror_mirror', 'planeAtAngle', 5],
   ])('without the origin shortcut %s makes a %s and still holds', async (name, type, count) => {
     const { body, features } = await runPart(name, {}, { originFirst: false });
     expect(body?.stop).toBeUndefined();
@@ -154,12 +155,32 @@ describe('references', () => {
     expect(body?.mapped.at(-1)?.constructions).toBe(count);
   });
 
-  it('MultiTransform mirror then mirror is two mirrors, the second repeating the first', async () => {
-    const { body, design } = await runPart('multi_mirror_mirror');
-    const last = body?.mapped.at(-1);
-    expect(last?.extra).toHaveLength(1);
-    const second = design.doc.features.find((x) => x.id === last?.feature);
-    expect(JSON.stringify(second?.inputs)).toContain(`"id":"${last?.extra?.[0]}"`);
+  it('MultiTransform mirror then mirror is a mirror in each plane and a half turn about where they meet', async () => {
+    const { body, features } = await runPart('multi_mirror_mirror');
+    expect(body?.mapped.at(-1)?.extra).toHaveLength(2);
+    expect(features.slice(-3)).toEqual([
+      'mirror MultiTransform (1)',
+      'mirror MultiTransform (2)',
+      'circularPattern MultiTransform (3)',
+    ]);
+  });
+
+  it('a mirror of every feature so far, the first included, mirrors the body itself', async () => {
+    // The plate is symmetric in the plane, so its mirror and the boss's are the stored shape.
+    const { body, design } = await runPart('mirrored_pad', {
+      Mirrored: { props: { Originals: P.list(['Pad', 'Boss']) } },
+    });
+    expect(body?.stop).toBeUndefined();
+    const f = design.doc.features.find((x) => x.id === body?.mapped.at(-1)?.feature);
+    expect(JSON.stringify(f?.inputs)).toMatch(/"kind":"body"/);
+  });
+
+  it('the first feature among some but not all of the features is refused', async () => {
+    const { body } = await runPart('linear_pad_and_pocket', {
+      LinearPattern: { props: { Originals: P.list(['Pad', 'Pocket']) } },
+    });
+    expect(body?.stop).toMatchObject({ object: 'LinearPattern', reason: 'original' });
+    expect(body?.stop?.detail).toMatch(/starts from/);
   });
 
   it('a face that a later feature changed has no counterpart: the history stops there', async () => {

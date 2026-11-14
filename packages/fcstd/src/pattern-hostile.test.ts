@@ -43,7 +43,7 @@ describe('numbers a file holds', () => {
   it.each([
     ['0', 'value', /Occurrences of 0/],
     ['-1', 'value', /Occurrences of -1/],
-    ['1000000000', 'limit', /more than 1000/],
+    ['1000000000', 'limit', /more than 500/],
     ['2.5', 'value', /Occurrences can't be read/],
     ['nan', 'value', /Occurrences can't be read/],
   ])('Occurrences %s stops with %s', async (v, reason, detail) => {
@@ -74,7 +74,7 @@ describe('numbers a file holds', () => {
   it('a pattern of more instances than the cap is a clean stop before the kernel', async () => {
     const before = base.restarts;
     const { body } = await run('linear_two_directions', {
-      LinearPattern: { props: { Occurrences: integer('40'), Occurrences2: integer('26') } },
+      LinearPattern: { props: { Occurrences: integer('25'), Occurrences2: integer('21') } },
     });
     expect(body?.stop).toMatchObject({ reason: 'limit' });
     expect(body?.stop?.detail).toMatch(`more than ${MAX_TRANSFORM_INSTANCES}`);
@@ -83,10 +83,10 @@ describe('numbers a file holds', () => {
 
   it('two originals count twice towards the cap', async () => {
     const { body } = await run('linear_pad_and_pocket', {
-      LinearPattern: { props: { Occurrences: integer('501') } },
+      LinearPattern: { props: { Occurrences: integer('251') } },
     });
     expect(body?.stop).toMatchObject({ reason: 'limit' });
-    expect(body?.stop?.detail).toMatch(/1002 instances/);
+    expect(body?.stop?.detail).toMatch(/502 instances/);
   });
 
   it('a gap of its own, and positions left out, are refused', async () => {

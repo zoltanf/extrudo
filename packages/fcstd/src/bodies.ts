@@ -55,7 +55,7 @@ import { setBodies } from './shapes';
 import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import { containerChain, forgetRemovedPlanes } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
-import { TransformMapper } from './transforms';
+import { type Repeated, TransformMapper } from './transforms';
 
 /** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
 const named = (name: string) => cleanName(name, name);
@@ -677,6 +677,22 @@ export async function importBodies(
         stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
         return;
       }
+      // The body's first feature made the body: Extrudo has no tool of it to replay. When the
+      // originals are every feature so far, the body itself is what is repeated (joined).
+      const first = mapped[0]?.feature;
+      let what: Repeated = { features: ids };
+      if (first !== undefined && ids.includes(first)) {
+        const all = new Set(mapped.map((m) => m.feature));
+        if (ids.length !== all.size || !ids.every((id) => all.has(id))) {
+          stop(
+            f,
+            'original',
+            `it repeats ${named(mapped[0]?.object ?? '')}, the feature its body starts from, with others but not all of them`,
+          );
+          return;
+        }
+        what = { bodies: [...mine] };
+      }
       const walkedNames = new Set(features.slice(0, i).map((x) => x.name));
       const own = new Set(mapped.map((m) => m.feature));
       await holdAll(
@@ -698,7 +714,7 @@ export async function importBodies(
               name: cleanName(f.label, f.name),
               ...(options.originFirst === false ? { originFirst: false } : {}),
             });
-            const added = await mapper.add(feature, ids);
+            const added = await mapper.add(feature, what);
             const references = mapper.references;
             if ('stop' in added)
               return {
@@ -759,6 +775,8 @@ export async function importBodies(
     /** Why one attempt at a feature didn't hold. */
     type Failure = {
       reason: HistoryStop;
+      /** Not a reading of the file a second attempt could change (another body touched). */
+      final?: true;
       detail?: string;
       drift?: Drift;
       references?: ReferenceTally;
@@ -837,9 +855,17 @@ export async function importBodies(
             if (was === undefined) continue;
             const is = r.bodies.get(id);
             if (!r.ids.includes(id) || is === undefined)
-              return { reason: 'differs', detail: 'it took away a body of another FreeCAD body' };
+              return {
+                reason: 'differs',
+                detail: 'it took away a body of another FreeCAD body',
+                final: true,
+              };
             if (historyDisagreement(is, was))
-              return { reason: 'differs', detail: 'it changed a body of another FreeCAD body' };
+              return {
+                reason: 'differs',
+                detail: 'it changed a body of another FreeCAD body',
+                final: true,
+              };
           }
         }
         const rebuiltBody = combined(measures as ShapeMeasure[]);
@@ -908,7 +934,12 @@ export async function importBodies(
           k > 0,
         );
         if (!failed) return;
-        if (failed.reason === 'differs' && k + 1 < attempts.length && !budget.broken) {
+        if (
+          failed.reason === 'differs' &&
+          !failed.final &&
+          k + 1 < attempts.length &&
+          !budget.broken
+        ) {
           secondAttempts++;
           continue;
         }
