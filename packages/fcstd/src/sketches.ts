@@ -25,6 +25,7 @@ import type { FcDocument, FcObject } from './model';
 import { type DecodedSketch, decodeSketch, GEO_UNDEF } from './sketch-decode';
 import {
   type ConstraintOutcome,
+  type DimensionTransform,
   type ExternalPlan,
   type LeftOut,
   mapSketch,
@@ -121,6 +122,9 @@ export type AddSketchResult =
       readonly plane: GeomRef;
       /** The projections it got (S9). */
       readonly projected: readonly ProjectedEntity[];
+      /** S10: the Extrudo dimension each FreeCAD constraint became, by index, and how its value is the constraint's. */
+      readonly dimensions: readonly (string | undefined)[];
+      readonly transforms: readonly (DimensionTransform | undefined)[];
     }
   | { readonly imported: false; readonly reason: string; readonly outcome: SketchOutcome };
 
@@ -139,6 +143,10 @@ export interface AddSketchOptions {
   readonly external?: ReadonlyMap<number, ExternalPlan>;
   /** Why each named external curve not planned stays out (S9's fix round), for the report. */
   readonly externalCauses?: ReadonlyMap<number, ExternalCause>;
+  /** S10: the Extrudo names of its named driving constraints, by index (the import's name rule). */
+  readonly names?: ReadonlyMap<number, string>;
+  /** S10: names its other driving dimensions (the import's `dN`). */
+  readonly freeName?: () => string;
 }
 
 /** The document's sketch objects, in document order. */
@@ -295,6 +303,8 @@ export function addSketch(
           ...(options.solver ? { solver: options.solver } : {}),
           ...(options.axes ? { axes: options.axes } : {}),
           ...(options.external ? { external: options.external } : {}),
+          ...(options.names ? { names: options.names } : {}),
+          ...(options.freeName ? { freeName: options.freeName } : {}),
         });
       },
       { name: options.name ?? object.label },
@@ -336,6 +346,8 @@ export function addSketch(
       centres: mapped?.centres ?? [],
       projected: mapped?.projected ?? [],
       plane: where.plane,
+      dimensions: mapped?.dimensions ?? [],
+      transforms: mapped?.transforms ?? [],
     };
   } catch (error) {
     return {

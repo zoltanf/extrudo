@@ -78,10 +78,18 @@ export type Resolver = (
  */
 export type EmitTarget =
   | { readonly mode: 'quantity' | 'constraint' | 'parameter'; readonly dim: ExDim }
-  | { readonly mode: 'count' };
+  | { readonly mode: 'count' }
+  /** Whatever it computes, as it comes (for the dimensions of a formula). */
+  | { readonly mode: 'any' };
 
 export type EmitResult =
-  | { readonly ok: true; readonly text: string; readonly fc: FcDim }
+  | {
+      readonly ok: true;
+      readonly text: string;
+      /** The value's dimension in FreeCAD, and the text's in Extrudo. */
+      readonly fc: FcDim;
+      readonly ex: ExDim;
+    }
   | { readonly ok: false; readonly reason: ExpressionReason; readonly detail: string };
 
 /** The longest Extrudo text the emitter writes (`%` repeats its operands). */
@@ -241,7 +249,8 @@ export function emitExtrudo(node: FcNode, resolve: Resolver, target: EmitTarget)
     const p = emit(node, resolve);
     checkFc(p.fc);
     let out: Piece;
-    if (target.mode === 'count') {
+    if (target.mode === 'any') out = p;
+    else if (target.mode === 'count') {
       if (!isNone(p.fc)) refuse('unit', 'a count gets a value with a unit');
       out = plain(p);
     } else if (target.mode === 'constraint') {
@@ -252,7 +261,7 @@ export function emitExtrudo(node: FcNode, resolve: Resolver, target: EmitTarget)
         refuse('unit', 'it computes a value of another unit than what it sets');
       out = toEx(p, target.dim);
     }
-    return { ok: true, text: out.text, fc: p.fc };
+    return { ok: true, text: out.text, fc: p.fc, ex: exOf(out) };
   } catch (error) {
     if (error instanceof Refusal) return { ok: false, reason: error.reason, detail: error.detail };
     throw error;

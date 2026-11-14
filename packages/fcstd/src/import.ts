@@ -10,13 +10,17 @@
 import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
+import { Binder } from './bind';
 import { type BodyHistory, bodyChain, importBodies } from './bodies';
 import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
 import { readFcstd } from './model';
 import { cleanName } from './names';
+import { type ParametersReport, parametersReport } from './parameters-report';
+import { prepareParameters } from './params';
 import { type ImportedShape, importShapes, type LeftOutShape, setBodies } from './shapes';
+import { releasePlane } from './sketch-place';
 
 /**
  * The most a `.FCStd` file may be before it is read: the import holds the
@@ -52,6 +56,9 @@ export interface FcstdImportOptions {
   readonly maxStepTextBytes?: number;
   /** ADR-0066's 100 MB of attachments per design, for tests (the steps and the shapes import alike). */
   readonly maxAttachmentsBytes?: number;
+  /** S10's `MAX_IMPORT_PARAMETERS` and `MAX_IMPORT_EXPRESSIONS`, for tests. */
+  readonly maxParameters?: number;
+  readonly maxExpressions?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -81,6 +88,8 @@ export interface FcstdImportReport {
   readonly restarts: number;
   /** Each PartDesign body, in document order: what came in with its history and where it stopped. */
   readonly bodies: readonly BodyImport[];
+  /** The file's parameters and expressions (S10): what came in, and every expression's outcome. */
+  readonly parameters: ParametersReport;
 }
 
 export interface FcstdImportResult {
@@ -108,6 +117,12 @@ export async function importFcstd(
     ...(options.id ? { id: options.id as never } : {}),
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   });
+  // S10: the file's parameters, before the first sketch or feature, in one undo step.
+  const prepared = prepareParameters(doc, design, {
+    ...(options.maxParameters !== undefined ? { maxParameters: options.maxParameters } : {}),
+    ...(options.maxExpressions !== undefined ? { maxExpressions: options.maxExpressions } : {}),
+  });
+  const binder = new Binder(design, prepared, (plane) => releasePlane(design, plane));
   const budget = new KernelBudget(options.kernel, options);
   // Progress: each feature the walk takes, then each shape converted.
   const steps = shapes.reduce((n, s) => {
@@ -130,6 +145,7 @@ export async function importFcstd(
       ? { maxAttachmentsBytes: options.maxAttachmentsBytes }
       : {}),
     budget,
+    binder,
     ...(options.solver ? { solver: options.solver } : {}),
     ...(options.maxBodyFeatures !== undefined ? { maxBodyFeatures: options.maxBodyFeatures } : {}),
     ...(options.maxFileFeatures !== undefined ? { maxFileFeatures: options.maxFileFeatures } : {}),
@@ -137,6 +153,7 @@ export async function importFcstd(
     ...(options.onUntouched ? { onUntouched: options.onUntouched } : {}),
     onStep: () => options.onProgress?.(++walked, steps + shapes.length),
   });
+  binder.finish();
   const complete = new Set(histories.filter((h) => !h.stop).map((h) => h.object));
   const rest = shapes.filter((s) => !(s.kind === 'body' && complete.has(s.object.name)));
   const removesAt = design.doc.features.length;
@@ -186,6 +203,7 @@ export async function importFcstd(
       linkArrays,
       restarts: budget.restarts,
       bodies,
+      parameters: parametersReport(prepared, binder),
     },
   };
 }
