@@ -16,16 +16,20 @@
  */
 import type { Design, SketchHandle } from '@extrudo/api';
 import {
+  type AttachmentId,
   extrudeInputs,
   type FeatureId,
   type GeomRef,
+  importInputs,
   profileRefId,
+  removeAttachment,
   revolveInputs,
   type SketchEntityId,
   sketchEntityRefId,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon } from '@extrudo/sketch/profiles';
+import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import type { CallOutcome, KernelBudget } from './budget';
 import {
   combined,
@@ -60,7 +64,7 @@ import {
   storedShapeText,
 } from './model';
 import { cleanName, clip } from './names';
-import { setBodies } from './shapes';
+import { addStepAttachment, attachmentBytes, convertStored, setBodies } from './shapes';
 import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import { containerChain, forgetRemovedPlanes } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
@@ -84,6 +88,20 @@ export const MAX_FILE_FEATURES = 2_000;
 export const MAX_PROFILE_CURVES = 500;
 /** The most closed regions a profile sketch may have for its faces to be picked (each pick tests every region). */
 export const MAX_PROFILE_REGIONS = 1_000;
+/**
+ * The most stored-shape steps one body may take (S8). Each step is a whole
+ * body's STEP in the design and a conversion; the library's most is in
+ * ADR-0144's S8 amendment. Past it the body ends as it did before S8: its
+ * final shape comes in, with `limit`.
+ */
+export const MAX_BODY_STEPS = 8;
+/**
+ * The most stored-shape text the steps of one import may convert in all (S8):
+ * a run whose features each fail after their base came in converts once per
+ * feature tried, so this bounds the work by the input, not only by the clock
+ * (each text is at most `MAX_STORED_BREP_BYTES`, 32 MB).
+ */
+export const MAX_STEP_TEXT_BYTES = 256 * 1024 * 1024;
 /** The most bodies one rebuild may answer with: more means the kernel read something it shouldn't have. */
 export const MAX_REBUILD_BODIES = 100_000;
 
@@ -142,6 +160,36 @@ export interface MappedFeature {
   readonly centres?: number;
 }
 
+/** A FreeCAD feature named in the report: internal name, cleaned label, type. */
+export interface FeatureNamed {
+  readonly object: string;
+  readonly name: string;
+  readonly type: string;
+}
+
+/**
+ * A stored-shape step (S8): a run of features that didn't hold, after which
+ * the stored shape of the run's last feature took the body's place (one
+ * Remove of what was rebuilt, one `import` of that shape) and the walk went
+ * on from it.
+ */
+export interface HistoryStep {
+  /** The run's features, in order: the first didn't hold for `reason`, the rest didn't either or weren't tried. */
+  readonly features: readonly FeatureNamed[];
+  readonly reason: HistoryStop;
+  readonly detail?: string;
+  readonly drift?: Drift;
+  readonly references?: ReferenceTally;
+  /** The FreeCAD feature whose stored shape the `import` holds (the run's last). */
+  readonly shape: string;
+  /** The `import` feature. */
+  readonly feature: string;
+  /** The Remove that took out the body's Extrudo bodies before the step; none when it had none. */
+  readonly remove?: string;
+  /** How many of `mapped` came before the step (they stay in the timeline but no longer shape the body). */
+  readonly after: number;
+}
+
 /** What happened to one PartDesign body. */
 export interface BodyHistory {
   /** The body's internal name and its name in the design. */
@@ -168,6 +216,10 @@ export interface BodyHistory {
   readonly sketches: readonly SketchOutcome[];
   /** Features tried a second time after the first failed the check with `differs` (S7). */
   readonly secondAttempts: number;
+  /** The stored-shape steps the body took, in order (S8). */
+  readonly steps: readonly HistoryStep[];
+  /** How many features held after its last step (all of `mapped` when it took none). */
+  readonly heldAfterLastStep: number;
 }
 
 export interface BodyWalkOptions {
@@ -186,6 +238,25 @@ export interface BodyWalkOptions {
   readonly originFirst?: boolean;
   /** Hears how far each other body moved between two rebuilds (tests and the library run). */
   readonly onUntouched?: (d: Drift) => void;
+  /** `MAX_BODY_STEPS` and `MAX_STEP_TEXT_BYTES`, for tests. */
+  readonly maxSteps?: number;
+  readonly maxStepTextBytes?: number;
+  /** Receives the bytes of the attachments the steps add (S8): the caller writes them with the design. */
+  readonly files?: Map<AttachmentId, Uint8Array>;
+}
+
+/** Reasons that end a body however its features go on: its chain, the walk's limits, the budget (S8). */
+const ENDS_BODY: ReadonlySet<HistoryStop> = new Set(['chain', 'restarts', 'import-time']);
+
+/** The attachments the design's `import` features use. */
+function importFiles(design: Design): Set<string> {
+  const out = new Set<string>();
+  for (const f of design.doc.features)
+    if (f.type === 'import') {
+      const file = (f.inputs as { file?: { id?: unknown } }).file?.id;
+      if (typeof file === 'string') out.add(file);
+    }
+  return out;
 }
 
 /** A body's chain of solid features up to its tip, following `BaseFeature`, or why there is none. */
@@ -441,6 +512,11 @@ export async function importBodies(
   const { budget } = options;
   const maxBody = options.maxBodyFeatures ?? MAX_BODY_FEATURES;
   const maxFile = options.maxFileFeatures ?? MAX_FILE_FEATURES;
+  const maxSteps = options.maxSteps ?? MAX_BODY_STEPS;
+  const maxStepText = options.maxStepTextBytes ?? MAX_STEP_TEXT_BYTES;
+  const files = options.files ?? new Map<AttachmentId, Uint8Array>();
+  /** The stored-shape text the steps converted so far, in all. */
+  let stepText = 0;
   const histories: BodyHistory[] = [];
   /** Every Extrudo body the last rebuild had. */
   let known: string[] = [];
@@ -480,15 +556,29 @@ export async function importBodies(
     const mappedBy = new Map<string, { feature: string; kind: FeatureKind }>();
     /** The sketch axes a transform of this body names, drawn when their sketch comes in (S7). */
     const wantedAxes = axesWanted(doc, features, maxBody);
-    /** The one place that decides where a body's history stops (S8 carries on instead). */
+    /** The stored-shape steps taken (S8), and the run of features that didn't hold since the last feature that did. */
+    const taken: StepState[] = [];
+    let run: Run | undefined;
+    /** The feature that made the body (`new-body`) before any step: a transform repeating it repeats the body (S7). */
+    let bodyMaker: string | undefined;
+    /** Whether the feature being walked has been accounted for (held, failed or joined a run). */
+    let noted = false;
+    /**
+     * The one place that decides what happens when a feature doesn't hold
+     * (S8): it joins the run of features that didn't, whose last stored shape
+     * stands in once a feature after it is tried (`ensureBase`). Its chain,
+     * the walk's limits and the budget (`end`, `ENDS_BODY`) end the body.
+     */
     const stop = (
       o: FcObject | undefined,
       reason: HistoryStop,
       detail?: string,
       off?: Drift,
       references?: ReferenceTally,
+      end = false,
     ) => {
-      stopped = {
+      noted = true;
+      const record: NonNullable<BodyHistory['stop']> = {
         object: o?.name ?? body.name,
         type: o?.type ?? body.type,
         reason,
@@ -496,10 +586,31 @@ export async function importBodies(
         ...(off ? { drift: off } : {}),
         ...(references ? { references } : {}),
       };
+      if (end || !o || ENDS_BODY.has(reason)) {
+        stopped = record;
+        return;
+      }
+      if (run) {
+        run.features.push(o);
+        run.pending = true;
+      } else run = { features: [o], first: record, pending: true };
     };
     if ('broken' in chain) stop(undefined, 'chain', chain.broken);
     /** The sketches imported for this body's kept features, by FreeCAD name. */
     const sketches = new Map<string, Extract<AddSketchResult, { imported: true }>>();
+    /**
+     * The Extrudo features that shape the body now, which a reference must
+     * name one of: the last step's `import` and the features that held after
+     * it (every mapped feature before any step). A superseded step's and the
+     * features before the last step don't count (S8).
+     */
+    const own = (): Set<string> => {
+      const last = taken.at(-1);
+      return new Set([
+        ...(last ? [last.feature] : []),
+        ...mapped.slice(last?.after ?? 0).map((m) => m.feature),
+      ]);
+    };
 
     /** One feature: mapped, rebuilt and checked, or `stop` called. */
     const walk = async (f: FcObject, i: number): Promise<void> => {
@@ -527,6 +638,8 @@ export async function importBodies(
         stop(f, decoded.reason, decoded.detail);
         return;
       }
+      // A feature about to be tried after a run: the run's stored shape comes in first (S8).
+      if (!(await ensureBase(f))) return;
       const feature = decoded.feature;
       if (feature.kind === 'fillet' || feature.kind === 'chamfer') {
         await walkDressUp(f, feature, frame.chain);
@@ -701,9 +814,18 @@ export async function importBodies(
       }
       // The body's first feature made the body: Extrudo has no tool of it to replay. When the
       // originals are every feature so far, the body itself is what is repeated (joined).
-      const first = mapped[0]?.feature;
+      const first = bodyMaker;
       let what: Repeated = { features: ids };
       if (first !== undefined && ids.includes(first)) {
+        // After a step the body is the stored shape's, not the first feature's (S8).
+        if (taken.length > 0) {
+          stop(
+            f,
+            'original',
+            `it repeats ${named(mapped[0]?.object ?? '')}, the feature its body started from, and a stored shape has taken the body's place since`,
+          );
+          return;
+        }
         const all = new Set(mapped.map((m) => m.feature));
         if (ids.length !== all.size || !ids.every((id) => all.has(id))) {
           stop(
@@ -716,7 +838,6 @@ export async function importBodies(
         what = { bodies: [...mine] };
       }
       const walkedNames = new Set(features.slice(0, i).map((x) => x.name));
-      const own = new Set(mapped.map((m) => m.feature));
       await holdAll(
         f,
         chain,
@@ -731,7 +852,7 @@ export async function importBodies(
               sketches,
               sketchOf,
               mine,
-              own,
+              own: own(),
               walked: walkedNames,
               name: cleanName(f.label, f.name),
               ...(options.originFirst === false ? { originFirst: false } : {}),
@@ -772,7 +893,6 @@ export async function importBodies(
         stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
         return;
       }
-      const own = new Set(mapped.map((m) => m.feature));
       await holdAll(f, chain, feature, [
         async () => {
           const added = await addDressUp(design, feature, {
@@ -780,7 +900,7 @@ export async function importBodies(
             baseText: baseStored.text,
             chain,
             mine,
-            own,
+            own: own(),
             name: cleanName(f.label, f.name),
           });
           return 'stop' in added
@@ -811,16 +931,58 @@ export async function importBodies(
      * so the other FreeCAD bodies' Extrudo bodies are measured too and must be
      * as they were. Returns why it didn't hold, or nothing when it held.
      */
-    const hold = async (
+    const hold = (
       f: FcObject,
       chain: readonly FcPlacement[],
       feature: DecodedFeature,
       add: () => Promise<Added>,
       others: boolean,
       second: boolean,
+    ): Promise<Failure | undefined> =>
+      check(f, chain, add, others, (added, d) => {
+        if (run?.pending) throw new Error('a feature held on a run whose shape had not come in');
+        // A feature held: the run before it (if any) is over, its step stays.
+        run = undefined;
+        if (mine.length === 0 && taken.length === 0) bodyMaker ??= added.feature;
+        if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
+        mappedBy.set(f.name, { feature: added.feature, kind: feature.kind });
+        mapped.push({
+          object: f.name,
+          kind: feature.kind,
+          feature: added.feature,
+          ...(added.sketch !== undefined ? { sketch: added.sketch } : {}),
+          ...(added.references ? { references: added.references } : {}),
+          sources: feature.sources,
+          ...expressionsOf(f, feature.sources),
+          drift: d,
+          ...(added.extra ? { extra: added.extra } : {}),
+          ...(added.constructions ? { constructions: added.constructions } : {}),
+          ...(added.centres !== undefined ? { centres: added.centres } : {}),
+          ...(added.threadLost ? { threadLost: true as const } : {}),
+          ...(second ? { secondAttempt: true as const } : {}),
+        });
+      });
+
+    /**
+     * Adds what `add` adds in one transaction, rebuilds, and keeps it only
+     * when the FreeCAD body's rebuilt bodies measure as `f`'s stored shape
+     * (`measured`, else measured here from the text). `others`: the other
+     * FreeCAD bodies' Extrudo bodies are measured too and must be as they
+     * were. `held` hears what was kept. Returns why it didn't hold, or
+     * nothing when it held. A feature (`hold`) and a stored-shape step
+     * (`applyStep`) are kept by this one check.
+     */
+    const check = async (
+      f: FcObject,
+      chain: readonly FcPlacement[],
+      add: () => Promise<Added>,
+      others: boolean,
+      held: (added: Extract<Added, { feature: string }>, d: Drift) => void,
+      measured?: ShapeMeasure,
+      file?: () => { id: AttachmentId; bytes: Uint8Array } | undefined,
     ): Promise<Failure | undefined> => {
-      const stored = storedText(doc, f);
-      if (!('text' in stored)) return { reason: 'stored', detail: stored.detail };
+      const stored = measured ? undefined : storedText(doc, f);
+      if (stored && !('text' in stored)) return { reason: 'stored', detail: stored.detail };
 
       // Everything this feature adds is one transaction, taken back if it doesn't hold.
       const before = new Set(design.doc.features.map((x) => x.id));
@@ -828,16 +990,19 @@ export async function importBodies(
       let committed = false;
       try {
         const added = await add();
+        const adding = file?.();
         if ('stop' in added)
           return {
             reason: added.stop,
             detail: added.detail,
             ...(added.references ? { references: added.references } : {}),
           };
-        const measuredStored = await budget.call(
-          () => budget.kernel.measureStoredShape(stored.text, chain),
-          saneMeasure,
-        );
+        const measuredStored: CallOutcome<ShapeMeasure> = measured
+          ? { kind: 'done', value: measured }
+          : await budget.call(
+              () => budget.kernel.measureStoredShape((stored as { text: string }).text, chain),
+              saneMeasure,
+            );
         if (measuredStored.kind !== 'done')
           return {
             reason: callStop(measuredStored),
@@ -852,7 +1017,10 @@ export async function importBodies(
           () => {
             const sent = design.toJSON();
             sentFeatures = new Set(sent.features.map((x) => x.id));
-            return budget.kernel.rebuild(sent, new Map(), skip);
+            // The steps' files so far, and the one the step at hand adds (S8).
+            const sending = new Map(files);
+            if (adding) sending.set(adding.id, adding.bytes);
+            return budget.kernel.rebuild(sent, sending, skip);
           },
           (reply: unknown): reply is RebuildResult =>
             saneRebuild(reply, sentFeatures) !== undefined,
@@ -903,27 +1071,11 @@ export async function importBodies(
           };
         design.state.commitTransaction();
         committed = true;
+        held(added, drift(rebuiltBody, measuredStored.value));
         restartsAtHold = budget.restarts;
         known = [...r.ids];
         mine = now;
         for (const id of now) lastMeasures.set(id, r.bodies.get(id) as ShapeMeasure);
-        if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
-        mappedBy.set(f.name, { feature: added.feature, kind: feature.kind });
-        mapped.push({
-          object: f.name,
-          kind: feature.kind,
-          feature: added.feature,
-          ...(added.sketch !== undefined ? { sketch: added.sketch } : {}),
-          ...(added.references ? { references: added.references } : {}),
-          sources: feature.sources,
-          ...expressionsOf(f, feature.sources),
-          drift: drift(rebuiltBody, measuredStored.value),
-          ...(added.extra ? { extra: added.extra } : {}),
-          ...(added.constructions ? { constructions: added.constructions } : {}),
-          ...(added.centres !== undefined ? { centres: added.centres } : {}),
-          ...(added.threadLost ? { threadLost: true as const } : {}),
-          ...(second ? { secondAttempt: true as const } : {}),
-        });
         return undefined;
       } finally {
         if (!committed) {
@@ -972,10 +1124,171 @@ export async function importBodies(
       }
     };
 
+    /**
+     * Before a feature after a run is tried: the run's last stored shape takes
+     * the body's place (`applyStep`). True when it did (or there was no run);
+     * false when `f` joined the run untried (that shape can't come in, so the
+     * run reaches on to the next feature whose shape can) or the body ended.
+     */
+    const ensureBase = async (f: FcObject): Promise<boolean> => {
+      if (!run?.pending) return true;
+      const outcome = await applyStep(run);
+      if (outcome === 'held') return true;
+      noted = true;
+      if (outcome === 'out') run.features.push(f);
+      return false;
+    };
+
+    /** Ends the body for a reason no step can carry it over (S8's caps, the budget). */
+    const endIn = (r: Run, reason: HistoryStop, detail: string): 'ended' => {
+      const first = r.features[0] as FcObject;
+      stop(first, reason, detail, undefined, undefined, true);
+      return 'ended';
+    };
+
+    /**
+     * The stored-shape step (S8): in one transaction, a Remove of the FreeCAD
+     * body's Extrudo bodies so far (none when it has none) and an `import` of
+     * the run's last stored shape, through S3's conversion, checks and
+     * limits; rebuilt, the import must measure as the stored shape does
+     * (S5's tolerances) and the other FreeCAD bodies must be untouched (S7).
+     * A run that already has a step moves it forward instead: its `import`
+     * and attachment are replaced, its Remove stays.
+     */
+    const applyStep = async (r: Run): Promise<'held' | 'out' | 'ended'> => {
+      const target = r.features.at(-1) as FcObject;
+      if (budget.broken) return endIn(r, 'restarts', 'the geometry kernel failed too often');
+      if (budget.left() <= 0) return endIn(r, 'import-time', 'the import ran out of time');
+      if (!r.step && taken.length >= maxSteps)
+        return endIn(r, 'limit', `the body would take more than ${maxSteps} stored-shape steps`);
+      const stored = storedText(doc, target);
+      if (!('text' in stored)) return 'out';
+      if (stepText + stored.text.length > maxStepText)
+        return endIn(
+          r,
+          'limit',
+          `its steps would convert more than ${Math.round(maxStepText / (1024 * 1024))} MB of stored shapes`,
+        );
+      stepText += stored.text.length;
+      const frame = containerChain(doc, target);
+      if (!frame) return 'out';
+      const conv = await convertStored(budget, stored.text, frame.chain);
+      if (conv.kind === 'out') {
+        if (conv.reason === 'restarts' || conv.reason === 'import-time')
+          return endIn(r, conv.reason, conv.detail ?? 'the import ran out of time');
+        return 'out';
+      }
+      const replaced = r.step?.attachment;
+      const existing = Object.entries(design.doc.attachments ?? {}).find(
+        ([id, a]) => a.sha256 === conv.sha256 && id !== replaced,
+      )?.[0] as AttachmentId | undefined;
+      if (
+        existing === undefined &&
+        attachmentBytes(design, replaced) + conv.bytes.length > MAX_ATTACHMENTS_BYTES
+      )
+        return 'out';
+      const label = cleanName(target.label, target.name);
+      const before = { mine: [...mine], known: [...known] };
+      let attachment: AttachmentId | undefined;
+      let remove: string | undefined;
+      let dropped: AttachmentId | undefined;
+      const failure = await check(
+        target,
+        frame.chain,
+        async () => {
+          if (r.step) {
+            // The step moves forward: the run's later shape replaces its import and file.
+            design.remove(r.step.feature);
+            if (!importFiles(design).has(r.step.attachment)) {
+              design.state.dispatch(removeAttachment({ id: r.step.attachment }));
+              dropped = r.step.attachment;
+            }
+          } else if (mine.length > 0)
+            remove = design.add(
+              'remove',
+              { bodies: mine.map((id) => ({ kind: 'body', id })) },
+              { name: `Remove ${name}` },
+            ).id;
+          attachment =
+            existing ??
+            (Object.entries(design.doc.attachments ?? {}).find(
+              ([, a]) => a.sha256 === conv.sha256,
+            )?.[0] as AttachmentId | undefined) ??
+            addStepAttachment(design, label, conv.sha256, conv.bytes.length);
+          const added = design.add('import', importInputs({ file: attachment, up: 'z' }), {
+            name: `Import ${label}`,
+          });
+          return { feature: added.id };
+        },
+        true,
+        (added) => {
+          const a = attachment as AttachmentId;
+          if (dropped !== undefined) files.delete(dropped);
+          if (!files.has(a) && existing === undefined) files.set(a, conv.bytes);
+          const step: StepState = r.step ?? {
+            features: [],
+            first: r.first,
+            feature: '',
+            attachment: a,
+            shape: '',
+            after: mapped.length,
+            before,
+            ...(remove !== undefined ? { remove } : {}),
+          };
+          step.features = [...r.features];
+          step.feature = added.feature;
+          step.attachment = a;
+          step.shape = target.name;
+          if (!r.step) {
+            taken.push(step);
+            r.step = step;
+          }
+          r.pending = false;
+        },
+        conv.read,
+        () =>
+          attachment !== undefined && !files.has(attachment)
+            ? { id: attachment, bytes: conv.bytes }
+            : undefined,
+      );
+      if (!failure) return 'held';
+      if (ENDS_BODY.has(failure.reason))
+        return endIn(r, failure.reason, failure.detail ?? 'the import ran out of time');
+      return 'out';
+    };
+
+    /**
+     * Takes a run's step out again when the run reaches the body's end (the
+     * tip, or a limit): the body then ends as it did before S8, its final
+     * shape brought in by the shapes import, with nothing of the step left.
+     */
+    const undoStep = (step: StepState) => {
+      design.transaction('Take back a stored-shape step', () => {
+        design.remove(step.feature);
+        if (step.remove !== undefined) design.remove(step.remove);
+        if (!importFiles(design).has(step.attachment)) {
+          design.state.dispatch(removeAttachment({ id: step.attachment }));
+          files.delete(step.attachment);
+        }
+      });
+      taken.pop();
+      mine = step.before.mine;
+      known = step.before.known;
+      // The kernel's last rebuild had the step: nothing may describe it again.
+      restartsAtHold = -1;
+    };
+
     for (let i = 0; i < features.length && !stopped; i++) {
       const f = features[i] as FcObject;
       if (i >= maxBody || walked >= maxFile) {
-        stop(f, 'limit', `more than ${i >= maxBody ? maxBody : maxFile} features`);
+        stop(
+          f,
+          'limit',
+          `more than ${i >= maxBody ? maxBody : maxFile} features`,
+          undefined,
+          undefined,
+          true,
+        );
         break;
       }
       // Nothing of a feature runs once the kernel has failed too often or the time is up.
@@ -996,24 +1309,50 @@ export async function importBodies(
       owner.set(f.name, body.name);
       walked++;
       options.onStep?.();
+      noted = false;
       try {
         await walk(f, i);
       } catch (error) {
-        // Nothing a feature's own work throws ends the import: it stops this body.
-        if (!stopped)
+        // Nothing a feature's own work throws ends the import: it doesn't hold.
+        if (!noted)
           stop(f, 'failed', `importing it failed: ${(error as Error)?.message ?? String(error)}`);
       }
     }
     if (features.length === 0 && !stopped) stop(undefined, 'chain', 'it has no features');
+    // A run that reaches the body's end: its shape is the body's final one, which the shapes
+    // import brings in as it did before S8; a step the run had taken goes again.
+    const open = run as Run | undefined;
+    if (open?.pending) {
+      if (open.step) undoStep(open.step);
+      if (!stopped) stopped = open.first;
+    }
     histories.push({
       object: body.name,
       name,
       features: features.length,
       mapped,
       ...(stopped ? { stop: stopped } : {}),
-      bodies: mapped.length > 0 ? mine : [],
+      bodies: mapped.length > 0 || taken.length > 0 ? mine : [],
       sketches: sketchOutcomes,
       secondAttempts,
+      steps: taken.map(
+        (st): HistoryStep => ({
+          features: st.features.map((x) => ({
+            object: x.name,
+            name: cleanName(x.label, x.name),
+            type: x.type,
+          })),
+          reason: st.first.reason,
+          ...(st.first.detail ? { detail: st.first.detail } : {}),
+          ...(st.first.drift ? { drift: st.first.drift } : {}),
+          ...(st.first.references ? { references: st.first.references } : {}),
+          shape: st.shape,
+          feature: st.feature,
+          ...(st.remove !== undefined ? { remove: st.remove } : {}),
+          after: st.after,
+        }),
+      ),
+      heldAfterLastStep: mapped.length - (taken.at(-1)?.after ?? 0),
     });
     if (!stopped && mine.length > 0) setBodies(design, mine, shape, name);
   }
@@ -1026,6 +1365,30 @@ function sketchOfFeature(doc: FcDocument, f: FcObject): FcObject | undefined {
   const name = v?.kind === 'linkSub' || v?.kind === 'link' ? v.object : undefined;
   const o = name === undefined ? undefined : doc.byName.get(name);
   return o?.type.startsWith('Sketcher::SketchObject') ? o : undefined;
+}
+
+/** A stored-shape step while the walk runs (S8). */
+interface StepState {
+  features: FcObject[];
+  readonly first: NonNullable<BodyHistory['stop']>;
+  feature: string;
+  attachment: AttachmentId;
+  shape: string;
+  readonly after: number;
+  readonly remove?: string;
+  /** The body's Extrudo bodies and the last rebuild's before it: what taking it back restores. */
+  readonly before: { readonly mine: string[]; readonly known: string[] };
+}
+
+/** Features that didn't hold since the last one that did (S8). */
+interface Run {
+  readonly features: FcObject[];
+  /** Why the first didn't hold. */
+  readonly first: NonNullable<BodyHistory['stop']>;
+  /** Its last feature's shape hasn't taken the body's place yet. */
+  pending: boolean;
+  /** The step it took, when one came in. */
+  step?: StepState;
 }
 
 type Added =

@@ -43,6 +43,9 @@ export interface FcstdImportOptions {
   readonly originFirst?: boolean;
   /** Hears how far each other body moved between two rebuilds (tests and the library run). */
   readonly onUntouched?: (d: import('./check').Drift) => void;
+  /** The stored-shape steps' caps (`MAX_BODY_STEPS`, `MAX_STEP_TEXT_BYTES`), for tests. */
+  readonly maxSteps?: number;
+  readonly maxStepTextBytes?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -107,7 +110,14 @@ export async function importFcstd(
     return n + ('features' in chain ? chain.features.length : 0);
   }, 0);
   let walked = 0;
+  // The stored-shape steps' STEP bytes (S8), then the shapes import's.
+  const stepFiles = new Map<AttachmentId, Uint8Array>();
   const histories = await importBodies(doc, shapes, design, {
+    files: stepFiles,
+    ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    ...(options.maxStepTextBytes !== undefined
+      ? { maxStepTextBytes: options.maxStepTextBytes }
+      : {}),
     budget,
     ...(options.solver ? { solver: options.solver } : {}),
     ...(options.maxBodyFeatures !== undefined ? { maxBodyFeatures: options.maxBodyFeatures } : {}),
@@ -156,7 +166,7 @@ export async function importFcstd(
   const arrayLines = new Set(arrays.map((o) => linkArrayProblem(o.name)));
   return {
     design,
-    files: result.files,
+    files: new Map([...stepFiles, ...result.files]),
     report: {
       shapes: result.imported,
       leftOut: result.leftOut,

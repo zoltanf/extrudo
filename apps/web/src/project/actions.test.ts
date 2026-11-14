@@ -525,6 +525,8 @@ describe('fcstdNotices', () => {
     bodies,
     sketches: [],
     secondAttempts: 0,
+    steps: [],
+    heldAfterLastStep: 0,
     outcome,
     ...(stop ? { stop: { object: 'F', type: 'PartDesign::Fillet', reason: stop } } : {}),
   });
