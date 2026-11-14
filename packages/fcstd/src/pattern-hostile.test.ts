@@ -276,7 +276,7 @@ describe('a kernel that lies, throws or hangs in the calls a transform makes', (
   it('two candidates for the edge: never the nearest, the history stops', async () => {
     const twice: Lie = (k) => ({
       describeBodies: async (b, n) => {
-        const reply = (await k.describeBodies(b, n)) as Record<
+        const reply = (await k.describeBodies(b, n)) as unknown as Record<
           string,
           { edges: { index: number; type: string; ends?: unknown }[] }
         >;

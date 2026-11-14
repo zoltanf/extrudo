@@ -4,6 +4,7 @@ import {
   type DressUpFixtureFeature,
   dressUpSpec,
 } from '../packages/fcstd/src/dressup-fixtures';
+import { links, prop } from '../packages/fcstd/src/fixtures';
 import {
   choice,
   historyFile,
@@ -11,10 +12,9 @@ import {
   num,
   rectangle,
 } from '../packages/fcstd/src/history-fixtures';
-import { links, prop } from '../packages/fcstd/src/fixtures';
 import { BREP, PATTERN_CASES } from '../packages/fcstd/src/pattern-fixtures';
-import { circle } from '../packages/fcstd/src/sketch-fixtures';
 import { shapesFile } from '../packages/fcstd/src/shape-fixtures';
+import { circle } from '../packages/fcstd/src/sketch-fixtures';
 import { boxBrep } from '../packages/kernel/src/read-brep-test-support';
 
 // The FreeCAD import (P6-25 S3, S5, S6 and S7, ADR-0144): its worker reads
