@@ -165,6 +165,9 @@ export interface FeatureNamed {
   readonly object: string;
   readonly name: string;
   readonly type: string;
+  /** In a run (S8): why it didn't hold; absent when it wasn't tried (the shape before it couldn't come in). */
+  readonly reason?: HistoryStop;
+  readonly detail?: string;
 }
 
 /**
@@ -209,6 +212,8 @@ export interface BodyHistory {
     readonly drift?: Drift;
     /** A fillet's or chamfer's: how its edges were found, as far as the lookup went. */
     readonly references?: ReferenceTally;
+    /** The features after it in the run that reached the body's end, when there are any (S8). */
+    readonly run?: readonly FeatureNamed[];
   };
   /** The Extrudo bodies the mapped features made, when some did. */
   readonly bodies: readonly string[];
@@ -592,8 +597,10 @@ export async function importBodies(
       }
       if (run) {
         run.features.push(o);
+        run.why.set(o.name, record);
         run.pending = true;
-      } else run = { features: [o], first: record, pending: true };
+      } else
+        run = { features: [o], first: record, pending: true, why: new Map([[o.name, record]]) };
     };
     if ('broken' in chain) stop(undefined, 'chain', chain.broken);
     /** The sketches imported for this body's kept features, by FreeCAD name. */
@@ -1233,6 +1240,7 @@ export async function importBodies(
             shape: '',
             after: mapped.length,
             before,
+            run: r,
             ...(remove !== undefined ? { remove } : {}),
           };
           step.features = [...r.features];
@@ -1324,7 +1332,11 @@ export async function importBodies(
     const open = run as Run | undefined;
     if (open?.pending) {
       if (open.step) undoStep(open.step);
-      if (!stopped) stopped = open.first;
+      if (!stopped)
+        stopped =
+          open.features.length > 1
+            ? { ...open.first, run: open.features.slice(1).map((x) => namedIn(open, x)) }
+            : open.first;
     }
     histories.push({
       object: body.name,
@@ -1337,11 +1349,7 @@ export async function importBodies(
       secondAttempts,
       steps: taken.map(
         (st): HistoryStep => ({
-          features: st.features.map((x) => ({
-            object: x.name,
-            name: cleanName(x.label, x.name),
-            type: x.type,
-          })),
+          features: st.features.map((x) => namedIn(st.run, x)),
           reason: st.first.reason,
           ...(st.first.detail ? { detail: st.first.detail } : {}),
           ...(st.first.drift ? { drift: st.first.drift } : {}),
@@ -1378,6 +1386,8 @@ interface StepState {
   readonly remove?: string;
   /** The body's Extrudo bodies and the last rebuild's before it: what taking it back restores. */
   readonly before: { readonly mine: string[]; readonly known: string[] };
+  /** The run it stands for. */
+  readonly run: Run;
 }
 
 /** Features that didn't hold since the last one that did (S8). */
@@ -1389,6 +1399,19 @@ interface Run {
   pending: boolean;
   /** The step it took, when one came in. */
   step?: StepState;
+  /** Why each feature tried didn't hold. */
+  readonly why: Map<string, NonNullable<BodyHistory['stop']>>;
+}
+
+/** A run's feature for the report. */
+function namedIn(r: Run, x: FcObject): FeatureNamed {
+  const why = r.why.get(x.name);
+  return {
+    object: x.name,
+    name: cleanName(x.label, x.name),
+    type: x.type,
+    ...(why ? { reason: why.reason, ...(why.detail ? { detail: why.detail } : {}) } : {}),
+  };
 }
 
 type Added =
