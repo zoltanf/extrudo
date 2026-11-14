@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { detectWebgl, isContextError } from './webglSupport';
+import {
+  contextLosses,
+  detectWebgl,
+  isContextError,
+  noteContextLost,
+  targetSamples,
+} from './webglSupport';
 
 interface Fake {
   /** Renderer string, or undefined for no debug extension. */
@@ -104,5 +110,29 @@ describe('isContextError', () => {
 
   it('takes any error when WebGL is gone at the time', () => {
     expect(isContextError(new Error('x is not a function'), gone)).toBe(true);
+  });
+});
+
+describe('targetSamples', () => {
+  it('multisamples when the screen got its antialiasing', () => {
+    expect(targetSamples(true, true)).toBe(4);
+  });
+
+  it('does not when the browser refused the antialiasing asked for (#259)', () => {
+    expect(targetSamples(true, false)).toBe(0);
+  });
+
+  it('multisamples where none was asked for (software rendering) or the answer is unknown', () => {
+    expect(targetSamples(false, false)).toBe(4);
+    expect(targetSamples(true, undefined)).toBe(4);
+  });
+});
+
+describe('contextLosses', () => {
+  it('counts the lost contexts of the page', () => {
+    expect(contextLosses()).toBe(0);
+    noteContextLost();
+    noteContextLost();
+    expect(contextLosses()).toBe(2);
   });
 });

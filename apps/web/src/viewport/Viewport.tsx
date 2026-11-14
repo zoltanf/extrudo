@@ -147,7 +147,7 @@ import { thumbnailView } from './thumbnailFrame';
 import { ViewCube } from './ViewCubeView';
 import { namedDirection } from './viewcube';
 import type { ViewMenu, ViewMenuContent, ViewMenuRequest } from './viewMenu';
-import { webglSupport } from './webglSupport';
+import { noteContextLost, targetSamples, webglSupport } from './webglSupport';
 
 export interface ViewportProps {
   viewport: ViewportStore;
@@ -391,13 +391,22 @@ const DOUBLE_CLICK_MS = 400;
  */
 function createRenderer(props: Record<string, unknown>, antialias: boolean): WebGLRenderer {
   const attributes = { ...props, alpha: true, stencil: true };
+  let renderer: WebGLRenderer;
+  let granted: boolean | undefined;
   try {
-    return new WebGLRenderer({ ...attributes, antialias });
+    renderer = new WebGLRenderer({ ...attributes, antialias });
+    granted = renderer.getContextAttributes()?.antialias;
   } catch (error) {
     if (!antialias) throw error;
-    return new WebGLRenderer({ ...attributes, antialias: false });
+    renderer = new WebGLRenderer({ ...attributes, antialias: false });
+    granted = false;
   }
+  offscreenSamples.set(renderer, targetSamples(antialias, granted));
+  return renderer;
 }
+
+/** Per renderer, the samples of its offscreen targets (`targetSamples`, #259). */
+const offscreenSamples = new WeakMap<WebGLRenderer, number>();
 
 /** Shows the overlay while the context is lost; the browser may restore it. */
 function watchContext(
@@ -407,6 +416,7 @@ function watchContext(
 ): void {
   canvas.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
+    noteContextLost();
     setLost(true);
   });
   canvas.addEventListener('webglcontextrestored', () => {
@@ -1295,7 +1305,10 @@ async function thumbnailFromBox(
   const camera =
     projection === 'perspective' ? new PerspectiveCamera(FOV) : new OrthographicCamera();
   applyView(camera, view, projection, 1);
-  const target = new WebGLRenderTarget(size, size, { samples: 4, stencilBuffer: true });
+  const target = new WebGLRenderTarget(size, size, {
+    samples: offscreenSamples.get(gl) ?? 4,
+    stencilBuffer: true,
+  });
   target.texture.colorSpace = SRGBColorSpace;
   const pixels = new Uint8Array(size * size * 4);
   const previousTarget = gl.getRenderTarget();
