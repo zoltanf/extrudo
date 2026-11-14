@@ -705,10 +705,11 @@ export class TransformMapper {
     const refuse = (detail: string): TransformStop => ({ stop: 'transform-reference', detail });
     const o = doc.byName.get(object);
     if (!o) return refuse(`its ${what} ${cleanName(object, object)} isn't in the file`);
-    const isLine = o.type.startsWith('PartDesign::Line');
+    const isLine = o.type === 'PartDesign::Line';
     if (isLine !== (want === 'line'))
       return refuse(`its ${what} is a datum ${isLine ? 'line' : 'plane'}, not a ${want}`);
-    const group = body.properties.Group?.value;
+    // The body's members: `Group`, or `Model` in the 0.14 builds' bodies.
+    const group = (body.properties.Group ?? body.properties.Model)?.value;
     if (group?.kind !== 'linkList' || !group.objects.includes(object))
       return refuse(`its ${what} is a datum outside its body`);
     const made = this.#c.datums?.get(object);
@@ -877,7 +878,7 @@ export class TransformMapper {
         ? doc.byName.get((supports[0] as { object: string }).object)
         : undefined;
     if (
-      support?.type.startsWith('PartDesign::Plane') &&
+      support?.type === 'PartDesign::Plane' &&
       (supports[0] as { sub: string }).sub === '' &&
       mapModeOf(o) === 'FlatFace'
     ) {

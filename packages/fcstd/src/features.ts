@@ -495,8 +495,8 @@ function upToTarget(
     if (r.kind !== 'origin-plane') return refuse('up-to', 'it goes up to an origin axis');
     return r;
   }
-  if (target.type.startsWith('PartDesign::Plane')) {
-    if (subs.length > 0)
+  if (target.type === 'PartDesign::Plane') {
+    if (!wholeDatum(subs[0] ?? ''))
       return refuse('up-to', `it goes up to ${clipName(subs[0] as string)} of a datum plane`);
     return { kind: 'datum', object: target.name };
   }
@@ -581,8 +581,8 @@ function axisOf(
   if (!target) return refuse('axis', `its axis ${named(v.object)} isn't in the file`);
   if (v.object === o.name) return refuse('axis', 'its axis is an edge of itself');
   if (subs.length > 1) return refuse('axis', `its axis names ${subs.length} elements`);
-  if (target.type.startsWith('PartDesign::Line')) {
-    if (subs.length > 0)
+  if (target.type === 'PartDesign::Line') {
+    if (!wholeDatum(subs[0] ?? ''))
       return refuse('axis', `its axis is ${clipName(subs[0] as string)} of a datum line`);
     return { kind: 'reference', reference: { kind: 'datum', object: target.name } };
   }
@@ -896,6 +896,11 @@ const NTH_AXIS = /^Axis(\d{1,6})$/;
 const SKETCH_EDGE = /^Edge(\d{1,6})$/;
 const ORIGIN_PLANE_ROLE = /^(XY|XZ|YZ)_Plane(?:\d{0,6})$/;
 
+/** A datum line or plane (S9): exactly these two types (`PartDesign::LinearPattern` is not one). */
+const isDatum = (type: string) => type === 'PartDesign::Line' || type === 'PartDesign::Plane';
+/** The sub-element a file may give for a whole datum: none, or its own `Line` / `Plane`. */
+const wholeDatum = (sub: string) => sub === '' || sub === 'Line' || sub === 'Plane';
+
 /** The origin of the feature's body, when it has one. */
 function bodyOrigin(doc: FcDocument, body: FcObject): FcObject | undefined {
   const v = body.properties.Origin?.value;
@@ -971,8 +976,8 @@ function referenceOf(
   }
   if (target.type === 'App::Line' || target.type === 'App::Plane')
     return originReference(doc, target, what, context, 'transform-reference');
-  if (target.type.startsWith('PartDesign::Line') || target.type.startsWith('PartDesign::Plane')) {
-    if (sub !== '')
+  if (isDatum(target.type)) {
+    if (!wholeDatum(sub))
       return refuse('transform-reference', `its ${what} is ${clipName(sub)} of a datum`);
     return { kind: 'datum', object: target.name };
   }

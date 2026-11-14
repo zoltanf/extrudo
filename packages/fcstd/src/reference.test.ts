@@ -7,8 +7,10 @@
  */
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { decodeFeature } from './features';
 import { type FcstdImportOptions, importFcstd } from './import';
 import type { ImportKernel } from './import-kernel';
+import { type FcObject, readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { P, type PartChange, type PartOptions } from './pattern-parts';
 import { REF_BREP, REF_CASES } from './reference-fixtures';
@@ -188,6 +190,39 @@ describe('up to: the first and the last face', () => {
     expect(r.body?.stop).toMatchObject({ object: 'Bridge', reason: 'differs' });
     expect(r.body?.upToTries).toBe(4);
     expect(r.body?.outcome).toBe('shape');
+  });
+});
+
+describe('how a file may name a datum', () => {
+  it("a datum plane named with its own sub-element 'Plane' is the datum plane", async () => {
+    const r = await runRef('pad_up_to_datum_plane', {
+      Boss: { props: { UpToFace: P.sub('DatumPlane', ['Plane']) } },
+    });
+    expect(r.body?.stop).toBeUndefined();
+    expect(r.body?.mapped.at(-1)?.datums?.[0]?.how).toBe('offset');
+  });
+
+  it('a type that only begins like a datum is not one: an edge of a linear pattern', () => {
+    const doc = readFcstd(refFile('pattern_along_datum_line'));
+    const lp = doc.byName.get('LinearPattern') as FcObject;
+    const decoded = decodeFeature(
+      doc,
+      {
+        ...lp,
+        properties: {
+          ...lp.properties,
+          Direction: {
+            type: 'App::PropertyLinkSub',
+            value: { kind: 'linkSub', object: 'LinearPattern', subs: [{ name: 'Edge18' }] },
+          },
+        },
+      } as unknown as FcObject,
+      { body: doc.byName.get('Body') as FcObject, moved: false },
+    );
+    expect(decoded).toMatchObject({
+      ok: true,
+      feature: { first: { reference: { kind: 'element', object: 'LinearPattern' } } },
+    });
   });
 });
 

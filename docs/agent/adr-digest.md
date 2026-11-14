@@ -4998,6 +4998,40 @@ Fixtures `step-fixtures.ts` (ten FreeCAD 1.1.4 parts, `make-step-fixtures.py`, `
 keeps 21 bodies with history (17 whole), 270 imports, 118 references found, 6 steps, 12 features held after a step,
 unless a change explains it.
 
+**ADR-0144, S9 (references):** files `upto.ts` (`candidatesOf`, `upToTargets`, `MAX_UP_TO_TRIES` 4), `attach.ts`
+(`MAP_MODES` by stored index, `mapModeOf`, `supportsOf`), `transforms.ts` (`TransformMapper.face`, `.datum`,
+`.sketchPlane`, `.externals`; `MAX_DATUMS` 200, `MAX_EXTERNAL_PER_SKETCH` 64, `MAX_EXTERNAL_PER_FILE` 1,000),
+`features.ts` (`DecodedSide.extent: 'up-to'` with `DecodedUpTo`, `DecodedAxis.kind: 'reference'`, `DecodedReference`
+`datum`; `isDatum` is **exactly** `PartDesign::Line` / `PartDesign::Plane`, never a `startsWith`, which also matches
+`LinearPattern`; a datum may be named with no sub-element or its own `Line` / `Plane`), `sketch-decode.ts`
+(`DecodedSketch.external`, `externalLinkOf`: 1.0+ by the stored projection's `ref`, before 1.0 link k is curve −3 − k),
+`sketch-map.ts` (`ExternalPlan`, `ProjectedEntity`, projections drawn construction and held fixed while vetting),
+`sketch-place.ts` (`fitsOriginPlane`, `GivenPlane`, `PlaneKind` `datum` / `points`), `bodies.ts` (`walkUpTo`,
+`walkAxis`, `sketchExtras`, `projectionVerdict`, `datumDisagreement`, the new reason **`datum`**), and kernel
+`import-rebuild.ts` (`rebuild(…, reports)` returns the asked features' reports, at most 64). Rules: **an up-to face is
+matched on the rebuilt body (S6) and becomes `to-object`, `Offset` → `offset` with the same sign**; "first" and "last"
+are faces the importer picks (flat faces the line from the profile's centre meets, one per plane, nearest/farthest
+first; a pad's "first" tries `to-object` on the body first), each a whole try, **references for all targets asked
+before the first try**; a target Extrudo refuses moves to the next (`holdAll`'s `refusedToo`). **A datum's geometry is
+its stored placement** (line along local Z, plane normal local Z); the map mode only picks the construction (origin
+axis/plane; `offsetPlane` on an origin plane moved along its normal; `axisAlongEdge` on a matched edge or a drawn sketch
+line; else fixed points and `axisThroughPoints` / `planeThroughPoints`), **once per datum per import** (the walk's
+`datums` map, forgotten when its transaction is cancelled), and **its construction's report must be the file's line or
+plane** (1e-9 sine, 1e-7 mm + 1e-9 · |p|) or the user stops with `datum`. A revolve's sense: FreeCAD's line direction
+(edge curve order, datum local Z) against Extrudo's reference's (canonical edge direction, construction axis order):
+`flip` turns where they disagree (not for symmetric). **A tilted sketch** (no S4 plane) sits on its datum plane's
+construction or a `planeThroughPoints` of its own frame, its frame `faceSketchFrame(point, normal)`; a sketch on a face
+sits on a plane, never the face. **Projections:** only external curves a constraint names; an edge of a walked feature
+(matcher, `own()`) or a line of a sketch of this body; the curve drawn where FreeCAD stored it (else projected from the
+stored edge), construction, registered by `addProjection` + `syncProjections` after `design.sketch` (the builder keeps
+no projections); **the sketch's report must put each curve where it is drawn** (1e-6 mm), a line reported the other way
+is redrawn its way, anything else stays out, at most two tries more (`MAX_PROJECTION_REPEATS`): a projection never
+costs a sketch. Report: `BodyHistory.upToTries`, `MappedFeature.upTo` / `.datums`, `SketchOutcome.plane` and
+`.external`; the app's new sentence for fixed datums and sketch planes. Fixtures `reference-fixtures.ts` (28 FreeCAD
+1.1.4 parts, `make-reference-fixtures.py`, `REF_FIXTURES` in `reference-parts.ts`; the writer now writes a placement's
+angle and axis, which a reader takes first); tests `reference.test.ts`, `reference-hostile.test.ts`,
+`reference-limits.test.ts` (`BENCH=1`).
+
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,

@@ -226,7 +226,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       for (const o of doc.objects) {
         if (FEATURE_TYPES[o.type]) bump(census, `${kindOf(o.type)} in the file`);
         // S9's census.
-        if (o.type.startsWith('PartDesign::Line') || o.type.startsWith('PartDesign::Plane'))
+        if (o.type === 'PartDesign::Line' || o.type === 'PartDesign::Plane')
           bump(s9.datumsInFiles, `${o.type.slice('PartDesign::'.length)} ${mapModeOf(o)}`);
         if (o.type === 'PartDesign::Pad' || o.type === 'PartDesign::Pocket') {
           const t = o.properties.Type?.value;
@@ -358,6 +358,10 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         s7.secondAttempts += b.secondAttempts;
         s9.upToTries += b.upToTries;
         for (const m of b.mapped) {
+          if (m.references && m.references.none + m.references.several > 0)
+            lines.push(
+              JSON.stringify({ file, feature: m.object, kind: m.kind, references: m.references }),
+            );
           if (m.upTo)
             bump(s9.upTo, `${m.kind} ${m.upTo.method} → ${m.upTo.target} (try ${m.upTo.tries})`);
           for (const d of m.datums ?? []) bump(s9.datums, `${d.mode} → ${d.how}`);
@@ -365,6 +369,15 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         for (const sk of b.sketches) {
           if (sk.plane === 'datum' || sk.plane === 'points') bump(s9.tilted, sk.plane);
           if (sk.external) {
+            lines.push(
+              JSON.stringify({
+                file,
+                sketch: sk.sketch,
+                external: sk.external,
+                leftOut: sk.constraints.leftOut,
+                links: doc.byName.get(sk.sketch)?.properties.ExternalGeometry?.value,
+              }),
+            );
             s9.external.sketches++;
             s9.external.named += sk.external.named;
             s9.external.projected += sk.external.projected;

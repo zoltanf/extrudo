@@ -1783,7 +1783,8 @@ end to end, faster than in established desktop CAD.
     amendment).
   - [x] S8 The stored-shape step in the middle of a body (2026-11-14; ADR-0144's S8
     amendment).
-  - [ ] S9 Projected geometry in sketches, up-to-face, reference axes.
+  - [x] S9 Projected geometry in sketches, up-to-face, reference axes; datums and tilted
+    sketch planes (2026-11-14; ADR-0144's S9 amendment).
   - [ ] S10 Parameters and expressions.
   - [ ] S11 Part workbench: primitives and booleans as a timeline.
   - [ ] S12 Structure: part containers, links as copies, files from before bodies, meshes.

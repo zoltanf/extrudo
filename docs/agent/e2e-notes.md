@@ -1219,6 +1219,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the body." Plate stays on its unmapped last feature (the tip case). The
   shapes test's file (`shapesFile()`) has a body too: its pad is refused (`value`), so that
   import also shows a "Taken from the file's own shapes" line.
+- **S9:** the fourth test imports S9's `groove_about_datum_line` part on its own
+  (`refFile` from `packages/fcstd/src/reference-parts.ts`, FreeCAD's own shapes) as `Datum.FCStd`.
+  Notices: "Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and
+  features)." and "A datum line or plane came in fixed where the file has it: it doesn't follow
+  what it was attached to in FreeCAD when the model changes." Chips: Sketch, Pad, "DatumLine point
+  1", "DatumLine point 2", DatumLine (the `axisThroughPoints`), "GrooveSketch plane", GrooveSketch,
+  Groove; the body row is "Part" (the fixture body's label), shown; no chip in error.
 
 ### `e2e/import-mesh.spec.ts`
 
