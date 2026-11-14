@@ -151,7 +151,19 @@ export interface PartOptions {
   readonly sketchGeometry?: Readonly<Record<string, string[]>>;
   /** The objects' own placements (all identity in the fixtures), written as given. */
   readonly version?: string;
+  /** The fixture set the part is from (S7's by default; S8's `STEP_FIXTURES`). */
+  readonly fixtures?: FixtureSet;
 }
+
+/** A set of fixture parts in `pattern-fixtures.ts`'s form. */
+export interface FixtureSet {
+  readonly cases: Readonly<Record<string, PatternFixtureCase>>;
+  readonly brep: readonly string[];
+  readonly props: readonly (readonly FixtureProp[])[];
+}
+
+/** S7's parts. */
+export const PATTERN_FIXTURES: FixtureSet = { cases: PATTERN_CASES, brep: BREP, props: PROPS };
 
 /** The objects and entries of one fixture part, as one body named `Body`. */
 export function partObjects(
@@ -159,14 +171,15 @@ export function partObjects(
   change: PartChange = {},
   options: PartOptions = {},
 ): { objects: FixtureObject[]; entries: Record<string, string | Uint8Array> } {
-  const c = PATTERN_CASES[name] as PatternFixtureCase;
+  const set = options.fixtures ?? PATTERN_FIXTURES;
+  const c = set.cases[name] as PatternFixtureCase;
   if (!c) throw new Error(`no fixture part ${name}`);
   const entries: Record<string, string | Uint8Array> = {};
   const objects: FixtureObject[] = [];
   const stored = (o: PatternFixtureObject): string | undefined => {
     const ch = change[o.object]?.stored;
     if (ch === null) return undefined;
-    return ch ?? (o.stored !== undefined ? BREP[o.stored] : undefined);
+    return ch ?? (o.stored !== undefined ? set.brep[o.stored] : undefined);
   };
   for (const o of c.objects) {
     if (o.sketch) {
@@ -188,7 +201,7 @@ export function partObjects(
       continue;
     }
     const ch = change[o.object]?.props ?? {};
-    const props: FixtureProp[] = (PROPS[o.props as number] ?? []).map((p) =>
+    const props: FixtureProp[] = (set.props[o.props as number] ?? []).map((p) =>
       Object.hasOwn(ch, p[0]) ? [p[0], p[1], ch[p[0]]] : p,
     );
     for (const [k, v] of Object.entries(ch))

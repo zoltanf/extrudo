@@ -1184,7 +1184,7 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   nothing). A file that isn't a zip ends in the
   `alert` toast "Import failed: This file can't be read as a FreeCAD file: …". The first test
   allows 60 s for the kernel worker to start under load.
-- **S5 and S6 (history):** the third test builds its file in the spec with `historyFile` and
+- **S5 to S8 (history):** the third test builds its file in the spec with `historyFile` and
   `rectangle` (`packages/fcstd/src/history-fixtures.ts`), `boxBrep` (imported from
   `packages/kernel/src/read-brep-test-support.ts` by path) and, for S6, `DRESSUP_CASES` and
   `dressUpSpec` (`packages/fcstd/src/dressup-fixtures.ts`: FreeCAD's own stored shapes of small
@@ -1204,7 +1204,19 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the "Taken from the file's own shapes, without their whole history: Plate, because it has a
   feature Extrudo doesn't rebuild from FreeCAD files yet. …" line; no chip may end with
   `data-feature-status="error"` (the project's kernel recomputes the fillet from the references
-  the import's kernel gave, and the pattern along the drawn axis line). The
+  the import's kernel gave, and the pattern along the drawn axis line). **S8:** a fifth body,
+  Bridge, is `bridge()` in the spec: S8's `mid_draft` part from `partObjects(…, { fixtures:
+  STEP_FIXTURES, bodyAt: [0, -100, 0] })` (`packages/fcstd/src/pattern-parts.ts`,
+  `step-parts.ts`: pad, pocket, `PartDesign::Draft`, pocket, fillet, FreeCAD's own shapes),
+  moved to y = -100 so it touches no other body, every object name given `_s8` (links, sub-link
+  targets and `file=` entries renamed with it; labels kept, so its chips read Sketch, Pad,
+  PocketSketch (on "Sketch005 plane", Rail's, also at z = 10: no plane of its own), Pocket, "Remove Bridge", "Import Draft", Pocket001Sketch,
+  Pocket001, Fillet, after Rail's and before "Remove Plate"), passed to `historyFile` as
+  `extra` objects and entries (no GUI entry: visible by default). Notices: "…: 5 of 5 shapes, 3
+  with their history, 1 with part of its history and 1 as a body without history." and
+  "Rebuilt on the file's own shape part way through: Bridge, because … The features after that
+  point come in with their history; the ones before it stay in the timeline but no longer shape
+  the body." Plate stays on its unmapped last feature (the tip case). The
   shapes test's file (`shapesFile()`) has a body too: its pad is refused (`value`), so that
   import also shows a "Taken from the file's own shapes" line.
 

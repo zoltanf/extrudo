@@ -1,0 +1,1 @@
+- 2026-11-14 · **FreeCAD bodies carry on past a feature Extrudo can't rebuild**: where a feature doesn't rebuild (a draft, a thickness, a primitive, a tapered hole …), the file's own shape of it takes the body's place and the features after it come in with their history, editable and each checked against the file; the import's notice names such bodies (ADR-0144's S8 amendment).

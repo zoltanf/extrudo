@@ -1342,3 +1342,290 @@ history, 274 imports, 101 references found, no restart, no second attempt.
   world line or plane there.
 - A pattern of a pattern, of a dress-up or "Whole shape" mode, and a hole or
   replay that may touch only its own body, each need Extrudo itself to change.
+
+## Amendment (S8, 2026-11-14): the stored-shape step in the middle of a body
+
+A PartDesign body no longer ends its history at the first feature that doesn't
+hold: the stored shape of that feature takes the rebuilt body's place and the
+walk carries on from it (decisions 3 and 5). `packages/fcstd`: `bodies.ts`
+(`stop` now starts or extends a run, `ensureBase`, `applyStep`, `undoStep`, one
+check for features and steps), `shapes.ts` (`convertStored`, the one conversion
+of a stored shape, shared with `importShapes`; `addStepAttachment`,
+`attachmentBytes`). Fixtures: ten small parts we made with FreeCAD 1.1.4 through
+our own script (`packages/fcstd/scripts/make-step-fixtures.py`; data in
+`step-fixtures.ts`, 26 distinct stored shapes once each, spaces collapsed, 238 KB,
+written into files by S7's `pattern-parts.ts` with `STEP_FIXTURES`).
+
+### The step
+
+When a feature doesn't hold (a refusal of the closed set, a failed or differing
+rebuild, a kernel failure or a call over its time), its own transaction is
+cancelled and it **joins a run**: the features since the last one that held.
+Nothing is converted yet. When the next feature has decoded and is about to be
+tried (`ensureBase`, after `decodeFeature` and before anything else), the run's
+**last** stored shape comes in, in one transaction: a `remove` of the FreeCAD
+body's Extrudo bodies so far, named `Remove <body>` (none when it has none: a
+step first in its body), and an `import` of that stored shape as a STEP
+attachment, named `Import <feature>`, through S3's conversion and checks
+(`convertStored`: the STEP read back has the solids, volume and box of the shape
+as read, at most 25 MB, the design under 100 MB). The design is rebuilt with the
+step's file, and the import must measure as the stored shape does with **the
+history check's tolerances** (`historyDisagreement`, 1e-6) and leave every other
+FreeCAD body's bodies exactly as they were (S7's `untouchedDisagreement`; the
+step's rebuild measures them all). Then the feature is tried on it.
+
+- **A run is one step.** A feature tried on a step that fails too joins the run,
+  and the step **moves forward**: before the next feature is tried, its import
+  and attachment are replaced by the later shape's in one transaction (the
+  attachment goes when no other import uses it; the Remove stays). So
+  `two_in_a_row` (Draft, Thickness) is one step of the Thickness's shape and the
+  Draft's is never converted; `step_then_step` is two steps.
+- **A shape that can't come in** (stored entry missing, empty, binary, over
+  32 MB, not a shape, no solid; a conversion that fails or fails S3's check; a
+  step that fails its own check): the next feature joins the run untried, and the
+  run reaches on to the next feature whose shape can.
+- **The run reaches the tip** (or the body ends inside a run): a step written for
+  that run is taken back (`undoStep`: its import, its Remove and its attachment
+  removed, the body's bodies and the last rebuild's as before it), and the body
+  ends as before S8: `stop` is the run's first feature with its reason, the
+  shapes import brings the body's final shape in after a `Remove <body>`, named
+  after the body (if taking the step back fails, the review round's point 3).
+  One path, the shapes import's, as before: `last_unmapped`,
+  `nothing_after` and every stop test of S5 to S7 come out with the same features
+  and report. S5's to S7's tests pass unchanged but one: S7's "an original that
+  comes after it" (a pattern repeating the mirror after it, then that mirror) now
+  steps over the pattern and the mirror holds on its shape. The report's
+  `stop` gains `run`: the run's later features, each with why it didn't hold
+  (absent when not tried), when there are any.
+- **What ends a body however its features go on:** its own `chain` problems, the
+  walk's feature caps (`MAX_BODY_FEATURES`, `MAX_FILE_FEATURES`), the budget
+  (`restarts`, `import-time`), and S8's own caps (below). A feature's own `limit`
+  refusal (a pattern's instances, a profile's curves) is a step like any other
+  refusal. So is `no-base` (a pocket first in its body: its stored shape becomes
+  the first step).
+- **Second attempts** (S7's hole cut) come first: a feature becomes part of a run
+  only when no attempt holds.
+
+### After a step
+
+- **Names, colours, visibility:** a body whose last features hold has no final
+  import; its last bodies (the step's import's, or what the features after it
+  made) get the file's name, colour and hidden state (`setBodies`, S3's rule), as
+  a body with its whole history. A body that ends on its final shape is S3's.
+- **The features before a step stay in the timeline**, sketches included, ahead
+  of its Remove (the consequence above); they no longer shape the body. The
+  timeline of `mid_draft`: Sketch, Pad, the pocket sketch's plane and sketch,
+  Pocket, `Remove Part`, `Import Draft`, the second pocket's sketch, Pocket001,
+  Fillet (asserted, and `step_then_step`'s twelve).
+- **References after a step** (`own()` in the walk): a reference must name the
+  last step's `import` or a feature that held after it (every mapped feature when
+  there is no step). A superseded step's import and the features before the last
+  step don't count: a reply naming only them is nonsense (a restart and the
+  feature doesn't hold). `mid_draft`'s fillet names an edge of the import;
+  `step_then_step`'s names the second import and never the first.
+- **A pattern of a feature from before the step** replays that feature's tool
+  onto the import (a replay cuts or joins every body it meets) and **holds equal
+  to FreeCAD's**: `pattern_of_earlier` (a row of a pocket from before a Draft)
+  drifts under 1e-9 in volume. FreeCAD repeats the pocket's own tool shape on the
+  drafted body too, so the two agree. Mapped.
+- **S7's "the originals are every feature so far" rule:** after a step the body
+  is the stored shape's, not its first pad's, so a pattern or mirror that repeats
+  the body's first feature after a step is refused (`original`, "a stored shape
+  has taken the body's place since"); `bodyMaker` is the feature that made the
+  body only while no step was taken.
+- **The walk's invariants across a step:** a step's commit sets `known`, `mine`,
+  `lastMeasures` and `restartsAtHold` as a held feature does (so a dress-up or a
+  matched reference after it describes that rebuild), and a step taken back
+  restores `mine` and `known` and sets `restartsAtHold` to none. Two bodies in a
+  file, either first: a step, two steps and a step that moves forward leave the
+  other body exactly as it was (every untouched check moved 0); a mirror after a
+  step that cuts the other body doesn't hold (S7's check), joins a run and the
+  body ends on its final shape.
+
+### Limits (hostile files)
+
+- **`MAX_BODY_STEPS` 8** steps per body (the library's most is 1). A ninth ends
+  the body with `limit` ("more than 8 stored-shape steps"): its 8 steps stay, and
+  the body's final shape comes in after a Remove of its last bodies.
+- **`MAX_STEP_TEXT_BYTES` 256 MB** of stored text converted by steps per import.
+  S3's per-shape limits bound one conversion; a total is needed because a run
+  whose tried features all fail converts once per feature tried (the step moves
+  forward each time), so without it the work is bounded only by the clock. 256 MB
+  is the step cap times the 32 MB a shape may be. Over it the body ends with
+  `limit`. Over either cap, `stop.run` keeps the run with its reasons.
+- **One conversion per run:** a stored shape is converted only when a feature
+  after it is about to be tried, and a run's earlier shapes never are. Measured
+  (Ubuntu machine, loaded, one run each): 2,000 features, a run of 1,996
+  unmappable ones between a pocket and a pocket, **one conversion, 0.46 s**;
+  1,998 unmappable features to the tip, no step conversion (only the final
+  shape's); a body at the step cap (8 steps, a pocket on each) **1.3 s**; a run of
+  eleven tried features that each fail, eleven conversions, 0.7 s. The library's
+  largest stored shape (4.4 MB of B-rep) as a step: **14.8 s** for the whole
+  import (its conversion, the rebuild with its STEP, the feature tried on it), and
+  29 s with two such conversions; at the caps a body is bounded by S3's 60 s per
+  call and the import's 10 minutes.
+- **Hostile tests** (`step-hostile.test.ts`): the above; a stored shape over
+  32 MB, missing, not a shape, or without a solid in the middle (the run
+  extends); a kernel that lies, throws or hangs in a step's conversion or in the
+  rebuild after it (one restart, the run extends, the body carries on); a rebuild
+  that measures the import wrongly (a failed check, no restart); a conversion that
+  always fails (three restarts, then the body ends as before S8, with nothing of a
+  step left); a reference naming only a superseded step's import (refused); a
+  fillet whose base is before the last step (`base`).
+
+### The report and the app
+
+`BodyHistory.steps`: per step its run's features (internal name, cleaned label,
+type, and why each tried one didn't hold), the first one's reason and detail, the
+feature whose shape it holds, its `import` and Remove, and how many mapped
+features came before it (`after`); `heldAfterLastStep`. `outcome` keeps its three
+values. `fcstdNotices` counts a body with steps and live features after them
+apart, so the first notice still adds up to the file's shapes, and gives such
+bodies their own line. The sentences:
+
+- "Imported from the FreeCAD file: *n* of *m* shapes, *a* with their history, *b*
+  with part of their history and *c* as bodies without history." (each part only
+  when it isn't 0; "its", "a body" for one), and when every body that came in took
+  a step, "…, with part of its history (sketches and features)."
+- One body: "Rebuilt on the file's own shape part way through: *Name*, because
+  *reason*. The features after that point come in with their history; the ones
+  before it stay in the timeline but no longer shape the body." Several: "Rebuilt
+  on the file's own shapes part way through: *A*; *B*. Most often because
+  *reason*, or *reason*. … no longer shape the bodies."
+- When every step of the bodies listed is first in its body (review round, 6):
+  one body "Starts from the file's own shape: *Name*, because *reason*. The
+  features after it come in with their history."; several "Start from the file's
+  own shapes: *A*; *B*. Most often because *reason*, or *reason*. The features
+  after them come in with their history." A mix keeps the sentence above. Reasons
+  through `HISTORY_STOP` (one body with two steps of different reasons: "because
+  *x*, and *y*").
+
+### The library (60 files, `history-corpus.test.ts`)
+
+| | In the files | In a body's chain | Equal | Differed | Refused | Not reached |
+|---|---|---|---|---|---|---|
+| Pad | 70 | 41 | 36 | 1 | 4 (up to 2, a tilted sketch 2) | 0 |
+| Pocket | 67 | 30 | 24 | 1 | 4 (up to) | 0 (1 not tried) |
+| Revolution | 11 | 8 | 8 | 0 | 0 | 0 |
+| Groove | 3 | 3 | 2 | 0 | 1 (`axis`: an edge) | 0 |
+| Fillet | 19 | 13 | 11 | 0 | 2 (`failed`) | 0 |
+| Chamfer | 13 | 5 | 5 | 0 | 0 | 0 |
+| LinearPattern | 9 | 4 | 3 | 0 | 1 (`transform-reference`) | 0 |
+| PolarPattern | 8 | 4 | 2 | 0 | 2 (`original`) | 0 |
+| Mirrored | 19 | 1 | 0 | 0 | 1 (`original`) | 0 |
+| MultiTransform | 10 | 10 | 8 | 0 | 2 (`multi-transform`, `original`) | 0 |
+| Hole | 4 | 4 | 3 | 1 (another body) | 0 | 0 |
+| Other PartDesign | | | | | 5 (`type`), 4 (`chain`) | 0 |
+
+- **Steps: 6** in 6 bodies (the most in one body: 1), by the first feature's
+  reason: `type` 2 (a subtractive pipe, an additive sphere first in its body),
+  `multi-transform` 1, `up-to` 1, `transform-reference` 1, `differs` 1 (the
+  tapered pad of S5). One run is longer than one feature (five: two up-to
+  pockets, two polar patterns of them, a subtractive helix).
+- **What holds after a step: 12 features**: 3 pockets, 3 fillets, 2 pads, 1
+  chamfer, 1 groove, 1 polar pattern, 1 MultiTransform. Every feature of a body's
+  chain is now reached (S7: 21 not reached). S6's estimate of "11 pockets behind a
+  stop" was made before S7 rebuilt 4 of them; the rest are the up-to pockets (S9).
+- **Bodies (35): 21 with their history** (17 whole, as in S7, and 4 with part of
+  it), **10 from the file's shape** (14 before), 4 empty left out. **270
+  `import`s** (274 before); the 348 shapes that aren't bodies come in exactly as in
+  S3. Attachments over the library: 56.9 MB, 0.28 MB fewer than with the steps
+  turned off (a step's shape stands in for a body's final one); the largest step
+  attachment 0.66 MB.
+- **References: 118 found** (101 before), none missing or several, the furthest
+  match 7.8e-13 mm. Restarts 0, second attempts 0, construction features 0.
+  Untouched checks: 5, four moved exactly 0, the fifth is S7's through hole into
+  another body. Time per file: median
+  0.1 s, slowest 14.4 s (16 s before, a loaded machine both times).
+- **Drift of the equal ones:** at most 1.4e-8 in volume and 1.2e-8 in area (a
+  pad, the only kind above 3.1e-10: one joined to a step's import, whose STEP
+  round trip's rounding is under it), the 99th percentile 3e-10; box 9.4e-10 and
+  centre 1.8e-9 of the diagonal. All far inside 1e-6, so no tolerance changes.
+- **What still doesn't hold after a step (8 features, in 3 bodies)**, and why:
+  in the run of five, an up-to pocket, two polar patterns repeating a feature that
+  didn't come in (that pocket, a helix) and a subtractive helix (`type`); after the
+  additive sphere's step, two pads whose sketches lie on planes tilted off every
+  origin axis (S4's gap); and in a file from FreeCAD 0.20, after the tapered pad's
+  step, a pocket that **differs by 1.5e-5**, then the pocket after it, not tried:
+  that pocket's own stored shape loses 1.5e-5 of its volume through STEP, so it
+  can't be a step under the history tolerance, and the pocket rebuilt on the
+  pad's imported shape comes out as that STEP version does. Raising the step's
+  tolerance to S3's 1e-3 would let the shape in but not make the pocket hold (it
+  is checked against the B-rep at 1e-6); left as it is.
+- **Bodies with no step that end on their final shape** (8 of the 10; the other
+  2 end so after a step, above): a mirror repeating a groove about an edge (S9), a
+  MultiTransform repeating the hole that cut another body, a pad and a pocket
+  going up to a face after one that does (S9), the two fillets Extrudo can't build
+  (each the tip itself), and two bodies that are a base feature. The 4 left out
+  are the empty bodies.
+
+### Decisions made on the way
+
+- **Which attachments are in use:** core's `usedAttachments` counts only the fonts
+  of text entities, not an `import` feature's file, so the walk decides from the
+  `import` features' own file inputs (`importFiles`): a step's attachment goes
+  when no `import` names it, and the tests check that every attachment of the
+  design is an import's file.
+- **The 2,000-feature test** raises the body cap to the file's: `MAX_BODY_FEATURES`
+  (500) would otherwise end that body at its 501st feature.
+- **A body ended by a cap after steps keeps them;** only a step of the run that
+  reaches the end is taken back, since the steps before it held.
+- `FORMAT.md` is unchanged: nothing new about the format was needed.
+
+### Review round (2026-11-14)
+
+An independent review of the S8 diff found six things in the code; the rule for
+each, as in S6 and S7: a value or a reply the importer can't use is a refusal
+with the right reason before the work it would cause, a limit of ours a clean
+stop, never a kernel failure, a restart or a throw out of the import.
+
+1. **The 100 MB count.** A step that moves forward leaves its old file out of the
+   count only when its own `import` is the one import that uses it; a file another
+   body's step shares (identical stored shapes) stays in the design and counts.
+   Before, such a move could take the design up to 25 MB past 100 MB, after which
+   every final shape was `design-full` and saving refused the design. Test: two
+   bodies whose steps share a file, one moving forward under a cap one byte short
+   of both files (`maxAttachmentsBytes`, a test option on the import, the walk and
+   the shapes import): the move is refused and the files stay within the cap.
+2. **Guard before the commit, state before the callback.** A feature is tried only
+   on a run whose shape has come in; that is checked before anything is added
+   (`failed` if it ever weren't), and the commit sets `restartsAtHold`, `known`,
+   `mine` and `lastMeasures` before the caller's record of what held, which no
+   longer throws.
+3. **Taking a step back can fail.** `undoStep` runs inside a guard: if removing the
+   step's import, its Remove or its file throws, the design's transaction rolls
+   back, so **the design keeps the step as it was** (its Remove and its `import`,
+   with the run's earlier features before them, still in `steps`), and the body
+   ends with `failed` ("taking back its stored-shape step failed: …", `stop.run`
+   the whole run). The shapes import then takes out the step's bodies with
+   `Remove <body>` and brings the body's final shape in, as for any body that ends
+   on its shape; the import goes on with the next body. Test: a `remove` that
+   throws; the next body still comes in with its history and the design validates.
+4. **A full design converts no more steps.** When a step's shape doesn't fit the
+   design's attachments, the import remembers it, and no later step of any body
+   converts a shape: each later run ends as a shape that can't come in, without a
+   conversion (the run reaches on; at the end the body's final shape goes to the
+   shapes import, which reports `design-full` itself). Chosen over ending the
+   body with `limit`: the reason the report gives is then the true one, the
+   design being full. Test: the counted conversions are the first step's, the
+   refused one's and the final shape's, never the next run's.
+5. **A cap that ends a run keeps the run in the report.** `stop.reason` is the cap
+   (or the budget) that ended the body, and `stop.run` lists the run's features,
+   the first included, each with its own reason. Test: the step cap and the text
+   cap.
+6. **A body whose every step is first in it starts from the file's shape:** the
+   notice no longer says "part way through" there (below).
+
+### What S9 to S13 inherit
+
+- The steps make every chain feature reachable, so each later slice's gain shows
+  directly as features that hold after a step: the up-to methods (5 features),
+  datum lines and an edge as an axis (2, and the patterns that repeat them), a
+  sketch plane from an arbitrary frame (2 pads).
+- A step's import is an ordinary `import` feature: S10's expressions on features
+  after it work as on any; S11 and S12 reuse `convertStored` and the step for
+  booleans and containers that can't be rebuilt.
+- S13: the STEP round trip's drift decides whether a stored shape can be a step;
+  the one library shape it rules out drifts 1.5e-5. A B-rep attachment kind was
+  rejected (above); a per-shape tolerance from the STEP drift S3 already measures
+  is the cheaper option if more files need it.

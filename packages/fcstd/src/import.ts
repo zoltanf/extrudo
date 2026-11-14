@@ -1,10 +1,11 @@
 /**
  * `importFcstd`: a FreeCAD file as a new Extrudo design (P6-25, ADR-0144).
  * Each PartDesign body comes in with its history as far as it can be rebuilt
- * and proven equal to what the file stores (S5, `bodies.ts`); every other
- * final shape, and a body whose history stopped before its last feature,
- * comes in as a STEP attachment on an `import` feature (S3, `shapes.ts`),
- * with one Remove taking out what was rebuilt of such a body.
+ * and proven equal to what the file stores (S5, `bodies.ts`), carrying on from
+ * a stored shape where a feature can't be (S8); every other final shape, and
+ * a body whose features up to its last couldn't be rebuilt, comes in as a STEP
+ * attachment on an `import` feature (S3, `shapes.ts`), with one Remove taking
+ * out what was rebuilt of such a body.
  */
 import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
@@ -43,6 +44,11 @@ export interface FcstdImportOptions {
   readonly originFirst?: boolean;
   /** Hears how far each other body moved between two rebuilds (tests and the library run). */
   readonly onUntouched?: (d: import('./check').Drift) => void;
+  /** The stored-shape steps' caps (`MAX_BODY_STEPS`, `MAX_STEP_TEXT_BYTES`), for tests. */
+  readonly maxSteps?: number;
+  readonly maxStepTextBytes?: number;
+  /** ADR-0066's 100 MB of attachments per design, for tests (the steps and the shapes import alike). */
+  readonly maxAttachmentsBytes?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -107,7 +113,17 @@ export async function importFcstd(
     return n + ('features' in chain ? chain.features.length : 0);
   }, 0);
   let walked = 0;
+  // The stored-shape steps' STEP bytes (S8), then the shapes import's.
+  const stepFiles = new Map<AttachmentId, Uint8Array>();
   const histories = await importBodies(doc, shapes, design, {
+    files: stepFiles,
+    ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    ...(options.maxStepTextBytes !== undefined
+      ? { maxStepTextBytes: options.maxStepTextBytes }
+      : {}),
+    ...(options.maxAttachmentsBytes !== undefined
+      ? { maxAttachmentsBytes: options.maxAttachmentsBytes }
+      : {}),
     budget,
     ...(options.solver ? { solver: options.solver } : {}),
     ...(options.maxBodyFeatures !== undefined ? { maxBodyFeatures: options.maxBodyFeatures } : {}),
@@ -156,7 +172,7 @@ export async function importFcstd(
   const arrayLines = new Set(arrays.map((o) => linkArrayProblem(o.name)));
   return {
     design,
-    files: result.files,
+    files: new Map([...stepFiles, ...result.files]),
     report: {
       shapes: result.imported,
       leftOut: result.leftOut,
