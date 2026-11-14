@@ -7,6 +7,7 @@
  * map a part wrongly on purpose or to make it hostile.
  */
 
+import { MAP_MODES } from './attach';
 import { documentXml, type FixtureObject, fcstd, guiXml, label, links, prop } from './fixtures';
 import {
   BREP,
@@ -16,7 +17,34 @@ import {
   type PatternFixtureObject,
   PROPS,
 } from './pattern-fixtures';
-import { circle, line, sketchObject } from './sketch-fixtures';
+import { circle, constraint, line, sketchObject } from './sketch-fixtures';
+
+/** `ExternalGeo` as FreeCAD 1.x writes it: the two axes, then each projected curve with its `ref`. */
+function externalGeoXml(geo: readonly (readonly (string | number)[])[]): string {
+  const f = (v: number) => v.toFixed(16);
+  const ext = (id: number, ref: string) =>
+    `<GeoExtensions count="2"><GeoExtension type="Sketcher::SketchGeometryExtension" id="${id}" internalGeometryType="0" geometryModeFlags="00000000000000000000000000000010" geometryLayer="0"/><GeoExtension type="Sketcher::ExternalGeometryExtension" Ref="${esc(ref)}" Flags="0"/></GeoExtensions>`;
+  const lineXml = (id: number, ref: string, x1: number, y1: number, x2: number, y2: number) =>
+    `<Geometry type="Part::GeomLineSegment" id="${id}"${ref ? ` ref="${esc(ref)}"` : ''} migrated="1">${ext(id, ref)}<LineSegment StartX="${f(x1)}" StartY="${f(y1)}" StartZ="0" EndX="${f(x2)}" EndY="${f(y2)}" EndZ="0"/><Construction value="1"/></Geometry>`;
+  const records = [lineXml(-1, '', 0, 0, 1, 0), lineXml(-2, '', 0, 0, 0, 1)];
+  geo.forEach((g, i) => {
+    const id = i + 1;
+    if (g[0] === 'line')
+      records.push(
+        lineXml(id, g[5] as string, g[1] as number, g[2] as number, g[3] as number, g[4] as number),
+      );
+    else if (g[0] === 'circle')
+      records.push(
+        `<Geometry type="Part::GeomCircle" id="${id}" ref="${esc(g[4] as string)}" migrated="1">${ext(id, g[4] as string)}<Circle CenterX="${f(g[1] as number)}" CenterY="${f(g[2] as number)}" CenterZ="0" NormalX="0" NormalY="0" NormalZ="1" AngleXU="0" Radius="${f(g[3] as number)}"/><Construction value="1"/></Geometry>`,
+      );
+    else records.push(g[1] as string);
+  });
+  return prop(
+    'ExternalGeo',
+    'Part::PropertyGeometryList',
+    `<GeometryList count="${records.length}">${records.join('')}</GeometryList>`,
+  );
+}
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -123,16 +151,30 @@ export type PartChange = Readonly<
       readonly props?: Readonly<Record<string, unknown>>;
       readonly stored?: string | null;
       readonly type?: string;
+      /** S9: the stored placement (position, quaternion) of a datum or a sketch. */
+      readonly at?: readonly number[];
+      /** S9: a sketch's constraints, external links, external geometry or supports replaced (`undefined` drops them). */
+      readonly constraints?: readonly (readonly (string | number | boolean)[])[];
+      readonly external?: readonly (readonly string[])[] | undefined;
+      readonly externalGeo?: readonly (readonly (string | number)[])[] | undefined;
+      readonly support?: readonly (readonly string[])[] | undefined;
     }
   >
 >;
 
+/**
+ * A placement as FreeCAD writes it: the quaternion and, as FreeCAD's reader
+ * takes them first, the same rotation as an angle about an axis.
+ */
 const placementOfQuaternion = (at: readonly number[]) => {
   const [x, y, z, qx, qy, qz, qw] = at as [number, number, number, number, number, number, number];
+  const s = Math.hypot(qx, qy, qz);
+  const angle = s > 1e-15 ? 2 * Math.atan2(s, qw) : 0;
+  const [ox, oy, oz] = s > 1e-15 ? [qx / s, qy / s, qz / s] : [0, 0, 1];
   return prop(
     'Placement',
     'App::PropertyPlacement',
-    `<PropertyPlacement Px="${x}" Py="${y}" Pz="${z}" Q0="${qx}" Q1="${qy}" Q2="${qz}" Q3="${qw}" A="0" Ox="0" Oy="0" Oz="1"/>`,
+    `<PropertyPlacement Px="${x}" Py="${y}" Pz="${z}" Q0="${qx}" Q1="${qy}" Q2="${qz}" Q3="${qw}" A="${angle}" Ox="${ox}" Oy="${oy}" Oz="${oz}"/>`,
   );
 };
 
@@ -183,20 +225,77 @@ export function partObjects(
   };
   for (const o of c.objects) {
     if (o.sketch) {
+      const sk = o.sketch;
+      const sch = change[o.object];
       const s = sketchObject({
         name: o.object,
         geometry:
           options.sketchGeometry?.[o.object] ??
-          o.sketch.geometry.map((g) =>
-            g[0] === 'line'
-              ? line(g[1] as number, g[2] as number, g[3] as number, g[4] as number)
-              : circle(g[1] as number, g[2] as number, g[3] as number),
-          ),
+          sk.geometry.map((g) => {
+            const c = { construction: g.at(-1) === 'construction' };
+            return g[0] === 'line'
+              ? line(g[1] as number, g[2] as number, g[3] as number, g[4] as number, c)
+              : circle(g[1] as number, g[2] as number, g[3] as number, c);
+          }),
+        constraints: (sch?.constraints ?? sk.constraints ?? []).map((c) =>
+          constraint({
+            type: c[0] as number,
+            value: c[1] as number,
+            first: c[2] as number,
+            firstPos: c[3] as number,
+            second: c[4] as number,
+            secondPos: c[5] as number,
+            third: c[6] as number,
+            thirdPos: c[7] as number,
+            ...(c[8] ? { name: c[8] as string } : {}),
+            ...(c[9] === false ? { driving: false } : {}),
+            ...(c[10] === false ? { active: false } : {}),
+          }),
+        ),
       });
       // The stored placement as a quaternion (the helper writes an angle about an axis).
       s.props = s.props.map((p) =>
-        p.startsWith('<Property name="Placement"') ? placementOfQuaternion(o.sketch?.at ?? []) : p,
+        p.startsWith('<Property name="Placement"')
+          ? placementOfQuaternion(sch?.at ?? sk.at ?? [])
+          : p,
       );
+      const external = sch && 'external' in sch ? sch.external : sk.external;
+      if (external)
+        s.props.push(
+          prop(
+            'ExternalGeometry',
+            'App::PropertyLinkSubList',
+            `<LinkSubList count="${external.length}">${external
+              .map(
+                ([obj, sub, shadow]) =>
+                  `<Link obj="${esc(obj as string)}" sub="${esc(sub as string)}"${shadow ? ` shadow="${esc(shadow)}"` : ''}/>`,
+              )
+              .join('')}</LinkSubList>`,
+          ),
+        );
+      const geo = sch && 'externalGeo' in sch ? sch.externalGeo : sk.externalGeo;
+      if (geo) s.props.push(externalGeoXml(geo));
+      const support = sch && 'support' in sch ? sch.support : sk.support;
+      if (support)
+        s.props.push(
+          prop(
+            'AttachmentSupport',
+            'App::PropertyLinkSubList',
+            `<LinkSubList count="${support.length}">${support
+              .map(
+                ([obj, sub]) => `<Link obj="${esc(obj as string)}" sub="${esc(sub as string)}"/>`,
+              )
+              .join('')}</LinkSubList>`,
+          ),
+        );
+      if (sk.mapMode !== undefined)
+        s.props.push(
+          prop(
+            'MapMode',
+            'App::PropertyEnumeration',
+            `<Integer value="${Math.max(0, MAP_MODES.indexOf(sk.mapMode))}"/>`,
+          ),
+        );
       objects.push(s);
       continue;
     }
@@ -213,7 +312,7 @@ export function partObjects(
       type: change[o.object]?.type ?? (o.type as string),
       props: [
         label(o.object),
-        placementOfQuaternion([0, 0, 0, 0, 0, 0, 1]),
+        placementOfQuaternion(change[o.object]?.at ?? o.at ?? [0, 0, 0, 0, 0, 0, 1]),
         ...props.filter((p) => p[2] !== undefined).map((p) => propXml(o.object, p, entries)),
         prop(
           'Shape',

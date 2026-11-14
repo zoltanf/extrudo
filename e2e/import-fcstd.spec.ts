@@ -14,12 +14,13 @@ import {
 } from '../packages/fcstd/src/history-fixtures';
 import { BREP, PATTERN_CASES } from '../packages/fcstd/src/pattern-fixtures';
 import { partObjects } from '../packages/fcstd/src/pattern-parts';
+import { refFile } from '../packages/fcstd/src/reference-parts';
 import { shapesFile } from '../packages/fcstd/src/shape-fixtures';
 import { circle } from '../packages/fcstd/src/sketch-fixtures';
 import { STEP_FIXTURES } from '../packages/fcstd/src/step-parts';
 import { boxBrep } from '../packages/kernel/src/read-brep-test-support';
 
-// The FreeCAD import (P6-25 S3, S5, S6, S7 and S8, ADR-0144): its worker reads
+// The FreeCAD import (P6-25 S3, S5 to S9, ADR-0144): its worker reads
 // the file and its own kernel worker turns each stored shape into STEP, and
 // rebuilds each PartDesign body's features against the shapes the file
 // stores, finding a fillet's edges on the rebuilt body, stepping a
@@ -280,5 +281,44 @@ test('PartDesign bodies come in with their history, or as far as it rebuilds', a
       timeout: 60_000,
     });
   // Every rebuilt feature recomputes in the project's kernel too.
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
+});
+
+test('a groove about a datum line comes in with the datum as a construction axis (S9)', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await importFile(page, 'Datum.FCStd', Buffer.from(refFile('groove_about_datum_line')));
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await expect(
+    page.getByText(
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and features).',
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "A datum line or plane came in fixed where the file has it: it doesn't follow what it was attached to in FreeCAD when the model changes.",
+    ),
+  ).toBeVisible();
+  const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
+  // The datum line through two of the plate's vertices: two construction points and the axis
+  // through them, made just before the groove's sketch; the groove turns about that axis.
+  await expect
+    .poll(() => chips.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label'))), {
+      timeout: 60_000,
+    })
+    .toEqual([
+      'Sketch',
+      'Pad',
+      'DatumLine point 1',
+      'DatumLine point 2',
+      'DatumLine',
+      'GrooveSketch plane',
+      'GrooveSketch',
+      'Groove',
+    ]);
+  await expect(bodyLeaf(page, 'Part')).toHaveAttribute('data-body-display', 'shown', {
+    timeout: 60_000,
+  });
   await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
 });

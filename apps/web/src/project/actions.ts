@@ -356,7 +356,7 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
   sketch: "a feature's sketch couldn't be imported",
   taper: 'a feature is tapered',
   direction: 'a feature goes in a direction of its own',
-  'up-to': 'a feature goes up to a face or a shape',
+  'up-to': "a feature goes up to a face or a shape Extrudo can't find or use",
   axis: "a revolve turns about an axis Extrudo can't use yet",
   value: "a feature has a value Extrudo can't read",
   option: "a feature has a setting Extrudo can't rebuild",
@@ -369,6 +369,7 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
   'transform-reference':
     "a pattern or mirror goes along a direction, axis or plane Extrudo can't use yet",
   'multi-transform': "a pattern of patterns combines steps Extrudo can't rebuild yet",
+  datum: "a datum line or plane didn't come in where the file has it",
   chain: "its features don't follow each other",
   limit: 'it has too many features, or a pattern or hole larger than Extrudo takes',
   stored: "a feature's shape can't be read from the file",
@@ -460,6 +461,36 @@ export function fcstdNotices(
     (n, b) => n + b.mapped.filter((m) => m.kind === 'hole' && m.threadLost).length,
     0,
   );
+  // S9: datums and sketch planes placed by the file's numbers don't follow the model's edges and faces.
+  const fixedDatums = bodies.reduce(
+    (n, b) =>
+      n +
+      b.mapped.reduce((m, f) => m + (f.datums ?? []).filter((d) => d.how === 'fixed').length, 0),
+    0,
+  );
+  const fixedPlanes = bodies.reduce(
+    (n, b) => n + b.sketches.filter((x) => x.plane === 'points').length,
+    0,
+  );
+  if (fixedDatums + fixedPlanes > 0) {
+    const things = [
+      ...(fixedDatums === 1
+        ? ['a datum line or plane']
+        : fixedDatums > 1
+          ? [`${fixedDatums} datum lines and planes`]
+          : []),
+      ...(fixedPlanes === 1
+        ? ['the plane of a tilted sketch']
+        : fixedPlanes > 1
+          ? [`the planes of ${fixedPlanes} tilted sketches`]
+          : []),
+    ];
+    const one = fixedDatums + fixedPlanes === 1;
+    const text = things.join(' and ');
+    out.push(
+      `${text[0]?.toUpperCase()}${text.slice(1)} came in fixed where the file has ${one ? 'it' : 'them'}: ${one ? "it doesn't" : "they don't"} follow what ${one ? 'it was' : 'they were'} attached to in FreeCAD when the model changes.`,
+    );
+  }
   if (threads > 0)
     out.push(
       `${threads === 1 ? 'A threaded hole' : `${threads} threaded holes`} came in as ${threads === 1 ? 'a plain hole' : 'plain holes'} of the size the file stores: the thread itself is not modelled.`,

@@ -46,6 +46,9 @@ export interface FcstdImportOptions {
   readonly onUntouched?: (d: import('./check').Drift) => void;
   /** The stored-shape steps' caps (`MAX_BODY_STEPS`, `MAX_STEP_TEXT_BYTES`), for tests. */
   readonly maxSteps?: number;
+  /** S9's `MAX_DATUMS` and `MAX_EXTERNAL_PER_FILE`, for tests. */
+  readonly maxDatums?: number;
+  readonly maxExternal?: number;
   readonly maxStepTextBytes?: number;
   /** ADR-0066's 100 MB of attachments per design, for tests (the steps and the shapes import alike). */
   readonly maxAttachmentsBytes?: number;
@@ -118,6 +121,8 @@ export async function importFcstd(
   const histories = await importBodies(doc, shapes, design, {
     files: stepFiles,
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
+    ...(options.maxDatums !== undefined ? { maxDatums: options.maxDatums } : {}),
+    ...(options.maxExternal !== undefined ? { maxExternal: options.maxExternal } : {}),
     ...(options.maxStepTextBytes !== undefined
       ? { maxStepTextBytes: options.maxStepTextBytes }
       : {}),

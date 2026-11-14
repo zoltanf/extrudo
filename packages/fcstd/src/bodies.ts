@@ -31,7 +31,7 @@ import {
 import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon } from '@extrudo/sketch/profiles';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
-import type { CallOutcome, KernelBudget } from './budget';
+import { type CallOutcome, type KernelBudget, NONSENSE_REPLY } from './budget';
 import {
   combined,
   type Drift,
@@ -45,7 +45,10 @@ import {
   type DecodedDressUp,
   type DecodedFeature,
   type DecodedHole,
+  type DecodedReference,
+  type DecodedSide,
   type DecodedTransform,
+  type DecodedUpTo,
   decodeFeature,
   FEATURE_TYPES,
   type FeatureKind,
@@ -53,7 +56,7 @@ import {
   MAX_TRANSFORM_INSTANCES,
   MAX_TRANSFORM_STEPS,
 } from './features';
-import { type FinalShape, linkedObjects } from './final-shapes';
+import { type FinalShape, linkedObjects, rotate } from './final-shapes';
 import { addHole } from './holes';
 import type { RebuildResult, ShapeMeasure } from './import-kernel';
 import {
@@ -66,10 +69,21 @@ import {
 } from './model';
 import { cleanName, clip } from './names';
 import { addStepAttachment, attachmentBytes, convertStored, setBodies } from './shapes';
+import type { Vec2 } from './sketch-decode';
 import { type DecodedSketch, decodeSketch } from './sketch-decode';
-import { containerChain, forgetRemovedPlanes } from './sketch-place';
+import type { ExternalPlan, ProjectedEntity } from './sketch-map';
+import { containerChain, forgetRemovedPlanes, type GivenPlane, sketchFrame } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
-import { type Repeated, TransformMapper } from './transforms';
+import {
+  type DatumCheck,
+  type DatumMade,
+  type ExternalCause,
+  type Found,
+  MAX_EXTERNAL_PER_FILE,
+  type Repeated,
+  TransformMapper,
+} from './transforms';
+import { MAX_UP_TO_TRIES, upToTargets } from './upto';
 
 /** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
 const named = (name: string) => cleanName(name, name);
@@ -159,6 +173,22 @@ export interface MappedFeature {
   readonly threadLost?: true;
   /** A hole's centres (S7). */
   readonly centres?: number;
+  /**
+   * An up-to pad or pocket (S9): FreeCAD's method, what Extrudo's `to-object`
+   * goes to (a matched face, the body, a plane, a datum's construction), and
+   * at which try it held.
+   */
+  readonly upTo?: {
+    readonly method: 'face' | 'shape' | 'first' | 'last';
+    readonly target: 'face' | 'body' | 'plane' | 'datum';
+    readonly tries: number;
+  };
+  /** The datum lines and planes brought in for it (S9): FreeCAD's map mode and how each came in. */
+  readonly datums?: readonly {
+    readonly object: string;
+    readonly mode: string;
+    readonly how: DatumMade['how'];
+  }[];
 }
 
 /** A FreeCAD feature named in the report: internal name, cleaned label, type. */
@@ -226,6 +256,8 @@ export interface BodyHistory {
   readonly steps: readonly HistoryStep[];
   /** How many features held after its last step (all of `mapped` when it took none). */
   readonly heldAfterLastStep: number;
+  /** The tries made for up-to features that had more than one target to try (S9). */
+  readonly upToTries: number;
 }
 
 export interface BodyWalkOptions {
@@ -242,6 +274,10 @@ export interface BodyWalkOptions {
    * matched edges and the construction features.
    */
   readonly originFirst?: boolean;
+  /** `MAX_DATUMS`, for tests. */
+  readonly maxDatums?: number;
+  /** `MAX_EXTERNAL_PER_FILE`, for tests. */
+  readonly maxExternal?: number;
   /** Hears how far each other body moved between two rebuilds (tests and the library run). */
   readonly onUntouched?: (d: Drift) => void;
   /** `MAX_BODY_STEPS` and `MAX_STEP_TEXT_BYTES`, for tests. */
@@ -327,6 +363,8 @@ interface SaneRebuild {
   readonly ids: readonly string[];
   readonly bodies: ReadonlyMap<string, ShapeMeasure>;
   readonly failed: readonly { readonly feature: string; readonly message: string }[];
+  /** The reports asked for (S9), unread: each is checked where it is used. */
+  readonly reports: ReadonlyMap<string, unknown>;
 }
 
 /** The longest body ID a reply may name (a feature ID, a colon, a body number). */
@@ -344,9 +382,20 @@ const BODY_ID = /^(.+):(\d{1,9})$/;
 export function saneRebuild(
   reply: unknown,
   features: ReadonlySet<string>,
+  asked: ReadonlySet<string> = new Set(),
 ): SaneRebuild | undefined {
   if (typeof reply !== 'object' || reply === null) return undefined;
-  const r = reply as { ids?: unknown; bodies?: unknown; failed?: unknown };
+  const r = reply as { ids?: unknown; bodies?: unknown; failed?: unknown; reports?: unknown };
+  // Reports only of the features asked for, under own keys (S9).
+  const reports = new Map<string, unknown>();
+  if (r.reports !== undefined) {
+    if (typeof r.reports !== 'object' || r.reports === null || Array.isArray(r.reports))
+      return undefined;
+    for (const key of Object.keys(r.reports)) {
+      if (!asked.has(key) || !Object.hasOwn(r.reports, key)) return undefined;
+      reports.set(key, (r.reports as Record<string, unknown>)[key]);
+    }
+  }
   if (!Array.isArray(r.ids) || r.ids.length > MAX_REBUILD_BODIES) return undefined;
   const ids: string[] = [];
   for (const id of r.ids) {
@@ -375,8 +424,132 @@ export function saneRebuild(
     if (typeof feature !== 'string' || typeof message !== 'string') return undefined;
     failed.push({ feature, message: clip(message) });
   }
-  return { ids, bodies, failed };
+  return { ids, bodies, failed, reports };
 }
+
+const vec3 = (v: unknown): v is readonly [number, number, number] =>
+  Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === 'number' && Number.isFinite(x));
+
+/**
+ * Whether a datum's construction is where the file has the datum (S9): an
+ * axis along its line (directions within 1e-9 as a sine, the reported point
+ * within 1e-7 mm + 1e-9 of its distance from the origin of the line), a
+ * plane through its plane (normals likewise, either sense). `'nonsense'` for
+ * a report that is missing or isn't a construction report of the kind; else
+ * what is off, or `undefined`.
+ */
+export function datumDisagreement(c: DatumCheck, report: unknown): string | 'nonsense' | undefined {
+  if (typeof report !== 'object' || report === null) return 'nonsense';
+  const rep = report as { kind?: unknown; origin?: unknown; direction?: unknown; frame?: unknown };
+  const cross = (a: readonly number[], b: readonly number[]) =>
+    Math.hypot(
+      (a[1] as number) * (b[2] as number) - (a[2] as number) * (b[1] as number),
+      (a[2] as number) * (b[0] as number) - (a[0] as number) * (b[2] as number),
+      (a[0] as number) * (b[1] as number) - (a[1] as number) * (b[0] as number),
+    );
+  const sub = (a: readonly number[], b: readonly number[]) => a.map((v, k) => v - (b[k] as number));
+  const dot = (a: readonly number[], b: readonly number[]) =>
+    a.reduce((n, v, k) => n + v * (b[k] as number), 0);
+  const on = (p: readonly number[]) => DATUM_ON + 1e-9 * Math.hypot(...p);
+  if (c.line) {
+    if (rep.kind !== 'axis' || !vec3(rep.origin) || !vec3(rep.direction)) return 'nonsense';
+    const d = rep.direction;
+    if (!(Math.abs(Math.hypot(...d) - 1) <= 1e-9)) return 'nonsense';
+    if (!(cross(d, c.line.direction) <= DATUM_PARALLEL)) return 'came in along another direction';
+    if (!(cross(sub(rep.origin, c.line.origin), c.line.direction) <= on(c.line.origin)))
+      return 'came in at another place';
+    return undefined;
+  }
+  const plane = c.plane as NonNullable<DatumCheck['plane']>;
+  const f = rep.frame as { origin?: unknown; normal?: unknown } | undefined;
+  if (rep.kind !== 'plane' || typeof f !== 'object' || f === null) return 'nonsense';
+  if (!vec3(f.origin) || !vec3(f.normal) || !(Math.abs(Math.hypot(...f.normal) - 1) <= 1e-9))
+    return 'nonsense';
+  if (!(cross(f.normal, plane.normal) <= DATUM_PARALLEL)) return 'came in turned';
+  if (!(Math.abs(dot(sub(f.origin, plane.origin), plane.normal)) <= on(plane.origin)))
+    return 'came in at another place';
+  return undefined;
+}
+
+/**
+ * How many times a feature is tried again for its sketch's projections (S9):
+ * a line drawn the way the report has it, turned back once if the next report
+ * disagrees, then left out; a curve elsewhere left out.
+ */
+export const MAX_PROJECTION_REPEATS = 3;
+/** How far (mm) a projected curve may be from where the sketch has it drawn, plus 1e-9 of its distance from the origin. */
+export const PROJECTION_TOLERANCE = 1e-6;
+
+/**
+ * The kernel's projections of a sketch against where the importer drew them
+ * (S9): the geometry indices whose line came in the other way round
+ * (`reversed`), and those that came in elsewhere, as another kind, or lost
+ * (`off`). `'nonsense'` for a report that isn't a sketch's.
+ */
+export function projectionVerdict(
+  projected: readonly ProjectedEntity[],
+  report: unknown,
+): { reversed: number[]; off: number[] } | 'nonsense' {
+  if (typeof report !== 'object' || report === null) return 'nonsense';
+  const p = (report as { projections?: unknown }).projections;
+  if (typeof p !== 'object' || p === null || Array.isArray(p)) return 'nonsense';
+  const vec2 = (v: unknown): v is [number, number] =>
+    Array.isArray(v) &&
+    v.length === 2 &&
+    v.every((x) => typeof x === 'number' && Number.isFinite(x));
+  const near = (a: readonly number[], b: readonly number[]) =>
+    Math.hypot((a[0] as number) - (b[0] as number), (a[1] as number) - (b[1] as number)) <=
+    PROJECTION_TOLERANCE + 1e-9 * Math.hypot(b[0] as number, b[1] as number);
+  const reversed: number[] = [];
+  const off: number[] = [];
+  for (const e of projected) {
+    const rep = Object.hasOwn(p, e.projection)
+      ? (p as Record<string, unknown>)[e.projection]
+      : undefined;
+    const curves = (rep as { curves?: unknown } | undefined)?.curves;
+    const c =
+      typeof curves === 'object' && curves !== null && Object.hasOwn(curves, e.key)
+        ? (curves as Record<string, unknown>)[e.key]
+        : undefined;
+    const curve = c as
+      | {
+          type?: unknown;
+          a?: unknown;
+          b?: unknown;
+          center?: unknown;
+          radius?: unknown;
+          at?: unknown;
+        }
+      | undefined;
+    if (e.kind === 'line' && curve?.type === 'line' && vec2(curve.a) && vec2(curve.b)) {
+      const [s0, s1] = e.points as [Vec2, Vec2];
+      if (near(curve.a, s0) && near(curve.b, s1)) continue;
+      if (near(curve.a, s1) && near(curve.b, s0)) reversed.push(e.geo);
+      else off.push(e.geo);
+    } else if (
+      e.kind === 'circle' &&
+      curve?.type === 'circle' &&
+      vec2(curve.center) &&
+      typeof curve.radius === 'number' &&
+      near(curve.center, e.points[0] as Vec2) &&
+      Math.abs(curve.radius - (e.radius as number)) <= PROJECTION_TOLERANCE
+    )
+      continue;
+    else if (
+      e.kind === 'point' &&
+      curve?.type === 'point' &&
+      vec2(curve.at) &&
+      near(curve.at, e.points[0] as Vec2)
+    )
+      continue;
+    else off.push(e.geo);
+  }
+  return { reversed, off };
+}
+
+/** How far off parallel a datum's construction may be (a sine), and off its place (mm, plus 1e-9 of the distance from the origin). */
+export const DATUM_PARALLEL = 1e-9;
+export const DATUM_ON = 1e-7;
 
 /** The most expressions kept per mapped feature (the library's most on one PartDesign feature is 2). */
 export const MAX_FEATURE_EXPRESSIONS = 64;
@@ -535,6 +708,18 @@ export async function importBodies(
   /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
   const owner = new Map<string, string>();
   const decodedSketches = new Map<string, DecodedSketch>();
+  /** The datum lines and planes brought in, by FreeCAD name (S9): one construction per datum per import. */
+  const datums = new Map<string, DatumMade>();
+  /** External links projected in this import (S9). */
+  const externalBudget = { used: 0, max: options.maxExternal ?? MAX_EXTERNAL_PER_FILE };
+  /** What the tries of the feature being walked learnt about its sketch's projections (S9). */
+  let projectionTry = {
+    reversed: new Set<number>(),
+    off: new Set<number>(),
+    turned: new Map<number, number>(),
+  };
+  /** What the feature being walked found on the body before its first try (S9's fix round). */
+  let featureFound = new Map<string, Found>();
   /** The kernel's restarts when a feature last held: a dress-up describes that rebuild's bodies. */
   let restartsAtHold = -1;
   /** Every body's measure when it was last rebuilt and held: the check that a feature left other bodies alone (S7). */
@@ -563,6 +748,7 @@ export async function importBodies(
     let mine: string[] = [];
     let stopped: BodyHistory['stop'];
     let secondAttempts = 0;
+    let upToTries = 0;
     /** This body's mapped features by FreeCAD name: what a transform's originals become. */
     const mappedBy = new Map<string, { feature: string; kind: FeatureKind }>();
     /** The sketch axes a transform of this body names, drawn when their sketch comes in (S7). */
@@ -702,9 +888,26 @@ export async function importBodies(
         await walkHole(f, feature, frame.chain, decodedSketch);
         return;
       }
+      if (
+        (feature.kind === 'pad' || feature.kind === 'pocket') &&
+        (feature.side1.extent === 'up-to' || feature.side2?.extent === 'up-to')
+      ) {
+        await walkUpTo(f, feature, frame.chain, decodedSketch, i);
+        return;
+      }
+      if (
+        (feature.kind === 'revolution' || feature.kind === 'groove') &&
+        feature.axis.kind === 'reference'
+      ) {
+        await walkAxis(f, feature, frame.chain, decodedSketch, i, frame.moved);
+        return;
+      }
       await holdAll(f, frame.chain, feature, [
-        async () =>
-          addFeature(
+        async (): Promise<Added> => {
+          const mapper = mapperFor(f, i, frame.moved);
+          const extras = await sketchExtras(mapper, feature.sketch);
+          if ('stop' in extras) return extras;
+          const added = addFeature(
             doc,
             design,
             f,
@@ -714,7 +917,286 @@ export async function importBodies(
             options.solver,
             decodedSketch,
             wantedAxes,
-          ),
+            extras,
+          );
+          return 'stop' in added ? added : { ...added, ...madeBy(mapper) };
+        },
+      ]);
+    };
+
+    /**
+     * A pad or pocket up to a face, a plane or the first or last face (S9):
+     * its targets found on the body so far (S6's matcher for a named face;
+     * the faces the sweep meets for first and last, `upto.ts`), then each
+     * tried as `to-object` in its own transaction until one holds.
+     */
+    const walkUpTo = async (
+      f: FcObject,
+      feature: Extract<DecodedFeature, { kind: 'pad' | 'pocket' }>,
+      chain: readonly FcPlacement[],
+      decodedSketch: DecodedSketch | undefined,
+      i: number,
+    ): Promise<void> => {
+      const sides = [feature.side1, feature.side2];
+      const onBody = sides.some(
+        (x) =>
+          x?.extent === 'up-to' && (x.upTo?.kind !== 'face' || x.upTo.reference.kind === 'element'),
+      );
+      if (onBody && mine.length === 0) {
+        stop(f, 'up-to', 'it goes up to a face of the body, and the body has nothing yet');
+        return;
+      }
+      if (onBody && budget.restarts !== restartsAtHold) {
+        stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
+        return;
+      }
+      const sketchObject = doc.byName.get(feature.sketch) as FcObject;
+      /**
+       * The targets to try for a side, found before the first try and changing nothing in
+       * the design: a named face or plane is one try that finds it inside its own
+       * transaction (a datum's construction belongs to it); "first" and "last" are the faces
+       * the sweep meets, their references asked for at once.
+       */
+      const resolve = async (side: DecodedSide): Promise<UpToTry[] | Failure> => {
+        const u = side.upTo as DecodedUpTo;
+        if (u.kind === 'face')
+          return [
+            {
+              named: u.reference,
+              method: u.method,
+              target:
+                u.reference.kind === 'datum'
+                  ? 'datum'
+                  : u.reference.kind === 'origin-plane'
+                    ? 'plane'
+                    : 'face',
+            },
+          ];
+        // Up to the first or last face: along the sweep from the profile's centre (FreeCAD's rule).
+        const g = sketchFrame(doc, sketchObject).global;
+        const centre = profileCentre(decodedSketch);
+        if (!centre) return { reason: 'sketch', detail: 'its sketch draws nothing to sweep' };
+        const X = rotate(g.rotation, [1, 0, 0]);
+        const Y = rotate(g.rotation, [0, 1, 0]);
+        const N = rotate(g.rotation, [0, 0, 1]);
+        const sense = (feature.kind === 'pad' ? 1 : -1) * (feature.reversed ? -1 : 1);
+        const origin: [number, number, number] = [0, 1, 2].map(
+          (k) =>
+            (g.position[k] as number) + (X[k] as number) * centre[0] + (Y[k] as number) * centre[1],
+        ) as [number, number, number];
+        const direction = N.map((v) => v * sense) as [number, number, number];
+        const tries: UpToTry[] = [];
+        // A pad up to the first face is Extrudo's "to the body": the sweep stops where it first meets it.
+        if (u.kind === 'first' && feature.kind === 'pad' && mine.length === 1)
+          tries.push({
+            ref: { kind: 'body', id: mine[0] as string },
+            method: u.kind,
+            target: 'body',
+          });
+        const sent = new Set(design.doc.features.map((x) => x.id as string));
+        const got = await upToTargets(
+          budget,
+          mine,
+          own(),
+          sent,
+          origin,
+          direction,
+          u.kind,
+          MAX_UP_TO_TRIES - tries.length,
+        );
+        if ('stop' in got) {
+          if (tries.length > 0 && got.stop === 'up-to') return tries;
+          return { reason: got.stop, detail: got.detail };
+        }
+        return [
+          ...tries,
+          ...got.targets.map((ref) => ({ ref, method: u.kind, target: 'face' as const })),
+        ];
+      };
+      const moved = containerChain(doc, f)?.moved ?? true;
+      const one = feature.side1.extent === 'up-to' ? await resolve(feature.side1) : [undefined];
+      if (!Array.isArray(one)) {
+        stop(f, one.reason, one.detail, undefined, one.references);
+        return;
+      }
+      const two = feature.side2?.extent === 'up-to' ? await resolve(feature.side2) : [undefined];
+      if (!Array.isArray(two)) {
+        stop(f, two.reason, two.detail, undefined, two.references);
+        return;
+      }
+      const pairs = one.flatMap((a) => two.map((b) => [a, b] as const)).slice(0, MAX_UP_TO_TRIES);
+      const triedTargets = new Set<number>();
+      const counted =
+        pairs.length > 1 || pairs.some(([a]) => a?.method === 'first' || a?.method === 'last');
+      await holdAll(
+        f,
+        chain,
+        feature,
+        pairs.map(([a, b], k) => async (): Promise<Added> => {
+          // A try with another target counts once; its repeats for projections don't.
+          if (counted && !triedTargets.has(k)) {
+            triedTargets.add(k);
+            upToTries++;
+          }
+          // Each try from a fresh mapper: its constructions, checks and tally are its own.
+          const mapper = mapperFor(f, i, moved);
+          const target = async (t: UpToTry | undefined, n: 1 | 2) => {
+            if (!t?.named) return t?.ref;
+            const r = await mapper.face(t.named, n === 1 ? 'face to go up to' : 'second face');
+            if (!('stop' in r)) return r;
+            return {
+              stop: (r.stop === 'transform-reference' ? 'up-to' : r.stop) as HistoryStop,
+              detail: r.detail,
+              ...(r.references ? { references: r.references } : {}),
+            };
+          };
+          const ra = await target(a, 1);
+          if (ra && 'stop' in ra) return ra;
+          const rb = await target(b, 2);
+          if (rb && 'stop' in rb) return rb;
+          const extras = await sketchExtras(mapper, feature.sketch);
+          if ('stop' in extras) return extras;
+          const added = addFeature(
+            doc,
+            design,
+            f,
+            feature,
+            sketches,
+            mine,
+            options.solver,
+            decodedSketch,
+            wantedAxes,
+            {
+              ...(ra ? { one: ra } : {}),
+              ...(rb ? { two: rb } : {}),
+              ...extras,
+            },
+          );
+          if ('stop' in added) return added;
+          const info = a ?? b;
+          return {
+            ...added,
+            ...(info ? { upTo: { method: info.method, target: info.target, tries: k + 1 } } : {}),
+            ...madeBy(mapper),
+          };
+        }),
+        false,
+        true,
+      );
+    };
+
+    const walkedIndex = (f: FcObject) => features.indexOf(f);
+
+    /** The mapper for references of feature `i` of this body (S7's transforms, S9's up-to faces, axes and datums). */
+    const mapperFor = (f: FcObject, i: number, moved: boolean) =>
+      new TransformMapper({
+        doc,
+        design,
+        budget,
+        body,
+        sketches,
+        sketchOf,
+        mine,
+        own: own(),
+        walked: new Set(features.slice(0, i).map((x) => x.name)),
+        name: cleanName(f.label, f.name),
+        moved,
+        datums,
+        externalBudget,
+        found: featureFound,
+        ...(options.maxDatums !== undefined ? { maxDatums: options.maxDatums } : {}),
+        ...(options.originFirst === false ? { originFirst: false } : {}),
+      });
+
+    /** What a mapper made for a feature, for its `Added`: references, datums and their checks. */
+    const madeBy = (mapper: TransformMapper) => ({
+      ...(mapper.references ? { references: mapper.references } : {}),
+      ...(mapper.constructions > 0 ? { constructions: mapper.constructions } : {}),
+      ...(mapper.datumsMade.length > 0 ? { datums: [...mapper.datumsMade] } : {}),
+      ...(mapper.checks.length > 0 ? { checks: [...mapper.checks] } : {}),
+    });
+
+    /**
+     * What a feature's new sketch needs besides itself (S9): a plane for a
+     * tilted frame, and the projections its constraints name (with what an
+     * earlier try of this feature learnt about them, `projectionTry`).
+     */
+    const sketchExtras = async (
+      mapper: TransformMapper,
+      sketch: string,
+    ): Promise<
+      | {
+          tilted?: GivenPlane;
+          external?: ReadonlyMap<number, ExternalPlan>;
+          externalCauses?: ReadonlyMap<number, ExternalCause>;
+        }
+      | { stop: HistoryStop; detail: string }
+    > => {
+      const tilted = await mapper.sketchPlane(sketch);
+      if (tilted && 'stop' in tilted) return planeStop(tilted);
+      const ext = await mapper.externals(sketch, projectionTry.reversed, projectionTry.off);
+      if ('stop' in ext) return { stop: ext.stop as HistoryStop, detail: ext.detail };
+      return {
+        ...(tilted ? { tilted } : {}),
+        ...(ext.plans.size > 0 ? { external: ext.plans } : {}),
+        ...(ext.causes.size > 0 ? { externalCauses: ext.causes } : {}),
+      };
+    };
+
+    /** Why a tilted sketch's plane couldn't come in (S9): its sketch doesn't, so neither does the feature. */
+    const planeStop = (t: {
+      stop: string;
+      detail: string;
+    }): { stop: HistoryStop; detail: string } => ({
+      stop: t.stop === 'transform-reference' ? 'sketch' : (t.stop as HistoryStop),
+      detail:
+        t.stop === 'transform-reference'
+          ? `its sketch's plane can't come in: ${t.detail}`
+          : t.detail,
+    });
+
+    /** A revolution or groove about an edge or a datum line (S9): its axis found, then held. */
+    const walkAxis = async (
+      f: FcObject,
+      feature: Extract<DecodedFeature, { kind: 'revolution' | 'groove' }>,
+      chain: readonly FcPlacement[],
+      decodedSketch: DecodedSketch | undefined,
+      i: number,
+      moved: boolean,
+    ): Promise<void> => {
+      const reference = (feature.axis as { reference: DecodedReference }).reference;
+      if (reference.kind === 'element' && budget.restarts !== restartsAtHold) {
+        stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
+        return;
+      }
+      await holdAll(f, chain, feature, [
+        async (): Promise<Added> => {
+          const mapper = mapperFor(f, i, moved);
+          const line = await mapper.line(reference, 'axis');
+          if ('stop' in line)
+            return {
+              stop: line.stop === 'transform-reference' ? 'axis' : line.stop,
+              detail: line.detail,
+              ...(line.references ? { references: line.references } : {}),
+            };
+          const dot = line.along.reduce((n, v, k) => n + v * (line.fc[k] as number), 0);
+          const extras = await sketchExtras(mapper, feature.sketch);
+          if ('stop' in extras) return extras;
+          const added = addFeature(
+            doc,
+            design,
+            f,
+            feature,
+            sketches,
+            mine,
+            options.solver,
+            decodedSketch,
+            wantedAxes,
+            { axis: line.ref, turnAxis: dot < 0, ...extras },
+          );
+          if ('stop' in added) return added;
+          return { ...added, ...madeBy(mapper) };
+        },
       ]);
     };
 
@@ -731,6 +1213,9 @@ export async function importBodies(
         chain,
         feature,
         cuts.map((cut) => async (): Promise<Added> => {
+          const mapper = mapperFor(f, walkedIndex(f), containerChain(doc, f)?.moved ?? true);
+          const extras = await sketchExtras(mapper, feature.sketch);
+          if ('stop' in extras) return extras;
           const got = sketchFor(
             doc,
             design,
@@ -739,6 +1224,10 @@ export async function importBodies(
             options.solver,
             decodedSketch,
             wantedAxes,
+            undefined,
+            extras.tilted,
+            extras.external,
+            extras.externalCauses,
           );
           if ('stop' in got) return got;
           const added = addHole(
@@ -754,6 +1243,7 @@ export async function importBodies(
             feature: added.feature,
             sketch: got.sketch.id,
             ...(got.newSketch ? { newSketch: got.newSketch } : {}),
+            ...madeBy(mapper),
             centres: added.centres,
             ...(feature.threadLost ? { threadLost: true as const } : {}),
           };
@@ -850,26 +1340,13 @@ export async function importBodies(
         }
         what = { bodies: [...mine] };
       }
-      const walkedNames = new Set(features.slice(0, i).map((x) => x.name));
       await holdAll(
         f,
         chain,
         feature,
         [
           async (): Promise<Added> => {
-            const mapper = new TransformMapper({
-              doc,
-              design,
-              budget,
-              body,
-              sketches,
-              sketchOf,
-              mine,
-              own: own(),
-              walked: walkedNames,
-              name: cleanName(f.label, f.name),
-              ...(options.originFirst === false ? { originFirst: false } : {}),
-            });
+            const mapper = mapperFor(f, i, containerChain(doc, f)?.moved ?? true);
             const added = await mapper.add(feature, what);
             const references = mapper.references;
             if ('stop' in added)
@@ -881,8 +1358,8 @@ export async function importBodies(
             return {
               feature: added.feature,
               ...(added.extra ? { extra: added.extra } : {}),
+              ...madeBy(mapper),
               ...(references ? { references } : {}),
-              ...(mapper.constructions > 0 ? { constructions: mapper.constructions } : {}),
             };
           },
         ],
@@ -930,6 +1407,8 @@ export async function importBodies(
     /** Why one attempt at a feature didn't hold. */
     type Failure = {
       reason: HistoryStop;
+      /** The sketch's projections came in other than drawn: the same try again, with what was learnt (S9). */
+      again?: true;
       /** Not a reading of the file a second attempt could change (another body touched). */
       final?: true;
       detail?: string;
@@ -963,7 +1442,11 @@ export async function importBodies(
         // A feature held: the run before it (if any) is over, its step stays.
         run = undefined;
         if (makesBody) bodyMaker ??= added.feature;
-        if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
+        if (added.newSketch) {
+          sketchOutcomes.push(added.newSketch.outcome);
+          // What the import projects is counted as it is kept, never for a try taken back.
+          externalBudget.used += added.newSketch.projected.length;
+        }
         mappedBy.set(f.name, { feature: added.feature, kind: feature.kind });
         mapped.push({
           object: f.name,
@@ -978,6 +1461,16 @@ export async function importBodies(
           ...(added.constructions ? { constructions: added.constructions } : {}),
           ...(added.centres !== undefined ? { centres: added.centres } : {}),
           ...(added.threadLost ? { threadLost: true as const } : {}),
+          ...(added.upTo ? { upTo: added.upTo } : {}),
+          ...(added.datums
+            ? {
+                datums: added.datums.map((d) => ({
+                  object: [...datums].find(([, x]) => x === d)?.[0] ?? '',
+                  mode: d.mode,
+                  how: d.how,
+                })),
+              }
+            : {}),
           ...(second ? { secondAttempt: true as const } : {}),
         });
       });
@@ -1033,6 +1526,11 @@ export async function importBodies(
         // The body IDs a reply may name: `<feature of the document sent>:<n>`.
         let sentFeatures = new Set<string>();
         const skip = others ? [] : [...settled];
+        const projected = added.newSketch?.projected ?? [];
+        const asked = [
+          ...(added.checks ?? []).map((c) => c.feature),
+          ...(projected.length > 0 ? [added.newSketch?.id as string] : []),
+        ];
         const rebuilt = await budget.call(
           () => {
             const sent = design.toJSON();
@@ -1040,17 +1538,45 @@ export async function importBodies(
             // The steps' files so far, and the one the step at hand adds (S8).
             const sending = new Map(files);
             if (adding) sending.set(adding.id, adding.bytes);
-            return budget.kernel.rebuild(sent, sending, skip);
+            return asked.length > 0
+              ? budget.kernel.rebuild(sent, sending, skip, asked)
+              : budget.kernel.rebuild(sent, sending, skip);
           },
           (reply: unknown): reply is RebuildResult =>
-            saneRebuild(reply, sentFeatures) !== undefined,
+            saneRebuild(reply, sentFeatures, new Set(asked)) !== undefined,
         );
         if (rebuilt.kind !== 'done')
           return {
             reason: callStop(rebuilt),
             ...('detail' in rebuilt && rebuilt.detail ? { detail: rebuilt.detail } : {}),
           };
-        const r = saneRebuild(rebuilt.value, sentFeatures) as SaneRebuild;
+        const r = saneRebuild(rebuilt.value, sentFeatures, new Set(asked)) as SaneRebuild;
+        // Each projection is where the sketch has it drawn: else the same try again (S9).
+        if (projected.length > 0) {
+          const v = projectionVerdict(projected, r.reports.get(added.newSketch?.id as string));
+          if (v === 'nonsense') return { reason: 'kernel', detail: NONSENSE_REPLY };
+          if (v.reversed.length > 0 || v.off.length > 0) {
+            // A line the report has the other way round is drawn its way at the next try; one
+            // turned round twice already stays out (a kernel that turns it every time).
+            for (const g of v.reversed) {
+              const turned = projectionTry.turned.get(g) ?? 0;
+              if (turned >= 2) {
+                projectionTry.off.add(g);
+                projectionTry.reversed.delete(g);
+              } else {
+                projectionTry.turned.set(g, turned + 1);
+                if (projectionTry.reversed.has(g)) projectionTry.reversed.delete(g);
+                else projectionTry.reversed.add(g);
+              }
+            }
+            for (const g of v.off) projectionTry.off.add(g);
+            return {
+              reason: 'sketch',
+              detail: 'a curve projected into its sketch came in elsewhere than the file has it',
+              again: true,
+            };
+          }
+        }
         const fresh = new Set(design.doc.features.map((x) => x.id).filter((id) => !before.has(id)));
         const failure = r.failed.find((x) => fresh.has(x.feature as FeatureId));
         if (failure) return { reason: 'failed', detail: failure.message };
@@ -1089,6 +1615,12 @@ export async function importBodies(
             drift: drift(rebuiltBody, measuredStored.value),
             ...(added.references ? { references: added.references } : {}),
           };
+        // Each datum's construction is the file's line or plane (S9).
+        for (const c of added.checks ?? []) {
+          const why = datumDisagreement(c, r.reports.get(c.feature));
+          if (why === 'nonsense') return { reason: 'kernel', detail: NONSENSE_REPLY };
+          if (why) return { reason: 'datum', detail: `its datum ${c.name} ${why}` };
+        }
         design.state.commitTransaction();
         committed = true;
         // The walk's state first, then what the caller keeps (which never throws).
@@ -1104,6 +1636,9 @@ export async function importBodies(
           forgetRemovedPlanes(design);
           for (const [key, s] of sketches)
             if (!design.doc.features.some((x) => x.id === s.id)) sketches.delete(key);
+          const present = new Set<string>(design.doc.features.map((x) => x.id));
+          for (const [key, d] of datums)
+            if (d.features.some((x) => !present.has(x))) datums.delete(key);
         }
       }
     };
@@ -1120,7 +1655,10 @@ export async function importBodies(
       feature: DecodedFeature,
       attempts: readonly (() => Promise<Added>)[],
       others = false,
+      /** An up-to target Extrudo refuses (it lies behind the profile …) is followed by the next too (S9). */
+      refusedToo = false,
     ): Promise<void> => {
+      let repeats = 0;
       for (let k = 0; k < attempts.length; k++) {
         const failed = await hold(
           f,
@@ -1131,8 +1669,13 @@ export async function importBodies(
           k > 0,
         );
         if (!failed) return;
+        if (failed.again && repeats < MAX_PROJECTION_REPEATS && !budget.broken) {
+          repeats++;
+          k--;
+          continue;
+        }
         if (
-          failed.reason === 'differs' &&
+          (failed.reason === 'differs' || (refusedToo && failed.reason === 'failed')) &&
           !failed.final &&
           k + 1 < attempts.length &&
           !budget.broken
@@ -1351,6 +1894,8 @@ export async function importBodies(
       walked++;
       options.onStep?.();
       noted = false;
+      projectionTry = { reversed: new Set(), off: new Set(), turned: new Map() };
+      featureFound = new Map();
       try {
         await walk(f, i);
       } catch (error) {
@@ -1414,6 +1959,7 @@ export async function importBodies(
         }),
       ),
       heldAfterLastStep: mapped.length - (taken.at(-1)?.after ?? 0),
+      upToTries,
     });
     if (!stopped && mine.length > 0) setBodies(design, mine, shape, name);
   }
@@ -1478,7 +2024,43 @@ type Added =
       constructions?: number;
       centres?: number;
       threadLost?: true;
+      upTo?: MappedFeature['upTo'];
+      /** Datums brought in for it, and what their constructions' reports must say (S9). */
+      datums?: readonly DatumMade[];
+      checks?: readonly DatumCheck[];
     };
+
+/** One target an up-to side is tried with (S9): a reference found before the tries, or a face or plane each try finds itself. */
+interface UpToTry {
+  readonly ref?: GeomRef;
+  readonly named?: DecodedReference;
+  readonly method: 'face' | 'shape' | 'first' | 'last';
+  readonly target: 'face' | 'body' | 'plane' | 'datum';
+}
+
+/** The middle of what a sketch draws (its curves' box), in its own coordinates. */
+function profileCentre(sketch: DecodedSketch | undefined): readonly [number, number] | undefined {
+  let lo = [Infinity, Infinity];
+  let hi = [-Infinity, -Infinity];
+  const at = (x: number, y: number, r = 0) => {
+    lo = [Math.min(lo[0] as number, x - r), Math.min(lo[1] as number, y - r)];
+    hi = [Math.max(hi[0] as number, x + r), Math.max(hi[1] as number, y + r)];
+  };
+  for (const g of sketch?.geometry ?? []) {
+    if (!g || g.construction || g.internal !== 0) continue;
+    if (g.kind === 'line') {
+      at(g.start[0], g.start[1]);
+      at(g.end[0], g.end[1]);
+    } else if (g.kind === 'circle' || g.kind === 'arc') at(g.center[0], g.center[1], g.radius);
+  }
+  if (!((hi[0] as number) >= (lo[0] as number)) || !Number.isFinite(lo[0] as number))
+    return undefined;
+  const c: [number, number] = [
+    ((lo[0] as number) + (hi[0] as number)) / 2,
+    ((lo[1] as number) + (hi[1] as number)) / 2,
+  ];
+  return c.every(Number.isFinite) ? c : undefined;
+}
 
 /**
  * What one centre of a hole among a transform's originals counts for in
@@ -1551,6 +2133,9 @@ function sketchFor(
   decoded: DecodedSketch | undefined,
   wanted: ReadonlyMap<string, ReadonlySet<'h' | 'v'>>,
   wantsAxis?: 'h' | 'v',
+  tilted?: GivenPlane,
+  external?: ReadonlyMap<number, ExternalPlan>,
+  externalCauses?: ReadonlyMap<number, ExternalCause>,
 ):
   | {
       sketch: Extract<AddSketchResult, { imported: true }>;
@@ -1572,6 +2157,9 @@ function sketchFor(
     ...(decoded ? { decoded } : {}),
     name: cleanName(object.label, object.name),
     ...(axes.size > 0 ? { axes: [...axes].sort() } : {}),
+    ...(tilted ? { tilted } : {}),
+    ...(external && external.size > 0 ? { external } : {}),
+    ...(externalCauses && externalCauses.size > 0 ? { externalCauses } : {}),
   });
   if (!result.imported)
     return { stop: 'sketch', detail: `its sketch was not imported: ${result.reason}` };
@@ -1590,13 +2178,35 @@ function addFeature(
   solver: SketchSolver | undefined,
   decoded: DecodedSketch | undefined,
   wanted: ReadonlyMap<string, ReadonlySet<'h' | 'v'>>,
+  /** The objects an up-to side goes to; a revolve's axis found elsewhere and whether its sense is turned (S9). */
+  targets: {
+    readonly one?: GeomRef;
+    readonly two?: GeomRef;
+    readonly axis?: GeomRef;
+    readonly turnAxis?: boolean;
+    readonly tilted?: GivenPlane;
+    readonly external?: ReadonlyMap<number, ExternalPlan>;
+    readonly externalCauses?: ReadonlyMap<number, ExternalCause>;
+  } = {},
 ): Added {
   const wantsAxis =
     (feature.kind === 'revolution' || feature.kind === 'groove') &&
     feature.axis.kind === 'sketch-axis'
       ? feature.axis.axis
       : undefined;
-  const got = sketchFor(doc, design, feature.sketch, sketches, solver, decoded, wanted, wantsAxis);
+  const got = sketchFor(
+    doc,
+    design,
+    feature.sketch,
+    sketches,
+    solver,
+    decoded,
+    wanted,
+    wantsAxis,
+    targets.tilted,
+    targets.external,
+    targets.externalCauses,
+  );
   if ('stop' in got) return got;
   const { sketch, newSketch } = got;
   const handle = design.feature(sketch.id) as SketchHandle;
@@ -1617,18 +2227,36 @@ function addFeature(
       let along = feature.kind === 'pad' ? 1 : -1;
       if (feature.reversed) along = -along;
       if (sketch.outcome.mirrored) along = -along;
-      const side = (s: NonNullable<typeof feature.side2>) =>
+      const side = (s: NonNullable<typeof feature.side2>, to: GeomRef | undefined) =>
         s.extent === 'through-all'
           ? { extent: 'through-all' as const }
-          : { extent: 'distance' as const, distance: `${literal(s.length as number)} mm` };
-      const one = side(feature.side1);
-      const two = feature.side2 ? side(feature.side2) : undefined;
+          : s.extent === 'up-to'
+            ? {
+                extent: 'to-object' as const,
+                toObject: to as GeomRef,
+                ...(s.offset ? { offset: `${literal(s.offset)} mm` } : {}),
+              }
+            : { extent: 'distance' as const, distance: `${literal(s.length as number)} mm` };
+      if (
+        (feature.side1.extent === 'up-to' && !targets.one) ||
+        (feature.side2?.extent === 'up-to' && !targets.two)
+      )
+        return { stop: 'up-to', detail: 'its face to go up to was not found' };
+      const one = side(feature.side1, targets.one);
+      const two = feature.side2 ? side(feature.side2, targets.two) : undefined;
       const inputs = extrudeInputs(profiles, {
         ...(feature.direction !== 'one-side' ? { direction: feature.direction } : {}),
         extent: one.extent,
-        ...(one.distance ? { distance: one.distance } : {}),
+        ...('distance' in one ? { distance: one.distance } : {}),
+        ...('toObject' in one ? { toObject: one.toObject } : {}),
+        ...('offset' in one ? { offset: one.offset } : {}),
         ...(two
-          ? { extent2: two.extent, ...(two.distance ? { distance2: two.distance } : {}) }
+          ? {
+              extent2: two.extent,
+              ...('distance' in two ? { distance2: two.distance } : {}),
+              ...('toObject' in two ? { toObject2: two.toObject } : {}),
+              ...('offset' in two ? { offset2: two.offset } : {}),
+            }
           : {}),
         ...(along < 0 ? { flip: true } : {}),
         operation,
@@ -1638,12 +2266,14 @@ function addFeature(
       return { feature: added.id, sketch: sketch.id, ...(newSketch ? { newSketch } : {}) };
     }
     const turned = feature as Extract<DecodedFeature, { kind: 'revolution' | 'groove' }>;
-    const axis = axisRef(sketch, turned.axis);
+    const axis = targets.axis ?? axisRef(sketch, turned.axis);
     if (!axis) return { stop: 'axis', detail: "its axis line didn't come in with the sketch" };
+    // FreeCAD turns right-handed about its axis's direction, Extrudo about its reference's.
+    const flip = turned.reversed !== (targets.turnAxis === true && !turned.symmetric);
     const inputs = revolveInputs(profiles, axis, {
       ...(turned.symmetric ? { direction: 'symmetric' } : {}),
       angle: `${literal(turned.angle)} deg`,
-      ...(turned.reversed ? { flip: true } : {}),
+      ...(flip ? { flip: true } : {}),
       operation,
       ...bodies,
     });
@@ -1660,6 +2290,7 @@ function axisRef(
   axis: Extract<DecodedFeature, { kind: 'revolution' | 'groove' }>['axis'],
 ): GeomRef | undefined {
   if (axis.kind === 'origin') return { kind: 'axis', id: `origin:${axis.axis}` };
+  if (axis.kind === 'reference') return undefined;
   const entity = axis.kind === 'sketch-axis' ? sketch.axes[axis.axis] : sketch.lines[axis.geometry];
   if (entity === undefined) return undefined;
   return { kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, entity as SketchEntityId) };

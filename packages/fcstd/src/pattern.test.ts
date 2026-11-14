@@ -237,7 +237,7 @@ describe('references', () => {
     expect(body?.outcome).toBe('shape');
   });
 
-  it('a datum line is refused for S9', async () => {
+  it('a datum line with no placement is refused (S9 brings datums in from their placement)', async () => {
     const extra = [{ name: 'DatumLine', type: 'PartDesign::Line', props: [label('DatumLine')] }];
     const { body } = await runPart(
       'linear_h_axis',
@@ -246,7 +246,7 @@ describe('references', () => {
       { extra, members: ['DatumLine'] },
     );
     expect(body?.stop).toMatchObject({ reason: 'transform-reference' });
-    expect(body?.stop?.detail).toMatch(/datum line/);
+    expect(body?.stop?.detail).toMatch(/has no placement/);
   });
 });
 

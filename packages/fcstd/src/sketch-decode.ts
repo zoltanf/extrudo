@@ -105,10 +105,34 @@ export interface FcConstraint {
   readonly alignment?: { readonly type: number; readonly index: number };
 }
 
+/** One link of a sketch's `ExternalGeometry` (S9): an object and its element (`Edge3`, `Vertex2`, `` for the whole object). */
+export interface ExternalLink {
+  readonly object: string;
+  readonly sub: string;
+  /** FreeCAD 1.0's topological name of the element (`;#16:3;…E.Edge10`), when the file has one. */
+  readonly shadow?: string;
+}
+
+/** A projection FreeCAD stored for a sketch (1.0+, `ExternalGeo` after the two axes, S9): its curve and the link it came from. */
+export interface StoredExternal {
+  readonly geometry: FcGeometry;
+  /** `<object>.<element's topological or plain name>`: which link made it. */
+  readonly ref: string;
+}
+
+/** A sketch's external geometry (S9): its links, and the projections FreeCAD stored for them (1.0+). */
+export interface DecodedExternal {
+  readonly links: readonly ExternalLink[];
+  /** By external geometry index from 0 (geometry index −3 − k); `undefined` where a record couldn't be read. Absent before 1.0. */
+  readonly stored?: readonly (StoredExternal | undefined)[];
+}
+
 export interface DecodedSketch {
   /** One slot per stored record, in the file's order; `undefined` where the record couldn't be read. */
   readonly geometry: readonly (FcGeometry | undefined)[];
   readonly constraints: readonly (FcConstraint | undefined)[];
+  /** S9: external links and stored projections, when the sketch has links. */
+  readonly external?: DecodedExternal;
   /** Set when the sketch breaks a limit: no geometry is decoded then, and every constraint slot is empty. */
   readonly overLimit?: string;
   /** What couldn't be read, one line each. */
@@ -354,9 +378,80 @@ export function decodeSketch(o: FcObject): DecodedSketch {
         return undefined;
       }
     });
+  const external = externalOf(o, problems);
   return {
     geometry: read(g, 'curve', geometryOf),
     constraints: read(c, 'constraint', constraintOf),
+    ...(external ? { external } : {}),
     problems,
   };
+}
+
+/**
+ * A sketch's external links and (1.0+) the projections FreeCAD stored for
+ * them (FORMAT.md): `ExternalGeo`'s first two records are the sketch's H and V
+ * axes (geometry indices −1, −2); record 2 + k is external geometry k, index
+ * −3 − k, and its `ref` names the link that made it. At most
+ * `MAX_SKETCH_GEOMETRY` of each, else none is read (a problem says so).
+ */
+function externalOf(o: FcObject, problems: string[]): DecodedExternal | undefined {
+  const v = o.properties.ExternalGeometry?.value;
+  const links: ExternalLink[] = [];
+  if (v?.kind === 'linkSubList') {
+    if (v.items.length > MAX_SKETCH_GEOMETRY) {
+      problems.push(`${o.name}: ${v.items.length} external links, over the limit; none was read.`);
+      return undefined;
+    }
+    for (const item of v.items)
+      links.push({
+        object: item.object,
+        sub: item.sub.name,
+        ...(item.sub.shadow ? { shadow: item.sub.shadow } : {}),
+      });
+  } else if (v?.kind === 'linkSub' && v.object) {
+    for (const sub of v.subs.slice(0, MAX_SKETCH_GEOMETRY + 1))
+      links.push({
+        object: v.object,
+        sub: sub.name,
+        ...(sub.shadow ? { shadow: sub.shadow } : {}),
+      });
+    if (links.length > MAX_SKETCH_GEOMETRY) return undefined;
+  }
+  if (links.length === 0) return undefined;
+  const geo = records(o, 'ExternalGeo', 'geometry');
+  if (geo.length === 0) return { links };
+  if (geo.length > MAX_SKETCH_GEOMETRY + 2) {
+    problems.push(`${o.name}: ${geo.length} stored projections, over the limit; none was read.`);
+    return { links };
+  }
+  const stored = geo.slice(2).map((r, i) => {
+    const what = `${o.name} external curve ${i}`;
+    try {
+      return { geometry: geometryOf(what, r), ref: r.attrs.ref ?? '' };
+    } catch (error) {
+      if (!(error instanceof FcstdFormatError)) throw error;
+      problems.push(`${error.message} It was left out.`);
+      return undefined;
+    }
+  });
+  return { links, stored };
+}
+
+/**
+ * The link external geometry index `k` (geometry index −3 − k) came from:
+ * before 1.0 link `k` itself (each edge or vertex makes one curve); from 1.0
+ * the link the stored projection's `ref` names (`<object>.<shadow name without
+ * its element>` or `<object>.<element>`). `undefined` when none matches.
+ */
+export function externalLinkOf(external: DecodedExternal, k: number): number | undefined {
+  if (!external.stored) return k < external.links.length ? k : undefined;
+  const ref = external.stored[k]?.ref;
+  if (!ref) return undefined;
+  const i = external.links.findIndex((l) => {
+    const shadow = l.shadow?.endsWith(`.${l.sub}`)
+      ? l.shadow.slice(0, -l.sub.length - 1)
+      : l.shadow;
+    return ref === `${l.object}.${shadow ?? ''}` || ref === `${l.object}.${l.sub}`;
+  });
+  return i < 0 ? undefined : i;
 }

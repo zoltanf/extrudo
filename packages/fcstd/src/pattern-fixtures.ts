@@ -31,10 +31,23 @@ export interface PatternFixtureObject {
     readonly centre: readonly number[];
   };
   readonly subInfo?: Readonly<Record<string, readonly Record<string, unknown>[]>>;
+  /** A datum's (or any non-sketch object's) stored placement when it isn't the identity (S9): position, quaternion. */
+  readonly at?: readonly number[];
   readonly sketch?: {
     /** Position, then the rotation as a quaternion (x, y, z, w). */
     readonly at: readonly number[];
+    /** `['line', x1, y1, x2, y2]` or `['circle', cx, cy, r]`, with `'construction'` last for construction geometry. */
     readonly geometry: readonly (readonly (string | number)[])[];
+    /** S9: type, value, first, its position, second, its position, third, its position[, name, driving, active]. */
+    readonly constraints?: readonly (readonly (string | number | boolean)[])[];
+    /** S9: `ExternalGeometry`'s links: object, element, shadow name. */
+    readonly external?: readonly (readonly string[])[];
+    /** S9: `ExternalGeo` after the two axes, as stored: `['line', x1, y1, x2, y2, ref]`, `['circle', cx, cy, r, ref]`. */
+    readonly externalGeo?: readonly (readonly (string | number)[])[];
+    /** S9: `AttachmentSupport`: object, element. */
+    readonly support?: readonly (readonly string[])[];
+    /** S9: the `MapMode` name. */
+    readonly mapMode?: string;
   };
 }
 export interface PatternFixtureCase {

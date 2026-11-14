@@ -34,6 +34,7 @@ import {
   type SketchEntityId,
   sketchEntityRefId,
 } from '@extrudo/core';
+import { mapModeOf, supportsOf } from './attach';
 import type { CallOutcome, KernelBudget } from './budget';
 import type { ReferenceTally } from './dressups';
 import {
@@ -55,19 +56,33 @@ import {
 } from './match';
 import { type FcDocument, type FcObject, storedShapeText } from './model';
 import { cleanName } from './names';
-import type { DecodedSketch } from './sketch-decode';
-import { containerChain, sketchFrame } from './sketch-place';
+import {
+  type DecodedSketch,
+  externalLinkOf,
+  type FcGeometry,
+  GEO_UNDEF,
+  MAX_SKETCH_GEOMETRY,
+  type Vec2,
+} from './sketch-decode';
+import { type ExternalPlan, MAX_CANDIDATES } from './sketch-map';
+import {
+  containerChain,
+  fitsOriginPlane,
+  frameIsSound,
+  type GivenPlane,
+  sketchFrame,
+} from './sketch-place';
 import type { AddSketchResult } from './sketches';
 
 type Vec3 = readonly [number, number, number];
 type ImportedSketch = Extract<AddSketchResult, { imported: true }>;
 
-interface Line {
+export interface Line {
   readonly origin: Vec3;
   /** Unit, in FreeCAD's sense. */
   readonly direction: Vec3;
 }
-interface Plane {
+export interface Plane {
   readonly origin: Vec3;
   readonly normal: Vec3;
 }
@@ -95,6 +110,11 @@ const unsound = (what: string): TransformStop => ({
   stop: 'transform-reference',
   detail: `its ${what} is no line or plane the importer can use (no length, no direction, or past ${MAX_FEATURE_LENGTH} mm)`,
 });
+
+/** Two lines that are one: parallel, and the one's origin on the other. */
+const collinear = (a: Line, b: Line) =>
+  norm(cross(a.direction, b.direction)) <= PARALLEL &&
+  norm(cross(sub(a.origin, b.origin), b.direction)) <= onTolerance(a.origin);
 
 /** How far off parallel two unit directions may be and count as one (a sine). */
 const PARALLEL = 1e-9;
@@ -142,8 +162,100 @@ export interface TransformContext {
   readonly walked: ReadonlySet<string>;
   /** The feature's name in the design. */
   readonly name: string;
+  /** Some container of the body has a placement other than the identity (S9: no origin-plane relation then). */
+  readonly moved?: boolean;
   /** Prefer an origin axis or plane where one coincides (tests turn it off to reach the others). */
   readonly originFirst?: boolean;
+  /** The datums brought in so far in this import, by FreeCAD name (S9): one construction per datum. */
+  readonly datums?: Map<string, DatumMade>;
+  /** The most datums one import brings in (`MAX_DATUMS`; tests lower it). */
+  readonly maxDatums?: number;
+  /** External links projected so far in this import, and the most it may project (S9). */
+  readonly externalBudget?: { used: number; readonly max: number };
+  /**
+   * What the feature being walked found so far, by `<object>|<kind>|<index>`
+   * (S9's fix round): stored descriptions and matches on the body as it was
+   * before the feature's first try, which every later try reuses. A failed
+   * try's rebuild is the kernel's last recompute and still holds the
+   * cancelled feature, so nothing may be matched again after it.
+   */
+  readonly found?: Map<string, Found>;
+}
+
+/** One lookup of a feature's tries (`TransformContext.found`). */
+export type Found =
+  | {
+      readonly stored:
+        | { stored: ShapeElements; element: ElementEdge | ElementFace }
+        | TransformStop;
+    }
+  | {
+      readonly match: GeomRef | TransformStop;
+      readonly tally: { found: number; none: number; several: number; furthest: number };
+    };
+
+/**
+ * Why a named external curve didn't come in as a projection (S9's fix round):
+ * reported elsewhere by the kernel, past a cap, its link not found, a vertex,
+ * a source outside the body's walked features (another body, a ShapeBinder, a
+ * Part feature, a later feature), a sketch line that didn't come in, an arc, a
+ * curve the importer doesn't project, a stored shape that can't be read, or
+ * no or several counterparts on the rebuilt body. `unused`: projected, but no
+ * constraint naming it was kept.
+ */
+export type ExternalCause =
+  | 'elsewhere'
+  | 'limit'
+  | 'link'
+  | 'vertex'
+  | 'source'
+  | 'sketch-line'
+  | 'arc'
+  | 'kind'
+  | 'stored'
+  | 'none'
+  | 'several'
+  | 'unused';
+
+/** The most external links of one sketch that are projected (S9): the rest stay out as before. */
+export const MAX_EXTERNAL_PER_SKETCH = 64;
+/** The most external links one import projects (S9). */
+export const MAX_EXTERNAL_PER_FILE = 1_000;
+
+/** A datum line or plane brought in (S9): its Extrudo reference and its world line or plane. */
+export interface DatumMade {
+  readonly ref: GeomRef;
+  /** How it came in: an origin axis or plane, a relation kept (on an origin plane, along an edge or a sketch line), or fixed. */
+  readonly how: 'origin' | 'offset' | 'edge' | 'sketch-line' | 'fixed';
+  readonly mode: string;
+  readonly line?: Line;
+  readonly plane?: Plane;
+  /** A plane's construction's own normal (a sketch on it takes that plane's frame; it may point against `plane.normal`). */
+  readonly normal?: Vec3;
+  /** The construction features it made (none for an origin axis or plane). */
+  readonly features: readonly string[];
+}
+
+/** Whether `name` is an origin axis or plane of `body`'s own origin. */
+function ownOriginFeature(doc: FcDocument, body: FcObject, name: string): boolean {
+  const v = body.properties.Origin?.value;
+  const origin = v?.kind === 'link' && v.object ? doc.byName.get(v.object) : undefined;
+  const list = origin?.properties.OriginFeatures?.value;
+  return list?.kind === 'linkList' && list.objects.includes(name);
+}
+
+/** Stops that are a kernel call's outcome, never remembered for a later try. */
+const CALL_STOPS: ReadonlySet<string> = new Set(['kernel', 'time', 'restarts', 'import-time']);
+
+/** The most datums one import brings in: past it a feature that needs one more is refused (`limit`). */
+export const MAX_DATUMS = 200;
+
+/** What a rebuild's report must say for a datum's construction (S9's check). */
+export interface DatumCheck {
+  readonly feature: string;
+  readonly name: string;
+  readonly line?: Line;
+  readonly plane?: Plane;
 }
 
 /** What a transform repeats: features' tools, or (its originals are every feature of the body) the body. */
@@ -178,6 +290,9 @@ export class TransformMapper {
   #matched = false;
   /** Construction features made, for the report. */
   constructions = 0;
+  /** The datums this mapper brought in (S9), and what each construction's report must say. */
+  readonly datumsMade: DatumMade[] = [];
+  readonly checks: DatumCheck[] = [];
 
   constructor(context: TransformContext) {
     this.#c = context;
@@ -215,8 +330,22 @@ export class TransformMapper {
     return { origin: a, direction: unit(d) };
   }
 
-  /** The element's stored description, described by the import kernel. */
+  /** The element's stored description, described once per feature (`found`). */
   async #stored(
+    object: string,
+    kind: 'edge' | 'face',
+    index: number,
+    name: string,
+  ): Promise<{ stored: ShapeElements; element: ElementEdge | ElementFace } | TransformStop> {
+    const key = `${object}|${kind}|${index}|stored`;
+    const known = this.#c.found?.get(key);
+    if (known && 'stored' in known) return known.stored;
+    const got = await this.#describeStored(object, kind, index, name);
+    if (!('stop' in got) || !CALL_STOPS.has(got.stop)) this.#c.found?.set(key, { stored: got });
+    return got;
+  }
+
+  async #describeStored(
     object: string,
     kind: 'edge' | 'face',
     index: number,
@@ -270,14 +399,50 @@ export class TransformMapper {
     return { stored: s, element };
   }
 
-  /** Finds a stored edge or face on the rebuilt body and returns its persistent reference. */
+  /**
+   * Finds a stored edge or face on the rebuilt body and returns its persistent
+   * reference: on the body before the feature, once per feature (`found`, by
+   * `key`), so a later try reuses what the first found.
+   */
   async #match(
+    element: ElementEdge | ElementFace,
+    kind: 'edge' | 'face',
+    what: string,
+    key: string,
+  ): Promise<GeomRef | TransformStop> {
+    this.#matched = true;
+    const k = `${key}|match`;
+    const known = this.#c.found?.get(k);
+    const before = { ...this.tally };
+    if (known && 'match' in known) {
+      this.tally.found += known.tally.found;
+      this.tally.none += known.tally.none;
+      this.tally.several += known.tally.several;
+      this.tally.furthest = Math.max(this.tally.furthest, known.tally.furthest);
+      return 'stop' in known.match && known.match.references
+        ? { ...known.match, references: { ...this.tally } }
+        : known.match;
+    }
+    const got = await this.#findOnBody(element, kind, what);
+    if (!('stop' in got) || !CALL_STOPS.has(got.stop))
+      this.#c.found?.set(k, {
+        match: got,
+        tally: {
+          found: this.tally.found - before.found,
+          none: this.tally.none - before.none,
+          several: this.tally.several - before.several,
+          furthest: this.tally.furthest,
+        },
+      });
+    return got;
+  }
+
+  async #findOnBody(
     element: ElementEdge | ElementFace,
     kind: 'edge' | 'face',
     what: string,
   ): Promise<GeomRef | TransformStop> {
     const { budget, mine, design } = this.#c;
-    this.#matched = true;
     const point =
       kind === 'edge' ? (element as ElementEdge).midpoint : (element as ElementFace).centroid;
     const cell = cellFor([point]);
@@ -349,7 +514,7 @@ export class TransformMapper {
     }
   }
 
-  #point(p: Vec3, n: number): GeomRef | TransformStop {
+  #point(p: Vec3, n: number, name = this.#c.name): GeomRef | TransformStop {
     if (!inRange(p)) return unsound('reference');
     const id = this.#construct(
       'constructionPoint',
@@ -358,28 +523,28 @@ export class TransformMapper {
         y: expr(`${literal(p[1])} mm`, 'length'),
         z: expr(`${literal(p[2])} mm`, 'length'),
       },
-      `${this.#c.name} point ${n}`,
+      `${name} point ${n}`,
     );
     return typeof id === 'string' ? { kind: 'point', id } : id;
   }
 
   /** An axis through two construction points: the line exactly, pointing FreeCAD's way. */
-  #axisOf(line: Line): GeomRef | TransformStop {
+  #axisOf(line: Line, name?: string): GeomRef | TransformStop {
     // Points 10 mm apart about the line's origin keep the numbers as given.
-    const a = this.#point(line.origin, 1);
+    const a = this.#point(line.origin, 1, name);
     if ('stop' in a) return a;
-    const b = this.#point(add(line.origin, scale(line.direction, 10)), 2);
+    const b = this.#point(add(line.origin, scale(line.direction, 10)), 2, name);
     if ('stop' in b) return b;
     const id = this.#construct(
       'axisThroughPoints',
       { points: { kind: 'ref', refs: [a, b] } },
-      `${this.#c.name} axis`,
+      name ?? `${this.#c.name} axis`,
     );
     return typeof id === 'string' ? { kind: 'axis', id } : id;
   }
 
   /** A plane through three construction points. */
-  #planeOf(plane: Plane): GeomRef | TransformStop {
+  #planeOf(plane: Plane, name?: string): GeomRef | TransformStop {
     const n = unit(plane.normal);
     // Two directions in the plane: one square to the normal's largest component.
     const helper: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
@@ -388,14 +553,14 @@ export class TransformMapper {
     const p = [plane.origin, add(plane.origin, scale(u, 10)), add(plane.origin, scale(v, 10))];
     const refs: GeomRef[] = [];
     for (const [i, x] of p.entries()) {
-      const r = this.#point(x, i + 1);
+      const r = this.#point(x, i + 1, name);
       if ('stop' in r) return r;
       refs.push(r);
     }
     const id = this.#construct(
       'planeThroughPoints',
       { points: { kind: 'ref', refs } },
-      `${this.#c.name} plane`,
+      name ?? `${this.#c.name} plane`,
     );
     return typeof id === 'string' ? { kind: 'plane', id } : id;
   }
@@ -454,6 +619,13 @@ export class TransformMapper {
         stop: 'transform-reference',
         detail: `its ${what} is a plane or a face, which this importer doesn't map as a ${what}`,
       };
+    if (reference.kind === 'datum') {
+      const d = await this.datum(reference.object, 'line', what);
+      if ('stop' in d) return d;
+      const l = d.line as Line;
+      const along = d.ref.kind === 'edge' ? canonical(l.direction) : (d.along ?? l.direction);
+      return { ref: d.ref, along, fc: l.direction };
+    }
     if (reference.kind === 'origin-axis') {
       const a = ORIGIN_AXES.find((x) => x.id === `origin:${reference.axis}`);
       return {
@@ -501,6 +673,7 @@ export class TransformMapper {
         e,
         'edge',
         `its ${what} ${cleanName(reference.element.name, 'nothing')}`,
+        `${reference.object}|edge|${reference.element.index}`,
       );
       if ('stop' in ref) return ref;
       return { ref, along: canonical(line.direction), fc: line.direction };
@@ -519,6 +692,10 @@ export class TransformMapper {
   async plane(reference: DecodedReference): Promise<GeomRef | TransformStop> {
     if (reference.kind === 'origin-plane')
       return { kind: 'plane', id: `origin:${reference.plane}` };
+    if (reference.kind === 'datum') {
+      const d = await this.datum(reference.object, 'plane', 'mirror plane');
+      return 'stop' in d ? d : d.ref;
+    }
     if (
       reference.kind === 'origin-axis' ||
       (reference.kind === 'element' && reference.element.kind === 'edge')
@@ -545,6 +722,7 @@ export class TransformMapper {
         face,
         'face',
         `its mirror plane ${cleanName(reference.element.name, 'nothing')}`,
+        `${reference.object}|face|${reference.element.index}`,
       );
     }
     const f = this.#frame(reference.sketch);
@@ -581,6 +759,459 @@ export class TransformMapper {
       return typeof id === 'string' ? { kind: 'plane', id } : id;
     }
     return this.#planeOf(plane);
+  }
+
+  /**
+   * An up-to target (S9): a face of a feature found on the rebuilt body (flat
+   * or curved; S6's matcher, exactly one candidate), or an origin plane.
+   */
+  async face(reference: DecodedReference, what: string): Promise<GeomRef | TransformStop> {
+    if (reference.kind === 'origin-plane')
+      return { kind: 'plane', id: `origin:${reference.plane}` };
+    if (reference.kind === 'datum') {
+      const d = await this.datum(reference.object, 'plane', what);
+      return 'stop' in d ? d : d.ref;
+    }
+    if (reference.kind !== 'element' || reference.element.kind !== 'face')
+      return { stop: 'transform-reference', detail: `its ${what} is not a face` };
+    const found = await this.#stored(
+      reference.object,
+      'face',
+      reference.element.index,
+      reference.element.name,
+    );
+    if ('stop' in found) return found;
+    const face = found.element as ElementFace;
+    if (!inRange(face.centroid) || !(face.area > 0)) return unsound(what);
+    return this.#match(
+      face,
+      'face',
+      `its ${what} ${cleanName(reference.element.name, 'nothing')}`,
+      `${reference.object}|face|${reference.element.index}`,
+    );
+  }
+
+  // ------------------------------------------------------------ datums (S9)
+
+  /**
+   * A datum line or plane (`PartDesign::Line`, `PartDesign::Plane`) of this
+   * body as an Extrudo reference, made once per import and before its first
+   * user, in that user's transaction. The truth is the datum's stored
+   * placement, moved by its containers as a sketch's is (the line through its
+   * position along its local Z; the plane through it with its local Z as the
+   * normal). Its attachment only chooses the construction: an origin axis or
+   * plane it coincides with; a plane on an origin plane moved along that
+   * plane's normal (`offsetPlane`); a line along a straight edge the matcher
+   * finds or along a line of a sketch of this body (`axisAlongEdge`); else
+   * fixed construction points from the placement's numbers, an axis through
+   * two or a plane through three. Each construction's report must give the
+   * file's line or plane after the rebuild (`checks`).
+   */
+  /**
+   * A datum's world line or plane from its stored placement (moved by its
+   * containers): its position and local Z, or why it can't be used. Nothing
+   * is made.
+   */
+  datumGeometry(o: FcObject, what: string): { origin: Vec3; z: Vec3 } | TransformStop {
+    if (o.unreadable?.includes('Placement'))
+      return { stop: 'transform-reference', detail: `its ${what}'s placement can't be read` };
+    if (o.properties.Placement?.value.kind !== 'placement')
+      return { stop: 'transform-reference', detail: `its ${what} has no placement` };
+    const g = sketchFrame(this.#c.doc, o).global;
+    if (!frameIsSound(g)) return unsound(what);
+    const origin = g.position as Vec3;
+    const z = rotate(g.rotation, [0, 0, 1]) as Vec3;
+    if (!sound(origin, z)) return unsound(what);
+    return { origin, z };
+  }
+
+  async datum(
+    object: string,
+    want: 'line' | 'plane',
+    what: string,
+  ): Promise<(DatumMade & { along?: Vec3 }) | TransformStop> {
+    const { doc, body } = this.#c;
+    const refuse = (detail: string): TransformStop => ({ stop: 'transform-reference', detail });
+    const o = doc.byName.get(object);
+    if (!o) return refuse(`its ${what} ${cleanName(object, object)} isn't in the file`);
+    const isLine = o.type === 'PartDesign::Line';
+    if (isLine !== (want === 'line'))
+      return refuse(`its ${what} is a datum ${isLine ? 'line' : 'plane'}, not a ${want}`);
+    // The body's members: `Group`, or `Model` in the 0.14 builds' bodies.
+    const group = (body.properties.Group ?? body.properties.Model)?.value;
+    if (group?.kind !== 'linkList' || !group.objects.includes(object))
+      return refuse(`its ${what} is a datum outside its body`);
+    const made = this.#c.datums?.get(object);
+    if (made) return made;
+    if ((this.#c.datums?.size ?? 0) >= (this.#c.maxDatums ?? MAX_DATUMS))
+      return {
+        stop: 'limit',
+        detail: `the file brings in more than ${this.#c.maxDatums ?? MAX_DATUMS} datums`,
+      };
+    const geometry = this.datumGeometry(o, what);
+    if ('stop' in geometry) return geometry;
+    const { origin, z } = geometry;
+    const mode = mapModeOf(o) ?? 'unknown';
+    const supports = supportsOf(o);
+    const name = cleanName(o.label, o.name);
+    const before = this.constructions;
+    const done = (
+      ref: GeomRef | TransformStop,
+      how: DatumMade['how'],
+      extra: { along?: Vec3 } = {},
+      normal: Vec3 = z,
+    ): (DatumMade & { along?: Vec3 }) | TransformStop => {
+      if ('stop' in ref) return ref;
+      const features: string[] = [];
+      if (this.constructions > before) {
+        const ids = this.#c.design.doc.features.map((f) => f.id as string);
+        features.push(...ids.slice(ids.length - (this.constructions - before)));
+      }
+      const d: DatumMade = {
+        ref,
+        how,
+        mode,
+        ...(want === 'line'
+          ? { line: { origin, direction: z } }
+          : { plane: { origin, normal: z }, normal }),
+        features,
+      };
+      this.#c.datums?.set(object, d);
+      this.datumsMade.push(d);
+      if (features.length > 0 && (ref.kind === 'axis' || ref.kind === 'plane'))
+        this.checks.push({
+          feature: ref.id,
+          name,
+          ...(want === 'line'
+            ? { line: { origin, direction: z } }
+            : { plane: { origin, normal: z } }),
+        });
+      return { ...d, ...extra };
+    };
+    if (want === 'line') {
+      const line: Line = { origin, direction: z };
+      const axis = this.#originAxis(line);
+      if (axis) return done(axis.ref, 'origin', { along: axis.along });
+      if (mode === 'TwoPointLine' && supports.length === 1) {
+        const [support] = supports as [{ object: string; sub: string }];
+        const target = doc.byName.get(support.object);
+        const edge = /^Edge([1-9]\d{0,8})$/.exec(support.sub);
+        // Along a line of a sketch of this body that came in: the drawn line itself.
+        if (target?.type.startsWith('Sketcher::SketchObject') && edge) {
+          const index = Number(edge[1]) - 1;
+          const drawn = this.#drawn({ kind: 'sketch-line', sketch: target.name, geometry: index });
+          const l = this.#sketchLine(target.name, index);
+          if (drawn && !('stop' in l) && collinear(l, line)) {
+            const id = this.#construct(
+              'axisAlongEdge',
+              { edge: { kind: 'ref', refs: [drawn] } },
+              name,
+            );
+            if (typeof id !== 'string') return id;
+            return done({ kind: 'axis', id }, 'sketch-line', { along: l.direction });
+          }
+        } else if (target && edge && this.#c.walked.has(target.name)) {
+          // Along a straight edge of a feature of this body, found on the rebuilt body.
+          const found = await this.#stored(target.name, 'edge', Number(edge[1]) - 1, support.sub);
+          if (!('stop' in found)) {
+            const e = found.element as ElementEdge;
+            const ends = e.ends as [Vec3, Vec3] | undefined;
+            if (
+              e.type === 'line' &&
+              ends?.length === 2 &&
+              norm(sub(ends[1], ends[0])) > 1e-9 &&
+              collinear({ origin: ends[0], direction: unit(sub(ends[1], ends[0])) }, line)
+            ) {
+              const ref = await this.#match(
+                e,
+                'edge',
+                `its ${what}'s edge`,
+                `${target.name}|edge|${Number(edge[1]) - 1}`,
+              );
+              if ('stop' in ref) return ref;
+              const id = this.#construct(
+                'axisAlongEdge',
+                { edge: { kind: 'ref', refs: [ref] } },
+                name,
+              );
+              if (typeof id !== 'string') return id;
+              return done({ kind: 'axis', id }, 'edge', {
+                along: canonical(unit(sub(ends[1], ends[0]))),
+              });
+            }
+          }
+        }
+      }
+      return done(this.#axisOf(line, name), 'fixed', { along: z });
+    }
+    const plane: Plane = { origin, normal: z };
+    const onOrigin = this.#originPlane(plane);
+    if (onOrigin)
+      return done(
+        onOrigin,
+        'origin',
+        {},
+        ORIGIN_PLANES.find((x) => x.id === onOrigin.id)?.frame.normal as Vec3,
+      );
+    if (
+      mode === 'FlatFace' &&
+      supports.length === 1 &&
+      (supports[0] as { sub: string }).sub === ''
+    ) {
+      const base = doc.byName.get((supports[0] as { object: string }).object);
+      // An origin plane of the feature's own body, never another body's.
+      const p =
+        base?.type === 'App::Plane' && ownOriginFeature(doc, body, base.name)
+          ? ORIGIN_PLANES.find((x) => {
+              const role = base.properties.Role?.value;
+              const r = role?.kind === 'string' ? role.value : base.name;
+              return r.startsWith(`${x.id.slice('origin:'.length).toUpperCase()}_Plane`);
+            })
+          : undefined;
+      const n = p?.frame.normal as Vec3 | undefined;
+      // On an origin plane of this body, moved along its normal only: Extrudo's offset plane.
+      if (p && n && !this.#c.moved && norm(cross(n, z)) <= PARALLEL) {
+        const id = this.#construct(
+          'offsetPlane',
+          {
+            plane: { kind: 'ref', refs: [{ kind: 'plane', id: p.id }] },
+            distance: expr(`${literal(dot(origin, n))} mm`, 'length'),
+          },
+          name,
+        );
+        if (typeof id !== 'string') return id;
+        return done({ kind: 'plane', id }, 'offset', {}, n);
+      }
+    }
+    return done(this.#planeOf(plane, name), 'fixed');
+  }
+
+  /**
+   * The plane for a sketch whose frame is tilted off every origin axis (S9),
+   * made in the feature's transaction: its datum plane when it is attached
+   * to one of this body (section 3), else a plane through three fixed points
+   * of its own frame. `undefined` when S4's planes hold the frame, or the
+   * sketch came in already.
+   */
+  async sketchPlane(sketch: string): Promise<GivenPlane | TransformStop | undefined> {
+    const { doc } = this.#c;
+    if (this.#c.sketches.has(sketch)) return undefined;
+    const o = doc.byName.get(sketch);
+    if (!o?.type.startsWith('Sketcher::SketchObject')) return undefined;
+    const g = sketchFrame(doc, o).global;
+    if (!frameIsSound(g) || fitsOriginPlane(g)) return undefined;
+    const n = rotate(g.rotation, [0, 0, 1]) as Vec3;
+    const supports = supportsOf(o);
+    const support =
+      supports.length === 1
+        ? doc.byName.get((supports[0] as { object: string }).object)
+        : undefined;
+    if (
+      support?.type === 'PartDesign::Plane' &&
+      (supports[0] as { sub: string }).sub === '' &&
+      mapModeOf(o) === 'FlatFace'
+    ) {
+      // The datum's plane only when the sketch's own frame lies in it (an attachment offset
+      // along the normal moves the sketch off it); else, as for any refusal of the datum that
+      // isn't a kernel call's, the plane through the sketch's own frame.
+      const geometry = this.datumGeometry(support, 'sketch plane');
+      const inPlane =
+        !('stop' in geometry) &&
+        norm(cross(geometry.z, n)) <= PARALLEL &&
+        Math.abs(dot(sub(g.position as Vec3, geometry.origin), geometry.z)) <=
+          onTolerance(g.position as Vec3);
+      if (inPlane) {
+        const d = await this.datum(support.name, 'plane', 'sketch plane');
+        if ('stop' in d && CALL_STOPS.has(d.stop)) return d;
+        if (!('stop' in d))
+          return {
+            plane: d.ref,
+            kind: 'datum',
+            point: (d.plane as Plane).origin,
+            normal: d.normal ?? n,
+          };
+      }
+    }
+    if (!sound(g.position as Vec3, n)) return unsound('sketch plane');
+    const ref = this.#planeOf(
+      { origin: g.position as Vec3, normal: n },
+      `${cleanName(o.label, o.name)} plane`,
+    );
+    if ('stop' in ref) return ref;
+    return { plane: ref, kind: 'points', point: g.position as Vec3, normal: n };
+  }
+
+  // ------------------------------------------------------------ external geometry (S9)
+
+  /**
+   * The external geometry a sketch's constraints name, as projections to
+   * make (section 5): an edge of a feature of this body walked before (found
+   * on the rebuilt body by S6's matcher, the body as it is when the sketch is
+   * made) or a line of another sketch of this body that came in. The curve is
+   * where FreeCAD stored its projection (1.0+), else the source projected
+   * onto the sketch's plane along its normal (a line's ends, a circle whose
+   * axis is the normal). Anything else is not planned and stays out, as
+   * before S9. `reversed` and `off` come from an earlier try (`bodies.ts`).
+   */
+  async externals(
+    sketch: string,
+    reversed: ReadonlySet<number>,
+    off: ReadonlySet<number>,
+  ): Promise<
+    | { plans: Map<number, ExternalPlan>; links: number; causes: Map<number, ExternalCause> }
+    | TransformStop
+  > {
+    const plans = new Map<number, ExternalPlan>();
+    const causes = new Map<number, ExternalCause>();
+    const { doc } = this.#c;
+    const decoded = this.#c.sketchOf(sketch);
+    const ext = decoded?.external;
+    if (!decoded || !ext || this.#c.sketches.has(sketch)) return { plans, links: 0, causes };
+    const o = doc.byName.get(sketch) as FcObject;
+    const f = this.#frame(sketch);
+    const uv = (p: Vec3): Vec2 => [dot(sub(p, f.origin), f.x), dot(sub(p, f.origin), f.y)];
+    const wanted = new Set<number>();
+    for (const c of decoded.constraints.slice(0, MAX_CANDIDATES))
+      for (const g of c ? [c.first, c.second, c.third] : [])
+        if (g <= -3 && g !== GEO_UNDEF && g > -3 - MAX_SKETCH_GEOMETRY) wanted.add(g);
+    // Counted as the walk keeps projections (`used`), and here as planned for this try.
+    const budget = this.#c.externalBudget;
+    let planned = 0;
+    let n = 0;
+    for (const g of wanted) {
+      if (off.has(g)) {
+        causes.set(g, 'elsewhere');
+        continue;
+      }
+      if (++n > MAX_EXTERNAL_PER_SKETCH || (budget && budget.used + planned >= budget.max)) {
+        causes.set(g, 'limit');
+        continue;
+      }
+      const k = -g - 3;
+      const li = externalLinkOf(ext, k);
+      const link = li === undefined ? undefined : ext.links[li];
+      const stored = ext.stored?.[k]?.geometry;
+      if (!link || (ext.stored && !stored)) {
+        causes.set(g, 'link');
+        continue;
+      }
+      const target = doc.byName.get(link.object);
+      if (/^Vertex\d/.test(link.sub)) {
+        causes.set(g, 'vertex');
+        continue;
+      }
+      const edge = /^Edge([1-9]\d{0,8})$/.exec(link.sub);
+      if (!target || !edge) {
+        causes.set(g, 'source');
+        continue;
+      }
+      let curve: FcGeometry | undefined = stored;
+      let ref: GeomRef | undefined;
+      let key = 'edge';
+      if (target.type.startsWith('Sketcher::SketchObject')) {
+        // A line of another sketch of this body that came in (ADR-0125's projection of a sketch curve).
+        const index = Number(edge[1]) - 1;
+        const drawn = this.#drawn({ kind: 'sketch-line', sketch: target.name, geometry: index });
+        const l = this.#sketchLine(target.name, index);
+        if (!drawn || 'stop' in l || target.name === o.name) {
+          causes.set(g, 'sketch-line');
+          continue;
+        }
+        ref = drawn;
+        key = 'curve';
+        const end = add(l.origin, scale(l.direction, this.#lineLength(target.name, index)));
+        curve ??= {
+          kind: 'line',
+          start: uv(l.origin),
+          end: uv(end),
+          construction: true,
+          internal: 0,
+        };
+      } else {
+        if (!this.#c.walked.has(target.name)) {
+          causes.set(g, 'source');
+          continue;
+        }
+        const found = await this.#stored(target.name, 'edge', Number(edge[1]) - 1, link.sub);
+        if ('stop' in found) {
+          if (CALL_STOPS.has(found.stop)) return found;
+          causes.set(g, 'stored');
+          continue;
+        }
+        const e = found.element as ElementEdge;
+        const arc =
+          e.type === 'circle' &&
+          e.ends?.length === 2 &&
+          norm(sub(e.ends[1] as Vec3, e.ends[0] as Vec3)) > 1e-9;
+        if (!curve) {
+          // Before 1.0 the file stores no projection: the stored edge projected along the normal.
+          if (e.type === 'line' && e.ends?.length === 2)
+            curve = {
+              kind: 'line',
+              start: uv(e.ends[0] as Vec3),
+              end: uv(e.ends[1] as Vec3),
+              construction: true,
+              internal: 0,
+            };
+          else if (
+            e.type === 'circle' &&
+            !arc &&
+            e.centre &&
+            e.radius !== undefined &&
+            e.direction &&
+            norm(cross(unit(e.direction), f.n)) <= PARALLEL
+          )
+            curve = {
+              kind: 'circle',
+              center: uv(e.centre),
+              radius: e.radius,
+              angleXU: 0,
+              reversed: false,
+              construction: true,
+              internal: 0,
+            };
+        }
+        if (!curve) {
+          causes.set(g, arc ? 'arc' : 'kind');
+          continue;
+        }
+        const r = await this.#match(
+          e,
+          'edge',
+          `its projected ${cleanName(link.sub, 'edge')}`,
+          `${target.name}|edge|${Number(edge[1]) - 1}`,
+        );
+        if ('stop' in r) {
+          if (CALL_STOPS.has(r.stop)) return r;
+          causes.set(
+            g,
+            /counterparts/.test(r.detail) ? 'several' : r.stop === 'reference' ? 'none' : 'stored',
+          );
+          continue;
+        }
+        ref = r;
+      }
+      if (curve.kind !== 'line' && curve.kind !== 'circle') {
+        causes.set(g, curve.kind === 'arc' ? 'arc' : 'kind');
+        continue;
+      }
+      const finite = (
+        curve.kind === 'line' ? [...curve.start, ...curve.end] : [...curve.center, curve.radius]
+      ).every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_FEATURE_LENGTH);
+      if (!finite) {
+        causes.set(g, 'kind');
+        continue;
+      }
+      planned++;
+      plans.set(g, { curve, ref, key, ...(reversed.has(g) ? { reversed: true } : {}) });
+    }
+    return { plans, links: wanted.size, causes };
+  }
+
+  /** A sketch line's length (its ends' distance in the sketch). */
+  #lineLength(sketch: string, geometry: number): number {
+    const g = this.#c.sketchOf(sketch)?.geometry[geometry];
+    return g?.kind === 'line' ? Math.hypot(g.end[0] - g.start[0], g.end[1] - g.start[1]) : 0;
   }
 
   // ------------------------------------------------------------ the features

@@ -21,7 +21,16 @@ export interface ImportRebuild {
   bodies: Record<string, StoredShapeMeasure>;
   /** The features whose status is an error, with the kernel's message. */
   failed: { feature: string; message: string }[];
+  /**
+   * The kernel's reports of the features asked for (S9: a construction
+   * feature's plane or axis, a sketch's frame and projections), each one
+   * that has a report.
+   */
+  reports?: Record<string, unknown>;
 }
+
+/** The most feature reports one rebuild returns (S9): what a feature check asks for is a few. */
+export const MAX_REBUILD_REPORTS = 64;
 
 export interface ImportRebuilder {
   /**
@@ -33,6 +42,7 @@ export interface ImportRebuilder {
     doc: ExtrudoDocument,
     files: ReadonlyMap<AttachmentId, Uint8Array>,
     skip?: readonly string[],
+    reports?: readonly string[],
   ): Promise<ImportRebuild>;
 }
 
@@ -42,7 +52,7 @@ export function importRebuilder(
   const sent = new Set<AttachmentId>();
   let have: Record<BodyId, string> = {};
   return {
-    async rebuild(doc, files, skip = []) {
+    async rebuild(doc, files, skip = [], reports = []) {
       for (const [id, bytes] of files) {
         if (sent.has(id)) continue;
         const attachment = doc.attachments?.[id];
@@ -64,7 +74,13 @@ export function importRebuilder(
       const failed = Object.entries(result.features)
         .filter(([, status]) => status.status === 'error')
         .map(([feature, status]) => ({ feature, message: status.message ?? 'it failed' }));
-      return { ids, bodies, failed };
+      const asked = reports.slice(0, MAX_REBUILD_REPORTS);
+      const wanted: Record<string, unknown> = {};
+      for (const id of asked) {
+        const r = (result.reports as Record<string, unknown>)[id];
+        if (r !== undefined) wanted[id] = r;
+      }
+      return { ids, bodies, failed, ...(asked.length > 0 ? { reports: wanted } : {}) };
     },
   };
 }
