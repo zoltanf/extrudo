@@ -387,7 +387,7 @@ export function fcstdNotices(
     FcstdImportReport,
     'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'
   > &
-    Partial<Pick<FcstdImportReport, 'bodies'>>,
+    Partial<Pick<FcstdImportReport, 'bodies' | 'parameters'>>,
 ): string[] {
   if (report.finalShapes === 0)
     return ['The FreeCAD file has no shapes to import, so the design is empty.'];
@@ -415,6 +415,7 @@ export function fcstdNotices(
           ? `Imported from the FreeCAD file: ${came} of ${total}, with ${its(whole)} history (sketches and features).`
           : `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`,
   ];
+  out.push(...parameterNotices(report.parameters));
   if (stepped.length > 0) {
     const reasons = stepped.flatMap((b) => b.steps.map((st) => st.reason));
     // Every step first in its body (a primitive or a base first): the body starts from the file's shape.
@@ -502,6 +503,55 @@ export function fcstdNotices(
     out.push(
       `${unread} thing${unread === 1 ? '' : 's'} in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…`,
     );
+  return out;
+}
+
+/**
+ * S10's notices: how many parameters came in and from what, how many of the
+ * file's expressions came in live and how many as plain numbers (those whose
+ * target didn't come in at all aren't counted), and the names that changed.
+ * Nothing when the file has neither parameters nor expressions.
+ */
+export function parameterNotices(p: FcstdImportReport['parameters'] | undefined): string[] {
+  if (!p) return [];
+  const n = p.parameters.length;
+  const live = p.expressions.filter((e) => e.outcome === 'kept').length;
+  const numbers = p.expressions.filter(
+    (e) => e.outcome !== 'kept' && e.outcome !== 'unmapped',
+  ).length;
+  if (n === 0 && live + numbers === 0) return [];
+  const sheets = p.parameters.filter((x) => x.source === 'sheet').map((x) => x.object);
+  const sets = p.parameters.filter((x) => x.source === 'variable-set').map((x) => x.object);
+  const plural = (k: number, one: string, many: string) => (k === 1 ? one : many);
+  const from = [
+    ...(sheets.length > 0 ? [plural(new Set(sheets).size, 'spreadsheet', 'spreadsheets')] : []),
+    ...(sets.length > 0 ? [plural(new Set(sets).size, 'variable set', 'variable sets')] : []),
+  ].join(' and ');
+  const params =
+    n > 0 ? `${n} ${plural(n, 'parameter', 'parameters')} came in from the file's ${from}` : '';
+  const total = live + numbers;
+  const its = n > 0 ? 'its' : "the file's";
+  const asNumbers = (k: number) => (k === 1 ? 'as a plain number' : 'as plain numbers');
+  const expressions =
+    total === 0
+      ? ''
+      : numbers === 0
+        ? `${total === 1 ? `${its} one expression` : total === 2 ? `both of ${its} expressions` : `all ${total} of ${its} expressions`} came in live`
+        : live === 0
+          ? `${total === 1 ? `${its} one expression` : `${its} ${total} expressions`} came in ${asNumbers(total)}`
+          : `${live} of ${its} ${total} expressions came in live and ${numbers} ${asNumbers(numbers)}`;
+  const sentence = [params, expressions].filter((x) => x !== '').join('; ');
+  const out = [`${sentence[0]?.toUpperCase()}${sentence.slice(1)}.`];
+  const renamed = p.renames.length;
+  if (renamed > 0) {
+    const shown = p.renames.slice(0, 3).map((r) => `${r.from} to ${r.to}`);
+    const more = renamed - shown.length;
+    out.push(
+      `${renamed === 1 ? 'One name' : `${renamed} names`} changed to fit Extrudo's rules: ${
+        shown.length > 1 ? `${shown.slice(0, -1).join(', ')} and ${shown.at(-1)}` : shown[0]
+      }${more > 0 ? `, and ${more} more` : ''}.`,
+    );
+  }
   return out;
 }
 

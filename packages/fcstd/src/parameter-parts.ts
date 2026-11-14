@@ -40,6 +40,8 @@ export interface ParamPartOptions {
   readonly extra?: readonly RawObject[];
   /** Objects whose stored shape is left out. */
   readonly noShape?: readonly string[];
+  /** The sheets and variable sets before the body's objects in the file (they come after by default). */
+  readonly outsideFirst?: boolean;
 }
 
 const ORIGIN = ['X_Axis', 'Y_Axis', 'Z_Axis', 'XY_Plane', 'XZ_Plane', 'YZ_Plane'];
@@ -127,7 +129,12 @@ export function paramObjects(
     })),
   ];
   return {
-    objects: [body, ...origin, ...own, ...outside, ...(options.extra ?? [])],
+    objects: [
+      body,
+      ...origin,
+      ...(options.outsideFirst ? [...outside, ...own] : [...own, ...outside]),
+      ...(options.extra ?? []),
+    ],
     entries,
   };
 }

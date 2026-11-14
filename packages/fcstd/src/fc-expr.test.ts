@@ -131,7 +131,7 @@ describe('the parser’s limits (ADR-0144 S10)', () => {
     expect(reason(`${'('.repeat(MAX_EXPRESSION_DEPTH)}1${')'.repeat(MAX_EXPRESSION_DEPTH)}`)).toBe(
       'limit',
     );
-    expect(reason('-'.repeat(MAX_EXPRESSION_DEPTH + 1) + '1')).toBe('limit');
+    expect(reason(`${'-'.repeat(MAX_EXPRESSION_DEPTH + 1)}1`)).toBe('limit');
     expect(reason(`${'('.repeat(100_000)}1${')'.repeat(100_000)}`)).toBe('limit');
     expect(reason('x'.repeat(1024 * 1024))).toBe('limit');
   });

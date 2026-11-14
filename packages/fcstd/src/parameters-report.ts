@@ -65,7 +65,8 @@ export function parameterCounts(r: ParametersReport) {
   }
   const expressions: Record<string, Record<string, number>> = Object.create(null);
   for (const e of r.expressions) {
-    const row = (expressions[e.target] ??= Object.create(null) as Record<string, number>);
+    const row: Record<string, number> = expressions[e.target] ?? Object.create(null);
+    expressions[e.target] = row;
     row[e.outcome] = (row[e.outcome] ?? 0) + 1;
   }
   const kept = r.expressions.filter((e) => e.outcome === 'kept').length;

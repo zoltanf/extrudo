@@ -418,14 +418,21 @@ export class Binder {
     const plane = this.#design.doc.features.find((x) => x.id === planeFeature);
     const offset = owner.properties.AttachmentOffset?.value;
     const r = offset?.kind === 'placement' ? offset.value.rotation : undefined;
-    if (!r || Math.abs(r[0]) > 1e-12 || Math.abs(r[1]) > 1e-12 || Math.abs(r[2]) > 1e-12)
-      return why(`${what}'s offset turns it`);
+    if (!r || Math.abs(r[0]) > 1e-12 || Math.abs(r[1]) > 1e-12 || Math.abs(r[2]) > 1e-12) {
+      why(`${what}'s offset turns it`);
+      return;
+    }
     const distance = plane ? (plane.inputs as FeatureInputs).distance : undefined;
     const stored = storedValue(e);
-    if (!plane || distance?.kind !== 'expr' || stored === undefined)
-      return why(`${what} has no distance`);
+    if (!plane || distance?.kind !== 'expr' || stored === undefined) {
+      why(`${what} has no distance`);
+      return;
+    }
     const t = sameOrNeg(literalValue(distance.expr), stored);
-    if (!t) return why(`${what}'s distance is not its offset`);
+    if (!t) {
+      why(`${what}'s distance is not its offset`);
+      return;
+    }
     candidates.push({
       entry: e,
       holder: { kind: 'input', feature: plane.id as FeatureId, input: 'distance' },
@@ -456,15 +463,26 @@ export class Binder {
       sk.plane.kind === 'plane'
         ? this.#design.doc.features.find((x) => x.id === sk.plane.id)
         : undefined;
-    if (sk.outcome.plane !== 'offset' || !plane || plane.type !== 'offsetPlane')
-      return why('its sketch is not on an offset plane of an origin plane');
-    if (this.#before.has(plane.id)) return why('its sketch shares its plane with another sketch');
-    if (sk.outcome.movedContainer) return why('its sketch is in a container that moves it');
+    if (sk.outcome.plane !== 'offset' || !plane || plane.type !== 'offsetPlane') {
+      why('its sketch is not on an offset plane of an origin plane');
+      return;
+    }
+    if (this.#before.has(plane.id)) {
+      why('its sketch shares its plane with another sketch');
+      return;
+    }
+    if (sk.outcome.movedContainer) {
+      why('its sketch is in a container that moves it');
+      return;
+    }
     const support = sketch.properties.AttachmentSupport?.value;
     const items = support?.kind === 'linkSubList' ? support.items : [];
     const base =
       items.length === 1 ? this.#p.objects.resolve(items[0]?.object ?? '', false) : undefined;
-    if (base?.type !== 'App::Plane') return why('its sketch is not attached to an origin plane');
+    if (base?.type !== 'App::Plane') {
+      why('its sketch is not attached to an origin plane');
+      return;
+    }
     const before = candidates.length;
     this.#offset(sketch, plane.id, candidates, outcome, 'its sketch');
     // Kept, the plane is this sketch's own: no later sketch takes it at the same place.

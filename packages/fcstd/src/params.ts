@@ -595,37 +595,31 @@ export function prepareParameters(
       detail: 'its formula is part of a loop of cells that read each other',
     };
 
-  // ------------------------------------------------------ FreeCAD dimensions
-  const dimResolver =
-    (owner: FcObject): Resolver =>
-    (p) => {
-      const s = sourceOf(owner, p);
-      if (!s || !s.fc)
-        return { reason: 'reference', detail: 'it reads a value whose unit is unknown' };
-      return { text: 'x', fc: s.fc, ex: s.fc };
-    };
-  for (const s of topological(wanted, formulaReads)) {
-    if (s.fc || !s.node) continue;
-    if (s.formulaFailure && s.formulaFailure.reason !== 'reference') continue;
-    const r = emitExtrudo(s.node, dimResolver(s.object), { mode: 'any' });
-    if (r.ok) {
-      if (!s.formulaFailure) s.fc = r.fc;
-    } else s.formulaFailure ??= { reason: r.reason, detail: r.detail };
-  }
-
-  // A formula whose unit can't be worked out but whose value a bound property proves is a plain number.
-  for (const e of entries) {
-    if (e.node?.kind !== 'path') continue;
-    const s = sourceOf(e.owner, e.node);
-    if (s && !s.fc && s.node) s.fc = D0;
-  }
-
   // ------------------------------------------------------------- proofs
   for (const e of entries) {
     if (e.node?.kind !== 'path') continue;
     const s = sourceOf(e.owner, e.node);
     const stored = storedValue(e);
     if (s && stored !== undefined) s.proofs.push(stored);
+  }
+
+  // ------------------------------------------------------ FreeCAD dimensions
+  const dimResolver =
+    (owner: FcObject): Resolver =>
+    (p) => {
+      const s = sourceOf(owner, p);
+      if (!s?.fc) return { reason: 'reference', detail: 'it reads a value whose unit is unknown' };
+      return { text: 'x', fc: s.fc, ex: s.fc };
+    };
+  for (const s of topological(wanted, formulaReads)) {
+    if (s.fc || !s.node) continue;
+    if (!s.formulaFailure || s.formulaFailure.reason === 'reference') {
+      const r = emitExtrudo(s.node, dimResolver(s.object), { mode: 'any' });
+      if (r.ok && !s.formulaFailure) s.fc = r.fc;
+      else if (!r.ok) s.formulaFailure ??= { reason: r.reason, detail: r.detail };
+    }
+    // A formula that can't come in but whose value a bound property proves is a plain number.
+    if (!s.fc && s.formulaFailure && s.proofs.length > 0) s.fc = D0;
   }
 
   // ---------------------------------------------------------------- votes
@@ -680,6 +674,10 @@ export function prepareParameters(
     const shown = display ? displayKind(display) : undefined;
     s.kindOf = shown ?? 'unitless';
   }
+
+  for (const s of wanted)
+    if (!s.kindOf && !s.out)
+      s.out = s.formulaFailure ?? { reason: 'reference', detail: 'its unit can’t be worked out' };
 
   // ------------------------------------------------------------------ names
   const names = new Names(design.doc);
@@ -1013,7 +1011,7 @@ function vote(
         const s = sourceOf(n);
         const d = dimOf(n);
         if (d && (d.length !== 0 || d.angle !== 0) && carrying) unitless = false;
-        if (s && s.fc && s.fc.length === 0 && s.fc.angle === 0 && !s.fc.other)
+        if (s?.fc && s.fc.length === 0 && s.fc.angle === 0 && !s.fc.other)
           (carrying ? carriers : plain).add(s);
         return;
       }
@@ -1039,7 +1037,9 @@ function vote(
         const keeps = ['abs', 'min', 'max', 'sum', 'average', 'hypot', 'cath', 'mod'].includes(
           n.name,
         );
-        n.args.forEach((a, i) => walk(a, keeps && carrying && !(n.name === 'mod' && i > 0)));
+        n.args.forEach((a, i) => {
+          walk(a, keeps && carrying && !(n.name === 'mod' && i > 0));
+        });
         return;
       }
       case 'compare':
