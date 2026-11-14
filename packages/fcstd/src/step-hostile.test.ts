@@ -174,6 +174,8 @@ describe('runs', () => {
     expect(r.body?.steps).toHaveLength(MAX_BODY_STEPS);
     expect(r.body?.stop).toMatchObject({ object: 'Draft_9', reason: 'limit' });
     expect(r.body?.stop?.detail).toMatch(/more than 8 stored-shape steps/);
+    // The cap ended the body; the run it ended keeps its feature with its own reason.
+    expect(r.body?.stop?.run).toMatchObject([{ object: 'Draft_9', reason: 'type' }]);
     // The body's final shape comes in, its last live bodies taken out.
     expect(r.body?.outcome).toBe('shape');
     expect(r.features.filter((f) => f.startsWith('import '))).toHaveLength(MAX_BODY_STEPS + 1);
@@ -188,6 +190,7 @@ describe('runs', () => {
     const r = await runBytes(chained(MID), { maxStepTextBytes: 1000 });
     expect(r.body?.stop).toMatchObject({ object: 'Draft', reason: 'limit' });
     expect(r.body?.stop?.detail).toMatch(/would convert more than/);
+    expect(r.body?.stop?.run).toMatchObject([{ object: 'Draft', reason: 'type' }]);
     expect(r.body?.outcome).toBe('shape');
     expect(r.body?.steps).toEqual([]);
   }, 60_000);
@@ -217,6 +220,32 @@ describe('runs', () => {
     expect(Object.keys(r.design.doc.attachments ?? {})).toHaveLength(1);
     process.stderr.write(`S8TIME a run of 11, each tried: ${Math.round(ms)} ms\n`);
   }, 120_000);
+});
+
+describe('a full design (review)', () => {
+  it("once a step's shape doesn't fit the design's files, no later step converts one", async () => {
+    // step_then_step: the Draft's step fits under the cap, the Cylinder's doesn't. After that the
+    // pocket joins the run untried and the fillet's try converts nothing; only the body's final
+    // shape is converted, by the shapes import (which leaves it out: the design is full).
+    const free = await runBytes(stepFile('step_then_step'));
+    const first = free.design.doc.features.find((f) => f.id === free.body?.steps[0]?.feature);
+    const file = (first?.inputs as { file?: { id?: string } } | undefined)?.file?.id as string;
+    const size = free.design.doc.attachments?.[file as never]?.size as number;
+    const { kernel, count } = lying();
+    const r = await runBytes(stepFile('step_then_step'), {
+      kernel,
+      maxAttachmentsBytes: size + 1,
+    });
+    expect(r.body?.steps.map((s) => s.shape)).toEqual(['Draft']);
+    expect(r.body?.stop).toMatchObject({ object: 'Cylinder', reason: 'type' });
+    expect(r.body?.stop?.run?.map((x) => x.object)).toEqual(['Pocket001', 'Fillet']);
+    expect(r.body?.outcome).toBe('left-out');
+    expect(r.report.leftOut.map((l) => l.reason)).toEqual(['design-full']);
+    // The Draft's, the Cylinder's (refused), the final shape's: never the pocket's.
+    expect(count.conversions).toBe(3);
+    const bytes = [...r.files.values()].reduce((n, b) => n + b.length, 0);
+    expect(bytes).toBeLessThanOrEqual(size + 1);
+  }, 60_000);
 });
 
 describe('stored shapes that cannot come in', () => {

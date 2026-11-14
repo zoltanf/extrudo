@@ -5,11 +5,13 @@
  * `restartsAtHold` invariants).
  */
 
+import { Design } from '@extrudo/api';
+import { importSettings } from '@extrudo/core';
 import { boxBrep } from '@extrudo/kernel/brep-test-support';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Drift } from './check';
-import { documentXml, fcstd } from './fixtures';
+import { documentXml, type FixtureObject, fcstd, label } from './fixtures';
 import { bodyParts, rectangle } from './history-fixtures';
 import { type FcstdImportOptions, importFcstd } from './import';
 import { nodeImportKernel } from './node-kernel-test-support';
@@ -193,5 +195,136 @@ describe('two bodies in a file, one taking a step', () => {
       'remove Remove Part',
       'import Import Part',
     ]);
+  }, 60_000);
+});
+
+/** `mid_draft`'s objects as a body labelled `labelled`, every object name given `suffix` (labels kept). */
+function renamedMidDraft(suffix: string, labelled: string, change: PartChange = {}) {
+  const { objects, entries } = partObjects('mid_draft', change, { fixtures: STEP_FIXTURES });
+  const names = new Set(objects.map((o) => o.name));
+  const rename = (xml: string) =>
+    xml.replace(/(<Link value="|<LinkSub value="|obj="|file=")([^".]+)/g, (all, head, n) =>
+      names.has(n) ? `${head}${n}${suffix}` : all,
+    );
+  return {
+    objects: objects.map(
+      (o): FixtureObject => ({
+        ...o,
+        name: `${o.name}${suffix}`,
+        props:
+          o.name === 'Body'
+            ? [label(labelled), ...o.props.slice(1).map(rename)]
+            : o.props.map(rename),
+      }),
+    ),
+    entries: Object.fromEntries(
+      Object.entries(entries).map(([k, v]) => [k.replace(/^([^.]+)/, `$1${suffix}`), v]),
+    ),
+  };
+}
+
+/** The bytes of the design's attachments, each distinct file once, and of the files handed back. */
+function held(r: Awaited<ReturnType<typeof runBytes>>) {
+  const sizes = new Map<string, number>();
+  for (const a of Object.values(r.design.doc.attachments ?? {})) sizes.set(a.sha256, a.size);
+  return {
+    design: [...sizes.values()].reduce((n, b) => n + b, 0),
+    files: [...r.files.values()].reduce((n, b) => n + b.length, 0),
+  };
+}
+
+const importFile = (r: Awaited<ReturnType<typeof runBytes>>, id: string | undefined) => {
+  const f = r.design.doc.features.find((x) => x.id === id);
+  const file = f ? (importSettings(f.inputs as never).file as string) : undefined;
+  return file ? r.design.doc.attachments?.[file as never] : undefined;
+};
+
+describe('the 100 MB count across bodies (review)', () => {
+  it("a step that moves forward off a file another body's step shares counts that file", async () => {
+    // A and B store the same shapes; B's second pocket is mapped wrongly, so B's step (sharing A's
+    // Draft file) moves forward to the pocket's shape.
+    const a = renamedMidDraft('_a', 'A');
+    const b = renamedMidDraft('_b', 'B', { Pocket001: { props: { Length: P.float(2) } } });
+    const bytes = fcstd({
+      'Document.xml': documentXml([...a.objects, ...b.objects], { version: '1.1.4R (Git)' }),
+      ...a.entries,
+      ...b.entries,
+    });
+    const free = await runBytes(bytes);
+    const [bodyA, bodyB] = free.report.bodies;
+    expect(bodyB?.steps[0]?.shape).toBe('Pocket001_b');
+    const draft = importFile(free, bodyA?.steps[0]?.feature)?.size as number;
+    const pocket = importFile(free, bodyB?.steps[0]?.feature)?.size as number;
+    expect(held(free).design).toBe(draft + pocket);
+    // A cap one byte short of both: the move can't come in, because the Draft's file stays for A.
+    const cap = draft + pocket - 1;
+    const r = await runBytes(bytes, { maxAttachmentsBytes: cap });
+    const [capA, capB] = r.report.bodies;
+    expect(capA?.outcome).toBe('history');
+    expect(capB?.steps).toEqual([]);
+    expect(capB?.stop).toMatchObject({ object: 'Draft_b', reason: 'type' });
+    expect(held(r).design).toBeLessThanOrEqual(cap);
+    expect(held(r).files).toBeLessThanOrEqual(cap);
+  }, 60_000);
+});
+
+describe('taking a step back fails (review)', () => {
+  it('the body ends with failed, keeps the step, and the next body still comes in', async () => {
+    // mid_draft up to its wrongly mapped second pocket: the Draft's step is written for the
+    // pocket's try, and the run (Draft, Pocket001) reaches the tip, so the step is taken back.
+    const part = partObjects(
+      'mid_draft',
+      { Pocket001: { props: { Length: P.float(2) } } },
+      { fixtures: STEP_FIXTURES, tip: 'Pocket001' },
+    );
+    const big = bodyParts({
+      name: 'BigBody',
+      label: 'Big',
+      sketches: [{ name: 'BigSketch', geometry: rectangle(1000, 0, 1010, 10) }],
+      features: [
+        {
+          name: 'BigPad',
+          type: 'Pad',
+          sketch: 'BigSketch',
+          length: 10,
+          stored: boxBrep([1000, 0, 0], [1010, 10, 10]),
+        },
+      ],
+    });
+    const bytes = fcstd({
+      'Document.xml': documentXml([...part.objects, ...big.objects], { version: '1.1.4R (Git)' }),
+      ...part.entries,
+      ...big.entries,
+    });
+    const spy = vi.spyOn(Design.prototype, 'remove').mockImplementation(() => {
+      throw new Error('no removing today');
+    });
+    try {
+      const r = await runBytes(bytes);
+      const [body, other] = r.report.bodies;
+      expect(body?.stop).toMatchObject({ object: 'Draft', reason: 'failed' });
+      expect(body?.stop?.detail).toMatch(
+        /taking back its stored-shape step failed: no removing today/,
+      );
+      expect(body?.stop?.run?.map((x) => [x.object, x.reason])).toEqual([
+        ['Draft', 'type'],
+        ['Pocket001', 'differs'],
+      ]);
+      // The step stays as it was; the shapes import takes out its bodies and brings the final shape in.
+      expect(body?.steps.map((s) => s.shape)).toEqual(['Draft']);
+      expect(body?.outcome).toBe('shape');
+      expect(r.features.filter((f) => /^(import|remove) /.test(f))).toEqual([
+        'remove Remove Part',
+        'import Import Draft',
+        'remove Remove Part',
+        'import Import Part',
+      ]);
+      const last = r.design.doc.features.at(-2);
+      expect(JSON.stringify(last?.inputs)).toContain(`${body?.steps[0]?.feature}:0`);
+      expect(other?.outcome).toBe('history');
+      expect(r.design.validate()).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
   }, 60_000);
 });

@@ -247,6 +247,8 @@ export interface BodyWalkOptions {
   /** `MAX_BODY_STEPS` and `MAX_STEP_TEXT_BYTES`, for tests. */
   readonly maxSteps?: number;
   readonly maxStepTextBytes?: number;
+  /** ADR-0066's 100 MB of attachments per design (`MAX_ATTACHMENTS_BYTES`), for tests. */
+  readonly maxAttachmentsBytes?: number;
   /** Receives the bytes of the attachments the steps add (S8): the caller writes them with the design. */
   readonly files?: Map<AttachmentId, Uint8Array>;
 }
@@ -523,6 +525,9 @@ export async function importBodies(
   const files = options.files ?? new Map<AttachmentId, Uint8Array>();
   /** The stored-shape text the steps converted so far, in all. */
   let stepText = 0;
+  const maxAttachments = options.maxAttachmentsBytes ?? MAX_ATTACHMENTS_BYTES;
+  /** A step's shape didn't fit the design's attachments: no later step of this import converts one. */
+  let designFull = false;
   const histories: BodyHistory[] = [];
   /** Every Extrudo body the last rebuild had. */
   let known: string[] = [];
@@ -946,12 +951,18 @@ export async function importBodies(
       add: () => Promise<Added>,
       others: boolean,
       second: boolean,
-    ): Promise<Failure | undefined> =>
-      check(f, chain, add, others, (added, d) => {
-        if (run?.pending) throw new Error('a feature held on a run whose shape had not come in');
+    ): Promise<Failure | undefined> => {
+      // A run whose shape hasn't come in has no base to try a feature on (`ensureBase` sees to it).
+      if (run?.pending)
+        return Promise.resolve({
+          reason: 'failed',
+          detail: "it came after features whose stored shape couldn't come in",
+        });
+      const makesBody = mine.length === 0 && taken.length === 0;
+      return check(f, chain, add, others, (added, d) => {
         // A feature held: the run before it (if any) is over, its step stays.
         run = undefined;
-        if (mine.length === 0 && taken.length === 0) bodyMaker ??= added.feature;
+        if (makesBody) bodyMaker ??= added.feature;
         if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
         mappedBy.set(f.name, { feature: added.feature, kind: feature.kind });
         mapped.push({
@@ -970,6 +981,7 @@ export async function importBodies(
           ...(second ? { secondAttempt: true as const } : {}),
         });
       });
+    };
 
     /**
      * Adds what `add` adds in one transaction, rebuilds, and keeps it only
@@ -1079,11 +1091,12 @@ export async function importBodies(
           };
         design.state.commitTransaction();
         committed = true;
-        held(added, drift(rebuiltBody, measuredStored.value));
+        // The walk's state first, then what the caller keeps (which never throws).
         restartsAtHold = budget.restarts;
         known = [...r.ids];
         mine = now;
         for (const id of now) lastMeasures.set(id, r.bodies.get(id) as ShapeMeasure);
+        held(added, drift(rebuiltBody, measuredStored.value));
         return undefined;
       } finally {
         if (!committed) {
@@ -1150,7 +1163,15 @@ export async function importBodies(
     /** Ends the body for a reason no step can carry it over (S8's caps, the budget). */
     const endIn = (r: Run, reason: HistoryStop, detail: string): 'ended' => {
       const first = r.features[0] as FcObject;
-      stop(first, reason, detail, undefined, undefined, true);
+      noted = true;
+      // The cap is what ended the body; the run's features keep their own reasons, the first included.
+      stopped = {
+        object: first.name,
+        type: first.type,
+        reason,
+        detail: clip(detail),
+        run: r.features.map((x) => namedIn(r, x)),
+      };
       return 'ended';
     };
 
@@ -1171,6 +1192,8 @@ export async function importBodies(
         return endIn(r, 'limit', `the body would take more than ${maxSteps} stored-shape steps`);
       const stored = storedText(doc, target);
       if (!('text' in stored)) return 'out';
+      // The design's attachments are full: no step's shape can come in, so none is converted.
+      if (designFull) return 'out';
       if (stepText + stored.text.length > maxStepText)
         return endIn(
           r,
@@ -1190,11 +1213,20 @@ export async function importBodies(
       const existing = Object.entries(design.doc.attachments ?? {}).find(
         ([id, a]) => a.sha256 === conv.sha256 && id !== replaced,
       )?.[0] as AttachmentId | undefined;
+      // The file a step that moves forward replaces leaves the design only when its own import is
+      // the one import that uses it (another body's step may share it).
+      const users = design.doc.features.filter(
+        (x) =>
+          x.type === 'import' && (x.inputs as { file?: { id?: unknown } }).file?.id === replaced,
+      ).length;
+      const freed = replaced !== undefined && users <= 1 ? replaced : undefined;
       if (
         existing === undefined &&
-        attachmentBytes(design, replaced) + conv.bytes.length > MAX_ATTACHMENTS_BYTES
-      )
+        attachmentBytes(design, freed) + conv.bytes.length > maxAttachments
+      ) {
+        designFull = true;
         return 'out';
+      }
       const label = cleanName(target.label, target.name);
       const before = { mine: [...mine], known: [...known] };
       let attachment: AttachmentId | undefined;
@@ -1332,12 +1364,32 @@ export async function importBodies(
     // import brings in as it did before S8; a step the run had taken goes again.
     const open = run as Run | undefined;
     if (open?.pending) {
-      if (open.step) undoStep(open.step);
-      if (!stopped)
+      let undone = true;
+      if (open.step)
+        try {
+          undoStep(open.step);
+        } catch (error) {
+          // The transaction rolled back: the step stays in the design and in the report, and the
+          // shapes import takes out its bodies and brings the body's final shape in.
+          undone = false;
+          stopped = {
+            object: (open.features[0] as FcObject).name,
+            type: (open.features[0] as FcObject).type,
+            reason: 'failed',
+            detail: clip(
+              `taking back its stored-shape step failed: ${(error as Error)?.message ?? String(error)}`,
+            ),
+            run: open.features.map((x) => namedIn(open, x)),
+          };
+        }
+      if (undone && !stopped)
         stopped =
           open.features.length > 1
             ? { ...open.first, run: open.features.slice(1).map((x) => namedIn(open, x)) }
             : open.first;
+      // A stop that ended the body inside the run (a limit, the budget) lists the whole run.
+      else if (undone && stopped && !stopped.run)
+        stopped = { ...stopped, run: open.features.map((x) => namedIn(open, x)) };
     }
     histories.push({
       object: body.name,

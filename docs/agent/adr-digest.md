@@ -4982,10 +4982,17 @@ step's; a pattern of a feature from before a step replays onto the import (holds
 body's first feature after a step is `original` (`bodyMaker` only before any step). A step's commit updates `known`,
 `mine`, `lastMeasures`, `restartsAtHold` like a feature's; `undoStep` restores `mine`/`known` and clears
 `restartsAtHold`. Caps: **`MAX_BODY_STEPS` 8**, **`MAX_STEP_TEXT_BYTES` 256 MB** of stored text converted by steps per
-import (a run of tried features converts once per feature). Report: `BodyHistory.steps` (`HistoryStep`: the run's
+import (a run of tried features converts once per feature). **Review round:** a step that moves forward leaves its
+old file out of the 100 MB count only when its own import is the file's one user (`maxAttachmentsBytes` is the test
+option); once a step's shape doesn't fit the design (`designFull`), no later step of the import converts (its run just
+extends); the feature guard runs before `add()` and the commit sets the walk's state before `held` (which never
+throws); `undoStep` is guarded (a throw rolls its transaction back: the step stays, the body ends `failed`, the shapes
+import removes its bodies); a cap or budget that ends a run keeps it in `stop.run`, the first feature included.
+Report: `BodyHistory.steps` (`HistoryStep`: the run's
 `FeatureNamed`s with each tried one's reason, the first's reason, `shape`, `feature`, `remove`, `after`),
 `heldAfterLastStep`; the app's `fcstdNotices` counts bodies with steps and `outcome` `history` apart ("with part of its
-history") so the first notice adds up, and gives them the "Rebuilt on the file's own shape part way through" line.
+history") so the first notice adds up, and gives them the "Rebuilt on the file's own shape part way through" line, or
+"Starts from the file's own shape" when every step listed is first in its body.
 Fixtures `step-fixtures.ts` (ten FreeCAD 1.1.4 parts, `make-step-fixtures.py`, `STEP_FIXTURES` in `step-parts.ts` for
 `pattern-parts.ts`); tests `step.test.ts`, `step-bodies.test.ts`, `step-hostile.test.ts`. `history-corpus.test.ts`
 keeps 21 bodies with history (17 whole), 270 imports, 118 references found, 6 steps, 12 features held after a step,

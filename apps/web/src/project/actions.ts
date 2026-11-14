@@ -416,14 +416,17 @@ export function fcstdNotices(
   ];
   if (stepped.length > 0) {
     const reasons = stepped.flatMap((b) => b.steps.map((st) => st.reason));
-    const before = stepped.some((b) => b.steps.some((st) => st.after > 0));
+    // Every step first in its body (a primitive or a base first): the body starts from the file's shape.
+    const first = stepped.every((b) => b.steps.every((st) => st.after === 0));
     const one = stepped.length === 1;
+    const why = one
+      ? `, because ${commonest(reasons).join(', and ')}`
+      : `. Most often because ${commonest(reasons).join(', or ')}`;
+    const names = listed(stepped.map((b) => b.name));
     out.push(
-      `Rebuilt on the file's own ${one ? 'shape' : 'shapes'} part way through: ${listed(stepped.map((b) => b.name))}${one ? `, because ${commonest(reasons).join(', and ')}` : `. Most often because ${commonest(reasons).join(', or ')}`}. The features after that point come in with their history${
-        before
-          ? `; the ones before it stay in the timeline but no longer shape the ${one ? 'body' : 'bodies'}`
-          : ''
-      }.`,
+      first
+        ? `${one ? 'Starts' : 'Start'} from the file's own ${one ? 'shape' : 'shapes'}: ${names}${why}. The features after ${one ? 'it' : 'them'} come in with their history.`
+        : `Rebuilt on the file's own ${one ? 'shape' : 'shapes'} part way through: ${names}${why}. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the ${one ? 'body' : 'bodies'}.`,
     );
   }
   const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);

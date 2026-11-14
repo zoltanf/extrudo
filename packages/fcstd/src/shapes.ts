@@ -99,6 +99,8 @@ export interface ShapeImportOptions {
   readonly onProgress?: (done: number, total: number) => void;
   /** The clock, for the budgets (`Date.now` by default). */
   readonly now?: () => number;
+  /** ADR-0066's 100 MB per design (`MAX_ATTACHMENTS_BYTES`), for tests. */
+  readonly maxAttachmentsBytes?: number;
 }
 
 export interface ShapeImportResult {
@@ -312,7 +314,7 @@ export async function importShapes(
       const { bytes, sha256 } = conv;
       peakBytes = Math.max(peakBytes, keptBytes + bytes.length);
       if (!existing.has(sha256) && !kept.has(sha256)) {
-        if (total + bytes.length > MAX_ATTACHMENTS_BYTES) {
+        if (total + bytes.length > (options.maxAttachmentsBytes ?? MAX_ATTACHMENTS_BYTES)) {
           leave('design-full', `${mb(bytes.length)} MB of STEP`);
           continue;
         }

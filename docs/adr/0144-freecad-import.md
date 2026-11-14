@@ -1389,7 +1389,8 @@ step's rebuild measures them all). Then the feature is tried on it.
   removed, the body's bodies and the last rebuild's as before it), and the body
   ends as before S8: `stop` is the run's first feature with its reason, the
   shapes import brings the body's final shape in after a `Remove <body>`, named
-  after the body. One path, the shapes import's, as before: `last_unmapped`,
+  after the body (if taking the step back fails, the review round's point 3).
+  One path, the shapes import's, as before: `last_unmapped`,
   `nothing_after` and every stop test of S5 to S7 come out with the same features
   and report. S5's to S7's tests pass unchanged but one: S7's "an original that
   comes after it" (a pattern repeating the mirror after it, then that mirror) now
@@ -1451,7 +1452,7 @@ step's rebuild measures them all). Then the feature is tried on it.
   whose tried features all fail converts once per feature tried (the step moves
   forward each time), so without it the work is bounded only by the clock. 256 MB
   is the step cap times the 32 MB a shape may be. Over it the body ends with
-  `limit`.
+  `limit`. Over either cap, `stop.run` keeps the run with its reasons.
 - **One conversion per run:** a stored shape is converted only when a feature
   after it is about to be tried, and a run's earlier shapes never are. Measured
   (Ubuntu machine, loaded, one run each): 2,000 features, a run of 1,996
@@ -1490,8 +1491,12 @@ bodies their own line. The sentences:
   *reason*. The features after that point come in with their history; the ones
   before it stay in the timeline but no longer shape the body." Several: "Rebuilt
   on the file's own shapes part way through: *A*; *B*. Most often because
-  *reason*, or *reason*. … no longer shape the bodies." The clause about the
-  features before is left out when every step is first in its body. Reasons
+  *reason*, or *reason*. … no longer shape the bodies."
+- When every step of the bodies listed is first in its body (review round, 6):
+  one body "Starts from the file's own shape: *Name*, because *reason*. The
+  features after it come in with their history."; several "Start from the file's
+  own shapes: *A*; *B*. Most often because *reason*, or *reason*. The features
+  after them come in with their history." A mix keeps the sentence above. Reasons
   through `HISTORY_STOP` (one body with two steps of different reasons: "because
   *x*, and *y*").
 
@@ -1554,16 +1559,62 @@ bodies their own line. The sentences:
   (each the tip itself), and two bodies that are a base feature. The 4 left out
   are the empty bodies.
 
-### Decisions the brief left open, and where it was wrong
+### Decisions made on the way
 
-- `usedAttachments` counts only the fonts of text entities, not an import's file;
-  the walk removes a step's attachment when no `import` feature names it
-  (`importFiles`), and the tests check that every attachment is an import's file.
-- `MAX_BODY_FEATURES` is 500, so a body of 2,000 features stops at 500 (`limit`);
-  the 2,000-feature test raises the body cap to the file's.
-- A body ended by a cap after steps keeps them; only a step of the run that
-  reaches the end is taken back.
+- **Which attachments are in use:** core's `usedAttachments` counts only the fonts
+  of text entities, not an `import` feature's file, so the walk decides from the
+  `import` features' own file inputs (`importFiles`): a step's attachment goes
+  when no `import` names it, and the tests check that every attachment of the
+  design is an import's file.
+- **The 2,000-feature test** raises the body cap to the file's: `MAX_BODY_FEATURES`
+  (500) would otherwise end that body at its 501st feature.
+- **A body ended by a cap after steps keeps them;** only a step of the run that
+  reaches the end is taken back, since the steps before it held.
 - `FORMAT.md` is unchanged: nothing new about the format was needed.
+
+### Review round (2026-11-14)
+
+An independent review of the S8 diff found six things in the code; the rule for
+each, as in S6 and S7: a value or a reply the importer can't use is a refusal
+with the right reason before the work it would cause, a limit of ours a clean
+stop, never a kernel failure, a restart or a throw out of the import.
+
+1. **The 100 MB count.** A step that moves forward leaves its old file out of the
+   count only when its own `import` is the one import that uses it; a file another
+   body's step shares (identical stored shapes) stays in the design and counts.
+   Before, such a move could take the design up to 25 MB past 100 MB, after which
+   every final shape was `design-full` and saving refused the design. Test: two
+   bodies whose steps share a file, one moving forward under a cap one byte short
+   of both files (`maxAttachmentsBytes`, a test option on the import, the walk and
+   the shapes import): the move is refused and the files stay within the cap.
+2. **Guard before the commit, state before the callback.** A feature is tried only
+   on a run whose shape has come in; that is checked before anything is added
+   (`failed` if it ever weren't), and the commit sets `restartsAtHold`, `known`,
+   `mine` and `lastMeasures` before the caller's record of what held, which no
+   longer throws.
+3. **Taking a step back can fail.** `undoStep` runs inside a guard: if removing the
+   step's import, its Remove or its file throws, the design's transaction rolls
+   back, so **the design keeps the step as it was** (its Remove and its `import`,
+   with the run's earlier features before them, still in `steps`), and the body
+   ends with `failed` ("taking back its stored-shape step failed: …", `stop.run`
+   the whole run). The shapes import then takes out the step's bodies with
+   `Remove <body>` and brings the body's final shape in, as for any body that ends
+   on its shape; the import goes on with the next body. Test: a `remove` that
+   throws; the next body still comes in with its history and the design validates.
+4. **A full design converts no more steps.** When a step's shape doesn't fit the
+   design's attachments, the import remembers it, and no later step of any body
+   converts a shape: each later run ends as a shape that can't come in, without a
+   conversion (the run reaches on; at the end the body's final shape goes to the
+   shapes import, which reports `design-full` itself). Chosen over ending the
+   body with `limit`: the reason the report gives is then the true one, the
+   design being full. Test: the counted conversions are the first step's, the
+   refused one's and the final shape's, never the next run's.
+5. **A cap that ends a run keeps the run in the report.** `stop.reason` is the cap
+   (or the budget) that ended the body, and `stop.run` lists the run's features,
+   the first included, each with its own reason. Test: the step cap and the text
+   cap.
+6. **A body whose every step is first in it starts from the file's shape:** the
+   notice no longer says "part way through" there (below).
 
 ### What S9 to S13 inherit
 

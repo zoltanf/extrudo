@@ -47,6 +47,8 @@ export interface FcstdImportOptions {
   /** The stored-shape steps' caps (`MAX_BODY_STEPS`, `MAX_STEP_TEXT_BYTES`), for tests. */
   readonly maxSteps?: number;
   readonly maxStepTextBytes?: number;
+  /** ADR-0066's 100 MB of attachments per design, for tests (the steps and the shapes import alike). */
+  readonly maxAttachmentsBytes?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -118,6 +120,9 @@ export async function importFcstd(
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     ...(options.maxStepTextBytes !== undefined
       ? { maxStepTextBytes: options.maxStepTextBytes }
+      : {}),
+    ...(options.maxAttachmentsBytes !== undefined
+      ? { maxAttachmentsBytes: options.maxAttachmentsBytes }
       : {}),
     budget,
     ...(options.solver ? { solver: options.solver } : {}),

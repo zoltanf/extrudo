@@ -599,11 +599,30 @@ describe('fcstdNotices', () => {
       'Imported from the FreeCAD file: 1 of 1 shape, with part of its history (sketches and features).',
       "Rebuilt on the file's own shape part way through: Bracket, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the body.",
     ]);
-    // Nothing before the step (a primitive first): no word of features before it.
+    // Every step first in its body (a primitive first): the body starts from the file's shape.
     expect(
       fcstdNotices({ ...base, finalShapes: 1, bodies: [stepped('Box', [step('type', 0)])] })[1],
     ).toBe(
-      "Rebuilt on the file's own shape part way through: Box, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history.",
+      "Starts from the file's own shape: Box, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after it come in with their history.",
+    );
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        bodies: [stepped('Box', [step('type', 0)]), stepped('Ball', [step('option', 0)])],
+      })[1],
+    ).toBe(
+      "Start from the file's own shapes: Box; Ball. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a feature has a setting Extrudo can't rebuild. The features after them come in with their history.",
+    );
+    // Mixed: one first in its body, one part way through: today's sentence.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        bodies: [stepped('Box', [step('type', 0)]), stepped('Lid', [step('type', 2)])],
+      })[1],
+    ).toBe(
+      "Rebuilt on the file's own shapes part way through: Box; Lid. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the bodies.",
     );
     const notices = fcstdNotices({
       ...base,

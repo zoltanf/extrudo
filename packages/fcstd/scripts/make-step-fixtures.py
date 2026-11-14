@@ -4,11 +4,28 @@
 # FreeCAD's own. Writes fixtures.json (no file metadata: only the objects'
 # own XML from Document.xml, never the document's properties).
 #
-# Run: freecadcmd make_fixtures.py   (FreeCAD 1.1)
+# Run: freecadcmd make-step-fixtures.py <output directory>   (FreeCAD 1.1)
+# Writes fixtures.json and log.txt into that directory, never beside the script
+# (log.txt holds tracebacks with local paths). The directory is the first argument
+# after the script's path in sys.argv (a `--pass` before it is skipped).
 import json, math, os, re, sys, tempfile, traceback, zipfile
 import FreeCAD as App, Part, Sketcher
 
-OUT = os.path.dirname(os.path.abspath(__file__))
+def output_dir():
+    # The first argument after this script's own path (FreeCAD's sys.argv may hold its own first).
+    me = os.path.basename(__file__)
+    args = sys.argv[1:]
+    for i, a in enumerate(sys.argv):
+        if os.path.basename(a) == me:
+            args = sys.argv[i + 1:]
+            break
+    args = [a for a in args if a != '--pass']
+    if not args or not os.path.isdir(args[0]):
+        sys.stderr.write('usage: freecadcmd %s <output directory>\n' % me)
+        sys.exit(2)
+    return os.path.abspath(args[0])
+
+OUT = output_dir()
 log = []
 cases = []
 
