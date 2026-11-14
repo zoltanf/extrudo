@@ -1,0 +1,1 @@
+- 2026-11-15 · **FreeCAD sketch constraints on a projected arc come in**: a constraint on the projection of a rounded edge (its centre, its ends, tangent to it) now comes in with the sketch, the arc checked against the file like a projected line (ADR-0144's S9 arcs amendment).

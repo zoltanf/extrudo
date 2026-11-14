@@ -501,7 +501,8 @@ describe('projected arcs a file or a kernel may get wrong', () => {
     // are: had a turned arc renamed its ends, the solver would have moved the corners.
     expect(s?.constraints.mapped).toBe(s?.constraints.total);
     const f = r.design.doc.features.find((x) => x.name === 'NotchSketch');
-    const data = (f?.inputs as unknown as { sketch: { sketch: unknown } }).sketch.sketch as {
+    if (!f) throw new Error('no NotchSketch');
+    const data = (f.inputs as unknown as { sketch: { sketch: unknown } }).sketch.sketch as {
       entities: Record<string, Record<string, unknown>>;
       projections: Record<string, { curves: Record<string, string> }>;
     };

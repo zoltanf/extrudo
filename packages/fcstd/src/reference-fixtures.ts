@@ -14,7 +14,9 @@
  * placement, constraints (type, value, first, its position, second, its
  * position, third, its position), external links (object, element, shadow
  * name), external geometry as FreeCAD stored it (after the two axes, in the
- * sketch's coordinates, with its `ref`), support and map mode.
+ * sketch's coordinates, with its `ref`; an arc as centre, radius, `AngleXU`,
+ * start and end angles and its normal's Z), support and map mode. The
+ * `external_arc_*` parts are S9's arcs amendment's.
  */
 /* biome-ignore-all lint: generated data */
 import type { FixtureProp, PatternFixtureCase } from './pattern-fixtures';

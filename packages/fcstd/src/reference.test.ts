@@ -455,8 +455,9 @@ describe('projected arcs', () => {
   /** The projected curve of a sketch, its points where the design has them. */
   const arcOf = (r: Awaited<ReturnType<typeof runRef>>, sketch: string) => {
     const f = r.design.doc.features.find((x) => x.name === sketch);
+    if (!f) throw new Error(`no ${sketch}`);
     const data = (
-      f?.inputs as unknown as {
+      f.inputs as unknown as {
         sketch: {
           sketch: {
             entities: Record<string, Record<string, unknown>>;
