@@ -3799,8 +3799,8 @@ investigate, a drift is noted in the release notes. §5 (2026-10-25) adds
 two ceilings: `packages/kernel/src/benchmarks.test.ts`'s `recompute` asserts
 every benchmark recompute against `BUDGET_MS` (about 3× the laptop, at least
 1 s: B1–B6 and B10 1 s, B8 1.5 s, B7 3 s, B9 30 s; `BENCH=1` prints the
-times), and `scripts/measure-startup.mjs --budget` fails when app JS passes
-2 MB or the precache 10 MB brotli, run by CI's Docker job
+times), and `scripts/measure-startup.mjs --budget` fails when app JS (every
+chunk, lazy ones too) passes 2.25 MB (2 MB until 2026-11-14) or the precache 10 MB brotli, run by CI's Docker job
 after its build. **Rules:** a new benchmark document needs a `BUDGET_MS`
 entry (the helper throws without one); both sets of budgets are widened only
 with a measurement in the commit message.
@@ -4861,3 +4861,33 @@ per file (`chain` for another), each sketch decoded once (`AddSketchOptions.deco
 decoded; `MAX_FEATURE_EXPRESSIONS` 64 (`expressionsDropped`); `MAX_PROFILE_CURVES` 500 drawn curves (worst cases measured under 3 s; past it the grid case
 is the region detection, to bound in `@extrudo/sketch`) before regions are detected, and `profileRefs` stays linear per region (its own scan-line point, box prefilter; never `interiorPoint`
 there). Known limit: the document is sent per feature (cost features × design size, bounded by the caps and the time).
+
+ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
+**Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
+`embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,
+`insertedFeatures`), the `design` input kind and `EmbeddedDesign`/`EmbeddedFeature`/
+`EmbeddedInputSchema` in `schema.ts`, kernel `features/insert-design.ts`, the engine's
+`Expansion.isolated` (`ownBodies`, `mergeBodies`, `scopes` in `#run`), app
+`components/insertDesign.ts` and the tool `insertDesign` (Solid › Assemble, agent-denied). Rules: **the copy is JSON in the feature** (the source's name, `units`, parameters and
+features before its marker, no `component` keys); nothing geometric is stored. **One insert = one
+feature + one new component** (named after the file, `copyComponentName` on a clash), one undo
+step, every ID from the caller; copied `BodyMeta` goes to the host's `bodies` under
+`<insert>.<feature>:<n>` in that component. **IDs**: the expansion's features are
+`<insert>.<id>`, and references (ref inputs, projections, fingerprint `adj`) are rewritten **token
+by token** with `prefixIds` (`timeline.ts`'s separators), never by substring. **Parameters**: the
+copy is evaluated alone (`evaluateParameters` over the copy, its own `units`) and every `expr`
+input and sketch dimension reaches the expansion as a literal (`20 mm`, `5 deg`) **without
+`paramName`**: the host's table never gets a name of the copy, the copy never reads the host's.
+**Isolation**: an isolated expansion's features see only bodies starting `<insert>.`, their
+result replaces only those (`mergeBodies`), their cache key uses the scope's own body key; keep
+this, or a copied join/cut reaches the host's bodies. **Not insertable**: a source with an
+unsuppressed Script, plugin feature or insert before its marker (no expansion inside an
+expansion), or nothing there; the schema keeps nested `design` inputs out. **Files**: the copy's
+file inputs and `attachment:<id>` fonts name the **host's** attachments (bytes written before the
+command; same SHA = the host's ID; an ID the host gives other bytes is renamed in the copy);
+`schema.ts`'s `featuresWithEmbedded` checks them and `usedAttachments`/`removeAttachment` see the
+copy's texts. **A future format bump must migrate features inside `design` inputs too.** The
+emitter skips an insert like a file feature. Linked mode (§7) adds a `link` input and Update
+replaces `design`; **a linked file that is gone keeps the last copy as the truth** (geometry
+unchanged, a warning, a notice with Relink… / Break link; owner 2026-11-10); the `.f3d`
+import is unchanged (§8).

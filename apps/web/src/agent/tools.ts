@@ -109,6 +109,7 @@ export const AGENT_DENIED_COMMANDS: ReadonlySet<string> = new Set([
   'importProject',
   'importBody',
   'importDrawing',
+  'insertDesign',
   'checkForUpdates',
   'openSettings',
   'customizeMarkingMenu',

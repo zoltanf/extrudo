@@ -36,6 +36,7 @@ The solids, sweeps and cuts that make bodies.
 - [Canvas](canvas.md) — `d.canvas(inputs, options?)`
 - [Script](script.md) — `d.script(inputs, options?)`
 - [Plugin feature](plugin.md) — `d.plugin(inputs, options?)`
+- [Insert Design](insertDesign.md) — `d.insertDesign(inputs, options?)`
 
 ## Modify
 

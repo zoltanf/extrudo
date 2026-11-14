@@ -11,7 +11,7 @@
  */
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import type { AttachmentId } from './ids';
-import { type Attachment, AttachmentSchema, type ExtrudoDocument } from './schema';
+import { type Attachment, AttachmentSchema, type ExtrudoDocument, type Feature } from './schema';
 import { readSketch } from './sketch/feature';
 import type { SketchData } from './sketch/schema';
 import { attachmentFontId } from './sketch/schema';
@@ -56,7 +56,7 @@ export const removeAttachment = defineCommand<{ id: AttachmentId }>(
 /** The attachments the design's text entities name, by attachment ID. */
 export function usedAttachments(doc: Pick<ExtrudoDocument, 'features'>): Set<AttachmentId> {
   const out = new Set<AttachmentId>();
-  for (const feature of doc.features) {
+  for (const feature of withInserted(doc.features)) {
     const entities = readSketch(feature)?.data.entities;
     for (const entity of Object.values(entities ?? {})) {
       if (entity.type !== 'text') continue;
@@ -79,7 +79,7 @@ export function attachmentHashes(doc: Pick<ExtrudoDocument, 'attachments'>): Set
 /** The names of the sketches with a text shaped with `id`. */
 function sketchesUsingAttachment(draft: DocumentDraft, id: AttachmentId): string[] {
   const names = new Set<string>();
-  for (const feature of draft.features) {
+  for (const feature of withInserted(draft.features)) {
     for (const input of Object.values(feature.inputs)) {
       if (input.kind === 'sketchData' && usesAttachment(input.sketch, id)) {
         names.add(feature.name);
@@ -94,6 +94,24 @@ function usesAttachment(sketch: SketchData, id: AttachmentId): boolean {
   return Object.values(sketch.entities).some(
     (entity) => entity.type === 'text' && attachmentFontId(entity.font) === id,
   );
+}
+
+/**
+ * The features, each followed by those of the designs it inserts (ADR-0140 §2):
+ * an inserted design's texts are shaped with the host's attachments.
+ */
+function withInserted(features: readonly Feature[]): Feature[] {
+  const out: Feature[] = [];
+  for (const feature of features) {
+    out.push(feature);
+    for (const input of Object.values(feature.inputs)) {
+      if (input.kind !== 'design') continue;
+      for (const inner of input.design.features) {
+        out.push({ ...inner, name: `${feature.name} › ${inner.name}` } as Feature);
+      }
+    }
+  }
+  return out;
 }
 
 function listOf(items: string[]): string {

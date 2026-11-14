@@ -26,6 +26,7 @@ import {
   type FeatureId,
   type FeatureRegistry,
   type FeatureStatus,
+  GENERATED_SEPARATOR,
   type GeneratedFeatureStatus,
   type GeomRef,
   type Joint,
@@ -141,6 +142,8 @@ type ScriptRun =
       inputs: ReadonlyMap<FeatureId, ReadonlyMap<string, EvaluateResult>>;
       /** What the feature itself warned about (a plugin feature's guessed reference). */
       warnings: readonly string[];
+      /** Its features see only their own bodies (an inserted design, ADR-0140 §3). */
+      isolated: boolean;
     }
   | {
       ok: false;
@@ -720,6 +723,12 @@ export class RecomputeEngine {
 
     /** The bodies before the draft (previews). */
     let base: ReadonlyMap<BodyId, ShapeHandle> | undefined;
+    /**
+     * Isolated expansions (an inserted design, ADR-0140 §3) by owner: the key of
+     * the last body set their own features made, which their cache keys use in
+     * place of the whole design's.
+     */
+    const scopes = new Map<FeatureId, string>();
 
     // What a script makes joins the walk right after it (`expand`).
     const queue = doc.features.slice(0, end);
@@ -808,6 +817,7 @@ export class RecomputeEngine {
           madeBy.set(made.id, feature.id);
         });
         for (const [id, values] of run.inputs) inputValues.set(id, values);
+        if (run.isolated) scopes.set(feature.id, EMPTY_BODIES);
         queue.splice(at + 1, 0, ...run.features);
         scriptRuns.set(feature.id, run);
         // Its own status comes from its features' once they are walked (below).
@@ -819,6 +829,10 @@ export class RecomputeEngine {
         });
         continue;
       }
+      // A feature of an isolated expansion (ADR-0140 §3) sees only the bodies
+      // its own expansion made, and its key holds their key, not the design's.
+      const scope = script === undefined ? undefined : scopes.get(script);
+      const seen = scope === undefined ? bodies : ownBodies(bodies, script as FeatureId);
       // No font and no file in the key: their bytes never change under their
       // IDs (content-addressed, ADR-0061 §1), and the worker has every one
       // before the recompute or preview that needs it (ADR-0058 §4, ADR-0066 §0).
@@ -828,7 +842,7 @@ export class RecomputeEngine {
         feature.inputs,
         values,
         upstream.map((e) => e.key),
-        access === 'none' ? null : bodiesKey,
+        access === 'none' ? null : (scope ?? bodiesKey),
       );
 
       let entry = this.#entries.get(key);
@@ -860,7 +874,7 @@ export class RecomputeEngine {
           feature,
           parsed.data,
           values,
-          bodies,
+          seen,
           outputs,
           key,
           (id) => byId.get(id)?.name,
@@ -881,6 +895,11 @@ export class RecomputeEngine {
       }
       if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
       if (access === 'write' && entry.output.bodies) {
+        // An isolated feature's result replaces only the bodies it saw.
+        const after =
+          scope === undefined
+            ? entry.output.bodies
+            : mergeBodies(bodies, seen, entry.output.bodies);
         if (channel === 'recompute') {
           steps.push({
             feature,
@@ -888,13 +907,18 @@ export class RecomputeEngine {
             inputs: parsed.data,
             values,
             before: bodies,
-            after: entry.output.bodies,
+            after,
             output: entry.output,
             ...(script !== undefined && { script }),
           });
         }
-        bodies = entry.output.bodies;
-        bodiesKey = key;
+        bodies = after;
+        if (scope === undefined) {
+          bodiesKey = key;
+        } else {
+          scopes.set(script as FeatureId, key);
+          bodiesKey = hashOf('isolated', bodiesKey, key);
+        }
       }
     }
 
@@ -1116,6 +1140,7 @@ export class RecomputeEngine {
         log: expansion.log,
         inputs: evaluated,
         warnings: [...new Set(references.warnings)],
+        isolated: expansion.isolated === true,
       };
     } catch (error) {
       if (error instanceof WebAssembly.RuntimeError) throw error;
@@ -1617,6 +1642,30 @@ function outputHandles(output: FeatureOutput): ShapeHandle[] {
       ...(output.previewTools ?? []).map((t) => t.shape),
     ]),
   ];
+}
+
+/** The bodies of an isolated expansion (ADR-0140 §3): those whose IDs start with its owner's ID and `.`. */
+function ownBodies(
+  bodies: ReadonlyMap<BodyId, ShapeHandle>,
+  owner: FeatureId,
+): ReadonlyMap<BodyId, ShapeHandle> {
+  const prefix = `${owner}${GENERATED_SEPARATOR}`;
+  return new Map([...bodies].filter(([id]) => id.startsWith(prefix)));
+}
+
+/**
+ * The design's bodies after an isolated feature: every body it didn't see, in
+ * order, then what it made of those it saw.
+ */
+function mergeBodies(
+  bodies: ReadonlyMap<BodyId, ShapeHandle>,
+  seen: ReadonlyMap<BodyId, ShapeHandle>,
+  made: ReadonlyMap<BodyId, ShapeHandle>,
+): ReadonlyMap<BodyId, ShapeHandle> {
+  const out = new Map<BodyId, ShapeHandle>();
+  for (const [id, shape] of bodies) if (!seen.has(id)) out.set(id, shape);
+  for (const [id, shape] of made) out.set(id, shape);
+  return out;
 }
 
 /** The values of a feature's `expr` inputs, or the first error as a message. */

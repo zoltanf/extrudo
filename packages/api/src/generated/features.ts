@@ -30,6 +30,7 @@ import type {
   FilletInputs,
   HoleInputs,
   ImportInputs,
+  InsertDesignInputs,
   LoftInputs,
   MeshToSolidInputs,
   MidplaneAngledInputs,
@@ -118,6 +119,7 @@ export const FEATURE_TYPES = [
   'meshToSolid',
   'script',
   'plugin',
+  'insertDesign',
 ] as const;
 
 /** A feature type of `FEATURE_TYPES`. */
@@ -173,6 +175,7 @@ export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   meshToSolid: 'Mesh to Solid (modify): one feature of the timeline.',
   script: 'Script (create): one feature of the timeline.',
   plugin: 'Plugin feature (create): one feature of the timeline.',
+  insertDesign: 'Insert Design (create): one feature of the timeline.',
 };
 
 /** The face roles each feature type names its faces with (ADR-0068 §4). */
@@ -1399,6 +1402,15 @@ export interface FeatureMethods {
     inputs: PlainInputs<PluginInputs> & { inputs?: OpenInputValues },
     options?: FeatureOptions,
   ): FeatureHandle<'plugin'>;
+  /**
+   * Insert Design (create): one feature of the timeline.
+   *
+   * @param inputs.design The copied design: its name, length unit, parameters and the features before its timeline marker, as the source file stored them. Evaluated in its own ID and parameter space, so nothing in it clashes with this design's. Required.
+   */
+  insertDesign(
+    inputs: PlainInputs<InsertDesignInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'insertDesign'>;
 }
 
 /**
@@ -1503,6 +1515,8 @@ export function featureMethods(design: FeatureMethodTarget): FeatureMethods {
       design.add('script', inputs, options) as FeatureHandle<'script'>,
     plugin: (inputs, options?: FeatureOptions) =>
       design.add('plugin', inputs, options) as FeatureHandle<'plugin'>,
+    insertDesign: (inputs, options?: FeatureOptions) =>
+      design.add('insertDesign', inputs, options) as FeatureHandle<'insertDesign'>,
   };
 }
 
@@ -1695,6 +1709,24 @@ export function featureExamples(d: Design): void {
     plugin: 'att-name-plate',
     handler: 'name-plate',
     inputs: { width: '60 mm', rounded: true, plane: d.origin.xy },
+  });
+
+  // Insert Design.
+  d.insertDesign({
+    design: {
+      name: 'Spacer',
+      units: 'mm',
+      parameters: [],
+      features: [
+        {
+          id: 'b1',
+          type: 'box',
+          name: 'Box1',
+          suppressed: false,
+          inputs: { width: { kind: 'expr', expr: '10 mm' } },
+        },
+      ],
+    },
   });
 
   // Sketch.

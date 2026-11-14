@@ -2,7 +2,7 @@
 title: Center Rectangle
 section: Tools
 category: Sketch
-order: 74
+order: 75
 ---
 
 # Center Rectangle

@@ -16,6 +16,8 @@ import {
   type BoolInput,
   type CodeInput,
   type CodeInputMeta,
+  type DesignInput,
+  type DesignInputMeta,
   documentFeatures,
   type EnumInput,
   type EnumInputMeta,
@@ -43,6 +45,24 @@ import { ParameterHandle } from './handles';
  * (ADR-0073 §2).
  */
 export type ExprValue = string | number | ParameterHandle | { expr: string; paramName?: string };
+/**
+ * What an inserted design's copy is given as (ADR-0140): the design as JSON,
+ * with plain string IDs. The document schema checks it when the feature is added.
+ */
+export interface PlainDesign {
+  name: string;
+  units: 'mm' | 'cm' | 'm' | 'in';
+  parameters: readonly { id: string; name: string; expression: string; unit: UnitKind }[];
+  features: readonly {
+    id: string;
+    type: string;
+    name: string;
+    suppressed: boolean;
+    visible?: boolean;
+    inputs: Readonly<Record<string, object>>;
+  }[];
+}
+
 /** What a stored `ref` input is given as: one reference or several. */
 export type RefValue = GeomRef | readonly GeomRef[];
 
@@ -57,7 +77,8 @@ export type InputMeta =
   | EnumInputMeta
   | { kind: 'file' }
   | { kind: 'labels' }
-  | CodeInputMeta;
+  | CodeInputMeta
+  | DesignInputMeta;
 
 /**
  * The plain value a stored input takes: an expression as a string, a number or
@@ -80,7 +101,9 @@ type PlainValue<T> = T extends ExprInput
             ? readonly string[]
             : T extends CodeInput
               ? string
-              : never;
+              : T extends DesignInput
+                ? PlainDesign
+                : never;
 
 /**
  * Core's own input type with each input written as the plain value it takes, so
@@ -219,6 +242,11 @@ function plainInput(definition: FeatureDefinition, name: string, value: unknown)
     // A Script's source, given as the text (P5-02).
     case 'code':
       return typeof value === 'string' ? { kind: 'code', value } : value;
+    // An inserted design's copy (ADR-0140), given as the copied design itself.
+    case 'design':
+      return isPlainObject(value) && Array.isArray(value.features)
+        ? { kind: 'design', design: value }
+        : value;
     default:
       return typeof value === 'boolean' ? { kind: 'bool', value } : value;
   }
@@ -240,6 +268,7 @@ const STORED_KINDS = new Set([
   'labels',
   'sketchData',
   'code',
+  'design',
 ]);
 
 /**

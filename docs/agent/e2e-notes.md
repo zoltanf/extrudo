@@ -1309,6 +1309,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (`caches.open('extrudo-openscad')`), the offline reload after first use and
   the "isn't downloaded yet" message offline before it.
 
+### `e2e/insert-design.spec.ts`
+
+- **Insert Design e2e** (P6-26, ADR-0140): the tile is `pickTool(page, 'Insert Design')` (Solid ›
+  Assemble); it opens the file dialog at once, so wait for the `filechooser` beside the click and
+  `setFiles('fixtures/benchmarks/b4-box-with-lid.extrudo')`. There is no dialog: the info toast
+  "… is in the design as the component b4-box-with-lid …" and the Viewport's `data-components`
+  `b4-box-with-lid:Box,Lid` (a second insert adds `;b4-box-with-lid_(2):Box,Lid`: spaces become
+  `_`); the timeline chip is named after the component. One `Control+z` takes it all away,
+  `Control+Shift+z` brings it back; a reload after "Saved" keeps both. A `.step` file is refused
+  with "Insert Design takes an Extrudo design".
+
 ### `e2e/import-step.spec.ts`
 
 - **Import STEP e2e** (`e2e/import-step.spec.ts`, P4-06 slice 2): the tile is
@@ -3076,7 +3087,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - The toolbar fits the window: `#toolbar-groups` carries `data-toolbar-fit`,
   groups are `[data-toolbar-group]` with tiles under `[data-toolbar-tiles]`,
   and moving tiles into a group's menu matches `fitToolbar`
-  (`apps/web/src/shell/toolbarFit`). Home's Import/Export groups and
+  (`apps/web/src/shell/toolbarFit`). Solid's full row needs about 1475 px
+  since Insert Design (ADR-0140): at 1440 Coil is in Create's ▾, so the fit
+  test's "everything fits" width is 1600. Home's Import/Export groups and
   Construct's four groups are checked by tool id (`R3-09`/`R3-10`/`R3-12`),
   and a real sketch shows only Home and Sketch (`R3-11`).
 

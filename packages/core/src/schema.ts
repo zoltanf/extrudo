@@ -169,6 +169,83 @@ export const CodeInputSchema = z.strictObject({
 });
 export type CodeInput = z.infer<typeof CodeInputSchema>;
 
+/**
+ * An input of a feature inside an inserted design (P6-26, ADR-0140 §2): every
+ * kind but `design`, so an inserted design holds no inserted design of its own
+ * (nested components are an ADR-0081 deferral).
+ */
+export const EmbeddedInputSchema = z.discriminatedUnion('kind', [
+  ExprInputSchema,
+  EnumInputSchema,
+  BoolInputSchema,
+  RefInputSchema,
+  SketchDataInputSchema,
+  FileInputSchema,
+  LabelsInputSchema,
+  CodeInputSchema,
+]);
+export type EmbeddedInput = z.infer<typeof EmbeddedInputSchema>;
+
+/**
+ * A feature of an inserted design (ADR-0140 §2): a timeline entry as the source
+ * design stored it, under its own ID, without a `component` (the insert's own
+ * stamp is the one its bodies take).
+ */
+export const EmbeddedFeatureSchema = z.strictObject({
+  id: FeatureIdSchema,
+  type: z.string().min(1),
+  name: z.string().min(1),
+  suppressed: z.boolean(),
+  visible: z.boolean().optional(),
+  inputs: z.record(z.string(), EmbeddedInputSchema),
+});
+export type EmbeddedFeature = z.infer<typeof EmbeddedFeatureSchema>;
+
+/**
+ * Another design, copied into an Insert Design feature (P6-26, ADR-0140 §2):
+ * its parameters and the features before its timeline marker, in their own ID
+ * and name space. Its numbers are evaluated against its own parameters in its
+ * own `units`, never the host's, so nothing in it can clash with the design it
+ * is inserted into.
+ */
+export const EmbeddedDesignSchema = z
+  .strictObject({
+    /** The source design's name when it was inserted. */
+    name: z.string().min(1),
+    /** The source design's length unit: what its plain numbers are in. */
+    units: LengthUnitSchema,
+    parameters: z.array(ParameterSchema),
+    features: z.array(EmbeddedFeatureSchema),
+  })
+  .superRefine((design, ctx) => {
+    reportDuplicates(
+      ctx,
+      'features',
+      'id',
+      design.features.map((f) => f.id),
+    );
+    reportDuplicates(
+      ctx,
+      'parameters',
+      'id',
+      design.parameters.map((p) => p.id),
+    );
+    reportDuplicates(
+      ctx,
+      'parameters',
+      'name',
+      design.parameters.map((p) => p.name),
+    );
+  });
+export type EmbeddedDesign = z.infer<typeof EmbeddedDesignSchema>;
+
+/** An Insert Design feature's copy of the other design (ADR-0140 §2). */
+export const DesignInputSchema = z.strictObject({
+  kind: z.literal('design'),
+  design: EmbeddedDesignSchema,
+});
+export type DesignInput = z.infer<typeof DesignInputSchema>;
+
 /** One feature input. Every number is an expression; there is no raw-number kind. */
 export const InputSchema = z.discriminatedUnion('kind', [
   ExprInputSchema,
@@ -179,6 +256,7 @@ export const InputSchema = z.discriminatedUnion('kind', [
   FileInputSchema,
   LabelsInputSchema,
   CodeInputSchema,
+  DesignInputSchema,
 ]);
 export type Input = z.infer<typeof InputSchema>;
 export type ExprInput = z.infer<typeof ExprInputSchema>;
@@ -653,7 +731,7 @@ export type ExtrudoDocument = z.infer<typeof DocumentSchema>;
  * so the file's error points at it.
  */
 function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
-  for (const [index, feature] of doc.features.entries()) {
+  for (const { feature, path: at } of featuresWithEmbedded(doc.features)) {
     const allowed = FILE_INPUT_MEDIA_TYPES[feature.type];
     if (!allowed) continue;
     for (const [name, input] of Object.entries(feature.inputs)) {
@@ -665,7 +743,7 @@ function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>):
       if (!attachment) {
         ctx.addIssue({
           code: 'custom',
-          path: ['features', index, 'inputs', name],
+          path: [...at, 'inputs', name],
           message: `is attachment "${input.id}", which this design doesn't carry`,
         });
         continue;
@@ -673,7 +751,7 @@ function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>):
       if (allowed.includes(attachment.mediaType)) continue;
       ctx.addIssue({
         code: 'custom',
-        path: ['features', index, 'inputs', name],
+        path: [...at, 'inputs', name],
         message: `is "${attachment.fileName}", whose media type ${attachment.mediaType} isn't one this feature reads`,
       });
     }
@@ -860,7 +938,7 @@ function reportGroups(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>)
  * issue names the entity, so the file's error points at the text to fix.
  */
 function reportFonts(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
-  for (const [index, feature] of doc.features.entries()) {
+  for (const { feature, path: at } of featuresWithEmbedded(doc.features)) {
     const sketch = feature.inputs.sketch;
     if (sketch?.kind !== 'sketchData') continue;
     for (const [id, entity] of Object.entries(sketch.sketch.entities)) {
@@ -869,11 +947,35 @@ function reportFonts(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>):
       if (!attachment || doc.attachments?.[attachment]) continue;
       ctx.addIssue({
         code: 'custom',
-        path: ['features', index, 'inputs', 'sketch', 'sketch', 'entities', id, 'font'],
+        path: [...at, 'inputs', 'sketch', 'sketch', 'entities', id, 'font'],
         message: `is the font of attachment "${attachment}", which this design doesn't carry`,
       });
     }
   }
+}
+
+/**
+ * The document's features, each followed by the features of the designs it
+ * inserts (ADR-0140 §2), with the path to each: an inserted design's files and
+ * fonts are the host's attachments, so the same rules check them.
+ */
+function featuresWithEmbedded(
+  features: readonly Feature[],
+): { feature: Pick<Feature, 'type' | 'inputs'>; path: (string | number)[] }[] {
+  const out: { feature: Pick<Feature, 'type' | 'inputs'>; path: (string | number)[] }[] = [];
+  features.forEach((feature, index) => {
+    out.push({ feature, path: ['features', index] });
+    for (const [name, input] of Object.entries(feature.inputs)) {
+      if (input.kind !== 'design') continue;
+      input.design.features.forEach((inner, at) => {
+        out.push({
+          feature: inner,
+          path: ['features', index, 'inputs', name, 'design', 'features', at],
+        });
+      });
+    }
+  });
+  return out;
 }
 
 function reportDuplicates(

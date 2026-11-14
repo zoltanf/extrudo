@@ -212,6 +212,11 @@ feature's stamp, else loose), read alike by the app, the CLI and the API.
 Nothing in the recompute, the cache keys or the naming reads components;
 placement is the timeline's (a Move feature), and references never name a
 component. All three keys are optional, so there was no format bump.
+**Insert Design** (P6-26, ADR-0140, `packages/core/src/insert-design.ts`) copies another
+design into an `insertDesign` feature as JSON (its parameters and active features, a `design`
+input); the kernel expands it like a Script (ADR-0070) under `<insert>.<id>` IDs, with the
+copy's own parameter values as plain numbers, and **isolated**: its features see only the
+insert's own bodies (`Expansion.isolated`). Its bodies join one new component.
 **Joints** (`packages/core/src/joints.ts`, ADR-0081 §4) are `joints[]` between
 two components, a frame on each stored as an ordinary `GeomRef`; after every full
 recompute the engine resolves each unsuppressed joint's frames at the marker

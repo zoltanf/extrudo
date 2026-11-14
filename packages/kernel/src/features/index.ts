@@ -12,6 +12,7 @@ import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { kernelHole } from './hole';
 import { kernelImport } from './import';
+import { kernelInsertDesign } from './insert-design';
 import { kernelLoft } from './loft';
 import { kernelMeshToSolid } from './mesh-to-solid';
 import { kernelOffsetFace } from './offset-face';
@@ -96,5 +97,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelScript as unknown as KernelFeatureDefinition);
   // A plugin's custom feature (P6-03, ADR-0077 §3), expanded like a Script.
   registry.register(kernelPlugin as unknown as KernelFeatureDefinition);
+  // Insert Design (P6-26, ADR-0140): a copied design, expanded and isolated.
+  registry.register(kernelInsertDesign as unknown as KernelFeatureDefinition);
   return registry;
 }

@@ -2,7 +2,7 @@
 title: Simplify for Print
 section: Tools
 category: Make
-order: 123
+order: 124
 ---
 
 # Simplify for Print
