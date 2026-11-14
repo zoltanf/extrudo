@@ -1,7 +1,7 @@
 /** The app's picture renderer (ADR-0101 §6): its refusals, without WebGL (a fake renderer and drawing). */
 import { describe, expect, it, vi } from 'vitest';
 import type { AppRenderJob } from '../../platform/render';
-import { createAppRenderer, draftTarget, RESET, webglFence } from './appRenderer';
+import { createAppRenderer, draftTarget, RESET, RESET_TRACED, webglFence } from './appRenderer';
 
 const job: AppRenderJob = {
   project: 'Box',
@@ -79,9 +79,14 @@ describe('createAppRenderer', () => {
     });
     expect(await renderer.render(job, () => {})).toEqual({ ok: false, message: RESET });
     expect(made.mock.results[0]?.value.dispose).toHaveBeenCalled();
+    // Standard and High: a smaller size is no help, Draft is.
+    expect(await renderer.render({ ...job, quality: 'standard' }, () => {})).toEqual({
+      ok: false,
+      message: RESET_TRACED,
+    });
     lost = false;
     expect(await renderer.render(job, () => {})).toEqual({ ok: true, png: Uint8Array.from([1]) });
-    expect(made).toHaveBeenCalledTimes(2);
+    expect(made).toHaveBeenCalledTimes(3);
   });
 
   it('hands a Standard job to the drawing seam like Draft', async () => {
