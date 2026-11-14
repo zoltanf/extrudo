@@ -212,7 +212,8 @@ describe('holes a file holds', () => {
       { sketchGeometry: { HoleSketch: many } },
     );
     expect(body?.stop).toMatchObject({ object: 'Hole', reason: 'sketch' });
-  });
+    // About 3 s unloaded, which the default 5 s doesn't leave a loaded runner room for.
+  }, 30_000);
 
   it('201 circles: one past the most centres', async () => {
     const many = Array.from({ length: 201 }, (_, i) =>
