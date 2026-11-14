@@ -212,6 +212,9 @@ function canonicalInput(
       return input.refs.map((ref) => canonicalRef(ref, map, doc));
     case 'sketchData':
       return canonicalSketch(input.sketch, map);
+    // Never emitted (an inserted design is skipped like a file input), so never compared.
+    case 'design':
+      return input.design;
   }
 }
 

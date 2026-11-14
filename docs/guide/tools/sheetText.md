@@ -2,7 +2,7 @@
 title: Text
 section: Tools
 category: Drawing
-order: 131
+order: 132
 ---
 
 # Text

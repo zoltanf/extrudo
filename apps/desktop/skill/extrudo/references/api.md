@@ -312,6 +312,12 @@ Faces: `face:<n>` (A face of the imported solid, in the order the file's B-rep h
 | `handler` | `string` | **required** | Which of the plugin's custom features this is: a `type` its manifest lists under `features` (`name-plate`). |
 | `inputs` | `Record<string, OpenInputValue>` | optional | The plugin's own inputs by their manifest names: an expression as a string (its unit read off it, a length unless it ends in an angle unit) or a parameter handle, a plain number as a number, a toggle as a boolean, references as one or a list, and a choice as `{ kind: 'enum', value }`. Stored as `in:<name>`. |
 
+### `insertDesign` — Insert Design
+
+| Input | Type | Required or default | What it does |
+| --- | --- | --- | --- |
+| `design` | `PlainDesign` | **required** | The copied design: its name, length unit, parameters and the features before its timeline marker, as the source file stored them. Evaluated in its own ID and parameter space, so nothing in it clashes with this design's. |
+
 ## Modify
 
 What changes the bodies a design already has.

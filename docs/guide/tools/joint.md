@@ -2,7 +2,7 @@
 title: Joint
 section: Tools
 category: Solid
-order: 37
+order: 38
 ---
 
 # Joint

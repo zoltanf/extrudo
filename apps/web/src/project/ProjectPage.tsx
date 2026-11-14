@@ -22,6 +22,7 @@ import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useWhatsNew } from '../shell/useWhatsNew';
 import { useDocumentFonts, useFontAttachments } from '../sketch/fonts';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
+import { contextLosses } from '../viewport/webglSupport';
 import {
   createBlankProject,
   createTutorialProject,
@@ -34,7 +35,13 @@ import {
   loadProject,
   takeOpenNotices,
 } from './actions';
-import { type Autosaver, allSaved, closeAutosaver, createAutosaver } from './autosave';
+import {
+  type Autosaver,
+  allSaved,
+  automaticThumbnail,
+  closeAutosaver,
+  createAutosaver,
+} from './autosave';
 import { useLinkedFolder } from './useLinkedFolder';
 import { useModelCache } from './useModelCache';
 import { useRecompute } from './useRecompute';
@@ -268,7 +275,7 @@ function useAutosave(
     const autosaver = createAutosaver({
       store,
       projects: platform.projects,
-      thumbnail: () => viewport.getState().snapshot?.() ?? Promise.resolve(null),
+      thumbnail: () => automaticThumbnail(viewport.getState().snapshot, contextLosses()),
       thumbnailKey: () => {
         const { view, projection, visualStyle } = viewport.getState();
         return [store.getState().doc, view, projection, visualStyle];
@@ -322,7 +329,9 @@ function useFirstThumbnail(
       if (!snapshot || timer) return;
       // Let the first frames settle (fonts, the home-view fit).
       timer = setTimeout(async () => {
-        const png = await snapshot().catch(() => null);
+        const png = await automaticThumbnail(viewport.getState().snapshot, contextLosses()).catch(
+          () => null,
+        );
         if (png) await platform.projects.setThumbnail(id, png).catch(() => {});
       }, 500);
     };

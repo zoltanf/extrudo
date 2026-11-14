@@ -503,6 +503,14 @@ export const TOOLS = {
     category: 'construct',
     hint: 'Gather the selected bodies into a named component, to show, hide and export as one part.',
   },
+  insertDesign: {
+    id: 'insertDesign',
+    label: 'Insert Design',
+    short: 'Insert',
+    icon: 'component',
+    category: 'construct',
+    hint: 'Bring another Extrudo design in as a component, named after its file. It is a copy: Move puts it in place.',
+  },
   joint: {
     id: 'joint',
     label: 'Joint',
@@ -1154,7 +1162,8 @@ export const TABS: Tab[] = [
       { label: 'Program', tools: ['script', 'recordMacro', 'stopMacro'] },
       // Components organise bodies into the parts of an assembly (P6-05, ADR-0081; named
       // Assemble since #74, where people look for assemblies).
-      { label: 'Assemble', tools: ['newComponent', 'joint'] },
+      // Insert Design (P6-26, ADR-0140): another design, copied in as a component.
+      { label: 'Assemble', tools: ['newComponent', 'insertDesign', 'joint'] },
     ],
   },
   {

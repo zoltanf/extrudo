@@ -128,6 +128,20 @@ export function createAutosaver(options: AutosaveOptions): Autosaver {
   return autosaver;
 }
 
+/**
+ * The thumbnail nobody asked for (after a save, a new project's first). None
+ * once the 3D view lost its context (`losses`, the page's count): drawing it
+ * again risks the second loss that makes the browser block WebGL for the site
+ * (#259).
+ */
+export function automaticThumbnail(
+  snapshot: (() => Promise<Blob | null>) | undefined,
+  losses: number,
+): Promise<Blob | null> {
+  if (losses > 0 || !snapshot) return Promise.resolve(null);
+  return snapshot();
+}
+
 /** Whether two thumbnail keys show the same picture: every item identical. */
 export function sameThumbnailKey(
   a: readonly unknown[] | undefined,

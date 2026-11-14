@@ -183,8 +183,10 @@ slower evaluator or a heavier bundle fails before review:
   about 22 s), so the budgets leave CI about twice its time. `BENCH=1` prints
   each recompute's time.
 - **Download-size budgets** (`scripts/measure-startup.mjs --budget`): the
-  brotli size of the app's JS under 2 MB and of the whole precache
-  under 10 MB (2026-10-25: 1.60 MB and 8.46 MB). CI's
+  brotli size of the app's JS under 2 MB (2.25 MB since 2026-11-14, see
+  below) and of the whole precache under 10 MB (2026-10-25: 1.60 MB and
+  8.46 MB). "App JS" is every app chunk, lazy ones included, so splitting
+  code off doesn't lower it. CI's
   Docker job runs `--no-browser --budget` right after its app build; the
   check job doesn't build, so it is not there.
 
@@ -216,3 +218,10 @@ spec's budgets.
 - `docs/agent/e2e-notes.md` gets the spec's selectors and traps (the
   observer must be armed before the edit; `durationThreshold` on `event`
   entries is 16 ms, so quick events are not listed).
+
+## Amendment of 2026-11-14: app JS budget 2.25 MB
+
+Insert Design (ADR-0140) took app JS from 1,997,893 to 2,001,945 bytes
+brotli (main at 9631a707 and the PR, measured on the laptop with
+`--no-browser`), past the 2 MB ceiling. The owner raised it to 2.25 MB
+(about 12% headroom); the precache budget stays 10 MB (9.01 MB).

@@ -55,8 +55,8 @@ describe('the docs pages', () => {
       'sketch.md',
     ]);
     expect(paths).toContain('features/README.md');
-    // One page per feature type (49 since ADR-0141's simplifyForPrint) and their index.
-    expect(paths.filter((path) => path.startsWith('features/'))).toHaveLength(50);
+    // One page per feature type (50 since ADR-0140's insertDesign) and their index.
+    expect(paths.filter((path) => path.startsWith('features/'))).toHaveLength(51);
   });
 
   it('are at the address their links point to', () => {

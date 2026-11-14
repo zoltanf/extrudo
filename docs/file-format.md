@@ -861,6 +861,7 @@ before something it uses. Expressions do not order features.
 | `file` | `id` (attachment ID string, required) | A file of the design itself (P4-06, ADR-0066 §0): the `id` of an `attachments` entry (4.5) whose bytes the kernel reads. A document that names an `id` it doesn't carry, or one of a media type the feature doesn't read, is **damaged** (section 3), like a `text` font the design doesn't carry. |
 | `labels` | `labels` (array of strings, required, may be empty) | Names of a design's own making, with nothing to refer to (P4-12): the instances a pattern leaves out, as position labels matching `m?\d+(xm?\d+)?` (6.16). Only the pattern features use it. |
 | `code` | `value` (string, required) | Source code (P5-02, ADR-0070 §1): a Script's program, as the text the user wrote, at most 100,000 characters. Only the `script` feature uses it (6.30). |
+| `design` | `design` (EmbeddedDesign, required) | Another design, copied in (P6-26, ADR-0140 §2): its name, unit, parameters and features, below. Only the `insertDesign` feature uses it (6.37). |
 
 Feature-specific rules below are enforced by the per-type inputs schema (each
 inputs object is strict too: the recompute ignores unknown input names with
@@ -1905,6 +1906,59 @@ with `removeFaces`. The feature's report of kind `simplifyForPrint` carries
 sizes found on the bodies, for the dialog's sliders). Reports are derived,
 never stored.
 
+### 6.37 `insertDesign`
+
+Another design, **copied** into this one as one feature (P6-26, ADR-0140, label
+"Insert Design", category create): the design's features are evaluated right
+after the insert, like a Script's (6.30), and their bodies make one component
+(4.7). No link to the file it came from is kept.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `design` | `design` | yes | The copied design (EmbeddedDesign, below). |
+
+The feature's `component` (6) is the component its bodies join; the app makes a
+new one, named after the file, with each insert. There are no placement inputs:
+the bodies land at the coordinates the source design gave them, and Move or Place
+on Bed puts them elsewhere.
+
+**EmbeddedDesign** (strict, like everything here):
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | Non-empty: the source design's name when it was inserted. |
+| `units` | `mm`, `cm`, `m` or `in` | yes | The source design's length unit (4.1): what its plain numbers are in. |
+| `parameters` | array of Parameter | yes | The source design's parameters (5.1). Their `id`s and `name`s are unique within the copy, not across the document: they are a namespace of their own. |
+| `features` | array of EmbeddedFeature | yes | The source design's features before its timeline marker, in order. Their `id`s are unique within the copy. |
+
+An **EmbeddedFeature** is a Feature (6) without `component`, whose inputs may be
+of every kind but `design`: an inserted design holds no inserted design. Its file
+inputs and its texts' `attachment:<id>` fonts name attachments of **this**
+document (4.5), checked like the document's own.
+
+**How a reader computes it.** Evaluate the copy's parameters and expressions on
+their own (5.2, with the copy's `units` as the length unit; never this
+document's parameters), then walk the copy's features right after the insert,
+in order, as if they stood in the timeline there, with these changes:
+
+- each feature's ID is the insert's ID, `.` and its own (`<insert>.<id>`), and
+  its name `<insert name> › <name>`;
+- in its references (section 8; `ref` inputs, a sketch's projections, a
+  fingerprint's `adj`), every plain ID (a run of `[A-Za-z0-9_.~-]`) that is one
+  of the copy's feature IDs gets the same prefix;
+- each `expr` input (and each sketch dimension) is the value the copy gave it, in
+  mm, degrees or a plain number, without a `paramName`;
+- each feature sees only the bodies whose IDs start with `<insert>.`, and its
+  result replaces only those: a join or cut of the copy never touches the
+  document's other bodies.
+
+A body of the insert is therefore `<insert>.<feature>:<n>` and a face
+`extrude:<insert>.<feature>:cap:end`; a later feature that refers to one depends
+on the insert, as on a Script. A copy that holds a `script`, `plugin` or
+`insertDesign` feature is refused by the app; a reader that meets one reports it
+as an error of that feature. An expression of the copy that has an error makes
+the insert an error that names it.
+
 ---
 
 ## 7. Sketch data (`sketchData`)
@@ -2255,7 +2309,7 @@ reused. The schema only requires a non-empty string, and readers
 must accept any. IDs of features are used as tokens inside references and
 persistent names, so a hand-written feature ID should use only
 `[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a `script` makes has the ID
-`<script>.<n>` (6.30), which is never stored. Sketch entity, constraint, dimension and
+`<script>.<n>` (6.30), which is never stored, and so has a feature of an inserted design, `<insert>.<id>` (6.37). Sketch entity, constraint, dimension and
 projection IDs share one
 space per sketch (section 7). Body IDs are made by the kernel (`<feature>:<n>`)
 and profile region IDs by the sketch profile detector; a third-party writer
