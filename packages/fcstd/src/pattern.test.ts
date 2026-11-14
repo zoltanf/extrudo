@@ -193,6 +193,32 @@ describe('references', () => {
     expect(body?.stop?.references).toMatchObject({ none: 1 });
   });
 
+  it('an edge that a later feature split has no counterpart: the history stops there', async () => {
+    // The mirror of mirrored_face made a linear pattern along each edge of the pad in turn: the
+    // boss across the pad's top splits two of its edges, which then match nothing.
+    const reasons: string[] = [];
+    for (let k = 1; k <= 12; k++) {
+      const { body } = await runPart('mirrored_face', {
+        Mirrored: {
+          type: 'PartDesign::LinearPattern',
+          props: {
+            MirrorPlane: undefined,
+            Direction: P.sub('Pad', [`Edge${k}`]),
+            Occurrences: P.raw('<Integer value="2"/>'),
+            Length: P.raw('<Float value="1"/>'),
+          },
+        },
+      });
+      reasons.push(`${body?.stop?.reason}: ${body?.stop?.detail}`);
+    }
+    const none = reasons.filter((r) => /^reference: .*no counterpart/.test(r));
+    expect(none.length).toBeGreaterThan(0);
+    // The others are found and rebuilt (and differ from the mirror's stored shape), or are no straight edge.
+    expect(reasons.every((r) => /^(reference|differs|failed|transform-reference)/.test(r))).toBe(
+      true,
+    );
+  });
+
   it.each([
     [P.sub('Pad', ['Edge99']), 'element', /Edge99, but Pad has 12 edges/],
     [P.sub('Pad', ['Vertex1']), 'transform-reference', /Vertex1/],
