@@ -60,11 +60,11 @@ export async function listStyleMenu(page: Page) {
 }
 
 /** Waits until the kernel has computed the document (P2-01): chips show their status. */
-export async function kernelReady(page: Page) {
+export async function kernelReady(page: Page, timeout = 30_000) {
   await expect(page.getByRole('status', { name: 'Kernel' })).toHaveAttribute(
     'data-model-status',
     'ready',
-    { timeout: 30_000 },
+    { timeout },
   );
 }
 

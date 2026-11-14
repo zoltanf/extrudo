@@ -69,10 +69,21 @@ const threadRadii = (diameter: number, pitch: number) => ({
   root: diameter / 2 - (5 / 8) * (Math.sqrt(3) / 2) * pitch - 0.1,
 });
 
+/** Logs how long a wait took (`b9: <what> N ms`), so CI shows the real times. */
+async function timed<T>(what: string, wait: () => Promise<T>): Promise<T> {
+  const start = Date.now();
+  const result = await wait();
+  const ms = Date.now() - start;
+  test.info().annotations.push({ type: what, description: `${ms} ms` });
+  console.log(`b9: ${what} ${ms} ms`);
+  return result;
+}
+
 test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ page }) => {
   // Threads take seconds to build, and there are four of them between the
-  // two bodies (and again after the parameter change).
-  test.setTimeout(240_000);
+  // two bodies (and again after the parameter change). Worst case of the
+  // long waits: 30 + 60 + 60 + 60 s, plus about 60 s of clicking.
+  test.setTimeout(300_000);
   const viewport = await openProject(page);
   await kernelReady(page);
   await renameProject(page, 'B9 Bottle cap');
@@ -176,8 +187,10 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
   // The bore is past M30's minor diameter: the thread fills it in to it along
   // the thread first (ADR-0056's fifth amendment), so a full tooth, no word.
-  await expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
-  await ok(page, thread);
+  await timed('thread1 preview to ok', () =>
+    expect(thread).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 }),
+  );
+  await timed('thread1 ok to chip', () => ok(page, thread));
   await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
   await expectBody(page, 'Cap', [32, 32, 14]);
   // The thread's turns are its faces now.
@@ -299,7 +312,9 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await expect(thread2.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await clickWhere(page, front, [0, -14, -15], /^face:/);
   await expect(thread2.getByRole('button', { name: 'Faces', exact: true })).toHaveText('2 faces');
-  await expect(thread2).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await timed('thread2 preview to ok', () =>
+    expect(thread2).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 }),
+  );
   await ok(page, thread2);
   await expect(chip(page, 'Thread2')).toHaveAccessibleName('Thread2');
   // Each thread turns its step down to its crests (M20's are Ø19.8, M24's
@@ -334,8 +349,15 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   // refit. The cap's Ø36 bore is a size's own diameter, so it takes M36 (the
   // hole-at-nominal rule, ADR-0056's fourth amendment), and the adapter's
   // Ø36 collar M36, so the two parts' threads mesh.
-  await setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' });
-  await kernelReady(page);
+  await timed('parameter change set', () =>
+    setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' }),
+  );
+  // All four threads are rebuilt: 10.4-10.9 s locally, 7-23 s on CI's runners
+  // when it passed, and over the old 30 s in the first attempt of four CI runs
+  // between 2026-11-06 and 2026-11-10 (the retry on the same commit passed each
+  // time, so the runner's speed decides). Budget 60 s: 2 x the 30 s it failed
+  // under, 2.6 x the slowest measured pass (22.7 s). The time is logged.
+  await timed('parameter change to ready', () => kernelReady(page, 60_000));
   // The refitted cap thread notes that its bore is filled in: Ø36 is off
   // M36's minor by more than the thread's depth (ADR-0056's fifth amendment).
   await expectOneWarning(page);
