@@ -4384,6 +4384,61 @@ renderer has `releaseNotesPlugin` too (its own Vite config; `src/renderer/config
 file exists) is a separate lazy chunk behind the dialog's "Earlier versions"; the Menu's App
 column has What's new above About, and the `whatsNew` command (Help) is agent-denied.
 
+ADR-0141 (#79, 2026-11-07, pilot): **Simplify for Print** (`simplifyForPrint`,
+`packages/core/src/simplify-for-print.ts`, evaluator and detection
+`packages/kernel/src/features/simplify-for-print.ts`, dialog
+`apps/web/src/features/simplify-for-print.ts`, tool in Make › Prepare). Rules: the feature
+**stores bodies and limits, never faces** (`bodies`, `rounds` + `maxRoundRadius`, `chamfers` +
+`maxChamferSize`, `holes` + `maxHoleDiameter`; a kind is on while its limit is given and its toggle isn't false,
+`simplifyKinds`); detection runs in the kernel on every recompute with **existing facade queries
+only** (`surfaceGeometry`, `threadFace`; no new WASM; **not `tangentFaces`**: ~340 ms a call on
+a Mesh to Solid body); faces meet smoothly when their normals at the edge midpoint are within ~2°
+(`smoothAcross`/`normalAt`). `findSimplifyGroups` is
+pure: holes = an inside cylinder all the way round, or a closed **ring** of coaxial inside
+pieces of one radius (shared edges ≥ pieces), or a **tapered wall** (an inside whole cone
+steeper than 45°, Δheight > Δradius: `coneOf(...).tapered`; sized by its wider end, never a
+chamfer; a countersink isn't one), with `removeFacesPick`'s hole faces and its mouth
+torus (coaxial, next to a wall: `withMouth`, whatever the round limit); size = twice
+the widest inside cylinder's radius, over the limit the whole hole stays; a closed ring of
+**outside** pieces (a pin split at its seam) is no round, like a whole outside cylinder; rounds = cylinders
+not all the way round, tori (minor radius), spheres, ≤ the limit, not in a hole, meeting a
+neighbour smoothly, joined across smooth edges; cones never; chamfers
+(`bevelOf`) = a plane strip between two parallel straight edges on two non-parallel flat
+neighbours (normal cosines 0.05–0.99985, every vertex inside the strip), size = the **longer
+leg** to the neighbours' meeting line, or a cone with circles at two levels meeting no neighbour smoothly
+(legs Δradius, Δheight); a face between two bevels is none when one of them is a bevel ≤ its
+size; touching chamfers are one group with **corner patches** (chamfers on more than half
+its sides, two at least, vertices within 2× their size of the centroid; **any surface type**:
+unequal chamfers meet in a B-spline patch that also touches a flat face, and one left behind is
+stretched along the edges); no face in two groups; holes found first (a
+countersink is the hole's), then rounds (**a round's faces go into `taken`**: never a chamfer's corner patch); output rounds, chamfers, holes; a group of every face is skipped. Removal per body: **all groups in
+one `removeFaces` first; on `RemoveFacesError` all but the groups `error.failed` names in one,
+then those alone; if that fails too, each group alone**, on the shape the earlier ones
+left, its faces found again **by name**; a failure leaves the shape and goes on (other errors
+propagate); keep shapes only after the last throwing call. Report `{ kind: 'simplifyForPrint',
+groups, sizes }` (`SimplifyGroup`: kind, body, size, faces, removed; `sizes`: every size per kind
+whatever its own limit, **per face** via `findSimplifyGroups`'s `seen` (which hears only groups
+found, never one skipped for being every face) with that kind's limit at infinity and **the
+others' limits as set** (a hole's countersink or mouth that goes with it is no chamfer or round stop), `distinctSizes` to 0.001 mm never rounded below) goes to `FeatureStatus.simplify`
+and `Preview.simplify` → `DialogContext.draftSimplify`; nothing found and failures are
+**warnings**, not errors. Preview: one `cut` preview tool, the compound of the removed faces of
+the input. The dialog is Bodies plus **a card per kind** (`ExpressionField.card`: title, icon,
+badge "N go" / "Keep", the **slider** at `ExpressionField.stops` beside the limit's field, notes:
+sizes that go and stay, then what couldn't be removed, ≤ 3; "None on these bodies" when the
+kind has no sizes), inputs named "Round radius" / "Chamfer size" / "Hole diameter"
+(`ExpressionField.inputName`). **No toggles and no Found list**: the slider's first stop is
+**Keep** (`ExpressionField.empty`, an empty limit makes **no input**, an absent input reads back
+empty; a stored toggle that is off reads back as Keep via the spec's `fromInputs`); all three
+kept is a `validate` issue. The slider shows the stop while dragging and **sets it on release**
+(pointer capture, keyup, blur: one preview per drag); a typed value is kept, the slider at the
+stop at or under it, a value under every size at Keep (`stopSlider`, `stopIndex`,
+`stopExpression` in `FeatureDialog.tsx`; `useStops` asks the controller nothing for a field
+without `stops`); `ExpressionInput.allowEmpty` lets a blank field (spaces too) commit as `''`
+with no error shown. File format: `docs/file-format.md` §6.36. Tooltip
+clip `demo: simplifyForPrint` (frames the model, not the dialog). Tests: `simplify-for-print.test.ts` in kernel (OCCT: small
+fillets, through and blind holes, a stadium's ends that can't be removed, on another body and
+on the same body, chamfers by longer leg and the octagon rule, every edge chamfered with corner
+patches, a countersink as chamfer or hole, a rounded hole mouth) and web.
 ADR-0142 (issue #203, 2026-11-07) **renames model parameters**. Core `renameModelParameter({ name, newName })`
 (`document-commands.ts`) sets `paramName` on the dimension or feature input and rewrites every user via
 `rewriteReferences` (shared with `updateParameter`: parameters, ranges, inputs, dimensions, joint limits, view

@@ -3,7 +3,7 @@ title: Mesh to Solid
 type: meshToSolid
 section: Features
 category: modify
-order: 45
+order: 46
 ---
 
 # Mesh to Solid

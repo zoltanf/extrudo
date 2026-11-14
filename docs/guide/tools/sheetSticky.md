@@ -2,7 +2,7 @@
 title: Sticky Note
 section: Tools
 category: Drawing
-order: 133
+order: 134
 ---
 
 # Sticky Note

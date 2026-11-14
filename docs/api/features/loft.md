@@ -3,7 +3,7 @@ title: Loft
 type: loft
 section: Features
 category: create
-order: 38
+order: 39
 ---
 
 # Loft

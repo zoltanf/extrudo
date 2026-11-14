@@ -38,6 +38,10 @@ current. Useful variables:
 | **Tool reference pages** and the examples page | `docs/guide/tools/`, `docs/guide/examples.md` | `pnpm docs:generate` | A tool, its key or its clip changed (a test fails when they are stale) |
 | **API methods and pages** | `packages/api/src/generated/`, `docs/api/features/` | `pnpm api:generate` | A feature input changed (a test fails when they are stale) |
 
+After recording a **new** clip, `demos.test.ts` may still list the clips from before: Vitest's
+file cache keeps the old `import.meta.glob` result. Delete `node_modules/.vitest-cache` and run it
+again.
+
 The Drawing tab's clips start from the spool holder's sheets, `fixtures/demos/sheetEmpty`, `sheetBase`, `sheetViews` and `sheetList.extrudo` (written by `packages/cli/src/demo-designs.test.ts`), and zoom the paper rather than the 3D view.
 
 The `meshToSolid` clip starts from `fixtures/demos/meshToSolid.stl` (a 40 × 30 × 5 mm plate with a hole), written by the same test as the designs and imported through Home › Import Model.

@@ -214,6 +214,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Tolerance](./tolerance.md) — How much room a printed fit gets: hole presets and threads add it to their sizes.
 - [Overhang Analysis](./overhang.md) — Shade the faces that lean out more than an angle: they need support to print.
 - [Wall Thickness](./wallThickness.md) — Shade the walls thinner than a minimum: they print weak or not at all.
+- [Simplify for Print](./simplifyForPrint.md) — Remove every small round, chamfer and hole at once: for parts imported from engineering CAD.
 
 ### Output
 

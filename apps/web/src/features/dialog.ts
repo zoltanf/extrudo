@@ -40,6 +40,7 @@ import {
   readSketch,
   type SelectionItem,
   type SessionStore,
+  type SimplifyReport,
   type SweepReport,
   setFeatureVisibility,
   type ThreadReport,
@@ -180,6 +181,8 @@ export interface DialogPreview {
   sweep?: SweepReport;
   /** The draft's Mesh to Solid report from the latest preview (ADR-0097 §4). */
   meshToSolid?: MeshToSolidReport;
+  /** The draft's Simplify for Print report from the latest preview (ADR-0141 §4). */
+  simplify?: SimplifyReport;
   /**
    * The region preview's latest answer (`FeatureDialogSpec.regions`, ADR-0097
    * §5): the view colours the body's triangles by kind in place of the
@@ -435,6 +438,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const draftThread = open.preview?.thread;
     const draftSweep = open.preview?.sweep;
     const draftMeshToSolid = open.preview?.meshToSolid;
+    const draftSimplify = open.preview?.simplify;
     const draftRegions = open.preview?.regions;
     return {
       doc,
@@ -450,6 +454,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       ...(draftThread && { draftThread }),
       ...(draftSweep && { draftSweep }),
       ...(draftMeshToSolid && { draftMeshToSolid }),
+      ...(draftSimplify && { draftSimplify }),
       ...(draftRegions && { draftRegions }),
       ...(feature && { feature }),
     };
@@ -647,6 +652,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
                   ...(result.thread && { thread: result.thread }),
                   ...(result.sweep && { sweep: result.sweep }),
                   ...(result.meshToSolid && { meshToSolid: result.meshToSolid }),
+                  ...(result.simplify && { simplify: result.simplify }),
                   ...(open.preview.regions && { regions: open.preview.regions }),
                 },
                 (field) =>

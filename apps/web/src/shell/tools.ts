@@ -859,6 +859,14 @@ export const TOOLS = {
     category: 'export',
     hint: 'Shade the walls thinner than a minimum: they print weak or not at all.',
   },
+  simplifyForPrint: {
+    id: 'simplifyForPrint',
+    label: 'Simplify for Print',
+    short: 'Simplify',
+    icon: 'simplify-for-print',
+    category: 'export',
+    hint: 'Remove every small round, chamfer and hole at once: for parts imported from engineering CAD.',
+  },
   slicer: {
     id: 'slicer',
     label: 'Send to Slicer',
@@ -1265,7 +1273,15 @@ export const TABS: Tab[] = [
     groups: [
       {
         label: 'Prepare',
-        tools: ['placeOnBed', 'measure', 'printInfo', 'tolerance', 'overhang', 'wallThickness'],
+        tools: [
+          'placeOnBed',
+          'measure',
+          'printInfo',
+          'tolerance',
+          'overhang',
+          'wallThickness',
+          'simplifyForPrint',
+        ],
       },
       { label: 'Output', tools: ['export', 'slicer', 'render', 'sheets'] },
     ],

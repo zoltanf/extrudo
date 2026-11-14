@@ -1102,6 +1102,23 @@ end to end, faster than in established desktop CAD.
     moved faces by their earlier state; ADR-0083's amendment of 2026-10-23);
     on the bumper 5 of 28 take effect, the rest stop on OCCT limits (Offset
     Face's sharp-corner guard, Remove Faces on one face of a round loop)
+- [x] **P4-13 Simplify for Print (#79).** ADR-0141. Added 2026-11-07 (pilot,
+  issue #79). Every round under a radius, chamfer under a size and hole under
+  a diameter on the chosen bodies removed at once, for parts imported from
+  engineering CAD.
+  - [x] Feature `simplifyForPrint` (Make › Prepare): bodies, max round radius,
+    max chamfer size and max hole diameter (`<ExpressionInput>`, each can be
+    off); API
+    method and docs (`pnpm api:generate`), tool page (`pnpm docs:generate`)
+  - [x] Finds rounds (cylinder, torus, sphere faces in a smooth chain) and
+    chamfers (flat strips and cones, by their longer leg, corner patches
+    included) and holes (closed cylindrical walls, split walls too, with the
+    faces they enclose and a rounded mouth) under the limits, in the kernel, with no new facade method
+  - [x] Each removal its own attempt after an all-at-once pass; the dialog
+    lists what went and what stayed, per round or hole
+  - [x] Preview draws the faces that go; a count line ("12 rounds, 3 holes")
+  - Left for later: an "except" pick to keep one found round, chamfer or hole, chamfers between
+    curved faces
 
 ---
 
