@@ -151,10 +151,18 @@ export function disagreement(read: ShapeMeasure, back: ShapeMeasure): string | u
  * solid count from 0 to `MAX_SOLIDS_PER_SHAPE`, finite volume, area, box
  * and centre of mass.
  */
+/** The most faces or edges a measure may count (more means the kernel read something it shouldn't have). */
+const MAX_ELEMENT_COUNT = 100_000_000;
+
 export function saneMeasure(m: unknown): m is ShapeMeasure {
   if (typeof m !== 'object' || m === null) return false;
-  const { solids, volume, area, box, centre } = m as Partial<ShapeMeasure>;
+  const { solids, volume, area, box, centre, faces, edges } = m as Partial<ShapeMeasure>;
+  const count = (n: unknown) =>
+    n === undefined ||
+    (Number.isInteger(n) && (n as number) >= 0 && (n as number) <= MAX_ELEMENT_COUNT);
   return (
+    count(faces) &&
+    count(edges) &&
     Number.isInteger(solids) &&
     (solids as number) >= 0 &&
     (solids as number) <= MAX_SOLIDS_PER_SHAPE &&

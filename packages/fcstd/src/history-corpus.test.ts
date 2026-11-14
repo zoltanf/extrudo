@@ -18,7 +18,7 @@ import { finalShapes } from './final-shapes';
 import { importFcstd } from './import';
 import type { ShapeElements } from './import-kernel';
 import { edgeDistance, toleranceAt } from './match';
-import { readFcstd } from './model';
+import { floatList, readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { containerChain } from './sketch-place';
 
@@ -147,12 +147,75 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
     let otherDiffer = 0;
     const lines: string[] = [];
     const census: Record<string, number> = {};
+    // S7: how far another FreeCAD body's Extrudo body moved between two rebuilds it wasn't part of.
+    const untouched = {
+      checks: 0,
+      volume: 0,
+      area: 0,
+      corner: 0,
+      centre: 0,
+      each: [] as number[][],
+    };
+    // S7: what the transforms and holes in the files hold, and what the walk did with them.
+    const s7 = {
+      secondAttempts: 0,
+      heldAtSecond: 0,
+      threadsLost: 0,
+      constructions: 0,
+      multiTransformSteps: 0,
+      wholeShape: 0,
+      customGaps: 0,
+      suppressedPositions: 0,
+      holeCut: {} as Record<string, number>,
+      references: {} as Record<string, number>,
+    };
     for (const file of files) {
       const bytes = new Uint8Array(readFileSync(file));
       const doc = readFcstd(bytes);
       let walked = 0;
       for (const o of doc.objects) {
         if (FEATURE_TYPES[o.type]) bump(census, `${kindOf(o.type)} in the file`);
+        const kind = FEATURE_TYPES[o.type];
+        if (kind === 'multi') {
+          const t = o.properties.Transformations?.value;
+          if (t?.kind === 'linkList') s7.multiTransformSteps += t.objects.length;
+        }
+        if (kind === 'linear' || kind === 'polar' || kind === 'mirrored' || kind === 'multi') {
+          const mode = o.properties.TransformMode?.value;
+          if (
+            (mode?.kind === 'enum' || mode?.kind === 'integer') &&
+            (mode.kind === 'enum' ? mode.index : mode.value) === 1
+          )
+            s7.wholeShape++;
+          for (const name of ['Spacings', 'Spacings2']) {
+            if (!o.properties[name]) continue;
+            const list = floatList(doc, o, name);
+            if (list?.some((g) => g > 0)) s7.customGaps++;
+          }
+          for (const name of ['SuppressedIndices', 'SuppressedPositions']) {
+            const v = o.properties[name]?.value;
+            if (v && !(v.kind === 'integerList' && v.values.length === 0)) s7.suppressedPositions++;
+          }
+          for (const name of ['Direction', 'Direction2', 'Axis', 'MirrorPlane']) {
+            const v = o.properties[name]?.value;
+            if (v?.kind !== 'linkSub' || !v.object) continue;
+            const target = doc.byName.get(v.object);
+            const sub = v.subs[0]?.name ?? '';
+            bump(
+              s7.references,
+              `${name}: ${target?.type.startsWith('Sketcher') ? 'sketch' : (target?.type ?? 'missing')} ${sub.replace(/\d+$/, 'N') || '(whole)'}`,
+            );
+          }
+        }
+        if (kind === 'hole') {
+          const v = o.properties.HoleCutType?.value;
+          bump(
+            s7.holeCut,
+            v?.kind === 'enum'
+              ? `${v.values ? (v.values[v.index] ?? '?') : `index ${v.index}`}`
+              : `index ${v?.kind === 'integer' ? v.value : '?'}`,
+          );
+        }
         if (o.type !== 'PartDesign::Fillet' && o.type !== 'PartDesign::Chamfer') continue;
         const all = o.properties.UseAllEdges?.value;
         if (all?.kind === 'bool' && all.value) dressUps.useAllEdges++;
@@ -175,7 +238,19 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       // S3's way first, for what is not a body.
       const s3 = await importFcstd(bytes, 'X', { kernel, maxFileFeatures: 0 });
       const t = performance.now();
-      const { report } = await importFcstd(bytes, 'X', { kernel, solver });
+      const { report } = await importFcstd(bytes, 'X', {
+        kernel,
+        solver,
+        onUntouched: (d) => {
+          untouched.checks++;
+          untouched.each.push([d.volume, d.area, d.corner, d.centre]);
+          untouched.volume = Math.max(untouched.volume, d.volume);
+          untouched.area = Math.max(untouched.area, d.area);
+          const of = (v: number) => (d.diagonal > 0 ? v / d.diagonal : v);
+          untouched.corner = Math.max(untouched.corner, of(d.corner));
+          untouched.centre = Math.max(untouched.centre, of(d.centre));
+        },
+      });
       times.push(performance.now() - t);
       restarts += report.restarts;
       importsS3 += s3.report.shapes.length;
@@ -195,6 +270,12 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       }
       for (const b of report.bodies) {
         bump(bodies, b.outcome);
+        s7.secondAttempts += b.secondAttempts;
+        for (const m of b.mapped) {
+          if (m.secondAttempt) s7.heldAtSecond++;
+          if (m.threadLost) s7.threadsLost++;
+          s7.constructions += m.constructions ?? 0;
+        }
         const body = doc.byName.get(b.object);
         const chain = body ? bodyChain(doc, body) : { broken: '' };
         const features = 'features' in chain ? chain.features : [];
@@ -315,6 +396,8 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         ]),
       ),
       notBodies: { same: otherSame, differ: otherDiffer },
+      s7,
+      untouched,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

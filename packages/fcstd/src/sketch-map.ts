@@ -153,6 +153,8 @@ export interface SketchMapResult {
   readonly lines: readonly (string | undefined)[];
   /** The sketch axes drawn as fixed construction lines and kept (`SketchMapOptions.axes`, or a kept constraint's). */
   readonly axes: { readonly h?: string; readonly v?: string };
+  /** The Extrudo point at each FreeCAD circle's or arc's centre, or each point (S7: a hole's centres), by geometry index. */
+  readonly centres: readonly (string | undefined)[];
 }
 
 export interface SketchMapOptions {
@@ -854,6 +856,14 @@ export function mapSketch(
       ...(datums.h && used.has(datums.h) ? { h: datums.h } : {}),
       ...(datums.v && used.has(datums.v) ? { v: datums.v } : {}),
     },
+    centres: sketch.geometry.map((_, i) => {
+      const d = drawn[i];
+      return d?.kind === 'circle' || d?.kind === 'arc'
+        ? d.pos[3]
+        : d?.kind === 'point'
+          ? d.id
+          : undefined;
+    }),
   };
 }
 

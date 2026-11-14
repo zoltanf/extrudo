@@ -411,9 +411,9 @@ describe('where a history stops', () => {
   });
 
   it('keeps what came before, then a Remove and the final shape (a feature it cannot map)', async () => {
-    const r = await run([padThen({ name: 'Hole', type: 'PartDesign::Hole' })]);
+    const r = await run([padThen({ name: 'Draft', type: 'PartDesign::Draft' })]);
     const body = only(r);
-    expect(body.stop).toMatchObject({ object: 'Hole', reason: 'type' });
+    expect(body.stop).toMatchObject({ object: 'Draft', reason: 'type' });
     expect(body.outcome).toBe('shape');
     expect(r.features).toEqual([
       'sketch Sketch',

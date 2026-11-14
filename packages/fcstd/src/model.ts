@@ -807,3 +807,62 @@ export function brepHasSolid(text: string): boolean {
   solid.lastIndex = at;
   return solid.test(text);
 }
+
+/** The most numbers a float list entry may hold for the importer to read it (a pattern's gaps). */
+export const MAX_FLOAT_LIST = 100_000;
+
+/**
+ * A `FloatList` property's numbers. FreeCAD writes a non-empty list into an
+ * archive entry of its own (`<FloatList file="…"/>`, FORMAT.md): a
+ * little-endian 32-bit count, then that many 64-bit floats. An empty list
+ * names no entry. `undefined` with a problem on `doc.problems` when the
+ * property is missing or not a float list, or its entry is missing, larger
+ * than `MAX_FLOAT_LIST` numbers, cut short, or holds a number that is not
+ * finite. Checked by the archive's own size before the entry is inflated.
+ */
+export function floatList(
+  doc: FcDocument,
+  object: FcObject,
+  property: string,
+): number[] | undefined {
+  const what = `${object.name}.${property}`;
+  const value = object.properties[property]?.value;
+  if (value?.kind !== 'file' || value.element !== 'FloatList') {
+    doc.problems.push(`${what}: not a list of numbers.`);
+    return undefined;
+  }
+  if (value.entry === '') return [];
+  const size = doc.entries.size(value.entry);
+  if (size !== undefined && size > 4 + 8 * MAX_FLOAT_LIST) {
+    doc.problems.push(`${what}: its list of numbers is too long to read.`);
+    return undefined;
+  }
+  let bytes: Uint8Array | undefined;
+  try {
+    bytes = doc.entries.get(value.entry);
+  } catch (error) {
+    if (!(error instanceof FcstdFormatError)) throw error;
+    doc.problems.push(`${what}: its list of numbers can't be read: ${error.message}`);
+    return undefined;
+  }
+  if (!bytes || bytes.length < 4) {
+    doc.problems.push(`${what}: its list of numbers is missing from the file.`);
+    return undefined;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint32(0, true);
+  if (count > MAX_FLOAT_LIST || bytes.length !== 4 + 8 * count) {
+    doc.problems.push(`${what}: its list of numbers is cut short or too long.`);
+    return undefined;
+  }
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const v = view.getFloat64(4 + 8 * i, true);
+    if (!Number.isFinite(v)) {
+      doc.problems.push(`${what}: its list holds a number that is not finite.`);
+      return undefined;
+    }
+    out.push(v);
+  }
+  return out;
+}

@@ -27,16 +27,29 @@ import {
 import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon } from '@extrudo/sketch/profiles';
 import type { CallOutcome, KernelBudget } from './budget';
-import { combined, type Drift, drift, historyDisagreement, saneMeasure } from './check';
+import {
+  combined,
+  type Drift,
+  drift,
+  historyDisagreement,
+  saneMeasure,
+  untouchedDisagreement,
+} from './check';
 import { addDressUp, type ReferenceTally } from './dressups';
 import {
   type DecodedDressUp,
   type DecodedFeature,
+  type DecodedHole,
+  type DecodedTransform,
   decodeFeature,
+  FEATURE_TYPES,
   type FeatureKind,
   type FeatureRefusal,
+  MAX_TRANSFORM_INSTANCES,
+  MAX_TRANSFORM_STEPS,
 } from './features';
 import { type FinalShape, linkedObjects } from './final-shapes';
+import { addHole } from './holes';
 import type { RebuildResult, ShapeMeasure } from './import-kernel';
 import {
   binaryFormProblem,
@@ -51,6 +64,7 @@ import { setBodies } from './shapes';
 import { type DecodedSketch, decodeSketch } from './sketch-decode';
 import { containerChain, forgetRemovedPlanes } from './sketch-place';
 import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches';
+import { type Repeated, TransformMapper } from './transforms';
 
 /** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
 const named = (name: string) => cleanName(name, name);
@@ -116,6 +130,16 @@ export interface MappedFeature {
   readonly expressionsDropped?: number;
   /** How far the rebuild is from the stored shape. */
   readonly drift: Drift;
+  /** Further Extrudo features it became (S7: a MultiTransform of two mirrors is two). */
+  readonly extra?: readonly string[];
+  /** Construction features made for its references (S7). */
+  readonly constructions?: number;
+  /** It held only at its second attempt (S7: the other sense or the other hole cut). */
+  readonly secondAttempt?: true;
+  /** A hole whose thread the file has but doesn't model: it came in plain (S7). */
+  readonly threadLost?: true;
+  /** A hole's centres (S7). */
+  readonly centres?: number;
 }
 
 /** What happened to one PartDesign body. */
@@ -142,6 +166,8 @@ export interface BodyHistory {
   readonly bodies: readonly string[];
   /** The sketches imported for the mapped features (S4's outcomes, bindings included). */
   readonly sketches: readonly SketchOutcome[];
+  /** Features tried a second time after the first failed the check with `differs` (S7). */
+  readonly secondAttempts: number;
 }
 
 export interface BodyWalkOptions {
@@ -152,6 +178,14 @@ export interface BodyWalkOptions {
   readonly onStep?: () => void;
   readonly maxBodyFeatures?: number;
   readonly maxFileFeatures?: number;
+  /**
+   * Prefer an origin axis or plane where a transform's reference coincides
+   * with one (default); tests turn it off to reach the sketch lines, the
+   * matched edges and the construction features.
+   */
+  readonly originFirst?: boolean;
+  /** Hears how far each other body moved between two rebuilds (tests and the library run). */
+  readonly onUntouched?: (d: Drift) => void;
 }
 
 /** A body's chain of solid features up to its tip, following `BaseFeature`, or why there is none. */
@@ -416,6 +450,18 @@ export async function importBodies(
   const decodedSketches = new Map<string, DecodedSketch>();
   /** The kernel's restarts when a feature last held: a dress-up describes that rebuild's bodies. */
   let restartsAtHold = -1;
+  /** Every body's measure when it was last rebuilt and held: the check that a feature left other bodies alone (S7). */
+  const lastMeasures = new Map<string, ShapeMeasure>();
+  /** Any sketch of the file, decoded once per import. */
+  const sketchOf = (name: string): DecodedSketch | undefined => {
+    let d = decodedSketches.get(name);
+    if (d) return d;
+    const o = doc.byName.get(name);
+    if (!o?.type.startsWith('Sketcher::SketchObject')) return undefined;
+    d = decodeSketch(o);
+    decodedSketches.set(name, d);
+    return d;
+  };
 
   for (const shape of shapes) {
     if (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body') continue;
@@ -429,6 +475,11 @@ export async function importBodies(
     const settled = new Set(known);
     let mine: string[] = [];
     let stopped: BodyHistory['stop'];
+    let secondAttempts = 0;
+    /** This body's mapped features by FreeCAD name: what a transform's originals become. */
+    const mappedBy = new Map<string, { feature: string; kind: FeatureKind }>();
+    /** The sketch axes a transform of this body names, drawn when their sketch comes in (S7). */
+    const wantedAxes = axesWanted(doc, features, maxBody);
     /** The one place that decides where a body's history stops (S8 carries on instead). */
     const stop = (
       o: FcObject | undefined,
@@ -470,6 +521,7 @@ export async function importBodies(
         moved: frame.moved,
         ...(decodedSketch ? { sketch: decodedSketch } : {}),
         ...(previous !== undefined ? { previous } : {}),
+        sketchOf,
       });
       if (!decoded.ok) {
         stop(f, decoded.reason, decoded.detail);
@@ -478,6 +530,15 @@ export async function importBodies(
       const feature = decoded.feature;
       if (feature.kind === 'fillet' || feature.kind === 'chamfer') {
         await walkDressUp(f, feature, frame.chain);
+        return;
+      }
+      if (
+        feature.kind === 'linear' ||
+        feature.kind === 'polar' ||
+        feature.kind === 'mirrored' ||
+        feature.kind === 'multi'
+      ) {
+        await walkTransform(f, feature, frame.chain, i);
         return;
       }
       // A sketch is imported for one body only: another body's sketch is not tried again.
@@ -511,8 +572,187 @@ export async function importBodies(
         stop(f, 'no-base', 'there is nothing before it to cut');
         return;
       }
-      await hold(f, frame.chain, feature, async () =>
-        addFeature(doc, design, f, feature, sketches, mine, options.solver, decodedSketch),
+      if (feature.kind === 'hole') {
+        await walkHole(f, feature, frame.chain, decodedSketch);
+        return;
+      }
+      await holdAll(f, frame.chain, feature, [
+        async () =>
+          addFeature(
+            doc,
+            design,
+            f,
+            feature,
+            sketches,
+            mine,
+            options.solver,
+            decodedSketch,
+            wantedAxes,
+          ),
+      ]);
+    };
+
+    /** A hole: its sketch, its centres as the sketch's points; counterbore, then countersink where the file doesn't say. */
+    const walkHole = async (
+      f: FcObject,
+      feature: DecodedHole,
+      chain: readonly FcPlacement[],
+      decodedSketch: DecodedSketch | undefined,
+    ): Promise<void> => {
+      const cuts = feature.cuts;
+      await holdAll(
+        f,
+        chain,
+        feature,
+        cuts.map((cut) => async (): Promise<Added> => {
+          const got = sketchFor(
+            doc,
+            design,
+            feature.sketch,
+            sketches,
+            options.solver,
+            decodedSketch,
+            wantedAxes,
+          );
+          if ('stop' in got) return got;
+          const added = addHole(
+            design,
+            feature,
+            got.sketch,
+            decodedSketch ?? (sketchOf(feature.sketch) as DecodedSketch),
+            cut,
+            cleanName(f.label, f.name),
+          );
+          if ('stop' in added) return added;
+          return {
+            feature: added.feature,
+            sketch: got.sketch.id,
+            ...(got.newSketch ? { newSketch: got.newSketch } : {}),
+            centres: added.centres,
+            ...(feature.threadLost ? { threadLost: true as const } : {}),
+          };
+        }),
+        true,
+      );
+    };
+
+    /** A pattern, mirror or MultiTransform: its originals as this body's features, its references found. */
+    const walkTransform = async (
+      f: FcObject,
+      feature: DecodedTransform,
+      chain: readonly FcPlacement[],
+      i: number,
+    ): Promise<void> => {
+      const ids: string[] = [];
+      for (const name of feature.originals) {
+        const m = mappedBy.get(name);
+        const at = features.findIndex((x) => x.name === name);
+        const why =
+          m !== undefined
+            ? REPEATABLE.has(m.kind)
+              ? undefined
+              : `it repeats ${named(name)}, a ${m.kind === 'fillet' || m.kind === 'chamfer' ? 'dress-up' : 'pattern or mirror'}, which Extrudo can't repeat`
+            : at > i
+              ? `it repeats ${named(name)}, which comes after it`
+              : owner.has(name) && owner.get(name) !== body.name
+                ? `it repeats ${named(name)}, a feature of another body`
+                : at < 0
+                  ? `it repeats ${named(name)}, which is not a feature of this body`
+                  : `it repeats ${named(name)}, which didn't come in`;
+        if (why) {
+          stop(f, 'original', why);
+          return;
+        }
+        ids.push((m as { feature: string }).feature);
+      }
+      // A hole repeats all its centres, and a hole's cut costs about two pockets' (ADR-0144's S7
+      // amendment): each centre counts twice in the instance cap.
+      const weight = feature.originals.reduce((n, name) => {
+        const centres = mapped.find((x) => x.object === name)?.centres;
+        return n + (centres === undefined ? 1 : HOLE_CENTRE_WEIGHT * centres);
+      }, 0);
+      if (feature.instances * weight > MAX_TRANSFORM_INSTANCES) {
+        stop(
+          f,
+          'limit',
+          `it makes ${feature.instances * weight} instances (a hole counts each of its centres twice), more than ${MAX_TRANSFORM_INSTANCES}`,
+        );
+        return;
+      }
+      // A MultiTransform's steps are its own: one object, one body, once per file.
+      if (feature.kind === 'multi')
+        for (const child of feature.children) {
+          const of = owner.get(child);
+          if (of !== undefined && of !== f.name) {
+            stop(f, 'multi-transform', `its step ${named(child)} belongs to another feature`);
+            return;
+          }
+          owner.set(child, f.name);
+        }
+      const steps = feature.kind === 'multi' ? feature.steps : [feature];
+      const matches = steps.some((s) =>
+        (s.kind === 'linear' ? [s.first.reference, s.second?.reference] : [s.reference]).some(
+          (r) => r?.kind === 'element',
+        ),
+      );
+      if (matches && budget.restarts !== restartsAtHold) {
+        stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
+        return;
+      }
+      // The body's first feature made the body: Extrudo has no tool of it to replay. When the
+      // originals are every feature so far, the body itself is what is repeated (joined).
+      const first = mapped[0]?.feature;
+      let what: Repeated = { features: ids };
+      if (first !== undefined && ids.includes(first)) {
+        const all = new Set(mapped.map((m) => m.feature));
+        if (ids.length !== all.size || !ids.every((id) => all.has(id))) {
+          stop(
+            f,
+            'original',
+            `it repeats ${named(mapped[0]?.object ?? '')}, the feature its body starts from, with others but not all of them`,
+          );
+          return;
+        }
+        what = { bodies: [...mine] };
+      }
+      const walkedNames = new Set(features.slice(0, i).map((x) => x.name));
+      const own = new Set(mapped.map((m) => m.feature));
+      await holdAll(
+        f,
+        chain,
+        feature,
+        [
+          async (): Promise<Added> => {
+            const mapper = new TransformMapper({
+              doc,
+              design,
+              budget,
+              body,
+              sketches,
+              sketchOf,
+              mine,
+              own,
+              walked: walkedNames,
+              name: cleanName(f.label, f.name),
+              ...(options.originFirst === false ? { originFirst: false } : {}),
+            });
+            const added = await mapper.add(feature, what);
+            const references = mapper.references;
+            if ('stop' in added)
+              return {
+                stop: added.stop,
+                detail: added.detail,
+                ...(added.references ? { references: added.references } : {}),
+              };
+            return {
+              feature: added.feature,
+              ...(added.extra ? { extra: added.extra } : {}),
+              ...(references ? { references } : {}),
+              ...(mapper.constructions > 0 ? { constructions: mapper.constructions } : {}),
+            };
+          },
+        ],
+        true,
       );
     };
 
@@ -533,40 +773,54 @@ export async function importBodies(
         return;
       }
       const own = new Set(mapped.map((m) => m.feature));
-      await hold(f, chain, feature, async () => {
-        const added = await addDressUp(design, feature, {
-          budget,
-          baseText: baseStored.text,
-          chain,
-          mine,
-          own,
-          name: cleanName(f.label, f.name),
-        });
-        return 'stop' in added
-          ? {
-              stop: added.stop,
-              detail: added.detail,
-              ...(added.references ? { references: added.references } : {}),
-            }
-          : { feature: added.feature, references: added.references };
-      });
+      await holdAll(f, chain, feature, [
+        async () => {
+          const added = await addDressUp(design, feature, {
+            budget,
+            baseText: baseStored.text,
+            chain,
+            mine,
+            own,
+            name: cleanName(f.label, f.name),
+          });
+          return 'stop' in added
+            ? {
+                stop: added.stop,
+                detail: added.detail,
+                ...(added.references ? { references: added.references } : {}),
+              }
+            : { feature: added.feature, references: added.references };
+        },
+      ]);
+    };
+
+    /** Why one attempt at a feature didn't hold. */
+    type Failure = {
+      reason: HistoryStop;
+      /** Not a reading of the file a second attempt could change (another body touched). */
+      final?: true;
+      detail?: string;
+      drift?: Drift;
+      references?: ReferenceTally;
     };
 
     /**
      * Adds a feature (`add`) in one transaction, rebuilds, and keeps it only
-     * when the rebuilt body is the shape the file stores for it.
+     * when the rebuilt body is the shape the file stores for it. `others`: the
+     * feature joins or cuts whatever it touches (a pattern's replay, a hole),
+     * so the other FreeCAD bodies' Extrudo bodies are measured too and must be
+     * as they were. Returns why it didn't hold, or nothing when it held.
      */
     const hold = async (
       f: FcObject,
       chain: readonly FcPlacement[],
       feature: DecodedFeature,
       add: () => Promise<Added>,
-    ): Promise<void> => {
+      others: boolean,
+      second: boolean,
+    ): Promise<Failure | undefined> => {
       const stored = storedText(doc, f);
-      if (!('text' in stored)) {
-        stop(f, 'stored', stored.detail);
-        return;
-      }
+      if (!('text' in stored)) return { reason: 'stored', detail: stored.detail };
 
       // Everything this feature adds is one transaction, taken back if it doesn't hold.
       const before = new Set(design.doc.features.map((x) => x.id));
@@ -574,62 +828,87 @@ export async function importBodies(
       let committed = false;
       try {
         const added = await add();
-        if ('stop' in added) {
-          stop(f, added.stop, added.detail, undefined, added.references);
-          return;
-        }
+        if ('stop' in added)
+          return {
+            reason: added.stop,
+            detail: added.detail,
+            ...(added.references ? { references: added.references } : {}),
+          };
         const measuredStored = await budget.call(
           () => budget.kernel.measureStoredShape(stored.text, chain),
           saneMeasure,
         );
-        if (measuredStored.kind !== 'done') {
-          stop(
-            f,
-            callStop(measuredStored),
-            'detail' in measuredStored ? measuredStored.detail : undefined,
-          );
-          return;
-        }
+        if (measuredStored.kind !== 'done')
+          return {
+            reason: callStop(measuredStored),
+            ...('detail' in measuredStored && measuredStored.detail
+              ? { detail: measuredStored.detail }
+              : {}),
+          };
         // The body IDs a reply may name: `<feature of the document sent>:<n>`.
         let sentFeatures = new Set<string>();
+        const skip = others ? [] : [...settled];
         const rebuilt = await budget.call(
           () => {
             const sent = design.toJSON();
             sentFeatures = new Set(sent.features.map((x) => x.id));
-            return budget.kernel.rebuild(sent, new Map(), [...settled]);
+            return budget.kernel.rebuild(sent, new Map(), skip);
           },
           (reply: unknown): reply is RebuildResult =>
             saneRebuild(reply, sentFeatures) !== undefined,
         );
-        if (rebuilt.kind !== 'done') {
-          stop(f, callStop(rebuilt), 'detail' in rebuilt ? rebuilt.detail : undefined);
-          return;
-        }
+        if (rebuilt.kind !== 'done')
+          return {
+            reason: callStop(rebuilt),
+            ...('detail' in rebuilt && rebuilt.detail ? { detail: rebuilt.detail } : {}),
+          };
         const r = saneRebuild(rebuilt.value, sentFeatures) as SaneRebuild;
         const fresh = new Set(design.doc.features.map((x) => x.id).filter((id) => !before.has(id)));
         const failure = r.failed.find((x) => fresh.has(x.feature as FeatureId));
-        if (failure) {
-          stop(f, 'failed', failure.message);
-          return;
-        }
+        if (failure) return { reason: 'failed', detail: failure.message };
         const now = r.ids.filter((id) => !settled.has(id));
         const measures = now.map((id) => r.bodies.get(id));
-        if (measures.some((m) => m === undefined)) {
-          stop(f, 'kernel', "the kernel didn't measure every body");
-          return;
+        if (measures.some((m) => m === undefined))
+          return { reason: 'kernel', detail: "the kernel didn't measure every body" };
+        if (others) {
+          // What the feature touched beyond its own body: every other body as it was.
+          for (const id of settled) {
+            const was = lastMeasures.get(id);
+            if (was === undefined) continue;
+            const is = r.bodies.get(id);
+            if (!r.ids.includes(id) || is === undefined)
+              return {
+                reason: 'differs',
+                detail: 'it took away a body of another FreeCAD body',
+                final: true,
+              };
+            options.onUntouched?.(drift(is, was));
+            const why = untouchedDisagreement(is, was);
+            if (why)
+              return {
+                reason: 'differs',
+                detail: `it changed a body of another FreeCAD body: ${why}`,
+                final: true,
+              };
+          }
         }
         const rebuiltBody = combined(measures as ShapeMeasure[]);
         const wrong = historyDisagreement(rebuiltBody, measuredStored.value);
-        if (wrong) {
-          stop(f, 'differs', wrong, drift(rebuiltBody, measuredStored.value), added.references);
-          return;
-        }
+        if (wrong)
+          return {
+            reason: 'differs',
+            detail: wrong,
+            drift: drift(rebuiltBody, measuredStored.value),
+            ...(added.references ? { references: added.references } : {}),
+          };
         design.state.commitTransaction();
         committed = true;
         restartsAtHold = budget.restarts;
         known = [...r.ids];
         mine = now;
+        for (const id of now) lastMeasures.set(id, r.bodies.get(id) as ShapeMeasure);
         if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
+        mappedBy.set(f.name, { feature: added.feature, kind: feature.kind });
         mapped.push({
           object: f.name,
           kind: feature.kind,
@@ -639,7 +918,13 @@ export async function importBodies(
           sources: feature.sources,
           ...expressionsOf(f, feature.sources),
           drift: drift(rebuiltBody, measuredStored.value),
+          ...(added.extra ? { extra: added.extra } : {}),
+          ...(added.constructions ? { constructions: added.constructions } : {}),
+          ...(added.centres !== undefined ? { centres: added.centres } : {}),
+          ...(added.threadLost ? { threadLost: true as const } : {}),
+          ...(second ? { secondAttempt: true as const } : {}),
         });
+        return undefined;
       } finally {
         if (!committed) {
           design.state.cancelTransaction();
@@ -647,6 +932,43 @@ export async function importBodies(
           for (const [key, s] of sketches)
             if (!design.doc.features.some((x) => x.id === s.id)) sketches.delete(key);
         }
+      }
+    };
+
+    /**
+     * Holds a feature, trying the next of `attempts` only after one failed
+     * the check with `differs` (S7: at most two, for a sense or a hole's cut
+     * the file doesn't say, each a whole transaction; never for a tolerance or
+     * a reference match). Stops the body when none holds.
+     */
+    const holdAll = async (
+      f: FcObject,
+      chain: readonly FcPlacement[],
+      feature: DecodedFeature,
+      attempts: readonly (() => Promise<Added>)[],
+      others = false,
+    ): Promise<void> => {
+      for (let k = 0; k < attempts.length; k++) {
+        const failed = await hold(
+          f,
+          chain,
+          feature,
+          attempts[k] as () => Promise<Added>,
+          others,
+          k > 0,
+        );
+        if (!failed) return;
+        if (
+          failed.reason === 'differs' &&
+          !failed.final &&
+          k + 1 < attempts.length &&
+          !budget.broken
+        ) {
+          secondAttempts++;
+          continue;
+        }
+        stop(f, failed.reason, failed.detail, failed.drift, failed.references);
+        return;
       }
     };
 
@@ -691,6 +1013,7 @@ export async function importBodies(
       ...(stopped ? { stop: stopped } : {}),
       bodies: mapped.length > 0 ? mine : [],
       sketches: sketchOutcomes,
+      secondAttempts,
     });
     if (!stopped && mine.length > 0) setBodies(design, mine, shape, name);
   }
@@ -712,45 +1035,131 @@ type Added =
       sketch?: string;
       newSketch?: Extract<AddSketchResult, { imported: true }>;
       references?: ReferenceTally;
+      extra?: readonly string[];
+      constructions?: number;
+      centres?: number;
+      threadLost?: true;
     };
+
+/**
+ * What one centre of a hole among a transform's originals counts for in
+ * `MAX_TRANSFORM_INSTANCES`: 500 overlapping hole cuts took 50 s, 250 took
+ * 19 s, as 500 overlapping pockets do (ADR-0144's S7 amendment).
+ */
+export const HOLE_CENTRE_WEIGHT = 2;
+
+/** The features a pattern or mirror can repeat: Extrudo replays their tools (`PATTERNABLE_FEATURE_TYPES`). */
+const REPEATABLE: ReadonlySet<FeatureKind> = new Set([
+  'pad',
+  'pocket',
+  'revolution',
+  'groove',
+  'hole',
+]);
+
+const TRANSFORM_KINDS = new Set<FeatureKind>(['linear', 'polar', 'mirrored', 'multi']);
+const REFERENCE_PROPERTIES = ['Direction', 'Direction2', 'Axis', 'MirrorPlane'];
+
+/**
+ * The sketch axes (`H_Axis`, `V_Axis`) a body's transforms and their steps
+ * name, by sketch: drawn when the sketch is added, so a pattern can step
+ * along them (decision 8: never by editing the sketch afterwards).
+ */
+function axesWanted(
+  doc: FcDocument,
+  features: readonly FcObject[],
+  max: number,
+): Map<string, Set<'h' | 'v'>> {
+  const out = new Map<string, Set<'h' | 'v'>>();
+  const look = (o: FcObject) => {
+    for (const name of REFERENCE_PROPERTIES) {
+      const v = o.properties[name]?.value;
+      if (v?.kind !== 'linkSub' || !v.object) continue;
+      // What the decode takes: one sub-element (several are refused).
+      const subs = v.subs.filter((x) => x.name !== '');
+      if (subs.length !== 1) continue;
+      const sub = subs[0]?.name;
+      const axis = sub === 'H_Axis' ? 'h' : sub === 'V_Axis' ? 'v' : undefined;
+      if (!axis) continue;
+      const set = out.get(v.object) ?? new Set();
+      set.add(axis);
+      out.set(v.object, set);
+    }
+  };
+  // The features the walk can reach: the body's cap bounds the scan as it bounds the walk.
+  for (const f of features.slice(0, max)) {
+    const kind = Object.hasOwn(FEATURE_TYPES, f.type) ? FEATURE_TYPES[f.type] : undefined;
+    if (!kind || !TRANSFORM_KINDS.has(kind)) continue;
+    look(f);
+    const steps = f.properties.Transformations?.value;
+    if (steps?.kind !== 'linkList') continue;
+    // Bounded like the decode: a MultiTransform has at most a few steps.
+    for (const name of steps.objects.slice(0, MAX_TRANSFORM_STEPS)) {
+      const child = doc.byName.get(name);
+      if (child) look(child);
+    }
+  }
+  return out;
+}
+
+/** The feature's sketch: imported once per body, with the axes the body's features need drawn. */
+function sketchFor(
+  doc: FcDocument,
+  design: Design,
+  name: string,
+  sketches: Map<string, Extract<AddSketchResult, { imported: true }>>,
+  solver: SketchSolver | undefined,
+  decoded: DecodedSketch | undefined,
+  wanted: ReadonlyMap<string, ReadonlySet<'h' | 'v'>>,
+  wantsAxis?: 'h' | 'v',
+):
+  | {
+      sketch: Extract<AddSketchResult, { imported: true }>;
+      newSketch?: Extract<AddSketchResult, { imported: true }>;
+    }
+  | { stop: HistoryStop; detail: string } {
+  const sketch = sketches.get(name);
+  if (sketch && wantsAxis && !sketch.axes[wantsAxis])
+    return {
+      stop: 'axis',
+      detail: 'its axis is a sketch axis of a sketch already imported without it',
+    };
+  if (sketch) return { sketch };
+  const object = doc.byName.get(name) as FcObject;
+  const axes = new Set(wanted.get(name) ?? []);
+  if (wantsAxis) axes.add(wantsAxis);
+  const result = addSketch(design, doc, object, {
+    ...(solver ? { solver } : {}),
+    ...(decoded ? { decoded } : {}),
+    name: cleanName(object.label, object.name),
+    ...(axes.size > 0 ? { axes: [...axes].sort() } : {}),
+  });
+  if (!result.imported)
+    return { stop: 'sketch', detail: `its sketch was not imported: ${result.reason}` };
+  sketches.set(name, result);
+  return { sketch: result, newSketch: result };
+}
 
 /** Adds the feature's sketch (once per sketch) and the feature itself, or says why it can't. */
 function addFeature(
   doc: FcDocument,
   design: Design,
   f: FcObject,
-  feature: Exclude<DecodedFeature, DecodedDressUp>,
+  feature: Extract<DecodedFeature, { kind: 'pad' | 'pocket' | 'revolution' | 'groove' }>,
   sketches: Map<string, Extract<AddSketchResult, { imported: true }>>,
   mine: readonly string[],
   solver: SketchSolver | undefined,
   decoded: DecodedSketch | undefined,
+  wanted: ReadonlyMap<string, ReadonlySet<'h' | 'v'>>,
 ): Added {
   const wantsAxis =
     (feature.kind === 'revolution' || feature.kind === 'groove') &&
     feature.axis.kind === 'sketch-axis'
       ? feature.axis.axis
       : undefined;
-  let sketch = sketches.get(feature.sketch);
-  let newSketch: Extract<AddSketchResult, { imported: true }> | undefined;
-  if (sketch && wantsAxis && !sketch.axes[wantsAxis])
-    return {
-      stop: 'axis',
-      detail: 'its axis is a sketch axis of a sketch already imported without it',
-    };
-  if (!sketch) {
-    const object = doc.byName.get(feature.sketch) as FcObject;
-    const result = addSketch(design, doc, object, {
-      ...(solver ? { solver } : {}),
-      ...(decoded ? { decoded } : {}),
-      name: cleanName(object.label, object.name),
-      ...(wantsAxis ? { axes: [wantsAxis] } : {}),
-    });
-    if (!result.imported)
-      return { stop: 'sketch', detail: `its sketch was not imported: ${result.reason}` };
-    sketch = result;
-    newSketch = result;
-    sketches.set(feature.sketch, result);
-  }
+  const got = sketchFor(doc, design, feature.sketch, sketches, solver, decoded, wanted, wantsAxis);
+  if ('stop' in got) return got;
+  const { sketch, newSketch } = got;
   const handle = design.feature(sketch.id) as SketchHandle;
   const profiles = profileRefs(handle, feature.multiFace);
   if (typeof profiles === 'string') return { stop: 'sketch', detail: profiles };

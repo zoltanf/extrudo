@@ -177,11 +177,11 @@ describe('one object, one body, once per file', () => {
       ...padBody('B', 'Second', 'SketchB'),
       features: [
         { name: 'BPad', type: 'Pad', sketch: 'SketchB', length: 30, stored: BOX },
-        { name: 'BHole', type: 'PartDesign::Hole', sketch: 'Sketch', stored: BOX },
+        { name: 'BDraft', type: 'PartDesign::Draft', sketch: 'Sketch', stored: BOX },
       ],
     };
     const r = await run([padBody(), b]);
-    expect(r.report.bodies[1]?.stop).toMatchObject({ object: 'BHole', reason: 'type' });
+    expect(r.report.bodies[1]?.stop).toMatchObject({ object: 'BDraft', reason: 'type' });
   });
 });
 

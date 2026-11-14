@@ -76,6 +76,31 @@ export function historyDisagreement(
 }
 
 /**
+ * How far an untouched body may move between two rebuilds (S7), relative to
+ * its volume, its area and its box's diagonal: the same inputs rebuilt by the
+ * same kernel come out the same to rounding (measured in ADR-0144's S7
+ * amendment), so this is far below the history check's 1e-6.
+ */
+export const UNTOUCHED_TOLERANCE = 1e-12;
+
+/**
+ * Why a body that should be untouched (another FreeCAD body's, after a
+ * pattern or a hole) is not what it was, or `undefined` when it is: the
+ * solid, face and edge counts exactly, and the measures within
+ * `UNTOUCHED_TOLERANCE`.
+ */
+export function untouchedDisagreement(now: ShapeMeasure, was: ShapeMeasure): string | undefined {
+  if (now.solids !== was.solids || now.faces !== was.faces || now.edges !== was.edges)
+    return 'its solids, faces or edges changed';
+  const d = drift(now, was);
+  const t = UNTOUCHED_TOLERANCE;
+  if (!(d.volume <= t && d.area <= t)) return 'its volume or area changed';
+  if (!(d.corner <= t * d.diagonal + 1e-12 && d.centre <= t * d.diagonal + 1e-12))
+    return 'its box or centre of mass moved';
+  return undefined;
+}
+
+/**
  * The measures of several bodies as one shape: solids, volume and area added
  * up, the boxes' union, the centres weighted by volume (by area when there is
  * no volume, equally when there is neither), as the kernel weighs one shape's.

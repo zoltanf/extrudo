@@ -39,6 +39,10 @@ export interface FcstdImportOptions {
   /** The history walk's limits (`MAX_BODY_FEATURES`, `MAX_FILE_FEATURES`), for tests. */
   readonly maxBodyFeatures?: number;
   readonly maxFileFeatures?: number;
+  /** A transform's reference prefers a coinciding origin axis or plane (default); tests turn it off (S7). */
+  readonly originFirst?: boolean;
+  /** Hears how far each other body moved between two rebuilds (tests and the library run). */
+  readonly onUntouched?: (d: import('./check').Drift) => void;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -108,6 +112,8 @@ export async function importFcstd(
     ...(options.solver ? { solver: options.solver } : {}),
     ...(options.maxBodyFeatures !== undefined ? { maxBodyFeatures: options.maxBodyFeatures } : {}),
     ...(options.maxFileFeatures !== undefined ? { maxFileFeatures: options.maxFileFeatures } : {}),
+    ...(options.originFirst === false ? { originFirst: false } : {}),
+    ...(options.onUntouched ? { onUntouched: options.onUntouched } : {}),
     onStep: () => options.onProgress?.(++walked, steps + shapes.length),
   });
   const complete = new Set(histories.filter((h) => !h.stop).map((h) => h.object));

@@ -1003,3 +1003,342 @@ The same element named twice is taken once.
 - S9 and S7 reuse the matcher: `describeStoredShape` with `ElementIndex.face`
   for an up-to face, `ElementIndex.edge` for a pattern direction or a groove
   axis named `EdgeN`.
+
+## Amendment (S7, 2026-11-14): patterns, Mirrored, MultiTransform and Hole
+
+`PartDesign::LinearPattern`, `PolarPattern`, `Mirrored`, `MultiTransform` and
+`Hole` join the features the walk maps. `packages/fcstd`: `features.ts` decodes
+them (typed data or a refusal of the closed set), `transforms.ts` turns a
+transform's direction, axis or plane into an Extrudo reference and adds the
+pattern or mirror, `holes.ts` adds the hole; the walk (`bodies.ts`) holds each
+like any other feature: one transaction, rebuilt and checked against its stored
+shape with S5's and S6's tolerances (none loosened), the one stop point.
+Fixtures: 38 small parts we made with FreeCAD 1.1.4 through our own script
+(`packages/fcstd/scripts/make-pattern-fixtures.py`; data in
+`pattern-fixtures.ts`, written back into files by `pattern-parts.ts`: each
+property as the object's own XML holds it, 58 distinct stored shapes once each,
+runs of spaces in the B-rep text made one, 362 KB). All 35 parts this slice maps
+come in with their whole history; `multi_linear_mirror`, `multi_mirror_polar`
+and `hole_tapered` stop with their reasons and take the file's shape.
+
+### What is mapped
+
+- **Originals** become `objects: 'features'` with `{kind: 'feature', id}`
+  references to the Extrudo features this walk made for them, in the order of
+  `Originals`. Each must be a pad, pocket, revolution, groove or hole of this
+  body that the walk has mapped; a dress-up, another transform, a feature of
+  another body, one after the transform, one not in the body or the transform
+  itself is a refusal (`original`). **The body's first feature** makes the body
+  in Extrudo (`new-body`) and leaves no tool to replay; when the originals are
+  every feature mapped so far, the first included, the body itself is repeated
+  (`objects: 'bodies'`, `join`); with only some of them it is refused. The
+  library's one such case (a body's first pad repeated round a turn) comes in
+  equal.
+- **LinearPattern** → `rectangularPattern`: `count1` = `Occurrences` (the
+  original counts in both), `distance1` = `Length` with `measure1: 'extent'`,
+  or `Offset` with `'spacing'` (`Mode` Spacing, 1.0+; a file without `Mode` is
+  Extent); FreeCAD 1.1's second direction → `direction2` and its values, used
+  when `Occurrences2` is over 1 (refused when it has no `Direction2`).
+- **PolarPattern** → `circularPattern`: `count`, `angle` with `measure:
+  'total'` (or the step in Spacing mode). FreeCAD spreads a whole turn without
+  doubling the first instance and divides anything less by count − 1, as
+  Extrudo's `angularStep` does; only −360° differs (FreeCAD divides it by
+  count − 1), written as the step.
+- **Mirrored** → `mirror` with `objects: 'features'` and a plane.
+- **MultiTransform:** its `Transformations` are objects of the body outside the
+  chain (no `BaseFeature`), so the walk never counts them; each is decoded with
+  the MultiTransform and belongs to it (`owner`, one object once per file: a
+  step another MultiTransform already took is a refusal). One step is that
+  transform. **Linear then linear** (neither with a second direction) is one
+  `rectangularPattern` with two directions. **Mirror then mirror in planes at
+  right angles** is three features in one transaction, checked together: a
+  `mirror` in each plane and a `circularPattern` of 2 over 180° about the line
+  where they meet (the diagonal copy; for the body itself, two joined mirrors,
+  the second mirroring the first's copy too). Two mirrors alone, the second
+  taking the first among its features, came out right for one original and
+  wrong for two (the library's two-original case differed by 2.1 % in volume):
+  Extrudo's replay takes a mirror's first tool only (`previewTools[0]`). Every
+  other chain (linear then mirror, mirror then polar …) is refused
+  (`multi-transform`) for S8.
+- **Hole** → `hole`: at the centres of the profile sketch's drawn circles and
+  arcs, and its drawn points where `BaseProfileType` has OnPoints (bits:
+  points 1, circles 2, arcs 4; a file without it drills at circles and arcs),
+  in the sketch's order, referenced as the sketch's own points (S4's sketch now
+  returns `centres`, the Extrudo point at each centre by geometry index, and
+  `plane`, the Extrudo plane the sketch is on). The plane is the sketch's;
+  FreeCAD drills against the sketch's normal and `Reversed` along it, so
+  `flip` is `Reversed` once more turned when the Extrudo plane faces the other
+  way (`mirrored`). Sizes are what the file stores (`Diameter`, `Depth`,
+  `HoleCutDiameter`, `HoleCutDepth`, `HoleCutCountersinkAngle`,
+  `DrillPointAngle`), never a thread or screw table. `DepthType` Dimension →
+  blind, ThroughAll → through, anything else (the up-to methods) refused.
+  `DrillPoint` Flat → `tipAngle` 0, Angled → `DrillPointAngle`.
+  **Depth rules, as the fixtures proved them:** FreeCAD's blind depth runs from
+  the sketch plane to the end of the full diameter, as Extrudo's, counterbore
+  or not (read from the counterbore's floor instead, the check refuses it);
+  with `DrillForDepth` it runs to the point's tip, so the importer takes the
+  point off (`r / tan(angle / 2)`); read the wrong way, either is refused. A
+  counterbore's depth is from the plane; a countersink's cone has
+  `HoleCutDiameter` at the plane and the full angle (a stored `HoleCutDepth`
+  is not used: the cone ends at the hole's diameter in both). `HoleCutType` by
+  **name** where the file stores the names (1.0+: None, Counterbore,
+  Countersink; Counterdrill refused); a bare index 0, 1 or 2 is those three (the
+  same in every version), any later index or a screw standard's name says only
+  "counterbore or countersink": counterbore first, countersink as the one
+  second attempt (below). **Threaded but not modelled** is a plain hole of the
+  stored diameter, the tap drill (the fixture's 5 mm for M6; the thread's 6 mm
+  is refused by the check), and counts as `threadLost` (the app says how many);
+  `ModelThread` (0.18: `ModelActualThread`) with `Threaded`, `Tapered` and
+  `Midplane` are refused (`option`). A custom thread clearance changes only a
+  value FreeCAD stores as `Diameter`, so nothing more is read for it.
+
+### References (a direction, an axis, a plane)
+
+Worked out in world coordinates from the file first, then written as the
+Extrudo reference that **is** that line or plane, in this order:
+
+1. **An origin axis or plane** when the line or plane coincides with one (a
+   direction within 1e-9 of parallel, a point within 1e-7 mm + 1e-9 of its
+   distance from the origin): a sketch on the XY plane mirrored in its V axis
+   is a mirror in `origin:yz`; the polar axis of a sketch's `N_Axis` at the
+   origin is `origin:z`. An origin feature the file names directly is used as
+   it is, refused for a moved body as S5's revolve is.
+2. **The sketch's own line or plane** when the sketch came in with this body:
+   `H_Axis` / `V_Axis` as the fixed construction lines `addSketch` draws (the
+   walk looks ahead at the body's transforms and their steps and asks for them
+   when the sketch is added, decision 8), `EdgeN` and `AxisN` as the drawn
+   line; for a mirror, `N_Axis` or the whole sketch is the sketch's plane, and
+   a line's plane (through the line and the sketch's normal) is a
+   `planeAtAngle` of 90° about the drawn line from the sketch's plane.
+3. **A matched edge or face**: `EdgeN` (a straight edge) or `FaceN` (a flat
+   face) of a feature of this body before the transform, described on that
+   feature's stored shape (`describeStoredShape`), looked up on the rebuilt
+   bodies with S6's `ElementIndex` (exactly one candidate; none or several stop
+   with `reference`, never the nearest) and written through `references` and
+   `checkReference`. Used only when the kernel wasn't replaced since the last
+   held feature (`restartsAtHold`, S6's rule).
+4. **Construction features** where none of those exists (the line or plane of
+   a sketch that didn't come in, or a sketch's normal off every origin axis):
+   construction points from the file's numbers, an `axisThroughPoints` through
+   two (pointing FreeCAD's way) or a `planeThroughPoints` through three, in the
+   same transaction. No new construction kind was needed.
+
+Refused (`transform-reference`): a datum line or plane (S9), a vertex, a
+whole object, a curved edge as a direction or axis, a face as a direction, a
+line as a mirror plane, an edge of a feature of another body or after the
+transform. A test turns step 1 off (`originFirst: false`) so the fixtures
+reach the planes at 90° and the construction axis, which hold as well.
+
+### Senses
+
+FreeCAD steps along **the line's own direction** and turns right-handed about
+it; `Reversed` (and `Reversed2`) goes the other way. The line's own direction
+is a sketch axis's (the sketch frame's x, y or normal), a sketch line's start
+to end, an origin axis's, and for an edge **its curve's direction, not the
+edge's orientation**: in `linear_edge` and `linear_edge_y` the edge is
+reversed in the shape and FreeCAD still stepped along the line's +x and +y.
+The importer reads it from the stored edge's two ends in curve order
+(`edgeGeometry` evaluates the curve from its first parameter to its last,
+like FreeCAD's `BRepAdaptor_Curve`). Extrudo steps along its reference's
+direction: a sketch line start to end (drawn as FreeCAD's, so the same), an
+origin axis's, an edge's canonical direction (`describe`: the first component
+over 1e-9 made positive), a construction axis's first point to its second.
+Where the two disagree the distance or angle is negated (Extrudo takes negative
+ones). So every sense is known from what the kernel describes: **no second
+attempt is used for a sense**. For each sense (`Reversed`, an edge's direction,
+the polar turn, `Reversed2`) the fixtures read the wrong way on purpose are
+refused by the check (or by Extrudo, where the copies fall off the part).
+
+### Second attempts
+
+`holdAll` runs at most two attempts at one feature, each a whole transaction
+with its own rebuild and check, the second only after the first failed with
+`differs`, and never after a failure that no reading of the file changes (a
+feature that touched another FreeCAD body, below) nor for a tolerance or a
+reference match. It applies only to a hole whose cut type the file doesn't
+name (counterbore, then countersink). `BodyHistory.secondAttempts` counts
+them, `MappedFeature.secondAttempt` marks one that held so. The library: 0
+(its one hole with a late index stops before a second attempt, for the reason
+below).
+
+### What a feature may not touch
+
+A pattern's replay and a hole join or cut every body their tools meet
+(`operate` with no participants: neither feature has a body list), where
+FreeCAD's touch only their own body. So the rebuild after a transform or a
+hole measures the other FreeCAD bodies' Extrudo bodies too (no `skip`), and
+each must be as it was when last held (`lastMeasures`, the same check);
+otherwise the feature stops with `differs` ("it changed a body of another
+FreeCAD body"). The library has one: a through hole in one body that reaches
+into another body below it. Extrudo would need a body list on `hole`
+and on a replay to rebuild it (a schema change, not this slice).
+
+### What is refused, and the limits
+
+The closed set grows by three, worded in the app's `HISTORY_STOP`:
+`original`, `transform-reference`, `multi-transform`; `limit` is now also a
+`FeatureRefusal`, and S5's and S6's reasons are reused (`value`, `option`,
+`suppressed`, `up-to`, `sketch`, `element`, `reference`, `kernel`). A
+TransformMode of "Whole shape" (`option`; the library has none), a gap of its
+own (read in Spacing mode only, as FreeCAD does: a `Spacings` entry other
+than −1 or `Offset`, 0 included, or a `SpacingPattern` of more than one
+entry, is `option`; the library has none; see the review round below), positions left out (`SuppressedIndices` /
+`SuppressedPositions`, none in the library). Numbers through `finite` and the
+reader's unreadable list: `Occurrences` a whole number from 1, lengths
+finite, ≥ 0 and at most S5's 10 km, 0 refused with more than one instance,
+angles within ±360°, not 0 with more than one instance. Float lists are read
+from their own archive entry (`floatList` in `model.ts`, FORMAT.md), bounded
+by the archive's size before inflating. **Caps of ours** (a count over one is
+a clean `limit` stop before any kernel call, never a failure):
+`MAX_ORIGINALS` 100 (checked before any is read), `MAX_TRANSFORM_STEPS` 16,
+`MAX_TRANSFORM_INSTANCES` **500** instances times originals (every step of a
+MultiTransform multiplied; a hole original counts twice per centre, below), `MAX_HOLE_CENTRES` 200 (Extrudo's `MAX_HOLES`, a
+test keeps them equal). The instance cap is half of Extrudo's own 1,000
+(`MAX_PATTERN_INSTANCES`) because of its worst case. Measured on the Ubuntu
+machine, one run each, the whole import (`pattern-limits.test.ts`, `BENCH=1`):
+
+| Case | At the cap | At 1,000 |
+|---|---|---|
+| Pockets round a whole turn, each overlapping its neighbours | 500: 20.6 s | 54.8 s (next to the 60 s a kernel call may take) |
+| A grid of pockets overlapping their neighbours | 25 × 20: 12.5 s | 40 × 25: 26.2 s |
+| A grid of pockets apart | 25 × 20: 1.8 s | 40 × 25: 3.4 s |
+| Counterbored holes through a plate | 200: 3.9 s | |
+
+The library's largest pattern makes 28 instances.
+
+### The library (60 files, `history-corpus.test.ts`)
+
+| | In the files | In a body's chain | Equal | Differed | Refused | Not reached |
+|---|---|---|---|---|---|---|
+| Pad | 70 | 41 | 34 | 1 | 1 (up to a face) | 5 |
+| Pocket | 67 | 30 | 21 | 0 | 2 (up to) | 7 |
+| Revolution | 11 | 8 | 8 | 0 | 0 | 0 |
+| Groove | 3 | 3 | 1 | 0 | 1 (`axis`: an edge) | 1 |
+| Fillet | 19 | 13 | 8 | 0 | 2 (`failed`) | 3 |
+| Chamfer | 13 | 5 | 4 | 0 | 0 | 1 |
+| LinearPattern | 9 | 4 | 3 | 0 | 1 (`transform-reference`: a datum line) | 0 |
+| PolarPattern | 8 | 4 | 1 | 0 | 0 | 3 |
+| Mirrored | 19 | 1 | 0 | 0 | 0 | 1 |
+| MultiTransform | 10 | 10 | 7 | 0 | 1 (`multi-transform`: linear then mirror) | 2 |
+| Hole | 4 | 4 | 3 | 1 (another body) | 0 | 0 |
+| Other PartDesign | | | | | 4 (`type`) | 1 |
+
+- "In the files" counts a MultiTransform's steps (19 of the linear, polar and
+  mirrored objects); they are never in a chain.
+- **Bodies (35): 17 with their whole history** (15 before), 14 from the file's
+  shape, 4 empty left out. **274 `import`s** (276 before); the 348 shapes that
+  aren't bodies come in exactly as in S3.
+- **References: 101 found** (100 before; the one more is a pattern's edge),
+  none missing, none ambiguous. Construction features made: 0. Second attempts:
+  0. Threads lost: 1. Restarts: 0. Time per file: median 0.11 s, slowest 16 s.
+- **Drift of the equal ones:** MultiTransforms at most 3.0e-15 in volume, holes
+  2.1e-16, linear patterns 1.5e-15 in area, the polar pattern
+  4.8e-11 in area and 3.3e-11 of the diagonal in centre; the box drifts at
+  most 9.4e-10 of the diagonal (7.5e-13 before), well inside S3's 1e-4. No new
+  feature differs by its own mapping, so no tolerance changes.
+- **The one that differed** is the hole above (it cut another body). **The new
+  stops:** the MultiTransform of a linear pattern then a mirror (S8), and a
+  linear pattern along a datum line (S9).
+- **What S7 changed in S5's and S6's rows:** 3 more pads, 4 more pockets and 1
+  groove are equal (they come after a pattern or hole that now holds), and the
+  `type` stops fall from 9 to 4 (a subtractive pipe, an additive sphere, two
+  base features).
+
+### Review round (2026-11-14)
+
+An independent review of the S7 diff found eight things; the rule
+for each, as in S6: a value or a reply the importer can't use is a refusal
+with the right reason before the work it would cause, a limit of ours a clean
+stop. Tests: `pattern-review.test.ts` (18).
+
+1. **The element asked for.** A description may hold more elements than were
+   asked (`saneElements` allows it), so a transform's edge or face is the one
+   whose index is the one asked, never the reply's first; a reply without it
+   (where the count and no cap explain its absence) is nonsense: a kernel
+   failure and a restart.
+2. **A direction that isn't one.** A straight edge whose ends lie within
+   1e-9 mm of each other, a face whose direction is shorter than 1e-9, and any
+   line or plane that isn't a finite point within 10 km and a finite unit
+   direction are refused (`transform-reference`) before they are compared;
+   the origin and right-angle comparisons are written so that a non-finite
+   number fails them (`!(x <= tolerance)`).
+3. **A hole among the originals counts by its centres, twice each.** The cap
+   counts instances × originals, a hole original as `HOLE_CENTRE_WEIGHT` (2) ×
+   its centres (`MappedFeature.centres`), checked in the walk before the
+   transform's work (`limit`). Measured (whole import, one run each): a hole
+   of two centres repeated so that 500 hole cuts overlap their neighbours took
+   **49.9 s**, next to the 60 s a call may take; 250 such cuts (the most the
+   weight lets in, counted 500) took **18.7 s**, as the 500 overlapping
+   pockets round a turn do (20.7 s); 250 cuts apart 1.0 s.
+4. **The sketch axes asked for up front** (`axesWanted`) are looked for only
+   in the first `MAX_BODY_FEATURES` of the chain and their MultiTransforms'
+   first `MAX_TRANSFORM_STEPS` steps, and only on a reference with one
+   sub-element (what the decode takes); 100,000 sub-elements are refused in
+   well under a second.
+5. **Construction features** go through one guard (`#construct`: Extrudo's
+   refusal is a `failed` stop with the detail, never the walk's catch-all),
+   and every point is checked against `MAX_FEATURE_LENGTH` per coordinate
+   first (`transform-reference`, "past 10000000 mm").
+6. **Extents.** A row whose instances reach past `MAX_FEATURE_LENGTH` (the
+   spacing times count − 1, or the extent) is refused (`value`). **Past a
+   whole turn:** FreeCAD's pattern extension (its source read as a
+   description, `PolarPatternExtension::getTransformations` on main of
+   2026-09) places instance *i* of a Spacing-mode pattern at the sum of the
+   first *i* steps and rotates by it without a limit, so steps past 360° go
+   on round and land where the angle mod 360° says (on another instance when
+   it is a multiple); Extrudo's step mode rotates instance *i* by *i* steps
+   too, so it maps as it is (the fixture with more instances than fit a turn
+   rebuilds and reaches the check). In Extent mode FreeCAD takes 360°
+   (within 1e-7) as a whole turn and divides any other angle by count − 1;
+   where Extrudo would read it as a turn (−360°, the last 1e-7 short of 360°)
+   the importer writes the step. The same source settles the gaps: FreeCAD
+   reads `Spacings` and `SpacingPattern` only in Spacing mode (an entry ≠ −1
+   is used, 0 included; an entry equal to `Offset` it turns into −1 itself;
+   a pattern of one entry is not used), so the importer reads them so too and
+   refuses a gap of its own only there. The S7 rule (0 as the default, read
+   in every mode) was wrong: it would have taken a gap of 0 for the spacing.
+7. **A hole's cut against its hole** is refused in the decode (`value`) on
+   Extrudo's own conditions (`packages/kernel/src/features/hole.ts`): a cut
+   diameter not over the hole's by 1e-6 mm, a counterbore depth not in
+   (1e-6 mm, the blind depth − 1e-6 mm), a countersink angle not in
+   (1e-6°, 180° − 1e-6°) or its cone as deep as the blind hole. Where the file
+   doesn't name the cut, only the kinds that pass are tried
+   (`DecodedHole.cuts`): a stored depth of 0 rules out the counterbore, and
+   the countersink is then the one attempt.
+8. **The other bodies, exactly.** The measure now also counts faces and edges
+   (`measureShape`, `faces`, `edges`: both sides through the same code; a
+   reply may leave them out, `saneMeasure` requires whole numbers when they are
+   there), and a body that should be untouched must have the same solid, face
+   and edge counts and its volume, area, box and centre within
+   **`UNTOUCHED_TOLERANCE` 1e-12** (`untouchedDisagreement`). Measured: on the
+   fixtures, every transform and hole part with a second body beside it, 37
+   checks, every measure moved **exactly 0**; on the library 3 checks, the two
+   untouched ones 0, the third the through hole above (5.5e-4 of the other
+   body's volume). 1e-12 is far below anything a feature makes and above
+   rounding should a rebuild ever reorder the arithmetic. **Finding:** a cut
+   into another body under 1e-6 of its volume cannot happen in Extrudo:
+   `operate` leaves a body exactly as it was when a cut would take less than
+   1e-6 of its volume, so a hole whose tool clips another body by 3e-8 of its
+   volume leaves it bit-identical (the test asserts the drift is 0 and the
+   part holds, as in FreeCAD). The tighter check matters at and past that
+   threshold, where the counts catch any cut or join: a clip of 2.8e-6 stops
+   with "its solids, faces or edges changed".
+
+The library's numbers are unchanged by the round: 17 bodies with their whole
+history, 274 imports, 101 references found, no restart, no second attempt.
+
+### What S8 and S9 inherit
+
+- The stops left (18): `chain` 4 (the bodies' own), `type` 4, up-to 3, the 2
+  fillets, the groove about an edge, the tapered pad, the hole that reaches
+  another body, the MultiTransform linear-then-mirror, the pattern along a
+  datum line. S8's stored-shape step would carry the MultiTransform (14
+  features rebuilt before it, 2 MultiTransforms and more behind it), the hole,
+  the fillets and the up-to's on.
+- S9: datum lines and planes as a pattern's or mirror's reference
+  (`transform-reference` names them), an edge as a groove's axis, the up-to
+  methods. `transforms.ts` already resolves an edge or face by the matcher and
+  falls back to construction features; a datum would be one more source of a
+  world line or plane there.
+- A pattern of a pattern, of a dress-up or "Whole shape" mode, and a hole or
+  replay that may touch only its own body, each need Extrudo itself to change.

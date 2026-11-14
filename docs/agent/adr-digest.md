@@ -4919,6 +4919,51 @@ real-body name forms against `featuresOfName`; made by `packages/fcstd/scripts/m
 ours); a new shape needs the owner's FreeCAD run. `history-corpus.test.ts` reports references, near misses (test-only
 all-pairs) and describe sizes; keep 100 references found, none missing or several, unless a change explains it.
 
+**ADR-0144, S7 (patterns, Mirrored, MultiTransform, Hole):** `features.ts` decodes `PartDesign::LinearPattern`,
+`PolarPattern`, `Mirrored`, `MultiTransform` and `Hole` (`DecodedTransform` with `DecodedReference`s as the file names
+them, `DecodedHole`); `transforms.ts` `TransformMapper` resolves each direction, axis or plane **in world coordinates from
+the file, then as the Extrudo reference that is that line or plane, in this order: a coinciding origin axis or plane, the
+sketch's own drawn line or plane (H/V drawn by `addSketch`'s `axes`, asked for up front by `axesWanted`; a line's plane
+is a `planeAtAngle` 90° from the sketch's plane), a matched `EdgeN`/`FaceN` (S6's `ElementIndex`: exactly one, never
+the nearest, only when `restartsAtHold` holds), else construction points with `axisThroughPoints`/`planeThroughPoints`**
+in the same transaction; datum lines and planes are refused (`transform-reference`, S9). **Senses:** FreeCAD steps along
+the line's own direction (an edge's curve, read from the stored edge's ends in curve order, never its orientation) and
+turns right-handed, `Reversed` the other way; Extrudo along its reference's (sketch line start → end, origin axis, an
+edge's canonical direction): disagreeing, the distance or angle is negated, so no sense needs a second attempt. Originals
+→ `objects: 'features'` `{kind: 'feature', id}` of this body's mapped pad/pocket/revolution/groove/hole (else
+`original`); when they are every feature so far, the first (`new-body`) included, the body itself is repeated (`objects:
+'bodies'`, `join`). MultiTransform: its steps are outside the chain and owned by it (one object once per file); one step =
+that transform, linear∘linear = one `rectangularPattern` with two directions, **mirror∘mirror at right angles = a mirror in
+each plane and a `circularPattern` of 2 × 180° about the line where they meet** (a mirror of a mirror replays only its
+first tool: wrong for two originals), everything else `multi-transform`. Hole: centres = the sketch's drawn circles/arcs
+(and points per `BaseProfileType`) as the sketch's points (`AddSketchResult.centres`, `.plane`), drilled against the sketch
+normal (`flip` = `Reversed` xor `mirrored`), sizes as stored (never a table), depth from the plane to the full diameter
+(`DrillForDepth` takes the point off), `HoleCutType` by name, bare 0/1/2 by index, a later index or a standard's name =
+counterbore then countersink. **Second attempts** (`holdAll`): at most two whole transactions, the second only after
+`differs` and never after a `final` failure; only for that hole cut; counted in `BodyHistory.secondAttempts`. **A replay or
+a hole touches every body in its way**, so after one the rebuild measures the other FreeCAD bodies too and each must be as
+last held (`lastMeasures`), else `differs` (`final`). New stops `original`, `transform-reference`, `multi-transform`;
+`limit` is also a refusal. Caps (clean `limit` stops before any kernel call): `MAX_ORIGINALS` 100, `MAX_TRANSFORM_STEPS`
+16, `MAX_TRANSFORM_INSTANCES` 500 (instances × originals; 1,000 overlapping pockets round a turn took 55 s against the
+60 s call budget, 500 take 21 s), `MAX_HOLE_CENTRES` = Extrudo's `MAX_HOLES` 200 (a test keeps them equal). Gaps of their
+own (read only in Spacing mode, as FreeCAD does: a `Spacings` entry other than −1 or `Offset`, 0 included, or a
+`SpacingPattern` of 2+ entries), positions left out, "Whole shape" are `option`; float lists are read from
+their own entry (`floatList`, little-endian count + doubles, bounded by the archive size). Fixtures: `pattern-fixtures.ts`
+(38 FreeCAD 1.1.4 parts, `make-pattern-fixtures.py`, ours; each distinct B-rep once, spaces collapsed), written into files
+by `pattern-parts.ts` (`partFile(name, change, options)`); tests `pattern.test.ts`, `pattern-hostile.test.ts`,
+`pattern-limits.test.ts` (`BENCH=1`). `history-corpus.test.ts` keeps 17 bodies with their whole history, 274 imports, 101
+references found, none missing or several, unless a change explains it.
+**S7 review round:** a stored element is the one whose index was asked (a reply without it is nonsense); a line or
+plane must be a finite point within `MAX_FEATURE_LENGTH` and a finite unit direction (an edge of no length, a face of no
+direction refused) and every tolerance comparison fails on NaN; a hole original counts `HOLE_CENTRE_WEIGHT` (2) × its
+centres in `MAX_TRANSFORM_INSTANCES` (500 overlapping hole cuts 49.9 s, 250 18.7 s); `axesWanted` is bounded by the body
+cap and one sub; construction features only through `#construct` and range-checked points; a row's extent past
+`MAX_FEATURE_LENGTH` is `value`; a Spacing-mode step past 360° maps as it is (FreeCAD keeps turning); a hole's cut is
+checked on Extrudo's own conditions in the decode (`value`) and `DecodedHole.cuts` lists only the buildable ones; the
+other-bodies check compares solids, faces and edges exactly (`ShapeMeasure.faces`/`edges` from `measureShape`) and the
+measures within `UNTOUCHED_TOLERANCE` 1e-12 (`untouchedDisagreement`; measured drift 0 on 37 fixture and 2 library
+checks). Extrudo's `operate` itself ignores a cut under 1e-6 of a body's volume, so no smaller sliver can reach another body.
+
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,

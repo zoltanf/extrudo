@@ -20,6 +20,7 @@ export {
   type SpawnKernel,
 } from './client';
 export type { ExtrudeOutputData } from './features/extrude';
+export { MAX_HOLES } from './features/hole';
 export {
   isMeshToSolidReport,
   kernelMeshToSolid,

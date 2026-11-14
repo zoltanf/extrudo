@@ -19,10 +19,21 @@ import { cleanName } from './names';
 /** An object name from the file, for a detail: cleaned and cut like any name the import writes. */
 const named = (name: string) => cleanName(name, name);
 
-import { type FcDocument, type FcObject, type FcValue, versionAtLeast } from './model';
+import { type FcDocument, type FcObject, type FcValue, floatList, versionAtLeast } from './model';
 import type { DecodedSketch } from './sketch-decode';
 
-export type FeatureKind = 'pad' | 'pocket' | 'revolution' | 'groove' | 'fillet' | 'chamfer';
+export type FeatureKind =
+  | 'pad'
+  | 'pocket'
+  | 'revolution'
+  | 'groove'
+  | 'fillet'
+  | 'chamfer'
+  | 'linear'
+  | 'polar'
+  | 'mirrored'
+  | 'multi'
+  | 'hole';
 
 /** The FreeCAD types the importer maps, by kind. */
 export const FEATURE_TYPES: Readonly<Record<string, FeatureKind>> = {
@@ -32,6 +43,11 @@ export const FEATURE_TYPES: Readonly<Record<string, FeatureKind>> = {
   'PartDesign::Groove': 'groove',
   'PartDesign::Fillet': 'fillet',
   'PartDesign::Chamfer': 'chamfer',
+  'PartDesign::LinearPattern': 'linear',
+  'PartDesign::PolarPattern': 'polar',
+  'PartDesign::Mirrored': 'mirrored',
+  'PartDesign::MultiTransform': 'multi',
+  'PartDesign::Hole': 'hole',
 };
 
 /** Why a feature is not mapped: the closed set the report and the app word. */
@@ -63,7 +79,15 @@ export type FeatureRefusal =
   /** A dress-up names a sub-element that is neither `EdgeN` nor `FaceN`, or one its base doesn't have. */
   | 'element'
   /** A dress-up with no edges, or with more than the importer or Extrudo's feature takes. */
-  | 'edges';
+  | 'edges'
+  /** More than the importer takes: a pattern's instances, a transform's originals, a hole's centres (S7). */
+  | 'limit'
+  /** A pattern or mirror repeats a feature Extrudo can't repeat, or one that isn't this body's mapped feature (S7). */
+  | 'original'
+  /** A pattern's direction or axis, or a mirror's plane, that the importer doesn't map (S7). */
+  | 'transform-reference'
+  /** A MultiTransform whose chain of steps the importer doesn't map (S7). */
+  | 'multi-transform';
 
 /** One side of a pad or pocket: a length, or through all (pocket). */
 export interface DecodedSide {
@@ -141,6 +165,8 @@ export type DecodedDressUp =
 
 export type DecodedFeature =
   | DecodedDressUp
+  | DecodedTransform
+  | DecodedHole
   | (Common & {
       readonly kind: 'pad' | 'pocket';
       readonly direction: 'one-side' | 'symmetric' | 'two-sides';
@@ -170,6 +196,8 @@ export interface FeatureContext {
   readonly sketch?: DecodedSketch;
   /** The feature before it in the body's chain (a dress-up's `Base` must be it). */
   readonly previous?: string;
+  /** Any sketch of the file, decoded once (S7: a pattern's direction may be a line of another sketch). */
+  readonly sketchOf?: (name: string) => DecodedSketch | undefined;
 }
 
 /** The longest length a feature may have here (10 km): past it the kernel's arithmetic, not the file, decides. */
@@ -599,11 +627,608 @@ export function decodeFeature(
         ? extrusion(doc, object, kind)
         : kind === 'fillet' || kind === 'chamfer'
           ? dressUp(doc, object, kind, context)
-          : revolution(doc, object, kind, context);
+          : kind === 'hole'
+            ? hole(doc, object)
+            : kind === 'revolution' || kind === 'groove'
+              ? revolution(doc, object, kind, context)
+              : transform(doc, object, kind, context);
     return { ok: true, feature };
   } catch (error) {
     if (error instanceof Refuse) return { ok: false, reason: error.reason, detail: error.detail };
     // Nothing in a file should get here; if it does, the feature is refused, never the import.
     return { ok: false, reason: 'value', detail: String((error as Error)?.message ?? error) };
   }
+}
+
+// --- Transforms (S7): LinearPattern, PolarPattern, Mirrored, MultiTransform --------------------
+
+/** The most originals one transform may name, checked before any is looked at. */
+export const MAX_ORIGINALS = 100;
+/**
+ * The most instances one transform may make, originals counted in: its
+ * instances (both directions, every step of a MultiTransform multiplied)
+ * times its originals. Half of what Extrudo's own pattern makes
+ * (`MAX_PATTERN_INSTANCES`, 1,000): measured at 1,000 overlapping pockets
+ * round a turn the import took 55 s, next to the 60 s a kernel call may take;
+ * at 500 it took 22 s (ADR-0144's S7 amendment). The library's largest is 28.
+ */
+export const MAX_TRANSFORM_INSTANCES = 500;
+/** The most steps a MultiTransform may have, checked before any is looked at. */
+export const MAX_TRANSFORM_STEPS = 16;
+
+/**
+ * A direction, axis or plane a transform names, as the file names it; the
+ * walk turns it into an Extrudo reference (`transforms.ts`).
+ */
+export type DecodedReference =
+  /** A sketch's own axis: `H_Axis`, `V_Axis`, or its normal `N_Axis` (and a mirror's whole sketch). */
+  | { readonly kind: 'sketch-axis'; readonly sketch: string; readonly axis: 'h' | 'v' | 'n' }
+  /** A line of a sketch, by its geometry index (`EdgeN`, or the N-th construction line `AxisN`). */
+  | { readonly kind: 'sketch-line'; readonly sketch: string; readonly geometry: number }
+  /** An origin axis of the feature's body (which must not be moved). */
+  | { readonly kind: 'origin-axis'; readonly axis: 'x' | 'y' | 'z' }
+  /** An origin plane of the feature's body. */
+  | { readonly kind: 'origin-plane'; readonly plane: 'xy' | 'xz' | 'yz' }
+  /** An edge or a face of a feature's stored shape. */
+  | { readonly kind: 'element'; readonly object: string; readonly element: DressUpElement };
+
+/** One direction of a linear pattern. */
+export interface DecodedRow {
+  readonly reference: DecodedReference;
+  readonly reversed: boolean;
+  /** Instances along it, the original counted. */
+  readonly count: number;
+  /** `extent`: `distance` from the first to the last; `spacing`: between neighbours. */
+  readonly measure: 'extent' | 'spacing';
+  /** mm. */
+  readonly distance: number;
+}
+
+export interface DecodedLinear {
+  readonly kind: 'linear';
+  readonly first: DecodedRow;
+  /** FreeCAD 1.1's second direction (a grid). */
+  readonly second?: DecodedRow;
+}
+
+export interface DecodedPolar {
+  readonly kind: 'polar';
+  readonly reference: DecodedReference;
+  readonly reversed: boolean;
+  readonly count: number;
+  /** `total`: `angle` is the whole angle; `step`: between neighbours. */
+  readonly measure: 'total' | 'step';
+  /** Degrees. */
+  readonly angle: number;
+}
+
+export interface DecodedMirrored {
+  readonly kind: 'mirrored';
+  readonly reference: DecodedReference;
+}
+
+/** One step: a transform by itself, or a step of a MultiTransform. */
+export type DecodedStep = DecodedLinear | DecodedPolar | DecodedMirrored;
+
+interface TransformCommon {
+  readonly object: string;
+  /** Instances each original makes, itself counted (every step of a MultiTransform multiplied). */
+  readonly instances: number;
+  /** The features it repeats, each once, in the file's order. */
+  readonly originals: readonly string[];
+  readonly sources: Readonly<Record<string, string>>;
+}
+
+export type DecodedTransform =
+  | (TransformCommon & DecodedStep)
+  | (TransformCommon & {
+      readonly kind: 'multi';
+      /** Its steps' objects, in order. */
+      readonly children: readonly string[];
+      readonly steps: readonly DecodedStep[];
+    });
+
+const LINEAR_MODES = ['Extent', 'Spacing'];
+const TRANSFORM_MODES = ['Features', 'Whole shape'];
+const SKETCH_AXIS = /^([HVN])_Axis$/;
+const NTH_AXIS = /^Axis(\d{1,6})$/;
+const SKETCH_EDGE = /^Edge(\d{1,6})$/;
+const ORIGIN_PLANE_ROLE = /^(XY|XZ|YZ)_Plane(?:\d{0,6})$/;
+
+/** The origin of the feature's body, when it has one. */
+function bodyOrigin(doc: FcDocument, body: FcObject): FcObject | undefined {
+  const v = body.properties.Origin?.value;
+  return v?.kind === 'link' && v.object ? doc.byName.get(v.object) : undefined;
+}
+
+/** The N-th construction line of a decoded sketch, counted from 0, by geometry index. */
+function nthConstructionLine(sketch: DecodedSketch, n: number): number | 'unreadable' | undefined {
+  let k = -1;
+  for (let i = 0; i < sketch.geometry.length; i++) {
+    const g = sketch.geometry[i];
+    if (g === undefined) return 'unreadable';
+    if (g.kind === 'line' && g.construction && ++k === n) return i;
+  }
+  return undefined;
+}
+
+/**
+ * A transform's `Direction` / `Axis` / `MirrorPlane` as the file names it, or
+ * a refusal (`transform-reference`). `what` words it in a detail.
+ */
+function referenceOf(
+  doc: FcDocument,
+  o: FcObject,
+  name: string,
+  what: string,
+  context: FeatureContext,
+  plane: boolean,
+): DecodedReference {
+  const v = value(o, name);
+  if (v === undefined) return refuse('transform-reference', `it has no ${what}`);
+  if (v.kind !== 'linkSub') return refuse('value', `its ${name} is not a link`);
+  if (v.object === undefined || v.object === '')
+    return refuse('transform-reference', `it has no ${what}`);
+  const subs = v.subs.map((s) => s.name).filter((s) => s !== '');
+  if (subs.length > 1) return refuse('transform-reference', `its ${what} names several elements`);
+  const sub = subs[0] ?? '';
+  const target = doc.byName.get(v.object);
+  if (!target)
+    return refuse('transform-reference', `its ${what} ${named(v.object)} isn't in the file`);
+  if (target.type.startsWith('Sketcher::SketchObject')) {
+    const axis = SKETCH_AXIS.exec(sub);
+    // A mirror in the whole sketch is a mirror in its plane.
+    if (sub === '' && plane) return { kind: 'sketch-axis', sketch: target.name, axis: 'n' };
+    if (axis)
+      return {
+        kind: 'sketch-axis',
+        sketch: target.name,
+        axis: (axis[1] as string).toLowerCase() as 'h' | 'v' | 'n',
+      };
+    const decoded = context.sketchOf?.(target.name);
+    const edge = SKETCH_EDGE.exec(sub);
+    const nth = NTH_AXIS.exec(sub);
+    if (decoded && edge) {
+      const index = Number(edge[1]) - 1;
+      if (index < 0 || decoded.geometry[index]?.kind !== 'line')
+        return refuse(
+          'transform-reference',
+          `its ${what} ${clipName(sub)} is not a line of the sketch`,
+        );
+      return { kind: 'sketch-line', sketch: target.name, geometry: index };
+    }
+    if (decoded && nth) {
+      const found = nthConstructionLine(decoded, Number(nth[1]));
+      if (found === undefined || found === 'unreadable')
+        return refuse('transform-reference', `its ${what} ${clipName(sub)} is not in the sketch`);
+      return { kind: 'sketch-line', sketch: target.name, geometry: found };
+    }
+    return refuse(
+      'transform-reference',
+      `its ${what} ${clipName(sub) || 'the whole sketch'} is not one this importer maps`,
+    );
+  }
+  if (target.type === 'App::Line' || target.type === 'App::Plane') {
+    const origin = bodyOrigin(doc, context.body);
+    if (!origin || !originFeatures(origin).has(target.name))
+      return refuse(
+        'transform-reference',
+        `its ${what} is not an origin feature of the feature's body`,
+      );
+    if (context.moved)
+      return refuse('transform-reference', `its ${what} is an origin feature of a moved body`);
+    const role = target.properties.Role?.value;
+    const r = role?.kind === 'string' ? role.value : target.name;
+    const axis = ORIGIN_ROLE.exec(r);
+    if (target.type === 'App::Line' && axis)
+      return { kind: 'origin-axis', axis: (axis[1] as string).toLowerCase() as 'x' | 'y' | 'z' };
+    const p = ORIGIN_PLANE_ROLE.exec(r);
+    if (target.type === 'App::Plane' && p)
+      return {
+        kind: 'origin-plane',
+        plane: (p[1] as string).toLowerCase() as 'xy' | 'xz' | 'yz',
+      };
+    return refuse('transform-reference', `its ${what} is not an origin axis or plane`);
+  }
+  if (target.type.startsWith('PartDesign::Line') || target.type.startsWith('PartDesign::Plane'))
+    return refuse('transform-reference', `its ${what} is a datum line or plane`);
+  const element = ELEMENT.exec(sub);
+  if (!element)
+    return refuse(
+      'transform-reference',
+      `its ${what} is ${sub ? clipName(sub) : 'a whole object'} of ${named(target.name)}`,
+    );
+  return {
+    kind: 'element',
+    object: target.name,
+    element: {
+      kind: element[1] === 'Edge' ? 'edge' : 'face',
+      index: Number(element[2]) - 1,
+      name: sub,
+    },
+  };
+}
+
+/** A count of instances: a whole number from 1 to `MAX_TRANSFORM_INSTANCES`. */
+function occurrences(o: FcObject, name: string): number {
+  const v = number(o, name);
+  if (!Number.isInteger(v) || v < 1)
+    return refuse('value', `its ${name} of ${v} is not a whole number from 1`);
+  if (v > MAX_TRANSFORM_INSTANCES)
+    return refuse('limit', `its ${name} of ${v} is more than ${MAX_TRANSFORM_INSTANCES}`);
+  return v;
+}
+
+/**
+ * Refuses a pattern whose gaps aren't all its own spacing. As FreeCAD's
+ * pattern extensions read them (FORMAT.md): only in Spacing mode, where the
+ * first `count − 1` entries of `Spacings` give each gap (−1, or a value equal
+ * to `Offset`, which FreeCAD turns into −1, for the pattern's own spacing;
+ * any other value, 0 included, a gap of its own) and a `SpacingPattern` of
+ * more than one entry repeats gaps of its own. In Extent mode neither is read.
+ * A property that isn't there is the default.
+ */
+function defaultGaps(
+  doc: FcDocument,
+  o: FcObject,
+  suffix: '' | '2',
+  spacing: number | undefined,
+  count: number,
+): void {
+  if (spacing === undefined) return;
+  const read = (name: string): number[] => {
+    if (o.properties[name] === undefined) return [];
+    if (o.unreadable?.includes(name)) refuse('value', `its ${name} can't be read`);
+    const before = doc.problems.length;
+    const list = floatList(doc, o, name);
+    doc.problems.splice(before);
+    return list ?? refuse('value', `its ${name} can't be read`);
+  };
+  const gaps = read(`Spacings${suffix}`).slice(0, Math.max(0, count - 1));
+  if (gaps.some((g) => g !== -1 && g !== spacing))
+    refuse('option', `it has gaps of their own (Spacings${suffix})`);
+  if (read(`SpacingPattern${suffix}`).length > 1)
+    refuse('option', `it repeats gaps of their own (SpacingPattern${suffix})`);
+}
+
+/** The positions a pattern leaves out (FreeCAD 1.1): refused unless there are none. */
+function noSuppressed(o: FcObject): void {
+  for (const name of ['SuppressedIndices', 'SuppressedPositions']) {
+    const v = value(o, name);
+    if (v === undefined) continue;
+    const none =
+      (v.kind === 'integerList' && v.values.length === 0) ||
+      (v.kind === 'unknown' &&
+        v.raw.every((r) => r.children.length === 0 && (r.attrs.count ?? '0') === '0'));
+    if (!none) refuse('option', 'it leaves some of its instances out');
+  }
+}
+
+function row(
+  doc: FcDocument,
+  o: FcObject,
+  context: FeatureContext,
+  suffix: '' | '2',
+  sources: Record<string, string>,
+): DecodedRow {
+  const n = suffix === '' ? '1' : '2';
+  const reference = referenceOf(doc, o, `Direction${suffix}`, 'direction', context, false);
+  const count = occurrences(o, `Occurrences${suffix}`);
+  // Mode came with FreeCAD 1.0's spacing; before it the length was always the whole extent.
+  const mode = choice(o, `Mode${suffix}`, LINEAR_MODES, 'Extent');
+  const measure = mode === 'Spacing' ? 'spacing' : 'extent';
+  const lengthName = measure === 'spacing' ? `Offset${suffix}` : `Length${suffix}`;
+  const distance = length(o, lengthName);
+  if (count > 1 && !(distance > 0))
+    refuse('value', `its ${lengthName} of 0 mm puts every copy on the original`);
+  // The whole row, first instance to last, within the lengths the importer takes.
+  const extent = measure === 'spacing' ? distance * (count - 1) : distance;
+  if (!(extent <= MAX_FEATURE_LENGTH))
+    refuse('value', `its instances reach ${extent} mm along it, past ${MAX_FEATURE_LENGTH} mm`);
+  defaultGaps(doc, o, suffix, measure === 'spacing' ? distance : undefined, count);
+  sources[`direction${n}`] = `Direction${suffix}`;
+  sources[`count${n}`] = `Occurrences${suffix}`;
+  sources[`distance${n}`] = lengthName;
+  return { reference, reversed: bool(o, `Reversed${suffix}`, false), count, measure, distance };
+}
+
+function linear(
+  doc: FcDocument,
+  o: FcObject,
+  context: FeatureContext,
+  sources: Record<string, string>,
+): DecodedLinear {
+  const first = row(doc, o, context, '', sources);
+  // A second direction (FreeCAD 1.1): only when it has more than one instance.
+  const count2 = o.properties.Occurrences2 === undefined ? 1 : occurrences(o, 'Occurrences2');
+  if (count2 <= 1) return { kind: 'linear', first };
+  const d2 = value(o, 'Direction2');
+  if (d2?.kind === 'linkSub' && (d2.object === undefined || d2.object === ''))
+    refuse('transform-reference', 'its second direction has instances but no direction');
+  return { kind: 'linear', first, second: row(doc, o, context, '2', sources) };
+}
+
+function polar(
+  doc: FcDocument,
+  o: FcObject,
+  context: FeatureContext,
+  sources: Record<string, string>,
+): DecodedPolar {
+  const reference = referenceOf(doc, o, 'Axis', 'axis', context, false);
+  const count = occurrences(o, 'Occurrences');
+  const mode = choice(o, 'Mode', LINEAR_MODES, 'Extent');
+  const measure = mode === 'Spacing' ? 'step' : 'total';
+  const angleName = measure === 'step' ? 'Offset' : 'Angle';
+  const angle = number(o, angleName);
+  if (!(Math.abs(angle) <= 360)) refuse('value', `its ${angleName} of ${angle}° is out of range`);
+  if (count > 1 && angle === 0)
+    refuse('value', `its ${angleName} of 0° puts every copy on the original`);
+  // A step whose instances go past a whole turn: FreeCAD keeps turning (instance i at i
+  // steps, FORMAT.md), as Extrudo's step does, so it maps as it is.
+  defaultGaps(doc, o, '', measure === 'step' ? angle : undefined, count);
+  sources.axis = 'Axis';
+  sources.count = 'Occurrences';
+  sources.angle = angleName;
+  return { kind: 'polar', reference, reversed: bool(o, 'Reversed', false), count, measure, angle };
+}
+
+/** One step of a transform (a whole transform, or a MultiTransform's child). */
+function step(
+  doc: FcDocument,
+  o: FcObject,
+  kind: 'linear' | 'polar' | 'mirrored',
+  context: FeatureContext,
+  sources: Record<string, string>,
+): DecodedStep {
+  noSuppressed(o);
+  if (kind === 'linear') return linear(doc, o, context, sources);
+  if (kind === 'polar') return polar(doc, o, context, sources);
+  sources.plane = 'MirrorPlane';
+  return {
+    kind: 'mirrored',
+    reference: referenceOf(doc, o, 'MirrorPlane', 'mirror plane', context, true),
+  };
+}
+
+/** How many instances a step makes, the original counted. */
+const instancesOf = (s: DecodedStep) =>
+  s.kind === 'mirrored' ? 2 : s.kind === 'polar' ? s.count : s.first.count * (s.second?.count ?? 1);
+
+function transform(
+  doc: FcDocument,
+  o: FcObject,
+  kind: FeatureKind,
+  context: FeatureContext,
+): DecodedTransform {
+  if (bool(o, 'Suppressed', false)) refuse('suppressed', 'it is suppressed');
+  if (choice(o, 'TransformMode', TRANSFORM_MODES, 'Features') !== 'Features')
+    refuse('option', 'it repeats the whole shape');
+  const list = value(o, 'Originals');
+  if (list === undefined) return refuse('original', 'it has no originals');
+  if (list.kind !== 'linkList') return refuse('value', 'its Originals is not a list of links');
+  // Bounded before anything is looked at: a file may list any number.
+  if (list.objects.length > MAX_ORIGINALS)
+    return refuse(
+      'limit',
+      `it repeats ${list.objects.length} features, more than ${MAX_ORIGINALS}`,
+    );
+  const originals = [...new Set(list.objects)];
+  if (originals.length === 0) return refuse('original', 'it repeats nothing');
+  if (originals.includes(o.name)) return refuse('original', 'it lists itself among its originals');
+  const sources: Record<string, string> = { features: 'Originals' };
+  const common = { object: o.name, originals, instances: 0 };
+  let total: number;
+  let decoded: DecodedTransform;
+  if (kind === 'multi') {
+    const steps = value(o, 'Transformations');
+    if (steps === undefined || steps.kind !== 'linkList')
+      return refuse('value', 'its Transformations is not a list of links');
+    if (steps.objects.length > MAX_TRANSFORM_STEPS)
+      return refuse(
+        'multi-transform',
+        `it has ${steps.objects.length} steps, more than ${MAX_TRANSFORM_STEPS}`,
+      );
+    if (steps.objects.length === 0) return refuse('multi-transform', 'it has no steps');
+    const children: string[] = [];
+    const out: DecodedStep[] = [];
+    for (const name of steps.objects) {
+      if (name === o.name) return refuse('multi-transform', 'it lists itself among its steps');
+      if (children.includes(name))
+        return refuse('multi-transform', `it lists its step ${named(name)} twice`);
+      const child = doc.byName.get(name);
+      if (!child) return refuse('multi-transform', `its step ${named(name)} isn't in the file`);
+      const k = Object.hasOwn(FEATURE_TYPES, child.type) ? FEATURE_TYPES[child.type] : undefined;
+      if (k !== 'linear' && k !== 'polar' && k !== 'mirrored')
+        return refuse(
+          'multi-transform',
+          `its step ${named(name)} is a ${child.type || 'object of no type'}`,
+        );
+      children.push(name);
+      const childSources: Record<string, string> = {};
+      out.push(step(doc, child, k, context, childSources));
+      for (const [key, prop] of Object.entries(childSources))
+        sources[`${children.length}.${key}`] = `${name}.${prop}`;
+    }
+    total = out.reduce((n, s) => n * instancesOf(s), 1);
+    decoded = { ...common, kind: 'multi', children, steps: out, sources };
+  } else {
+    const s = step(doc, o, kind as 'linear' | 'polar' | 'mirrored', context, sources);
+    total = instancesOf(s);
+    decoded = { ...common, ...s, sources };
+  }
+  if (total * originals.length > MAX_TRANSFORM_INSTANCES)
+    refuse(
+      'limit',
+      `it makes ${total * originals.length} instances, more than ${MAX_TRANSFORM_INSTANCES}`,
+    );
+  return { ...decoded, instances: total };
+}
+
+// --- Hole (S7) -------------------------------------------------------------------------------
+
+/** What a hole's cut is, as far as the file says. */
+export type DecodedHoleCut =
+  | 'none'
+  | 'counterbore'
+  | 'countersink'
+  /** A bare index past the first three, or a screw standard's name: the sizes are stored, the kind isn't (S7). */
+  | 'counterbore-or-countersink';
+
+export interface DecodedHole {
+  readonly kind: 'hole';
+  readonly object: string;
+  readonly sketch: string;
+  /** mm. */
+  readonly diameter: number;
+  readonly extent: 'blind' | 'through';
+  /** mm, to the end of the full diameter (Extrudo's meaning: a drill point counted in is taken off). */
+  readonly depth?: number;
+  /** Degrees; 0 for a flat bottom. */
+  readonly tipAngle: number;
+  readonly cut: DecodedHoleCut;
+  /** The cuts to try, in order, each one Extrudo's hole can build: one, or (a cut the file doesn't name) counterbore then countersink. */
+  readonly cuts: readonly ('none' | 'counterbore' | 'countersink')[];
+  /** mm (`HoleCutDiameter`), with a cut. */
+  readonly cutDiameter?: number;
+  /** mm (`HoleCutDepth`), with a counterbore. */
+  readonly cutDepth?: number;
+  /** Degrees (`HoleCutCountersinkAngle`), with a countersink. */
+  readonly cutAngle?: number;
+  /** Drills along the sketch's normal (FreeCAD drills against it). */
+  readonly reversed: boolean;
+  /** Which of the sketch's geometry gives centres (`BaseProfileType`). */
+  readonly on: { readonly points: boolean; readonly circles: boolean; readonly arcs: boolean };
+  /** Threaded but the thread not modelled: a plain hole of the stored diameter, the thread lost. */
+  readonly threadLost: boolean;
+  readonly sources: Readonly<Record<string, string>>;
+}
+
+const DEPTH_TYPES = ['Dimension', 'ThroughAll', 'UpToFirst', 'UpToFace', 'UpToShape'];
+const DRILL_POINTS = ['Flat', 'Angled'];
+/** FreeCAD's own first three cut types, the same in every version (the rest changed, FORMAT.md). */
+const HOLE_CUTS = ['None', 'Counterbore', 'Countersink'];
+
+/** The hole's cut type: by name where the file has the names, else by its first three indices. */
+function holeCut(o: FcObject): DecodedHoleCut {
+  const v = value(o, 'HoleCutType');
+  if (v === undefined) return refuse('value', 'it has no HoleCutType');
+  if (v.kind !== 'enum' && v.kind !== 'integer')
+    return refuse('value', 'its HoleCutType is not a choice');
+  const index = v.kind === 'enum' ? v.index : v.value;
+  const name = v.kind === 'enum' ? v.values?.[index]?.replace(/^\?/, '') : undefined;
+  if (name === undefined && v.kind === 'enum' && v.values !== undefined)
+    return refuse('value', `its HoleCutType is choice ${index}, which the file doesn't list`);
+  const known = name ?? (Number.isInteger(index) && index >= 0 ? HOLE_CUTS[index] : undefined);
+  if (known === 'None') return 'none';
+  if (known === 'Counterbore') return 'counterbore';
+  if (known === 'Countersink') return 'countersink';
+  if (name === 'Counterdrill') return refuse('option', 'it is counterdrilled');
+  if (!Number.isInteger(index) || index < 0)
+    return refuse('value', `its HoleCutType ${index} is not a choice`);
+  return 'counterbore-or-countersink';
+}
+
+function hole(doc: FcDocument, o: FcObject): DecodedHole {
+  if (bool(o, 'Suppressed', false)) refuse('suppressed', 'it is suppressed');
+  const sketch = profileSketch(doc, o);
+  const sources: Record<string, string> = { points: 'Profile', diameter: 'Diameter' };
+  if (bool(o, 'Tapered', false)) refuse('option', 'it is tapered');
+  const threaded = bool(o, 'Threaded', false);
+  const modelled = bool(o, 'ModelThread', false) || bool(o, 'ModelActualThread', false);
+  if (threaded && modelled) refuse('option', 'its thread is modelled');
+  if (bool(o, 'Midplane', false)) refuse('option', 'it goes both ways from its sketch');
+  const diameter = size(o, 'Diameter');
+  const depthType = choice(o, 'DepthType', DEPTH_TYPES);
+  if (depthType !== 'Dimension' && depthType !== 'ThroughAll')
+    refuse('up-to', `it goes ${upTo(depthType)}`);
+  const extent = depthType === 'ThroughAll' ? 'through' : 'blind';
+  let depth: number | undefined;
+  let tipAngle = 0;
+  if (extent === 'blind') {
+    depth = size(o, 'Depth');
+    sources.depth = 'Depth';
+    if (choice(o, 'DrillPoint', DRILL_POINTS) === 'Angled') {
+      tipAngle = number(o, 'DrillPointAngle');
+      if (!(tipAngle > 0 && tipAngle < 180))
+        refuse('value', `its DrillPointAngle of ${tipAngle}° is out of range`);
+      sources.tipAngle = 'DrillPointAngle';
+      // With DrillForDepth FreeCAD's depth reaches the point's tip; Extrudo's ends at the full diameter.
+      if (bool(o, 'DrillForDepth', false)) {
+        depth -= diameter / 2 / Math.tan((tipAngle * Math.PI) / 360);
+        if (!(depth > 1e-6)) refuse('value', 'its depth is no deeper than its drill point');
+      }
+    }
+  }
+  const cut = holeCut(o);
+  const out: {
+    cutDiameter?: number;
+    cutDepth?: number;
+    cutAngle?: number;
+  } = {};
+  if (cut !== 'none') {
+    out.cutDiameter = size(o, 'HoleCutDiameter');
+    sources.cutDiameter = 'HoleCutDiameter';
+    if (cut === 'counterbore') out.cutDepth = size(o, 'HoleCutDepth');
+    // Only one of the two kinds is open: a depth that isn't one rules the counterbore out.
+    else if (cut !== 'countersink') out.cutDepth = number(o, 'HoleCutDepth');
+    if (cut !== 'countersink') sources.cutDepth = 'HoleCutDepth';
+    if (cut !== 'counterbore') {
+      out.cutAngle = number(o, 'HoleCutCountersinkAngle');
+      sources.cutAngle = 'HoleCutCountersinkAngle';
+    }
+  }
+  // The cuts Extrudo's hole builds (its own conditions, `packages/kernel/src/features/hole.ts`).
+  const EPS = 1e-6;
+  const fits = (c: 'counterbore' | 'countersink'): string | undefined => {
+    const d = out.cutDiameter as number;
+    if (!(d > diameter + EPS))
+      return `its HoleCutDiameter of ${d} mm is not larger than its Diameter of ${diameter} mm`;
+    if (c === 'counterbore') {
+      const cb = out.cutDepth as number;
+      if (!(cb > EPS && cb <= MAX_FEATURE_LENGTH))
+        return `its HoleCutDepth of ${cb} mm is out of range`;
+      if (extent === 'blind' && !(cb < (depth as number) - EPS))
+        return `its counterbore of ${cb} mm is as deep as the hole`;
+      return undefined;
+    }
+    const a = out.cutAngle as number;
+    if (!(a > EPS && a < 180 - EPS)) return `its HoleCutCountersinkAngle of ${a}° is out of range`;
+    const cone = (d - diameter) / 2 / Math.tan((a * Math.PI) / 360);
+    if (extent === 'blind' && !(cone < (depth as number) - EPS))
+      return `its countersink is as deep as the hole`;
+    return undefined;
+  };
+  let cuts: ('none' | 'counterbore' | 'countersink')[] = ['none'];
+  if (cut === 'counterbore' || cut === 'countersink') {
+    const why = fits(cut);
+    if (why) refuse('value', why);
+    cuts = [cut];
+  } else if (cut === 'counterbore-or-countersink') {
+    const bore = fits('counterbore');
+    const sink = fits('countersink');
+    cuts = [...(bore ? [] : ['counterbore' as const]), ...(sink ? [] : ['countersink' as const])];
+    if (cuts.length === 0) refuse('value', bore as string);
+  }
+  // OnPoints 1, OnCircles 2, OnArcs 4; files before the setting drill at circles and arcs.
+  const types = number(o, 'BaseProfileType', 6);
+  if (!Number.isInteger(types) || types < 0 || types > 7)
+    refuse('value', `its BaseProfileType of ${types} is not a choice`);
+  const reversed = bool(o, 'Reversed', false);
+  if (reversed) sources.flip = 'Reversed';
+  return {
+    kind: 'hole',
+    object: o.name,
+    sketch,
+    diameter,
+    extent,
+    ...(depth !== undefined ? { depth } : {}),
+    tipAngle,
+    cut,
+    cuts,
+    ...out,
+    reversed,
+    on: { points: (types & 1) !== 0, circles: (types & 2) !== 0, arcs: (types & 4) !== 0 },
+    threadLost: threaded,
+    sources,
+  };
 }

@@ -1779,7 +1779,8 @@ end to end, faster than in established desktop CAD.
     (2026-11-11; ADR-0144's S5 amendment).
   - [x] S6 Fillet and Chamfer, their edges found by geometry (2026-11-12; ADR-0144's S6
     amendment).
-  - [ ] S7 Patterns, Mirrored, Hole.
+  - [x] S7 Patterns, Mirrored, MultiTransform, Hole (2026-11-14; ADR-0144's S7
+    amendment).
   - [ ] S8 The stored-shape step in the middle of a body.
   - [ ] S9 Projected geometry in sketches, up-to-face, reference axes.
   - [ ] S10 Parameters and expressions.

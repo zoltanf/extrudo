@@ -27,6 +27,12 @@ export interface StoredShapeMeasure {
    * its flipped twin, which has the same volume, area and box).
    */
   centre: [number, number, number];
+  /**
+   * How many faces and edges it has (ADR-0144 S7: what tells an untouched
+   * body from one a feature cut into), absent where the shape can't be counted.
+   */
+  faces?: number;
+  edges?: number;
 }
 
 export interface StoredShapeStep extends StoredShapeMeasure {
@@ -93,12 +99,20 @@ export function measureShape(kernel: Kernel, shape: ShapeHandle): StoredShapeMea
   const centre: [number, number, number] = centroid.every(Number.isFinite)
     ? [...centroid]
     : [0, 0, 0];
+  const counts: { faces?: number; edges?: number } = {};
+  try {
+    counts.faces = kernel.count(shape, 'face');
+    counts.edges = kernel.count(shape, 'edge');
+  } catch {
+    // A shape the counting can't walk (a mesh body's): the measures alone stand.
+  }
   return {
     solids: solids.length,
     volume,
     area,
     box: { min: [...bbox.min], max: [...bbox.max] },
     centre,
+    ...counts,
   };
 }
 

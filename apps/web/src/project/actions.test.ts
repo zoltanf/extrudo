@@ -524,6 +524,7 @@ describe('fcstdNotices', () => {
     mapped: [],
     bodies,
     sketches: [],
+    secondAttempts: 0,
     outcome,
     ...(stop ? { stop: { object: 'F', type: 'PartDesign::Fillet', reason: stop } } : {}),
   });
@@ -571,6 +572,33 @@ describe('fcstdNotices', () => {
       "Taken from the file's own shapes, without their whole history: Clip, because a feature goes up to a face or a shape.",
       "Not imported: Housing (its shape didn't come through unchanged).",
       'Only partly rebuilt, up to the feature where the history stopped: Housing. It is not the whole shape from the file.',
+    ]);
+  });
+
+  it("words S7's stops and says how many threaded holes came in plain", () => {
+    const hole = (threadLost: boolean) => ({
+      object: 'Hole',
+      kind: 'hole' as const,
+      feature: 'h',
+      sources: {},
+      expressions: [],
+      drift: { volume: 0, area: 0, corner: 0, diagonal: 1, centre: 0 },
+      ...(threadLost ? { threadLost: true as const } : {}),
+    });
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 3,
+      shapes: [shape('Lid'), shape('Base')],
+      bodies: [
+        { ...body('Plate', 'history'), mapped: [hole(true), hole(true), hole(false)] },
+        body('Lid', 'shape', 'multi-transform', ['l:0']),
+        body('Base', 'shape', 'original'),
+      ],
+    });
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 3 of 3 shapes, 1 with its history and 2 as bodies without history.',
+      "Taken from the file's own shapes, without their whole history: Lid; Base. Most often because a pattern of patterns combines steps Extrudo can't rebuild yet, or a pattern or mirror repeats a feature Extrudo can't repeat. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
+      '2 threaded holes came in as plain holes of the size the file stores: the thread itself is not modelled.',
     ]);
   });
 });

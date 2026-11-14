@@ -20,6 +20,9 @@ export interface ShapeMeasure {
   };
   /** The centre of mass of its solids (of its faces without solids, the origin without either), mm. */
   readonly centre: readonly [number, number, number];
+  /** How many faces and edges (S7: the check that a feature left another body alone compares them exactly). */
+  readonly faces?: number;
+  readonly edges?: number;
 }
 
 /** A stored shape written as STEP and read back, with the shape as read beside it. */
