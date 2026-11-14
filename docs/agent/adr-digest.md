@@ -2253,6 +2253,13 @@ wrong", saves then Reload; `#/debug/crash` throws for the e2e); a lost context s
 preference `render.softwareNotice = 'dismissed'`, `useSoftwareNotice`). Desktop:
 `main/rendering.ts` (`enable-unsafe-swiftshader`; `--software-rendering` /
 `EXTRUDO_SOFTWARE_RENDERING=1` disable the GPU). No file-format change.
+Amendment (#259): a render target of the view takes its samples from
+`offscreenSamples` (set in `createRenderer` by `targetSamples(requested, granted)`:
+0 when the browser refused the antialiasing asked for), never a fixed 4;
+`watchContext` calls `noteContextLost()`, and a picture nobody asked for goes
+through `automaticThumbnail(snapshot, contextLosses())` in `project/autosave.ts`,
+which takes none after a lost context (a second loss makes Chrome block WebGL
+for the site). Snapshots somebody asks for are not gated.
 
 ADR-0077 (P6-03, slice 1) added **the plugin API's core, sandbox, kernel and
 CLI**. A plugin is a `.extrudo-plugin` zip of `plugin.json` (core's strict
