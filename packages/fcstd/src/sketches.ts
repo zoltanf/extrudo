@@ -11,7 +11,7 @@
  * Nothing throws past `addSketch`: a sketch that can't come in returns why.
  */
 import type { Design } from '@extrudo/api';
-import { type FeatureId, parameterNames } from '@extrudo/core';
+import { type FeatureId, type GeomRef, parameterNames } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import type { FcDocument, FcObject } from './model';
 import { type DecodedSketch, decodeSketch } from './sketch-decode';
@@ -92,6 +92,10 @@ export type AddSketchResult =
       readonly lines: readonly (string | undefined)[];
       /** The sketch axes drawn as fixed construction lines (`AddSketchOptions.axes`). */
       readonly axes: { readonly h?: string; readonly v?: string };
+      /** The Extrudo point at each circle's or arc's centre, or each point, by geometry index (S7: a hole's centres). */
+      readonly centres: readonly (string | undefined)[];
+      /** The Extrudo plane the sketch is on (S7: a hole's plane, a mirror in the sketch's plane). */
+      readonly plane: GeomRef;
     }
   | { readonly imported: false; readonly reason: string; readonly outcome: SketchOutcome };
 
@@ -243,6 +247,8 @@ export function addSketch(
       outcome: tally(object, names, types, mapped, placed, undefined),
       lines: mapped?.lines ?? [],
       axes: mapped?.axes ?? {},
+      centres: mapped?.centres ?? [],
+      plane: where.plane,
     };
   } catch (error) {
     return {

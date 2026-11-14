@@ -360,13 +360,17 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
   axis: "a revolve turns about an axis Extrudo can't use yet",
   value: "a feature has a value Extrudo can't read",
   option: "a feature has a setting Extrudo can't rebuild",
-  'no-base': 'a cut, fillet or chamfer comes before anything to work on',
+  'no-base': 'a cut, hole, fillet or chamfer comes before anything to work on',
   base: "a fillet or chamfer doesn't work on the feature before it",
-  element: "a fillet or chamfer names an edge or face its body doesn't have",
+  element: "a fillet, chamfer, pattern or mirror names an edge or face its body doesn't have",
   edges: 'a fillet or chamfer has no edges, or more than Extrudo can take',
-  reference: "a fillet's or chamfer's edges couldn't be found on the rebuilt body",
+  reference: "an edge or face a feature names couldn't be found on the rebuilt body",
+  original: "a pattern or mirror repeats a feature Extrudo can't repeat",
+  'transform-reference':
+    "a pattern or mirror goes along a direction, axis or plane Extrudo can't use yet",
+  'multi-transform': "a pattern of patterns combines steps Extrudo can't rebuild yet",
   chain: "its features don't follow each other",
-  limit: 'it has too many features',
+  limit: 'it has too many features, or a pattern or hole larger than Extrudo takes',
   stored: "a feature's shape can't be read from the file",
   failed: 'a feature failed when Extrudo rebuilt it',
   differs: "a rebuilt feature didn't match the file's shape",
@@ -432,6 +436,14 @@ export function fcstdNotices(
   if (partly.length > 0)
     out.push(
       `Only partly rebuilt, up to the feature where the history stopped: ${listed(partly.map((b) => b.name))}. ${partly.length === 1 ? 'It is' : 'They are'} not the whole shape from the file.`,
+    );
+  const threads = bodies.reduce(
+    (n, b) => n + b.mapped.filter((m) => m.kind === 'hole' && m.threadLost).length,
+    0,
+  );
+  if (threads > 0)
+    out.push(
+      `${threads === 1 ? 'A threaded hole' : `${threads} threaded holes`} came in as ${threads === 1 ? 'a plain hole' : 'plain holes'} of the size the file stores: the thread itself is not modelled.`,
     );
   if (report.linkArrays.length > 0)
     out.push(`Of each link array only one copy came in: ${listed([...report.linkArrays])}.`);
