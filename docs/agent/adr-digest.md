@@ -4895,3 +4895,37 @@ the app's pick call) is shared by the app's `importKernel.ts` and the Node test 
 real-body name forms against `featuresOfName`; made by `packages/fcstd/scripts/make-dressup-fixtures.py`,
 ours); a new shape needs the owner's FreeCAD run. `history-corpus.test.ts` reports references, near misses (test-only
 all-pairs) and describe sizes; keep 100 references found, none missing or several, unless a change explains it.
+
+**ADR-0144, S7 (patterns, Mirrored, MultiTransform, Hole):** `features.ts` decodes `PartDesign::LinearPattern`,
+`PolarPattern`, `Mirrored`, `MultiTransform` and `Hole` (`DecodedTransform` with `DecodedReference`s as the file names
+them, `DecodedHole`); `transforms.ts` `TransformMapper` resolves each direction, axis or plane **in world coordinates from
+the file, then as the Extrudo reference that is that line or plane, in this order: a coinciding origin axis or plane, the
+sketch's own drawn line or plane (H/V drawn by `addSketch`'s `axes`, asked for up front by `axesWanted`; a line's plane
+is a `planeAtAngle` 90° from the sketch's plane), a matched `EdgeN`/`FaceN` (S6's `ElementIndex`: exactly one, never
+the nearest, only when `restartsAtHold` holds), else construction points with `axisThroughPoints`/`planeThroughPoints`**
+in the same transaction; datum lines and planes are refused (`transform-reference`, S9). **Senses:** FreeCAD steps along
+the line's own direction (an edge's curve, read from the stored edge's ends in curve order, never its orientation) and
+turns right-handed, `Reversed` the other way; Extrudo along its reference's (sketch line start → end, origin axis, an
+edge's canonical direction): disagreeing, the distance or angle is negated, so no sense needs a second attempt. Originals
+→ `objects: 'features'` `{kind: 'feature', id}` of this body's mapped pad/pocket/revolution/groove/hole (else
+`original`); when they are every feature so far, the first (`new-body`) included, the body itself is repeated (`objects:
+'bodies'`, `join`). MultiTransform: its steps are outside the chain and owned by it (one object once per file); one step =
+that transform, linear∘linear = one `rectangularPattern` with two directions, **mirror∘mirror at right angles = a mirror in
+each plane and a `circularPattern` of 2 × 180° about the line where they meet** (a mirror of a mirror replays only its
+first tool: wrong for two originals), everything else `multi-transform`. Hole: centres = the sketch's drawn circles/arcs
+(and points per `BaseProfileType`) as the sketch's points (`AddSketchResult.centres`, `.plane`), drilled against the sketch
+normal (`flip` = `Reversed` xor `mirrored`), sizes as stored (never a table), depth from the plane to the full diameter
+(`DrillForDepth` takes the point off), `HoleCutType` by name, bare 0/1/2 by index, a later index or a standard's name =
+counterbore then countersink. **Second attempts** (`holdAll`): at most two whole transactions, the second only after
+`differs` and never after a `final` failure; only for that hole cut; counted in `BodyHistory.secondAttempts`. **A replay or
+a hole touches every body in its way**, so after one the rebuild measures the other FreeCAD bodies too and each must be as
+last held (`lastMeasures`), else `differs` (`final`). New stops `original`, `transform-reference`, `multi-transform`;
+`limit` is also a refusal. Caps (clean `limit` stops before any kernel call): `MAX_ORIGINALS` 100, `MAX_TRANSFORM_STEPS`
+16, `MAX_TRANSFORM_INSTANCES` 500 (instances × originals; 1,000 overlapping pockets round a turn took 55 s against the
+60 s call budget, 500 take 21 s), `MAX_HOLE_CENTRES` = Extrudo's `MAX_HOLES` 200 (a test keeps them equal). Gaps of their
+own (`Spacings`: −1/0/the spacing is default), positions left out, "Whole shape" are `option`; float lists are read from
+their own entry (`floatList`, little-endian count + doubles, bounded by the archive size). Fixtures: `pattern-fixtures.ts`
+(38 FreeCAD 1.1.4 parts, `make-pattern-fixtures.py`, ours; each distinct B-rep once, spaces collapsed), written into files
+by `pattern-parts.ts` (`partFile(name, change, options)`); tests `pattern.test.ts`, `pattern-hostile.test.ts`,
+`pattern-limits.test.ts` (`BENCH=1`). `history-corpus.test.ts` keeps 17 bodies with their whole history, 274 imports, 101
+references found, none missing or several, unless a change explains it.

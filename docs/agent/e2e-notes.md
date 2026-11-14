@@ -1183,15 +1183,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `dressUpSpec` (`packages/fcstd/src/dressup-fixtures.ts`: FreeCAD's own stored shapes of small
   parts we made): Bracket at x = 40 (Pad, Pocket from a sketch at z = 30), Lid (the
   `fillet_one_edge` part: Pad001 and a Fillet of its `Edge1`, `base: 'Pad001'`) and Plate at
-  x = 80 (Pad002, then a `PartDesign::Hole`, which S7 maps). The chips are `list` "Features" ›
+  x = 80 (Pad002, then a `PartDesign::Thickness`, which nothing maps: keep Plate on an unmapped
+  feature so the "Taken from" notice stays covered), and (S7) Rail, the `linear_h_axis` part of
+  `PATTERN_CASES` (`packages/fcstd/src/pattern-fixtures.ts`, FreeCAD's own shapes): Pad003 of a
+  40 × 20 rectangle, Pocket003 of a circle at (6, 10) on a sketch at z = 10, and a
+  `PartDesign::LinearPattern` of it along Sketch005's `H_Axis` (3 instances, extent 28), its body
+  placed at y = 40 so it touches no other body (a pattern cuts every body in its way, and the
+  import refuses one that changes another body). The chips are `list` "Features" ›
   `[data-timeline-item="chip"]`, read by `aria-label` in order: Sketch, Pad, "Sketch001 plane"
-  (the offset plane), Sketch001, Pocket, Sketch002, Pad001, Fillet, Sketch003, Pad002,
-  "Remove Plate", "Import Plate". The notices are "…: 3 of 3 shapes, 2 with their history and
-  1 as a body without history." and the "Taken from the file's own shapes, without their whole
-  history: Plate, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. …"
-  line; no chip may end with `data-feature-status="error"` (the project's kernel recomputes the
-  fillet from the references the import's kernel gave). When S7 maps holes, give Plate another
-  unmapped feature (a `PartDesign::Thickness`) so the "Taken from" notice stays covered. The
+  (the offset plane), Sketch001, Pocket, Sketch002, Pad001, Fillet, Sketch003, Pad002, Sketch004,
+  Pad003, "Sketch005 plane", Sketch005, Pocket003, LinearPattern, "Remove Plate", "Import Plate".
+  The notices are "…: 4 of 4 shapes, 3 with their history and 1 as a body without history." and
+  the "Taken from the file's own shapes, without their whole history: Plate, because it has a
+  feature Extrudo doesn't rebuild from FreeCAD files yet. …" line; no chip may end with
+  `data-feature-status="error"` (the project's kernel recomputes the fillet from the references
+  the import's kernel gave, and the pattern along the drawn axis line). The
   shapes test's file (`shapesFile()`) has a body too: its pad is refused (`value`), so that
   import also shows a "Taken from the file's own shapes" line.
 

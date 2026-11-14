@@ -419,6 +419,50 @@ base's face order (the lower `FaceN`), the second with `FlipDirection`; the
 authored fixtures show both, and a twin with the other face differs only in
 its centre of mass (ADR-0144's S6 amendment).
 
+**Transforms** (`Transformed`: LinearPattern, PolarPattern, Mirrored,
+MultiTransform; ADR-0144's S7 amendment):
+
+| Property | Value element | Meaning |
+|---|---|---|
+| `Originals` | `LinkList` | The features whose tools are repeated, each added or cut as it was |
+| `TransformMode` | `Integer` (1.0+) | 0 Features, 1 Whole shape (the whole body so far) |
+| `Direction`, `Direction2` (Linear), `Axis` (Polar), `MirrorPlane` (Mirrored) | `LinkSub` | A sketch with `H_Axis`, `V_Axis`, `N_Axis`, `AxisN` (the N-th construction line from 0) or `EdgeN` (its N-th curve from 1); an origin axis or plane; a datum line or plane; or `EdgeN` / `FaceN` of a feature's stored shape. A mirror in a sketch's `H_Axis` is in the plane through that axis and the sketch's normal (so its normal is the sketch's y), `V_Axis` likewise, `N_Axis` or the whole sketch the sketch's own plane |
+| `Reversed`, `Reversed2` | `Bool` | Step (or turn) the other way |
+| `Occurrences`, `Occurrences2` | `Integer` | Instances, the original counted; `Occurrences2` is 1 without a second direction |
+| `Mode`, `Mode2` | `Integer` (1.0+) | 0 Extent: `Length` (mm; Polar: `Angle`, degrees) from the first instance to the last; 1 Spacing: `Offset` between neighbours. A file without `Mode` is Extent |
+| `Spacings`, `Spacings2` | `FloatList` (1.1) | One entry per gap: −1 (and 0, which 1.1 writes for a second direction) for the pattern's spacing, a length for a gap of its own |
+| `SpacingPattern`, `SpacingPattern2` | `FloatList` (1.1) | A repeating list of gaps; zeros when unused |
+| `Transformations` (MultiTransform) | `LinkList` | Its steps, applied in order, each multiplying the instances. The steps are members of the body without a `BaseFeature` and outside the chain; their `Originals` are empty |
+
+FreeCAD steps along the reference line's own direction: a sketch axis's (the
+sketch frame's x, y or normal), a sketch line's start to end, an origin axis's,
+and an edge's **curve** direction, whatever the edge's orientation in the shape
+(the fixtures `linear_edge` and `linear_edge_y`: reversed edges, stepped along
++x and +y). A polar pattern turns right-handed about that direction. A whole
+turn of 360° is spread into `Occurrences` equal steps (the last doesn't land
+on the first); anything less into `Occurrences` − 1.
+
+A `FloatList` with values is written to an archive entry of its own named by
+the element's `file` attribute (`<FloatList file="Spacings"/>`; `file=""` for
+an empty list): a little-endian 32-bit count, then that many little-endian
+64-bit floats (seen in a library file of 1.1 and in our fixtures).
+
+**Hole** (`Hole`, sketch-based):
+
+| Property | Value element | Meaning |
+|---|---|---|
+| `Profile` | `LinkSub` | The sketch: a hole at the centre of each drawn circle and arc, and each drawn point with OnPoints |
+| `BaseProfileType` | `Integer` (1.0+) | Bits: 1 OnPoints, 2 OnCircles, 4 OnArcs; a file without it drills at circles and arcs |
+| `Diameter` | `Float` | mm: **the hole's diameter as drilled**, also for a hole sized from a thread or screw table (the tap drill for a threaded hole, the clearance for one that isn't). The tables changed between versions; the stored number is what counts |
+| `DepthType` | `Integer` | 0 Dimension (`Depth`), 1 ThroughAll; later versions add the up-to methods |
+| `Depth` | `Float` | mm, from the sketch plane to the end of the full diameter (also with a counterbore); with `DrillForDepth` (0.21+) to the drill point's tip. A through hole stores the length FreeCAD computed |
+| `DrillPoint`, `DrillPointAngle` | `Integer`, `Float` | 0 Flat, 1 Angled (the full angle, degrees) |
+| `HoleCutType` | `Integer` | 1.0+ writes a custom enumeration with its names (None, Counterbore, Countersink, Counterdrill, then screw standards); older files a bare index into the list of their version, of which only 0 None, 1 Counterbore and 2 Countersink are the same in every version |
+| `HoleCutDiameter`, `HoleCutDepth`, `HoleCutCountersinkAngle` | `Float` | The counterbore's diameter and depth (from the plane); the countersink's diameter at the plane and full angle (the cone runs down to `Diameter`; `HoleCutDepth` is not used for it). Stored also when a table filled them |
+| `Threaded`, `ModelThread` (0.18: `ModelActualThread`) | `Bool` | A thread wanted, and modelled as geometry |
+| `Tapered`, `TaperedAngle` | `Bool`, `Float` | A tapered (pipe-thread) hole |
+| `Reversed` | `Bool` | Drill along the sketch's normal (FreeCAD drills against it) |
+
 ## Not read yet
 
 - Sketches: external geometry (`ExternalGeometry`, `ExternalGeo`), `MapMode`
@@ -429,9 +473,13 @@ its centre of mass (ADR-0144's S6 amendment).
 - Link arrays (`ElementCount`, `PlacementList`, `LinkElement`s) and links to
   other documents: one instance or a problem.
 - FreeCAD's binary shape form.
-- PartDesign features other than Pad, Pocket, Revolution, Groove, Fillet and
-  Chamfer, and of those the up-to methods, tapers, custom directions and axes
-  other than the sketch's, its lines and an origin axis, and `UseAllEdges`
-  (they are refused with a reason).
+- PartDesign features other than Pad, Pocket, Revolution, Groove, Fillet,
+  Chamfer, LinearPattern, PolarPattern, Mirrored, MultiTransform and Hole, and
+  of those the up-to methods, tapers, custom directions and axes other than
+  the sketch's, its lines and an origin axis, `UseAllEdges`, datum lines and
+  planes as a pattern's reference, Whole shape mode, gaps of their own, left-out
+  positions, MultiTransform chains other than linear∘linear and mirror∘mirror,
+  counterdrilled, tapered and modelled-thread holes (they are refused with a
+  reason).
 - `ObjectDeps`, `Touched`/`Invalid` beyond the flag, the recompute log, the
   camera.
