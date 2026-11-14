@@ -1697,7 +1697,10 @@ same rotation.
   are reported per body (`BodyHistory.upToTries`) and per feature
   (`MappedFeature.upTo`: method, target, the try that held). The fixtures hold
   at the first try: the pad on the body, the pocket on the first wall's far
-  face, the pad up to the last face on the third wall's far face. Read as up to
+  face, the pad up to the last face on the third wall's far face. **The face
+  the importer picks is a fixed face in Extrudo:** the extrude goes up to that
+  face (or that body) from then on and doesn't choose again when the model
+  changes, where FreeCAD would. Read as up to
   the first face, the "last" fixture holds at the fourth try, on the third
   wall's near face: the solid up to it is the same solid, the walls filling the
   rest.
@@ -1815,8 +1818,9 @@ a sketch names (at most `MAX_EXTERNAL_PER_SKETCH` = 64 per sketch and
   curve must be where it is drawn (the same kind, ends in order, centre and
   radius, within 1e-6 mm + 1e-9 of the distance from the origin: S4's
   tolerance for what may move). A line the kernel projects the other way round
-  is drawn its way at the next try; anything else elsewhere, another kind or
-  lost stays out at the next try (at most two tries more,
+  is drawn its way at the next try (turned back once if the next report
+  disagrees, then left out); anything else elsewhere, another kind or lost
+  stays out at the next try (at most three tries more,
   `MAX_PROJECTION_REPEATS`). So a projection never costs a sketch: the worst
   case is today's outcome. A report missing or not a sketch's is a kernel
   failure.
@@ -1842,7 +1846,7 @@ kernel: the constraint stays out and the sketch is as before.
 | Up-to tries per feature | 4 (`MAX_UP_TO_TRIES`) | the targets past it are not tried |
 | Datums per import | 200 (`MAX_DATUMS`) | the feature needing one more stops with `limit` |
 | External curves projected per sketch / per import | 64 / 1,000 | the rest stay out (`external`), as before S9 |
-| Projection tries per feature | 2 more (`MAX_PROJECTION_REPEATS`) | — |
+| Projection tries per feature | 3 more (`MAX_PROJECTION_REPEATS`) | — |
 | Feature reports per rebuild | 64 (`MAX_REBUILD_REPORTS`) | — |
 
 Refused before any kernel work: an offset past 10 km or not finite (`value`),
@@ -1867,7 +1871,7 @@ datums 0.86 s, 51 datums 2.1 s, **200 datums (the cap) 9.7 s**, and the 201st
 stops with `limit`. An up-to feature costs at most four tries, each one
 rebuild (the library's slowest try sequence, three tries, adds under 0.3 s).
 A projection costs no extra kernel call when it holds (the sketch's report
-comes with the feature's rebuild); the worst case is two more tries of the
+comes with the feature's rebuild); the worst case is three more tries of the
 feature. The import's time and kernel budgets (S3, S5) stay the judges of the
 whole.
 
@@ -1882,8 +1886,8 @@ new reason `datum` reads "a datum line or plane didn't come in where the file
 has it", and one new sentence when datums or sketch planes came in fixed: "A
 datum line or plane came in fixed where the file has it: it doesn't follow
 what it was attached to in FreeCAD when the model changes." (plural: "2 datum
-lines and planes and the plane of a sketch on a tilted face came in fixed
-where the file has them: they don't follow …").
+lines and planes and the plane of a tilted sketch came in fixed where the
+file has them: they don't follow …"; "the planes of *n* tilted sketches").
 
 ### The library (60 files, `history-corpus.test.ts`)
 
@@ -1924,14 +1928,25 @@ where the file has them: they don't follow …").
   sketches' lines 6, ShapeBinders' edges 12, Part features 3. In the bodies the
   walk reaches, 17 sketches have links: their constraints name 27 external
   curves, **7 came in as projections and 9 constraints through them** (a
-  fillet's, two pads' and four pockets' edges), 25 constraints stay out:
-  ShapeBinders (9 curves, S12's), a vertex (the matcher describes none), and 11
-  curves of pads', pockets' and MultiTransforms' edges and one sketch line in
-  files from before 1.0, which store no projection: the importer projects the
-  stored edge itself only for a line or a circle whose axis is the sketch's
-  normal, and an arc or a curve the kernel projects elsewhere stays out (each
-  case was not traced one by one). Two of those edges have no counterpart on the
-  rebuilt body (the `none` 2 below); none is ambiguous.
+  fillet's, two pads' and four pockets' edges), 25 constraints stay out. The 20
+  curves that stay out, by cause (`SketchOutcome.external.out`, summed by the
+  library test):
+
+  | Cause | Curves |
+  |---|---|
+  | The source is outside the body's walked features (ShapeBinders, S12's) | 9 |
+  | An arc (a part of a circle; files from before 1.0, so no stored projection, and the importer projects only whole circles) | 5 |
+  | No counterpart on the rebuilt body (`none`) | 2 |
+  | A curve the importer doesn't project (not a line, nor a circle square to the sketch) | 2 |
+  | A line of another sketch that didn't come in with this body | 1 |
+  | A vertex (the matcher describes none) | 1 |
+
+  None was reported elsewhere by the kernel, none past a cap, none ambiguous.
+  The arcs are the one cause a small change would cover: an arc of a circle
+  whose axis is the sketch's normal, planned from the stored edge's centre,
+  radius and two ends, drawn as an Extrudo arc counter-clockwise, and checked
+  against the kernel's `arc` like a line (centre, start and end, or the two
+  ends the other way round); left for the owner to decide.
 - **Bodies (35): 25 with their history** (21 before; 21 whole and 4 with part
   of it), **6 from the file's shape** (10 before), 4 empty left out. **266
   `import`s** (270 before); the 348 shapes that aren't bodies come in exactly as
@@ -1958,6 +1973,68 @@ where the file has them: they don't follow …").
   step (S8's), five features of kinds not mapped and four bodies' own chains.
 - **A plain distance in place of an up-to extent** would save no feature: all
   six come in with their meaning.
+
+### Review round (2026-11-14)
+
+Two reviews of the S9 diff found nine things. The rule for all: a feature that
+doesn't hold leaves nothing behind (design, the walk's maps, counters); a
+reference is found on the body as it is before the feature; a relation the
+report calls kept is the file's. Tests: `reference.test.ts`'s "the fix round"
+and the hostile tests' turned-projection cases.
+
+1. **Found once, before the first try.** A failed try's rebuild is the
+   kernel's last finished recompute and still holds the cancelled feature
+   (`restartsAtHold` can't see it: there was no restart), so a later try that
+   matched again described the wrong body: `external_corner`, with a kernel
+   that reports the projected lines turned round once, found 21 edges and 9
+   faces (the notch already cut) and lost both projections. Chosen: everything
+   a feature's tries find on the body (stored descriptions, matches and their
+   references) is found once, on the body before the first try, and reused by
+   every later try (`TransformContext.found`, the walk's `featureFound`, kept
+   for one feature); references persist, so a later try names what the first
+   found. Rebuilding the design as it was before each retry would cost a
+   rebuild per try and gain nothing. Kernel-call stops are never remembered.
+   Now that case ends with both projections in, every constraint mapped, no
+   restart; with the cache turned off the test fails.
+2. **Inside the try, from a fresh mapper.** `walkUpTo` resolved a named up-to
+   target before the tries, so a datum plane's construction was made outside
+   the feature's transaction and stayed (with its entry in the datums map,
+   unchecked) when the feature didn't hold; and one mapper's checks,
+   constructions and tally built up over the tries, so a second try asked for
+   the report of a construction the first had taken back (nonsense, a kernel
+   stop). Each try now has its own `TransformMapper`, and a named face or plane
+   is found inside it; "first" and "last" targets are still found before the
+   tries (they add nothing to the design). Tests: the up-to-datum pad and
+   pocket with an offset that doesn't fit leave no construction of the datum;
+   the tilted pad read as up to the first face stops with `differs`, no
+   restart.
+3. **A sketch on its datum plane only when its frame lies in it** (normals
+   within 1e-9 as a sine, its origin within 1e-7 mm + 1e-9 of its distance from
+   the origin of the plane), else on the plane through its own frame. The
+   tilted sketch moved 2 mm along its normal is tried on its own frame's plane;
+   its pad no longer fits its stored shape and doesn't hold.
+4. **A datum refused for a sketch's plane** (outside the body, past
+   `MAX_DATUMS`, an unreadable placement …) no longer stops the feature: the
+   plane through the sketch's own frame takes its place, for every refusal that
+   isn't a kernel call's. Test: the sketch on a datum outside the body comes in
+   on a `points` plane and its pad holds.
+5. **An offset plane is kept only on an origin plane of the feature's own
+   body** (the origin's `OriginFeatures`), not on any `App::Plane` with that
+   role; another body's origin plane gives a fixed plane (tested).
+6. **Counters:** projections count against `MAX_EXTERNAL_PER_FILE` as they are
+   kept (a held feature's sketch), never for a try taken back; `upToTries`
+   counts tries with another target, not a try repeated for its projections; a
+   datum plane as an up-to target reports `target: 'datum'` (the library's
+   keys: `face → datum`).
+7. **The turned-projection test** now asserts the projection is in and every
+   constraint mapped (it passed either way before).
+8. **The notice** says "the plane of a tilted sketch" / "the planes of *n*
+   tilted sketches": the library's two are not on faces.
+9. **The external curves that stay out have a cause** (the table above).
+
+The library's numbers are unchanged by the round: 25 bodies with their
+history, 6 from the file's shape, 266 imports, 126 references found, 6 of 6
+up-to features, 0 restarts; median 0.1 s a file, slowest 14.4 s.
 
 ### What S10 to S13 inherit
 

@@ -297,56 +297,65 @@ describe('a kernel that lies, throws or hangs where S9 asks it something new', (
     expect(r.body?.stop?.reason).toBe('kernel');
   });
 
-  it('a projection the kernel reports turned round: the line is drawn its way and the constraint holds', async () => {
-    let turned = 0;
-    const r = await run(
-      'external_edge_distance',
-      {},
-      {
-        kernel: lie({
-          rebuild: async (...a) => {
-            const got = await base.rebuild(...a);
-            if (!got.reports) return got;
-            const reports = Object.fromEntries(
-              Object.entries(got.reports).map(([k, v]) => {
-                const p = (
-                  v as {
-                    projections?: Record<
-                      string,
-                      { curves: Record<string, { type: string; a: number[]; b: number[] }> }
-                    >;
-                  }
-                ).projections;
-                if (!p || turned > 0) return [k, v];
-                turned++;
-                const next = Object.fromEntries(
-                  Object.entries(p).map(([pid, rec]) => [
-                    pid,
-                    {
-                      ...rec,
-                      curves: Object.fromEntries(
-                        Object.entries(rec.curves).map(([key, c]) => [
-                          key,
-                          c.type === 'line' ? { ...c, a: c.b, b: c.a } : c,
-                        ]),
-                      ),
-                    },
-                  ]),
-                );
-                return [k, { ...(v as object), projections: next }];
-              }),
-            );
-            return { ...got, reports };
-          },
-        }),
+  /** A kernel whose first sketch report with projections has every projected line turned round. */
+  const turningOnce = () => {
+    const seen = { turned: 0, describes: [] as number[] };
+    const kernel = lie({
+      describeBodies: async (b, n) => {
+        const out = await base.describeBodies(b, n);
+        seen.describes.push(Object.values(out).reduce((k, d) => k + d.edgeCount, 0));
+        return out;
       },
-    );
-    // The first try saw it turned and drew it so; the real kernel then disagrees, and it stays out.
-    expect(turned).toBe(1);
-    expect(r.body?.stop).toBeUndefined();
-    const s = r.body?.sketches.find((x) => x.sketch === 'PocketSketch');
-    expect((s?.external?.projected ?? 0) + (s?.constraints.leftOut.external ?? 0)).toBeGreaterThan(
-      0,
-    );
-  });
+      rebuild: async (...a) => {
+        const got = await base.rebuild(...a);
+        if (!got.reports || seen.turned > 0) return got;
+        const reports = Object.fromEntries(
+          Object.entries(got.reports).map(([k, v]) => {
+            type Curves = Record<string, { type: string; a: number[]; b: number[] }>;
+            const p = (v as { projections?: Record<string, { curves: Curves }> }).projections;
+            if (!p) return [k, v];
+            seen.turned++;
+            const next = Object.fromEntries(
+              Object.entries(p).map(([pid, rec]) => [
+                pid,
+                {
+                  ...rec,
+                  curves: Object.fromEntries(
+                    Object.entries(rec.curves).map(([key, c]) => [
+                      key,
+                      c.type === 'line' ? { ...c, a: c.b, b: c.a } : c,
+                    ]),
+                  ),
+                },
+              ]),
+            );
+            return [k, { ...(v as object), projections: next }];
+          }),
+        );
+        return { ...got, reports };
+      },
+    });
+    return { kernel, seen };
+  };
+
+  it.each([
+    ['external_edge_distance', 'PocketSketch', 1],
+    ['external_corner', 'NotchSketch', 2],
+  ])(
+    '%s: a projection the kernel reports turned round once is drawn its way, then back, and its constraints hold',
+    async (name, sketch, projected) => {
+      const before = base.restarts;
+      const { kernel, seen } = turningOnce();
+      const r = await run(name, {}, { kernel });
+      expect(seen.turned).toBe(1);
+      expect(r.body?.stop).toBeUndefined();
+      expect(base.restarts).toBe(before);
+      const s = r.body?.sketches.find((x) => x.sketch === sketch);
+      expect(s?.external).toMatchObject({ projected, out: {} });
+      expect(s?.constraints.mapped).toBe(s?.constraints.total);
+      // Every try matched on the body before the feature: the notch's edges were found once.
+      expect(new Set(seen.describes).size).toBeLessThanOrEqual(1);
+    },
+    60_000,
+  );
 });

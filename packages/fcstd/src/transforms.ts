@@ -172,7 +172,50 @@ export interface TransformContext {
   readonly maxDatums?: number;
   /** External links projected so far in this import, and the most it may project (S9). */
   readonly externalBudget?: { used: number; readonly max: number };
+  /**
+   * What the feature being walked found so far, by `<object>|<kind>|<index>`
+   * (S9's fix round): stored descriptions and matches on the body as it was
+   * before the feature's first try, which every later try reuses. A failed
+   * try's rebuild is the kernel's last recompute and still holds the
+   * cancelled feature, so nothing may be matched again after it.
+   */
+  readonly found?: Map<string, Found>;
 }
+
+/** One lookup of a feature's tries (`TransformContext.found`). */
+export type Found =
+  | {
+      readonly stored:
+        | { stored: ShapeElements; element: ElementEdge | ElementFace }
+        | TransformStop;
+    }
+  | {
+      readonly match: GeomRef | TransformStop;
+      readonly tally: { found: number; none: number; several: number; furthest: number };
+    };
+
+/**
+ * Why a named external curve didn't come in as a projection (S9's fix round):
+ * reported elsewhere by the kernel, past a cap, its link not found, a vertex,
+ * a source outside the body's walked features (another body, a ShapeBinder, a
+ * Part feature, a later feature), a sketch line that didn't come in, an arc, a
+ * curve the importer doesn't project, a stored shape that can't be read, or
+ * no or several counterparts on the rebuilt body. `unused`: projected, but no
+ * constraint naming it was kept.
+ */
+export type ExternalCause =
+  | 'elsewhere'
+  | 'limit'
+  | 'link'
+  | 'vertex'
+  | 'source'
+  | 'sketch-line'
+  | 'arc'
+  | 'kind'
+  | 'stored'
+  | 'none'
+  | 'several'
+  | 'unused';
 
 /** The most external links of one sketch that are projected (S9): the rest stay out as before. */
 export const MAX_EXTERNAL_PER_SKETCH = 64;
@@ -192,6 +235,17 @@ export interface DatumMade {
   /** The construction features it made (none for an origin axis or plane). */
   readonly features: readonly string[];
 }
+
+/** Whether `name` is an origin axis or plane of `body`'s own origin. */
+function ownOriginFeature(doc: FcDocument, body: FcObject, name: string): boolean {
+  const v = body.properties.Origin?.value;
+  const origin = v?.kind === 'link' && v.object ? doc.byName.get(v.object) : undefined;
+  const list = origin?.properties.OriginFeatures?.value;
+  return list?.kind === 'linkList' && list.objects.includes(name);
+}
+
+/** Stops that are a kernel call's outcome, never remembered for a later try. */
+const CALL_STOPS: ReadonlySet<string> = new Set(['kernel', 'time', 'restarts', 'import-time']);
 
 /** The most datums one import brings in: past it a feature that needs one more is refused (`limit`). */
 export const MAX_DATUMS = 200;
@@ -276,8 +330,22 @@ export class TransformMapper {
     return { origin: a, direction: unit(d) };
   }
 
-  /** The element's stored description, described by the import kernel. */
+  /** The element's stored description, described once per feature (`found`). */
   async #stored(
+    object: string,
+    kind: 'edge' | 'face',
+    index: number,
+    name: string,
+  ): Promise<{ stored: ShapeElements; element: ElementEdge | ElementFace } | TransformStop> {
+    const key = `${object}|${kind}|${index}|stored`;
+    const known = this.#c.found?.get(key);
+    if (known && 'stored' in known) return known.stored;
+    const got = await this.#describeStored(object, kind, index, name);
+    if (!('stop' in got) || !CALL_STOPS.has(got.stop)) this.#c.found?.set(key, { stored: got });
+    return got;
+  }
+
+  async #describeStored(
     object: string,
     kind: 'edge' | 'face',
     index: number,
@@ -331,14 +399,50 @@ export class TransformMapper {
     return { stored: s, element };
   }
 
-  /** Finds a stored edge or face on the rebuilt body and returns its persistent reference. */
+  /**
+   * Finds a stored edge or face on the rebuilt body and returns its persistent
+   * reference: on the body before the feature, once per feature (`found`, by
+   * `key`), so a later try reuses what the first found.
+   */
   async #match(
+    element: ElementEdge | ElementFace,
+    kind: 'edge' | 'face',
+    what: string,
+    key: string,
+  ): Promise<GeomRef | TransformStop> {
+    this.#matched = true;
+    const k = `${key}|match`;
+    const known = this.#c.found?.get(k);
+    const before = { ...this.tally };
+    if (known && 'match' in known) {
+      this.tally.found += known.tally.found;
+      this.tally.none += known.tally.none;
+      this.tally.several += known.tally.several;
+      this.tally.furthest = Math.max(this.tally.furthest, known.tally.furthest);
+      return 'stop' in known.match && known.match.references
+        ? { ...known.match, references: { ...this.tally } }
+        : known.match;
+    }
+    const got = await this.#findOnBody(element, kind, what);
+    if (!('stop' in got) || !CALL_STOPS.has(got.stop))
+      this.#c.found?.set(k, {
+        match: got,
+        tally: {
+          found: this.tally.found - before.found,
+          none: this.tally.none - before.none,
+          several: this.tally.several - before.several,
+          furthest: this.tally.furthest,
+        },
+      });
+    return got;
+  }
+
+  async #findOnBody(
     element: ElementEdge | ElementFace,
     kind: 'edge' | 'face',
     what: string,
   ): Promise<GeomRef | TransformStop> {
     const { budget, mine, design } = this.#c;
-    this.#matched = true;
     const point =
       kind === 'edge' ? (element as ElementEdge).midpoint : (element as ElementFace).centroid;
     const cell = cellFor([point]);
@@ -569,6 +673,7 @@ export class TransformMapper {
         e,
         'edge',
         `its ${what} ${cleanName(reference.element.name, 'nothing')}`,
+        `${reference.object}|edge|${reference.element.index}`,
       );
       if ('stop' in ref) return ref;
       return { ref, along: canonical(line.direction), fc: line.direction };
@@ -617,6 +722,7 @@ export class TransformMapper {
         face,
         'face',
         `its mirror plane ${cleanName(reference.element.name, 'nothing')}`,
+        `${reference.object}|face|${reference.element.index}`,
       );
     }
     const f = this.#frame(reference.sketch);
@@ -677,7 +783,12 @@ export class TransformMapper {
     if ('stop' in found) return found;
     const face = found.element as ElementFace;
     if (!inRange(face.centroid) || !(face.area > 0)) return unsound(what);
-    return this.#match(face, 'face', `its ${what} ${cleanName(reference.element.name, 'nothing')}`);
+    return this.#match(
+      face,
+      'face',
+      `its ${what} ${cleanName(reference.element.name, 'nothing')}`,
+      `${reference.object}|face|${reference.element.index}`,
+    );
   }
 
   // ------------------------------------------------------------ datums (S9)
@@ -696,6 +807,24 @@ export class TransformMapper {
    * two or a plane through three. Each construction's report must give the
    * file's line or plane after the rebuild (`checks`).
    */
+  /**
+   * A datum's world line or plane from its stored placement (moved by its
+   * containers): its position and local Z, or why it can't be used. Nothing
+   * is made.
+   */
+  datumGeometry(o: FcObject, what: string): { origin: Vec3; z: Vec3 } | TransformStop {
+    if (o.unreadable?.includes('Placement'))
+      return { stop: 'transform-reference', detail: `its ${what}'s placement can't be read` };
+    if (o.properties.Placement?.value.kind !== 'placement')
+      return { stop: 'transform-reference', detail: `its ${what} has no placement` };
+    const g = sketchFrame(this.#c.doc, o).global;
+    if (!frameIsSound(g)) return unsound(what);
+    const origin = g.position as Vec3;
+    const z = rotate(g.rotation, [0, 0, 1]) as Vec3;
+    if (!sound(origin, z)) return unsound(what);
+    return { origin, z };
+  }
+
   async datum(
     object: string,
     want: 'line' | 'plane',
@@ -719,15 +848,9 @@ export class TransformMapper {
         stop: 'limit',
         detail: `the file brings in more than ${this.#c.maxDatums ?? MAX_DATUMS} datums`,
       };
-    if (o.unreadable?.includes('Placement')) return refuse(`its ${what}'s placement can't be read`);
-    if (o.properties.Placement?.value.kind !== 'placement')
-      return refuse(`its ${what} has no placement`);
-    const g = sketchFrame(doc, o).global;
-    if (!frameIsSound(g)) return unsound(what);
-    const q = g.rotation;
-    const origin = g.position as Vec3;
-    const z = rotate(q, [0, 0, 1]) as Vec3;
-    if (!sound(origin, z)) return unsound(what);
+    const geometry = this.datumGeometry(o, what);
+    if ('stop' in geometry) return geometry;
+    const { origin, z } = geometry;
     const mode = mapModeOf(o) ?? 'unknown';
     const supports = supportsOf(o);
     const name = cleanName(o.label, o.name);
@@ -799,7 +922,12 @@ export class TransformMapper {
               norm(sub(ends[1], ends[0])) > 1e-9 &&
               collinear({ origin: ends[0], direction: unit(sub(ends[1], ends[0])) }, line)
             ) {
-              const ref = await this.#match(e, 'edge', `its ${what}'s edge`);
+              const ref = await this.#match(
+                e,
+                'edge',
+                `its ${what}'s edge`,
+                `${target.name}|edge|${Number(edge[1]) - 1}`,
+              );
               if ('stop' in ref) return ref;
               const id = this.#construct(
                 'axisAlongEdge',
@@ -831,8 +959,9 @@ export class TransformMapper {
       (supports[0] as { sub: string }).sub === ''
     ) {
       const base = doc.byName.get((supports[0] as { object: string }).object);
+      // An origin plane of the feature's own body, never another body's.
       const p =
-        base?.type === 'App::Plane'
+        base?.type === 'App::Plane' && ownOriginFeature(doc, body, base.name)
           ? ORIGIN_PLANES.find((x) => {
               const role = base.properties.Role?.value;
               const r = role?.kind === 'string' ? role.value : base.name;
@@ -882,14 +1011,26 @@ export class TransformMapper {
       (supports[0] as { sub: string }).sub === '' &&
       mapModeOf(o) === 'FlatFace'
     ) {
-      const d = await this.datum(support.name, 'plane', 'sketch plane');
-      if ('stop' in d) return d;
-      return {
-        plane: d.ref,
-        kind: 'datum',
-        point: (d.plane as Plane).origin,
-        normal: d.normal ?? n,
-      };
+      // The datum's plane only when the sketch's own frame lies in it (an attachment offset
+      // along the normal moves the sketch off it); else, as for any refusal of the datum that
+      // isn't a kernel call's, the plane through the sketch's own frame.
+      const geometry = this.datumGeometry(support, 'sketch plane');
+      const inPlane =
+        !('stop' in geometry) &&
+        norm(cross(geometry.z, n)) <= PARALLEL &&
+        Math.abs(dot(sub(g.position as Vec3, geometry.origin), geometry.z)) <=
+          onTolerance(g.position as Vec3);
+      if (inPlane) {
+        const d = await this.datum(support.name, 'plane', 'sketch plane');
+        if ('stop' in d && CALL_STOPS.has(d.stop)) return d;
+        if (!('stop' in d))
+          return {
+            plane: d.ref,
+            kind: 'datum',
+            point: (d.plane as Plane).origin,
+            normal: d.normal ?? n,
+          };
+      }
     }
     if (!sound(g.position as Vec3, n)) return unsound('sketch plane');
     const ref = this.#planeOf(
@@ -916,32 +1057,54 @@ export class TransformMapper {
     sketch: string,
     reversed: ReadonlySet<number>,
     off: ReadonlySet<number>,
-  ): Promise<{ plans: Map<number, ExternalPlan>; links: number } | TransformStop> {
+  ): Promise<
+    | { plans: Map<number, ExternalPlan>; links: number; causes: Map<number, ExternalCause> }
+    | TransformStop
+  > {
     const plans = new Map<number, ExternalPlan>();
+    const causes = new Map<number, ExternalCause>();
     const { doc } = this.#c;
     const decoded = this.#c.sketchOf(sketch);
     const ext = decoded?.external;
-    if (!decoded || !ext || this.#c.sketches.has(sketch)) return { plans, links: 0 };
+    if (!decoded || !ext || this.#c.sketches.has(sketch)) return { plans, links: 0, causes };
     const o = doc.byName.get(sketch) as FcObject;
     const f = this.#frame(sketch);
     const uv = (p: Vec3): Vec2 => [dot(sub(p, f.origin), f.x), dot(sub(p, f.origin), f.y)];
     const wanted = new Set<number>();
     for (const c of decoded.constraints.slice(0, MAX_CANDIDATES))
       for (const g of c ? [c.first, c.second, c.third] : [])
-        if (g <= -3 && g !== GEO_UNDEF && g > -3 - MAX_SKETCH_GEOMETRY && !off.has(g))
-          wanted.add(g);
+        if (g <= -3 && g !== GEO_UNDEF && g > -3 - MAX_SKETCH_GEOMETRY) wanted.add(g);
+    // Counted as the walk keeps projections (`used`), and here as planned for this try.
     const budget = this.#c.externalBudget;
-    for (const g of [...wanted].slice(0, MAX_EXTERNAL_PER_SKETCH)) {
-      if (budget && budget.used >= budget.max) break;
+    let planned = 0;
+    let n = 0;
+    for (const g of wanted) {
+      if (off.has(g)) {
+        causes.set(g, 'elsewhere');
+        continue;
+      }
+      if (++n > MAX_EXTERNAL_PER_SKETCH || (budget && budget.used + planned >= budget.max)) {
+        causes.set(g, 'limit');
+        continue;
+      }
       const k = -g - 3;
       const li = externalLinkOf(ext, k);
       const link = li === undefined ? undefined : ext.links[li];
-      if (!link) continue;
       const stored = ext.stored?.[k]?.geometry;
-      if (ext.stored && !stored) continue;
+      if (!link || (ext.stored && !stored)) {
+        causes.set(g, 'link');
+        continue;
+      }
       const target = doc.byName.get(link.object);
+      if (/^Vertex\d/.test(link.sub)) {
+        causes.set(g, 'vertex');
+        continue;
+      }
       const edge = /^Edge([1-9]\d{0,8})$/.exec(link.sub);
-      if (!target || !edge) continue;
+      if (!target || !edge) {
+        causes.set(g, 'source');
+        continue;
+      }
       let curve: FcGeometry | undefined = stored;
       let ref: GeomRef | undefined;
       let key = 'edge';
@@ -950,7 +1113,10 @@ export class TransformMapper {
         const index = Number(edge[1]) - 1;
         const drawn = this.#drawn({ kind: 'sketch-line', sketch: target.name, geometry: index });
         const l = this.#sketchLine(target.name, index);
-        if (!drawn || 'stop' in l || target.name === o.name) continue;
+        if (!drawn || 'stop' in l || target.name === o.name) {
+          causes.set(g, 'sketch-line');
+          continue;
+        }
         ref = drawn;
         key = 'curve';
         const end = add(l.origin, scale(l.direction, this.#lineLength(target.name, index)));
@@ -962,19 +1128,21 @@ export class TransformMapper {
           internal: 0,
         };
       } else {
-        if (!this.#c.walked.has(target.name)) continue;
+        if (!this.#c.walked.has(target.name)) {
+          causes.set(g, 'source');
+          continue;
+        }
         const found = await this.#stored(target.name, 'edge', Number(edge[1]) - 1, link.sub);
         if ('stop' in found) {
-          if (
-            found.stop === 'kernel' ||
-            found.stop === 'time' ||
-            found.stop === 'restarts' ||
-            found.stop === 'import-time'
-          )
-            return found;
+          if (CALL_STOPS.has(found.stop)) return found;
+          causes.set(g, 'stored');
           continue;
         }
         const e = found.element as ElementEdge;
+        const arc =
+          e.type === 'circle' &&
+          e.ends?.length === 2 &&
+          norm(sub(e.ends[1] as Vec3, e.ends[0] as Vec3)) > 1e-9;
         if (!curve) {
           // Before 1.0 the file stores no projection: the stored edge projected along the normal.
           if (e.type === 'line' && e.ends?.length === 2)
@@ -987,6 +1155,7 @@ export class TransformMapper {
             };
           else if (
             e.type === 'circle' &&
+            !arc &&
             e.centre &&
             e.radius !== undefined &&
             e.direction &&
@@ -1002,29 +1171,41 @@ export class TransformMapper {
               internal: 0,
             };
         }
-        if (!curve) continue;
-        const r = await this.#match(e, 'edge', `its projected ${cleanName(link.sub, 'edge')}`);
+        if (!curve) {
+          causes.set(g, arc ? 'arc' : 'kind');
+          continue;
+        }
+        const r = await this.#match(
+          e,
+          'edge',
+          `its projected ${cleanName(link.sub, 'edge')}`,
+          `${target.name}|edge|${Number(edge[1]) - 1}`,
+        );
         if ('stop' in r) {
-          if (
-            r.stop === 'kernel' ||
-            r.stop === 'time' ||
-            r.stop === 'restarts' ||
-            r.stop === 'import-time'
-          )
-            return r;
+          if (CALL_STOPS.has(r.stop)) return r;
+          causes.set(
+            g,
+            /counterparts/.test(r.detail) ? 'several' : r.stop === 'reference' ? 'none' : 'stored',
+          );
           continue;
         }
         ref = r;
       }
-      if (curve.kind !== 'line' && curve.kind !== 'circle') continue;
+      if (curve.kind !== 'line' && curve.kind !== 'circle') {
+        causes.set(g, curve.kind === 'arc' ? 'arc' : 'kind');
+        continue;
+      }
       const finite = (
         curve.kind === 'line' ? [...curve.start, ...curve.end] : [...curve.center, curve.radius]
       ).every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_FEATURE_LENGTH);
-      if (!finite) continue;
-      if (budget) budget.used++;
+      if (!finite) {
+        causes.set(g, 'kind');
+        continue;
+      }
+      planned++;
       plans.set(g, { curve, ref, key, ...(reversed.has(g) ? { reversed: true } : {}) });
     }
-    return { plans, links: wanted.size };
+    return { plans, links: wanted.size, causes };
   }
 
   /** A sketch line's length (its ends' distance in the sketch). */

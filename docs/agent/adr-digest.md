@@ -5025,13 +5025,24 @@ sits on a plane, never the face. **Projections:** only external curves a constra
 (matcher, `own()`) or a line of a sketch of this body; the curve drawn where FreeCAD stored it (else projected from the
 stored edge), construction, registered by `addProjection` + `syncProjections` after `design.sketch` (the builder keeps
 no projections); **the sketch's report must put each curve where it is drawn** (1e-6 mm), a line reported the other way
-is redrawn its way, anything else stays out, at most two tries more (`MAX_PROJECTION_REPEATS`): a projection never
-costs a sketch. Report: `BodyHistory.upToTries`, `MappedFeature.upTo` / `.datums`, `SketchOutcome.plane` and
+is redrawn its way (turned back once if the next report disagrees, then out), anything else stays out, at most three
+tries more (`MAX_PROJECTION_REPEATS`): a projection never costs a sketch. **Fix round:** everything a feature's tries
+find on the body (stored descriptions, matches, references) is found once, before its first try, and reused by every
+later try (`TransformContext.found`, the walk's `featureFound`, reset per feature): a failed try's rebuild is the
+kernel's last recompute and still holds the cancelled feature, and `restartsAtHold` can't see that. **Each try has its
+own `TransformMapper`** (constructions, checks, tally); whatever adds to the design (a datum's construction, a named
+up-to target) is made inside the try's transaction; "first"/"last" targets are found before the tries. A sketch goes on
+its datum plane only when its own frame lies in it (the datum tolerances), else, and for any refusal of the datum that
+isn't a kernel call's, on the plane through its own frame. An offset plane is "kept" only on an origin plane of the
+feature's own body (`ownOriginFeature`). Counters: `externalBudget.used` counts projections kept, `upToTries` counts
+tries with another target (not projection repeats); an up-to datum reports `target: 'datum'`; `SketchOutcome.external.out`
+counts why named curves stayed out (`ExternalCause`). The notice says "the plane of a tilted sketch". Report: `BodyHistory.upToTries`, `MappedFeature.upTo` / `.datums`, `SketchOutcome.plane` and
 `.external`; the app's new sentence for fixed datums and sketch planes. Fixtures `reference-fixtures.ts` (28 FreeCAD
 1.1.4 parts, `make-reference-fixtures.py`, `REF_FIXTURES` in `reference-parts.ts`; the writer now writes a placement's
 angle and axis, which a reader takes first); tests `reference.test.ts`, `reference-hostile.test.ts`,
 `reference-limits.test.ts` (`BENCH=1`). `history-corpus.test.ts` keeps 25 bodies with history, 266 imports, 126
-references found, all 6 up-to features in, 5 steps, unless a change explains it.
+references found, all 6 up-to features in, 5 steps, unless a change explains it (the fix round's run: see the
+amendment).
 
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,

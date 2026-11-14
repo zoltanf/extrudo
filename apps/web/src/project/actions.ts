@@ -480,9 +480,9 @@ export function fcstdNotices(
           ? [`${fixedDatums} datum lines and planes`]
           : []),
       ...(fixedPlanes === 1
-        ? ['the plane of a sketch on a tilted face']
+        ? ['the plane of a tilted sketch']
         : fixedPlanes > 1
-          ? [`the planes of ${fixedPlanes} sketches on tilted faces`]
+          ? [`the planes of ${fixedPlanes} tilted sketches`]
           : []),
     ];
     const one = fixedDatums + fixedPlanes === 1;

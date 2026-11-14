@@ -204,7 +204,14 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       tiltedInFiles: 0,
       tilted: {} as Record<string, number>,
       externalLinks: {} as Record<string, number>,
-      external: { sketches: 0, named: 0, projected: 0, constraints: 0, leftOutExternal: 0 },
+      external: {
+        sketches: 0,
+        named: 0,
+        projected: 0,
+        constraints: 0,
+        leftOutExternal: 0,
+        out: {} as Record<string, number>,
+      },
     };
     const verdict = (x: { reason?: string }) =>
       x.reason === undefined
@@ -382,6 +389,8 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
             s9.external.named += sk.external.named;
             s9.external.projected += sk.external.projected;
             s9.external.constraints += sk.external.constraints;
+            for (const [why, k] of Object.entries(sk.external.out ?? {}))
+              bump(s9.external.out, why, k as number);
           }
           s9.external.leftOutExternal += sk.constraints.leftOut.external ?? 0;
         }

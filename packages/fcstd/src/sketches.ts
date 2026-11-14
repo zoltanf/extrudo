@@ -41,6 +41,7 @@ import {
   placeSketch,
   sketchFrame,
 } from './sketch-place';
+import type { ExternalCause } from './transforms';
 
 /** A constraint whose value FreeCAD computes from an expression (for S10). */
 export interface ExpressionBinding {
@@ -100,6 +101,8 @@ export interface SketchOutcome {
     readonly named: number;
     readonly projected: number;
     readonly constraints: number;
+    /** The named curves that didn't come in, by why (`ExternalCause`). */
+    readonly out: Readonly<Partial<Record<ExternalCause, number>>>;
   };
 }
 
@@ -134,19 +137,34 @@ export interface AddSketchOptions {
   readonly tilted?: GivenPlane;
   /** External geometry to project, by geometry index (S9); any other is left out. */
   readonly external?: ReadonlyMap<number, ExternalPlan>;
+  /** Why each named external curve not planned stays out (S9's fix round), for the report. */
+  readonly externalCauses?: ReadonlyMap<number, ExternalCause>;
 }
 
 /** The document's sketch objects, in document order. */
 /** S9's counts for a sketch with external links: the links its constraints name, projected, constraints through them. */
-function externalStats(decoded: DecodedSketch, mapped: SketchMapResult | undefined) {
+function externalStats(
+  decoded: DecodedSketch,
+  mapped: SketchMapResult | undefined,
+  causes: ReadonlyMap<number, ExternalCause> | undefined,
+) {
   const named = new Set<number>();
   for (const c of decoded.constraints)
     for (const g of c ? [c.first, c.second, c.third] : [])
       if (g <= -3 && g !== GEO_UNDEF) named.add(g);
+  const projected = new Set((mapped?.projected ?? []).map((p) => p.geo));
+  const out: Partial<Record<ExternalCause, number>> = {};
+  for (const g of named) {
+    if (projected.has(g)) continue;
+    // Not refused by the plan: it was drawn, and no constraint naming it was kept.
+    const why = causes?.get(g) ?? 'unused';
+    out[why] = (out[why] ?? 0) + 1;
+  }
   return {
     named: named.size,
-    projected: mapped?.projected.length ?? 0,
+    projected: projected.size,
     constraints: mapped?.throughExternal ?? 0,
+    out,
   };
 }
 
@@ -308,7 +326,9 @@ export function addSketch(
         names,
         types,
         mapped,
-        decoded.external ? { ...placed, external: externalStats(decoded, mapped) } : placed,
+        decoded.external
+          ? { ...placed, external: externalStats(decoded, mapped, options.externalCauses) }
+          : placed,
         undefined,
       ),
       lines: mapped?.lines ?? [],

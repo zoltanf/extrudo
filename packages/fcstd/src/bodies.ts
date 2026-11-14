@@ -77,6 +77,8 @@ import { type AddSketchResult, addSketch, type SketchOutcome } from './sketches'
 import {
   type DatumCheck,
   type DatumMade,
+  type ExternalCause,
+  type Found,
   MAX_EXTERNAL_PER_FILE,
   type Repeated,
   TransformMapper,
@@ -469,8 +471,12 @@ export function datumDisagreement(c: DatumCheck, report: unknown): string | 'non
   return undefined;
 }
 
-/** How many times a feature is tried again for its sketch's projections (S9): turned lines, then those still elsewhere left out. */
-export const MAX_PROJECTION_REPEATS = 2;
+/**
+ * How many times a feature is tried again for its sketch's projections (S9):
+ * a line drawn the way the report has it, turned back once if the next report
+ * disagrees, then left out; a curve elsewhere left out.
+ */
+export const MAX_PROJECTION_REPEATS = 3;
 /** How far (mm) a projected curve may be from where the sketch has it drawn, plus 1e-9 of its distance from the origin. */
 export const PROJECTION_TOLERANCE = 1e-6;
 
@@ -707,7 +713,13 @@ export async function importBodies(
   /** External links projected in this import (S9). */
   const externalBudget = { used: 0, max: options.maxExternal ?? MAX_EXTERNAL_PER_FILE };
   /** What the tries of the feature being walked learnt about its sketch's projections (S9). */
-  let projectionTry = { reversed: new Set<number>(), off: new Set<number>() };
+  let projectionTry = {
+    reversed: new Set<number>(),
+    off: new Set<number>(),
+    turned: new Map<number, number>(),
+  };
+  /** What the feature being walked found on the body before its first try (S9's fix round). */
+  let featureFound = new Map<string, Found>();
   /** The kernel's restarts when a feature last held: a dress-up describes that rebuild's bodies. */
   let restartsAtHold = -1;
   /** Every body's measure when it was last rebuilt and held: the check that a feature left other bodies alone (S7). */
@@ -939,18 +951,27 @@ export async function importBodies(
         return;
       }
       const sketchObject = doc.byName.get(feature.sketch) as FcObject;
-      const resolve = async (side: DecodedSide, n: 1 | 2): Promise<UpToTry[] | Failure> => {
+      /**
+       * The targets to try for a side, found before the first try and changing nothing in
+       * the design: a named face or plane is one try that finds it inside its own
+       * transaction (a datum's construction belongs to it); "first" and "last" are the faces
+       * the sweep meets, their references asked for at once.
+       */
+      const resolve = async (side: DecodedSide): Promise<UpToTry[] | Failure> => {
         const u = side.upTo as DecodedUpTo;
-        if (u.kind === 'face') {
-          const r = await mapper.face(u.reference, n === 1 ? 'face to go up to' : 'second face');
-          if ('stop' in r)
-            return {
-              reason: r.stop === 'transform-reference' ? 'up-to' : r.stop,
-              detail: r.detail,
-              ...(r.references ? { references: r.references } : {}),
-            };
-          return [{ ref: r, method: u.method, target: r.kind === 'plane' ? 'plane' : 'face' }];
-        }
+        if (u.kind === 'face')
+          return [
+            {
+              named: u.reference,
+              method: u.method,
+              target:
+                u.reference.kind === 'datum'
+                  ? 'datum'
+                  : u.reference.kind === 'origin-plane'
+                    ? 'plane'
+                    : 'face',
+            },
+          ];
         // Up to the first or last face: along the sweep from the profile's centre (FreeCAD's rule).
         const g = sketchFrame(doc, sketchObject).global;
         const centre = profileCentre(decodedSketch);
@@ -992,18 +1013,19 @@ export async function importBodies(
           ...got.targets.map((ref) => ({ ref, method: u.kind, target: 'face' as const })),
         ];
       };
-      const mapper = mapperFor(f, i, containerChain(doc, f)?.moved ?? true);
-      const one = feature.side1.extent === 'up-to' ? await resolve(feature.side1, 1) : [undefined];
+      const moved = containerChain(doc, f)?.moved ?? true;
+      const one = feature.side1.extent === 'up-to' ? await resolve(feature.side1) : [undefined];
       if (!Array.isArray(one)) {
         stop(f, one.reason, one.detail, undefined, one.references);
         return;
       }
-      const two = feature.side2?.extent === 'up-to' ? await resolve(feature.side2, 2) : [undefined];
+      const two = feature.side2?.extent === 'up-to' ? await resolve(feature.side2) : [undefined];
       if (!Array.isArray(two)) {
         stop(f, two.reason, two.detail, undefined, two.references);
         return;
       }
       const pairs = one.flatMap((a) => two.map((b) => [a, b] as const)).slice(0, MAX_UP_TO_TRIES);
+      const triedTargets = new Set<number>();
       const counted =
         pairs.length > 1 || pairs.some(([a]) => a?.method === 'first' || a?.method === 'last');
       await holdAll(
@@ -1011,7 +1033,27 @@ export async function importBodies(
         chain,
         feature,
         pairs.map(([a, b], k) => async (): Promise<Added> => {
-          if (counted) upToTries++;
+          // A try with another target counts once; its repeats for projections don't.
+          if (counted && !triedTargets.has(k)) {
+            triedTargets.add(k);
+            upToTries++;
+          }
+          // Each try from a fresh mapper: its constructions, checks and tally are its own.
+          const mapper = mapperFor(f, i, moved);
+          const target = async (t: UpToTry | undefined, n: 1 | 2) => {
+            if (!t?.named) return t?.ref;
+            const r = await mapper.face(t.named, n === 1 ? 'face to go up to' : 'second face');
+            if (!('stop' in r)) return r;
+            return {
+              stop: (r.stop === 'transform-reference' ? 'up-to' : r.stop) as HistoryStop,
+              detail: r.detail,
+              ...(r.references ? { references: r.references } : {}),
+            };
+          };
+          const ra = await target(a, 1);
+          if (ra && 'stop' in ra) return ra;
+          const rb = await target(b, 2);
+          if (rb && 'stop' in rb) return rb;
           const extras = await sketchExtras(mapper, feature.sketch);
           if ('stop' in extras) return extras;
           const added = addFeature(
@@ -1025,8 +1067,8 @@ export async function importBodies(
             decodedSketch,
             wantedAxes,
             {
-              ...(a ? { one: a.ref } : {}),
-              ...(b ? { two: b.ref } : {}),
+              ...(ra ? { one: ra } : {}),
+              ...(rb ? { two: rb } : {}),
               ...extras,
             },
           );
@@ -1061,6 +1103,7 @@ export async function importBodies(
         moved,
         datums,
         externalBudget,
+        found: featureFound,
         ...(options.maxDatums !== undefined ? { maxDatums: options.maxDatums } : {}),
         ...(options.originFirst === false ? { originFirst: false } : {}),
       });
@@ -1082,7 +1125,11 @@ export async function importBodies(
       mapper: TransformMapper,
       sketch: string,
     ): Promise<
-      | { tilted?: GivenPlane; external?: ReadonlyMap<number, ExternalPlan> }
+      | {
+          tilted?: GivenPlane;
+          external?: ReadonlyMap<number, ExternalPlan>;
+          externalCauses?: ReadonlyMap<number, ExternalCause>;
+        }
       | { stop: HistoryStop; detail: string }
     > => {
       const tilted = await mapper.sketchPlane(sketch);
@@ -1092,6 +1139,7 @@ export async function importBodies(
       return {
         ...(tilted ? { tilted } : {}),
         ...(ext.plans.size > 0 ? { external: ext.plans } : {}),
+        ...(ext.causes.size > 0 ? { externalCauses: ext.causes } : {}),
       };
     };
 
@@ -1179,6 +1227,7 @@ export async function importBodies(
             undefined,
             extras.tilted,
             extras.external,
+            extras.externalCauses,
           );
           if ('stop' in got) return got;
           const added = addHole(
@@ -1393,7 +1442,11 @@ export async function importBodies(
         // A feature held: the run before it (if any) is over, its step stays.
         run = undefined;
         if (makesBody) bodyMaker ??= added.feature;
-        if (added.newSketch) sketchOutcomes.push(added.newSketch.outcome);
+        if (added.newSketch) {
+          sketchOutcomes.push(added.newSketch.outcome);
+          // What the import projects is counted as it is kept, never for a try taken back.
+          externalBudget.used += added.newSketch.projected.length;
+        }
         mappedBy.set(f.name, { feature: added.feature, kind: feature.kind });
         mapped.push({
           object: f.name,
@@ -1503,10 +1556,19 @@ export async function importBodies(
           const v = projectionVerdict(projected, r.reports.get(added.newSketch?.id as string));
           if (v === 'nonsense') return { reason: 'kernel', detail: NONSENSE_REPLY };
           if (v.reversed.length > 0 || v.off.length > 0) {
-            // A line already drawn the other way that still disagrees stays out next time.
-            for (const g of v.reversed)
-              if (projectionTry.reversed.has(g)) projectionTry.off.add(g);
-              else projectionTry.reversed.add(g);
+            // A line the report has the other way round is drawn its way at the next try; one
+            // turned round twice already stays out (a kernel that turns it every time).
+            for (const g of v.reversed) {
+              const turned = projectionTry.turned.get(g) ?? 0;
+              if (turned >= 2) {
+                projectionTry.off.add(g);
+                projectionTry.reversed.delete(g);
+              } else {
+                projectionTry.turned.set(g, turned + 1);
+                if (projectionTry.reversed.has(g)) projectionTry.reversed.delete(g);
+                else projectionTry.reversed.add(g);
+              }
+            }
             for (const g of v.off) projectionTry.off.add(g);
             return {
               reason: 'sketch',
@@ -1832,7 +1894,8 @@ export async function importBodies(
       walked++;
       options.onStep?.();
       noted = false;
-      projectionTry = { reversed: new Set(), off: new Set() };
+      projectionTry = { reversed: new Set(), off: new Set(), turned: new Map() };
+      featureFound = new Map();
       try {
         await walk(f, i);
       } catch (error) {
@@ -1967,9 +2030,10 @@ type Added =
       checks?: readonly DatumCheck[];
     };
 
-/** One target an up-to side is tried with (S9). */
+/** One target an up-to side is tried with (S9): a reference found before the tries, or a face or plane each try finds itself. */
 interface UpToTry {
-  readonly ref: GeomRef;
+  readonly ref?: GeomRef;
+  readonly named?: DecodedReference;
   readonly method: 'face' | 'shape' | 'first' | 'last';
   readonly target: 'face' | 'body' | 'plane' | 'datum';
 }
@@ -2071,6 +2135,7 @@ function sketchFor(
   wantsAxis?: 'h' | 'v',
   tilted?: GivenPlane,
   external?: ReadonlyMap<number, ExternalPlan>,
+  externalCauses?: ReadonlyMap<number, ExternalCause>,
 ):
   | {
       sketch: Extract<AddSketchResult, { imported: true }>;
@@ -2094,6 +2159,7 @@ function sketchFor(
     ...(axes.size > 0 ? { axes: [...axes].sort() } : {}),
     ...(tilted ? { tilted } : {}),
     ...(external && external.size > 0 ? { external } : {}),
+    ...(externalCauses && externalCauses.size > 0 ? { externalCauses } : {}),
   });
   if (!result.imported)
     return { stop: 'sketch', detail: `its sketch was not imported: ${result.reason}` };
@@ -2120,6 +2186,7 @@ function addFeature(
     readonly turnAxis?: boolean;
     readonly tilted?: GivenPlane;
     readonly external?: ReadonlyMap<number, ExternalPlan>;
+    readonly externalCauses?: ReadonlyMap<number, ExternalCause>;
   } = {},
 ): Added {
   const wantsAxis =
@@ -2138,6 +2205,7 @@ function addFeature(
     wantsAxis,
     targets.tilted,
     targets.external,
+    targets.externalCauses,
   );
   if ('stop' in got) return got;
   const { sketch, newSketch } = got;

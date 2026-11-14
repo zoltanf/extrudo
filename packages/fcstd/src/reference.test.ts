@@ -8,6 +8,7 @@
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { decodeFeature } from './features';
+import { label, prop } from './fixtures';
 import { type FcstdImportOptions, importFcstd } from './import';
 import type { ImportKernel } from './import-kernel';
 import { type FcObject, readFcstd } from './model';
@@ -392,6 +393,7 @@ describe('projected geometry', () => {
       named: 0,
       projected: 0,
       constraints: 0,
+      out: {},
     });
   });
 
@@ -408,6 +410,7 @@ describe('projected geometry', () => {
       named: 2,
       projected: 2,
       constraints: 2,
+      out: {},
     });
   });
 
@@ -434,5 +437,102 @@ describe('projected geometry', () => {
     });
     expect(r.body?.stop).toBeUndefined();
     expect(r.body?.sketches.find((s) => s.sketch === 'PocketSketch')?.external?.projected).toBe(0);
+  });
+});
+
+describe('the fix round', () => {
+  it.each([
+    ['pad_up_to_datum_plane', 'Boss'],
+    ['pocket_up_to_datum_plane', 'Pocket'],
+  ])(
+    "%s whose feature doesn't hold leaves no construction of its datum behind",
+    async (name, feature) => {
+      const r = await runRef(name, { [feature]: { props: { Offset: 3 } } });
+      expect(r.body?.stop).toMatchObject({ object: feature, reason: 'differs' });
+      expect(r.design.doc.features.some((f) => f.name.startsWith('DatumPlane'))).toBe(false);
+      expect(r.body?.mapped.some((m) => m.datums)).toBe(false);
+    },
+  );
+
+  it('an up-to datum plane is reported as a datum target', async () => {
+    const r = await runRef('pad_up_to_datum_plane');
+    expect(r.body?.mapped.at(-1)?.upTo).toEqual({ method: 'face', target: 'datum', tries: 1 });
+  });
+
+  it('a tilted pad read as up to the first face: each try has its own checks, no kernel stop', async () => {
+    const before = kernel.restarts;
+    const r = await runRef('pad_on_tilted_plane', { Tilted: { props: { Type: 2 } } });
+    // Its stored shape is the pad of 10 mm, so no target holds; what matters is why it stops.
+    expect(r.body?.stop).toMatchObject({ object: 'Tilted', reason: 'differs' });
+    expect(kernel.restarts).toBe(before);
+    expect(r.body?.upToTries).toBeGreaterThan(1);
+    expect(r.design.doc.features.some((f) => f.name.startsWith('DatumPlane'))).toBe(false);
+  });
+
+  it("a sketch moved off its datum plane comes in on its own frame's plane", async () => {
+    const at = REF_CASES.pad_on_tilted_plane?.objects.find((o) => o.object === 'TiltedSketch')
+      ?.sketch?.at as number[];
+    const n = [0.36496738964685843, -0.3169036940775681, 0.875426098065593];
+    const moved = at.map((v, k) => (k < 3 ? v + 2 * (n[k] as number) : v));
+    const sent: string[][] = [];
+    const watching: ImportKernel = {
+      ...kernel,
+      rebuild: (doc, ...rest) => {
+        sent.push(doc.features.map((f) => `${f.type} ${f.name}`));
+        return kernel.rebuild(doc, ...rest);
+      },
+    };
+    const r = await runRef(
+      'pad_on_tilted_plane',
+      { TiltedSketch: { at: moved } },
+      { kernel: watching },
+    );
+    // Moved 2 mm, the pad no longer fits its stored shape: it doesn't hold. The try put the
+    // sketch on a plane through its own frame, and made no construction of the datum.
+    expect(r.body?.stop).toMatchObject({ object: 'Tilted', reason: 'differs' });
+    const tried = sent.find((x) => x.includes('extrude Tilted')) ?? [];
+    expect(tried).toContain('planeThroughPoints TiltedSketch plane');
+    expect(tried.some((x) => x.includes('DatumPlane'))).toBe(false);
+  });
+
+  it("a sketch on a datum outside the body comes in on its own frame's plane, the pad holds", async () => {
+    const datum = REF_CASES.pad_on_tilted_plane?.objects.find((o) => o.object === 'DatumPlane');
+    const q = datum?.at as number[];
+    const loose = {
+      name: 'Loose',
+      type: 'PartDesign::Plane',
+      props: [
+        label('Loose'),
+        prop(
+          'Placement',
+          'App::PropertyPlacement',
+          `<PropertyPlacement Px="${q[0]}" Py="${q[1]}" Pz="${q[2]}" Q0="${q[3]}" Q1="${q[4]}" Q2="${q[5]}" Q3="${q[6]}"/>`,
+        ),
+      ],
+    };
+    const r = await runRef(
+      'pad_on_tilted_plane',
+      { TiltedSketch: { support: [['Loose', '']] } },
+      {},
+      { extra: [loose] },
+    );
+    expect(r.body?.stop).toBeUndefined();
+    expect(r.body?.sketches.find((s) => s.sketch === 'TiltedSketch')?.plane).toBe('points');
+  });
+
+  it("a datum on another body's origin plane comes in fixed, not as an offset plane", async () => {
+    const other = {
+      name: 'OtherYZ',
+      type: 'App::Plane',
+      props: [label('OtherYZ'), prop('Role', 'App::PropertyString', '<String value="YZ_Plane"/>')],
+    };
+    const r = await runRef(
+      'mirror_about_datum_plane',
+      { DatumPlane: { props: { AttachmentSupport: { subList: [['OtherYZ', '']] } } } },
+      {},
+      { extra: [other] },
+    );
+    expect(r.body?.stop).toBeUndefined();
+    expect(r.body?.mapped.at(-1)?.datums?.[0]?.how).toBe('fixed');
   });
 });

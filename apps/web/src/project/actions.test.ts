@@ -706,7 +706,7 @@ describe('fcstdNotices', () => {
       ],
     });
     expect(more.at(-1)).toBe(
-      "2 datum lines and planes and the plane of a sketch on a tilted face came in fixed where the file has them: they don't follow what they were attached to in FreeCAD when the model changes.",
+      "2 datum lines and planes and the plane of a tilted sketch came in fixed where the file has them: they don't follow what they were attached to in FreeCAD when the model changes.",
     );
     const none = fcstdNotices({
       ...base,
