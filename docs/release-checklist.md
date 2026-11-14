@@ -13,7 +13,9 @@ published. Versions come from `git describe` of the last `v*` tag: stable shows
 
 1. **Test on edge.** Every green CI run on main deploys
    <https://edge.extrudo.org> (`docs/deploy.md`). Release only a main commit
-   you have tried there.
+   you have tried there. When the release changes WebGL contexts, render
+   targets or automatic GPU work, also run `scripts/gpu-check.mjs` against
+   edge on a machine with an old GPU (`docs/agent/dev-environment.md`).
 2. **cadmpeg.** Check for a newer cadmpeg release
    (<https://github.com/cadmpeg/cadmpeg/releases>); to update, change the
    version and the five hashes in `apps/desktop/cadmpeg.json` from its

@@ -1,12 +1,14 @@
 /**
  * What kind of WebGL this page can get (ADR-0076). three.js r186 needs WebGL 2.
  * `software` means the browser draws without the graphics card (llvmpipe, WARP,
- * SwiftShader): it works, slowly, so the app keeps going and says so.
+ * SwiftShader): it works, slowly, so the app keeps going and says so. `blocked`
+ * on `none` means the browser has WebGL but holds it back from this page after
+ * lost contexts (#259).
  */
 export type WebglSupport =
   | { kind: 'hardware'; renderer?: string }
   | { kind: 'software'; renderer?: string; reason: string }
-  | { kind: 'none'; reason: string };
+  | { kind: 'none'; reason: string; blocked?: true };
 
 /** Unmasked renderer strings of software rasterisers. */
 export const SOFTWARE_RENDERER =
@@ -19,11 +21,23 @@ interface ProbeContext {
 
 const ATTRIBUTES = { alpha: true, stencil: true, antialias: false } as const;
 
+/**
+ * Chrome's reason (`webglcontextcreationerror`'s `statusMessage`) when it holds
+ * WebGL back from a page whose context was lost twice in a row: "Web page
+ * caused context loss and was blocked".
+ */
+const BLOCKED = /caused context loss|was blocked/i;
+
 function tryContext(
   canvas: HTMLCanvasElement,
   attributes: WebGLContextAttributes,
+  refused?: (status: string) => void,
 ): WebGL2RenderingContext | undefined {
   try {
+    // Fired while `getContext` runs. Test fakes have no listeners.
+    canvas.addEventListener?.('webglcontextcreationerror', (event) =>
+      refused?.((event as WebGLContextEvent).statusMessage ?? ''),
+    );
     return (canvas.getContext('webgl2', attributes) as WebGL2RenderingContext | null) ?? undefined;
   } catch {
     return undefined;
@@ -60,10 +74,16 @@ export function detectWebgl(
   create: () => HTMLCanvasElement = () => document.createElement('canvas'),
 ): WebglSupport {
   let plain: WebGL2RenderingContext | undefined;
+  let status = '';
   try {
-    plain = tryContext(create(), ATTRIBUTES);
+    plain = tryContext(create(), ATTRIBUTES, (text) => {
+      status = text;
+    });
   } catch {
     plain = undefined;
+  }
+  if (!plain && BLOCKED.test(status)) {
+    return { kind: 'none', reason: `The browser's reason: ${status}.`, blocked: true };
   }
   if (!plain) return { kind: 'none', reason: 'The browser gave no WebGL 2 context.' };
   const renderer = rendererOf(plain);
@@ -136,4 +156,19 @@ export function noteContextLost(): void {
  */
 export function contextLosses(): number {
   return losses;
+}
+
+/**
+ * Whether a missing context is the browser holding WebGL back after lost
+ * contexts, not a browser without WebGL (#259): the browser said so, or this
+ * page lost a context before. Chrome lifts the block after a few minutes or
+ * when the page is reloaded from the browser (measured on Chromium 155:
+ * refused for between one and four and a half minutes; given again after the
+ * browser's reload, not after `location.reload()`).
+ */
+export function heldBack(
+  support: WebglSupport = webglSupport(),
+  lost: number = contextLosses(),
+): boolean {
+  return lost > 0 || (support.kind === 'none' && support.blocked === true);
 }

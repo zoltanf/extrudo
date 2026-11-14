@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { NoWebgl, ViewStopped } from './NoWebgl';
+import { NoWebgl, ViewPaused, ViewStopped } from './NoWebgl';
 
 describe('NoWebgl', () => {
   it('is the region "3D view unavailable" with the advice', () => {
@@ -50,5 +50,24 @@ describe('NoWebgl', () => {
     const html = renderToStaticMarkup(<ViewStopped message="oops" onRetry={() => {}} />);
     expect(html).toContain('The 3D view stopped working');
     expect(html).toContain('oops');
+  });
+});
+
+describe('ViewPaused (#259)', () => {
+  it('is the region "3D view paused" with the advice that lifts the block', () => {
+    const html = renderToStaticMarkup(<ViewPaused onRetry={() => {}} detail="blocked" />);
+    expect(html).toContain('aria-label="3D view paused"');
+    expect(html).toContain('data-webgl="paused"');
+    expect(html).toContain('The browser paused the 3D view');
+    expect(html).toContain('reload button');
+    expect(html).toContain('Try again');
+    expect(html).toContain('blocked');
+  });
+
+  it('stands in for NoWebgl once this page lost a context', () => {
+    const html = renderToStaticMarkup(<NoWebgl onRetry={() => {}} paused />);
+    expect(html).toContain('data-webgl="paused"');
+    expect(html).not.toContain('swiftshader');
+    expect(renderToStaticMarkup(<NoWebgl onRetry={() => {}} />)).toContain('data-webgl="none"');
   });
 });

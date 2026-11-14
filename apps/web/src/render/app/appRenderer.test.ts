@@ -1,7 +1,7 @@
 /** The app's picture renderer (ADR-0101 §6): its refusals, without WebGL (a fake renderer and drawing). */
 import { describe, expect, it, vi } from 'vitest';
 import type { AppRenderJob } from '../../platform/render';
-import { createAppRenderer, webglFence } from './appRenderer';
+import { createAppRenderer, draftTarget, RESET, webglFence } from './appRenderer';
 
 const job: AppRenderJob = {
   project: 'Box',
@@ -64,6 +64,24 @@ describe('createAppRenderer', () => {
       },
     });
     expect(await renderer.render(job, () => {})).toEqual({ ok: false, message: 'context lost' });
+  });
+
+  it('names a lost context and makes a new renderer for the next render (#259)', async () => {
+    let lost = true;
+    const made = vi.fn(() => ({
+      ...fakeRenderer(),
+      getContext: () => ({ isContextLost: () => lost }),
+    }));
+    const renderer = createAppRenderer({
+      makeRenderer: made,
+      // three's read-back rejects with nothing when the context is gone.
+      draw: () => (lost ? Promise.reject(undefined) : Promise.resolve(Uint8Array.from([1]))),
+    });
+    expect(await renderer.render(job, () => {})).toEqual({ ok: false, message: RESET });
+    expect(made.mock.results[0]?.value.dispose).toHaveBeenCalled();
+    lost = false;
+    expect(await renderer.render(job, () => {})).toEqual({ ok: true, png: Uint8Array.from([1]) });
+    expect(made).toHaveBeenCalledTimes(2);
   });
 
   it('hands a Standard job to the drawing seam like Draft', async () => {
@@ -129,5 +147,34 @@ describe('webglFence', () => {
     fence.dispose();
     expect(gl.deleted).toBe(2);
     expect(gl.made).toBe(2);
+  });
+});
+
+describe('draftTarget (#259)', () => {
+  it('is 4 samples at the picture size where antialiasing was granted or unknown', () => {
+    expect(draftTarget(1280, 720, true, 16384)).toEqual({ width: 1280, height: 720, samples: 4 });
+    expect(draftTarget(1280, 720, undefined, 16384)).toEqual({
+      width: 1280,
+      height: 720,
+      samples: 4,
+    });
+  });
+
+  it('is a plain target of twice the size where the browser refused antialiasing', () => {
+    expect(draftTarget(1280, 720, false, 16384)).toEqual({ width: 2560, height: 1440, samples: 0 });
+    expect(draftTarget(1920, 1080, false, 16384)).toEqual({
+      width: 3840,
+      height: 2160,
+      samples: 0,
+    });
+  });
+
+  it('keeps the picture size when the doubled side is too large', () => {
+    expect(draftTarget(3840, 2160, false, 16384)).toEqual({
+      width: 3840,
+      height: 2160,
+      samples: 0,
+    });
+    expect(draftTarget(1920, 1080, false, 2048)).toEqual({ width: 1920, height: 1080, samples: 0 });
   });
 });

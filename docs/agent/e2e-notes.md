@@ -3222,7 +3222,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   origins: [] } })`). "No WebGL" is an init script making `getContext` return null for
   `webgl`/`webgl2`; the region "3D view unavailable" has "Try again". A launch option forces
   a worker, so the `--disable-gpu --disable-software-rasterizer` test has its own file (`--disable-gpu --disable-software-rasterizer`, default `--enable-unsafe-swiftshader` ignored, does yield no WebGL in Chrome here; `--disable-gpu` alone does not). The root boundary is `#/debug/crash`; a context that fails after detection (probe canvases detached, the page's canvas null) reproduces three.js's "Error creating WebGL context"; a lost context
-  is `WEBGL_lose_context` on the canvas, `[data-webgl="lost"]`.
+  is `WEBGL_lose_context` on the canvas, `[data-webgl="lost"]`. The paused panel (#259): lose the
+  context, then run `NO_WEBGL` in the page so every new context is refused, and click
+  "Reload view": the region "3D view paused" (`data-webgl="paused"`) stands where "3D view
+  unavailable" would, because the page's count of lost contexts is above zero. Chrome's real
+  block ("Web page caused context loss and was blocked") needs a GPU that loses contexts:
+  `scripts/gpu-check.mjs`.
 
 - **`demo: render` (record-assets):** the dialog (`getByRole('dialog', { name: 'Render picture' })`) is
   440 px wide, about 480 tall; scenes are `role="radio"` cards, quality is `getByLabel('Draft')`.

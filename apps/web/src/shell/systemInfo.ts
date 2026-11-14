@@ -5,6 +5,8 @@
  * browser doesn't expose (device memory outside Chromium) are left out.
  */
 
+import { contextLosses } from '../viewport/webglSupport';
+
 export interface InfoRow {
   label: string;
   value: string;
@@ -117,16 +119,28 @@ function graphics(): { gpu?: string; rendering: string } {
       // "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)"
       (/\bANGLE Metal\b/.test(raw) ? 'Metal' : undefined);
     const software = !fast || SOFTWARE.test(raw);
+    // A context asks for antialiasing by default; a browser that rates the GPU's
+    // multisampling slow or broken gives none (#259).
+    const smooth = gl.getContextAttributes()?.antialias !== false;
     return {
       gpu,
       rendering: [
         `WebGL ${gl2 ? 2 : 1}${backend ? ` on ${backend}` : ''}`,
         software ? 'software rendering, slow' : 'hardware accelerated',
-      ].join(' · '),
+        !smooth && 'no antialiasing',
+      ]
+        .filter(Boolean)
+        .join(' · '),
     };
   } catch {
     return { rendering: 'WebGL unavailable' };
   }
+}
+
+/** "3D view reset twice": how often the 3D view lost its context since the page loaded (#259). */
+export function resetNote(losses: number): string {
+  if (losses <= 0) return '';
+  return `3D view reset ${losses === 1 ? 'once' : losses === 2 ? 'twice' : `${losses} times`}`;
 }
 
 function appMode(desktop: boolean): string {
@@ -171,7 +185,10 @@ export async function systemInfo(
       value: `${nav.hardwareConcurrency} threads${nav.deviceMemory ? ` · ${nav.deviceMemory >= 8 ? '8 GB or more' : `${nav.deviceMemory} GB`} RAM` : ''}`,
     },
     gpu !== undefined && { label: 'Graphics', value: gpu },
-    { label: 'Rendering', value: rendering },
+    {
+      label: 'Rendering',
+      value: [rendering, resetNote(contextLosses())].filter(Boolean).join(' · '),
+    },
     {
       label: 'Screen',
       value: `${screen.width} × ${screen.height} at ${Math.round(devicePixelRatio * 100)}%`,

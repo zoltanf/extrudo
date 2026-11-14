@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDuration } from './systemInfo';
+import { formatBytes, formatDuration, resetNote } from './systemInfo';
 
 const MIN = 60_000;
 
@@ -20,5 +20,14 @@ describe('formatBytes', () => {
     expect(formatBytes(72 * 1024)).toBe('72 kB');
     expect(formatBytes(27 * 1024 * 1024)).toBe('27 MB');
     expect(formatBytes(2.8 * 1024 ** 3)).toBe('2.8 GB');
+  });
+});
+
+describe('resetNote (#259)', () => {
+  it('says nothing without a reset, then counts them', () => {
+    expect(resetNote(0)).toBe('');
+    expect(resetNote(1)).toBe('3D view reset once');
+    expect(resetNote(2)).toBe('3D view reset twice');
+    expect(resetNote(5)).toBe('3D view reset 5 times');
   });
 });
