@@ -178,6 +178,7 @@ export interface ParameterLeftOut {
 /** Resolves FreeCAD's object references: by name first, then by label; `<<label>>` by label only. */
 export class ObjectIndex {
   readonly #byName: ReadonlyMap<string, FcObject>;
+  /** Each label's object, or `null` when two objects have it. */
   readonly #byLabel = new Map<string, FcObject | null>();
   constructor(doc: FcDocument) {
     this.#byName = doc.byName;
@@ -188,7 +189,8 @@ export class ObjectIndex {
     const label = this.#byLabel.get(name);
     if (quoted) return label ?? undefined;
     const named = this.#byName.get(name);
-    if (named) return label && label !== named ? undefined : named;
+    // A name that is also another object's label (or two objects' labels) is ambiguous.
+    if (named) return label === undefined || label === named ? named : undefined;
     return label ?? undefined;
   }
 }
@@ -388,11 +390,11 @@ export function prepareParameters(
           proofs: [],
           votes: new Set(),
           read: false,
-          ...(cell.alias !== undefined ? { alias: cell.alias } : {}),
+          // An alias that is a cell's address names that cell, not this one: FreeCAD refuses it.
+          ...(cell.alias !== undefined && !cellAddress(cell.alias) ? { alias: cell.alias } : {}),
         };
         cells.set(address, s);
-        if (cell.alias !== undefined && !aliases.has(cell.alias) && !cellAddress(cell.alias))
-          aliases.set(cell.alias, s);
+        if (s.alias !== undefined && !aliases.has(s.alias)) aliases.set(s.alias, s);
         sources.push(s);
       }
     } else if (o.type === 'App::VarSet') {
@@ -513,8 +515,8 @@ export function prepareParameters(
       if (Number.isFinite(v)) {
         s.value = v;
         s.fc = D0;
-        continue;
-      }
+      } else s.out = { reason: 'limit', detail: 'its number is too large to use' };
+      continue;
     }
     // A quantity typed into a cell (`6 mm`): one number with a unit.
     const parsed = parseText(content);
