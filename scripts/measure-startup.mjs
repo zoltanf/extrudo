@@ -37,8 +37,9 @@ const mbit = args.includes('--mbit') ? Number(args[args.indexOf('--mbit') + 1]) 
 const jsonPath = args.includes('--json') ? args[args.indexOf('--json') + 1] : undefined;
 const homeWait = args.includes('--home-wait') ? Number(args[args.indexOf('--home-wait') + 1]) : 0;
 const fmt = (n) => `${(n / 1e6).toFixed(2)} MB`;
-/** Brotli ceilings, bytes (ADR-0100 §5; 2026-10-25: app JS 1.60 MB, precache 8.46 MB). */
-const BUDGETS = { 'app JS': 2e6, precache: 10e6 };
+/** Brotli ceilings, bytes (ADR-0100 §5; 2026-10-25: app JS 1.60 MB, precache 8.46 MB; app JS raised
+ * to 2.25 MB on 2026-11-14 at 2.00 MB, the owner). */
+const BUDGETS = { 'app JS': 2.25e6, precache: 10e6 };
 
 const walk = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>

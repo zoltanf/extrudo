@@ -3087,7 +3087,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - The toolbar fits the window: `#toolbar-groups` carries `data-toolbar-fit`,
   groups are `[data-toolbar-group]` with tiles under `[data-toolbar-tiles]`,
   and moving tiles into a group's menu matches `fitToolbar`
-  (`apps/web/src/shell/toolbarFit`). Home's Import/Export groups and
+  (`apps/web/src/shell/toolbarFit`). Solid's full row needs about 1475 px
+  since Insert Design (ADR-0140): at 1440 Coil is in Create's ▾, so the fit
+  test's "everything fits" width is 1600. Home's Import/Export groups and
   Construct's four groups are checked by tool id (`R3-09`/`R3-10`/`R3-12`),
   and a real sketch shows only Home and Sketch (`R3-11`).
 

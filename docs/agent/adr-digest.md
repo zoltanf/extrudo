@@ -3792,8 +3792,8 @@ investigate, a drift is noted in the release notes. §5 (2026-10-25) adds
 two ceilings: `packages/kernel/src/benchmarks.test.ts`'s `recompute` asserts
 every benchmark recompute against `BUDGET_MS` (about 3× the laptop, at least
 1 s: B1–B6 and B10 1 s, B8 1.5 s, B7 3 s, B9 30 s; `BENCH=1` prints the
-times), and `scripts/measure-startup.mjs --budget` fails when app JS passes
-2 MB or the precache 10 MB brotli, run by CI's Docker job
+times), and `scripts/measure-startup.mjs --budget` fails when app JS (every
+chunk, lazy ones too) passes 2.25 MB (2 MB until 2026-11-14) or the precache 10 MB brotli, run by CI's Docker job
 after its build. **Rules:** a new benchmark document needs a `BUDGET_MS`
 entry (the helper throws without one); both sets of budgets are widened only
 with a measurement in the commit message.
