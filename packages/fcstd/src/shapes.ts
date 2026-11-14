@@ -99,6 +99,8 @@ export interface ShapeImportOptions {
   readonly onProgress?: (done: number, total: number) => void;
   /** The clock, for the budgets (`Date.now` by default). */
   readonly now?: () => number;
+  /** ADR-0066's 100 MB per design (`MAX_ATTACHMENTS_BYTES`), for tests. */
+  readonly maxAttachmentsBytes?: number;
 }
 
 export interface ShapeImportResult {
@@ -303,37 +305,16 @@ export async function importShapes(
         leave(found.reason, found.detail);
         continue;
       }
-      const outcome = await budget.call(
-        // No name or colour in the STEP: the body's metadata carries them, and
-        // two objects with the same shape then share one attachment.
-        () => budget.kernel.storedShapeToStep(found.text, shape.chain),
-        saneReply,
-      );
-      if (outcome.kind !== 'done') {
-        // The budget restarted the kernel where it could; nothing more from the old one.
-        leave(outcome.kind, 'detail' in outcome ? outcome.detail : undefined);
+      const conv = await convertStored(budget, found.text, shape.chain);
+      if (conv.kind === 'out') {
+        if (conv.size !== undefined) peakBytes = Math.max(peakBytes, keptBytes + conv.size);
+        leave(conv.reason, conv.detail);
         continue;
       }
-      const step = outcome.value;
-      if (step.read.solids === 0 || step.step === '') {
-        leave('no-solid');
-        continue;
-      }
-      const wrong = disagreement(step.read, step);
-      if (wrong) {
-        leave('check', wrong);
-        continue;
-      }
-      // From here on only the bytes and the measures: the STEP text goes.
-      const bytes = new TextEncoder().encode(step.step);
+      const { bytes, sha256 } = conv;
       peakBytes = Math.max(peakBytes, keptBytes + bytes.length);
-      if (bytes.length > MAX_ATTACHMENT_BYTES) {
-        leave('too-large', `${mb(bytes.length)} MB of STEP`);
-        continue;
-      }
-      const sha256 = sha256Hex(bytes);
       if (!existing.has(sha256) && !kept.has(sha256)) {
-        if (total + bytes.length > MAX_ATTACHMENTS_BYTES) {
+        if (total + bytes.length > (options.maxAttachmentsBytes ?? MAX_ATTACHMENTS_BYTES)) {
           leave('design-full', `${mb(bytes.length)} MB of STEP`);
           continue;
         }
@@ -344,8 +325,8 @@ export async function importShapes(
       converted.push({
         shape,
         name,
-        solids: step.solids,
-        drift: volumeDrift(step.read, step),
+        solids: conv.solids,
+        drift: conv.drift,
         sha256,
         size: bytes.length,
       });
@@ -364,19 +345,7 @@ export async function importShapes(
     for (const { shape, name, solids, drift, sha256, size } of converted) {
       let attachment = byHash.get(sha256);
       if (attachment === undefined) {
-        attachment = newId<AttachmentId>();
-        design.state.dispatch(
-          addAttachment({
-            id: attachment,
-            attachment: {
-              name,
-              fileName: stepFileName(name),
-              mediaType: 'model/step',
-              sha256,
-              size,
-            },
-          }),
-        );
+        attachment = addStepAttachment(design, name, sha256, size);
         byHash.set(sha256, attachment);
         files.set(attachment, kept.get(sha256) as Uint8Array);
       }
@@ -401,6 +370,103 @@ export async function importShapes(
     }
   });
   return { imported, leftOut, files, restarts: budget.restarts, peakBytes };
+}
+
+/** What converting one stored shape came to: its STEP bytes and measures, or why it can't come in. */
+export type Conversion =
+  | {
+      readonly kind: 'ok';
+      readonly bytes: Uint8Array;
+      readonly sha256: string;
+      readonly solids: number;
+      /** How far the STEP's volume is from the stored shape's, relative. */
+      readonly drift: number;
+      /** The stored shape as read, before STEP (the measure a step's rebuilt import is checked against). */
+      readonly read: ShapeMeasure;
+    }
+  | {
+      readonly kind: 'out';
+      readonly reason: LeftOutReason;
+      readonly detail?: string;
+      /** The STEP's size, when it was made (over 25 MB). */
+      readonly size?: number;
+    };
+
+/**
+ * One stored shape through the import kernel (S3's conversion and checks):
+ * STEP written and read back, a solid, the check against the shape as read,
+ * at most `MAX_ATTACHMENT_BYTES`. The one conversion every stored shape the
+ * import brings in goes through: the final shapes (`importShapes`) and a
+ * body's stored-shape steps (S8, `bodies.ts`).
+ */
+export async function convertStored(
+  budget: KernelBudget,
+  text: string,
+  chain: FinalShape['chain'],
+): Promise<Conversion> {
+  const outcome = await budget.call(
+    // No name or colour in the STEP: the body's metadata carries them, and
+    // two objects with the same shape then share one attachment.
+    () => budget.kernel.storedShapeToStep(text, chain),
+    saneReply,
+  );
+  // The budget restarted the kernel where it could; nothing more from the old one.
+  if (outcome.kind !== 'done')
+    return {
+      kind: 'out',
+      reason: outcome.kind,
+      ...('detail' in outcome && outcome.detail ? { detail: outcome.detail } : {}),
+    };
+  const step = outcome.value;
+  if (step.read.solids === 0 || step.step === '') return { kind: 'out', reason: 'no-solid' };
+  const wrong = disagreement(step.read, step);
+  if (wrong) return { kind: 'out', reason: 'check', detail: wrong };
+  // From here on only the bytes and the measures: the STEP text goes.
+  const bytes = new TextEncoder().encode(step.step);
+  if (bytes.length > MAX_ATTACHMENT_BYTES)
+    return {
+      kind: 'out',
+      reason: 'too-large',
+      detail: `${mb(bytes.length)} MB of STEP`,
+      size: bytes.length,
+    };
+  return {
+    kind: 'ok',
+    bytes,
+    sha256: sha256Hex(bytes),
+    solids: step.solids,
+    drift: volumeDrift(step.read, step),
+    read: step.read,
+  };
+}
+
+/** Adds a STEP file's metadata to the design, named after `name`; returns its ID. */
+export function addStepAttachment(
+  design: Design,
+  name: string,
+  sha256: string,
+  size: number,
+): AttachmentId {
+  const id = newId<AttachmentId>();
+  design.state.dispatch(
+    addAttachment({
+      id,
+      attachment: { name, fileName: stepFileName(name), mediaType: 'model/step', sha256, size },
+    }),
+  );
+  return id;
+}
+
+/** The bytes the design's attachments hold, each distinct file once (ADR-0066's 100 MB counts these). */
+export function attachmentBytes(design: Design, without?: AttachmentId): number {
+  const seen = new Set<string>();
+  let total = 0;
+  for (const [id, a] of Object.entries(design.doc.attachments ?? {})) {
+    if (id === without || seen.has(a.sha256)) continue;
+    seen.add(a.sha256);
+    total += a.size;
+  }
+  return total;
 }
 
 /**

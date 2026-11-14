@@ -525,6 +525,8 @@ describe('fcstdNotices', () => {
     bodies,
     sketches: [],
     secondAttempts: 0,
+    steps: [],
+    heldAfterLastStep: 0,
     outcome,
     ...(stop ? { stop: { object: 'F', type: 'PartDesign::Fillet', reason: stop } } : {}),
   });
@@ -572,6 +574,71 @@ describe('fcstdNotices', () => {
       "Taken from the file's own shapes, without their whole history: Clip, because a feature goes up to a face or a shape.",
       "Not imported: Housing (its shape didn't come through unchanged).",
       'Only partly rebuilt, up to the feature where the history stopped: Housing. It is not the whole shape from the file.',
+    ]);
+  });
+
+  it('gives bodies that carry on from a stored shape their own line, and the counts still add up (S8)', () => {
+    const step = (reason: HistoryStop, after: number) => ({
+      features: [{ object: 'Draft', name: 'Draft', type: 'PartDesign::Draft' }],
+      reason,
+      shape: 'Draft',
+      feature: 'i',
+      after,
+    });
+    const stepped = (name: string, steps: ReturnType<typeof step>[]) => ({
+      ...body(name, 'history', undefined, ['i:0']),
+      steps,
+    });
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        bodies: [stepped('Bracket', [step('type', 2)])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with part of its history (sketches and features).',
+      "Rebuilt on the file's own shape part way through: Bracket, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the body.",
+    ]);
+    // Every step first in its body (a primitive first): the body starts from the file's shape.
+    expect(
+      fcstdNotices({ ...base, finalShapes: 1, bodies: [stepped('Box', [step('type', 0)])] })[1],
+    ).toBe(
+      "Starts from the file's own shape: Box, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after it come in with their history.",
+    );
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        bodies: [stepped('Box', [step('type', 0)]), stepped('Ball', [step('option', 0)])],
+      })[1],
+    ).toBe(
+      "Start from the file's own shapes: Box; Ball. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a feature has a setting Extrudo can't rebuild. The features after them come in with their history.",
+    );
+    // Mixed: one first in its body, one part way through: today's sentence.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        bodies: [stepped('Box', [step('type', 0)]), stepped('Lid', [step('type', 2)])],
+      })[1],
+    ).toBe(
+      "Rebuilt on the file's own shapes part way through: Box; Lid. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the bodies.",
+    );
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 5,
+      shapes: [shape('Clip'), shape('Box')],
+      bodies: [
+        body('Plate', 'history'),
+        stepped('Bracket', [step('type', 2), step('option', 3)]),
+        stepped('Lid', [step('type', 1)]),
+        body('Clip', 'shape', 'type'),
+      ],
+    });
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 5 of 5 shapes, 1 with its history, 2 with part of their history and 2 as bodies without history.',
+      "Rebuilt on the file's own shapes part way through: Bracket; Lid. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a feature has a setting Extrudo can't rebuild. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the bodies.",
+      "Taken from the file's own shapes, without their whole history: Clip, because it has a feature Extrudo doesn't rebuild from FreeCAD files yet.",
     ]);
   });
 

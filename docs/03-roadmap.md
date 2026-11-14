@@ -1781,7 +1781,8 @@ end to end, faster than in established desktop CAD.
     amendment).
   - [x] S7 Patterns, Mirrored, MultiTransform, Hole (2026-11-14; ADR-0144's S7
     amendment).
-  - [ ] S8 The stored-shape step in the middle of a body.
+  - [x] S8 The stored-shape step in the middle of a body (2026-11-14; ADR-0144's S8
+    amendment).
   - [ ] S9 Projected geometry in sketches, up-to-face, reference axes.
   - [ ] S10 Parameters and expressions.
   - [ ] S11 Part workbench: primitives and booleans as a timeline.

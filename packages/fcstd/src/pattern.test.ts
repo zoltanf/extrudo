@@ -376,8 +376,11 @@ describe('originals', () => {
     const { body } = await runPart('hole_then_pattern_then_mirror', {
       LinearPattern: { props: { Originals: P.list(['Mirrored']) } },
     });
-    expect(body?.stop).toMatchObject({ object: 'LinearPattern', reason: 'original' });
-    expect(body?.stop?.detail).toMatch(/comes after it/);
+    // S8: the pattern is a stored-shape step and the mirror after it holds on its shape.
+    expect(body?.stop).toBeUndefined();
+    expect(body?.steps[0]).toMatchObject({ shape: 'LinearPattern', reason: 'original' });
+    expect(body?.steps[0]?.detail).toMatch(/comes after it/);
+    expect(body?.mapped.at(-1)?.object).toBe('Mirrored');
   });
 
   it('an original that is a fillet stops with original', async () => {
