@@ -104,6 +104,15 @@ export function draftTarget(
 
 const SUPERSAMPLE_MAX = 4096;
 
+/**
+ * `RESET` for Standard and High. A smaller size does not help there: on an
+ * Intel HD Graphics 4000 with Mesa the path tracer's shader crashed the driver
+ * (the browser's GPU process, and the 3D view's context with it) at 1280 × 720,
+ * where Draft renders in seconds (#259).
+ */
+export const RESET_TRACED =
+  'The graphics driver reset during the render. Standard and High can be too much for an older graphics card; Draft is lighter.';
+
 // One WebGLPathTracer per renderer (it prints a deprecation warning when made,
 // and builds its BVH and uniforms): made on the first traced render, kept
 // across renders, freed with the renderer.
@@ -154,7 +163,7 @@ export function createAppRenderer(options: AppRendererOptions = {}): AppRenderer
           disposeTracer(renderer);
           renderer.dispose();
           renderer = undefined;
-          return { ok: false, message: RESET };
+          return { ok: false, message: job.quality === 'draft' ? RESET : RESET_TRACED };
         }
         return { ok: false, message: error instanceof Error ? error.message : String(error) };
       } finally {

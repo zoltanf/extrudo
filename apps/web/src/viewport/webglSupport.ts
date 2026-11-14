@@ -142,6 +142,36 @@ export function targetSamples(requested: boolean, granted: boolean | undefined):
   return requested && granted === false ? 0 : 4;
 }
 
+/**
+ * Whether the browser gives a context none of the antialiasing it asks for (a
+ * context asks by default). Chrome does that on graphics cards whose
+ * multisampling it rates slow or broken, which are old integrated ones: there
+ * a multisampled render target lost the context, and the path tracer's shader
+ * crashed the driver (#259). False without WebGL 2. The probe context is lost
+ * again.
+ */
+export function detectAntialiasRefusal(
+  create: () => HTMLCanvasElement = () => document.createElement('canvas'),
+): boolean {
+  let context: WebGL2RenderingContext | undefined;
+  try {
+    context = tryContext(create(), { antialias: true });
+    return context?.getContextAttributes()?.antialias === false;
+  } catch {
+    return false;
+  } finally {
+    lose(context);
+  }
+}
+
+let refusal: boolean | undefined;
+
+/** `detectAntialiasRefusal` once per page. */
+export function refusesAntialiasing(): boolean {
+  refusal ??= detectAntialiasRefusal();
+  return refusal;
+}
+
 let losses = 0;
 
 /** Counts a lost context of the 3D view (`webglcontextlost`). */

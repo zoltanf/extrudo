@@ -1,0 +1,1 @@
+- 2026-11-14 · **Render Picture on old graphics chips**: where the browser gives 3D no antialiasing, the dialog warns that Standard and High can crash the graphics driver and reset the 3D view, and a render that ends that way now points to Draft instead of a smaller size (#259).
