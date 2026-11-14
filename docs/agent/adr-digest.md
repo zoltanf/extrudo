@@ -4941,12 +4941,23 @@ last held (`lastMeasures`), else `differs` (`final`). New stops `original`, `tra
 `limit` is also a refusal. Caps (clean `limit` stops before any kernel call): `MAX_ORIGINALS` 100, `MAX_TRANSFORM_STEPS`
 16, `MAX_TRANSFORM_INSTANCES` 500 (instances × originals; 1,000 overlapping pockets round a turn took 55 s against the
 60 s call budget, 500 take 21 s), `MAX_HOLE_CENTRES` = Extrudo's `MAX_HOLES` 200 (a test keeps them equal). Gaps of their
-own (`Spacings`: −1/0/the spacing is default), positions left out, "Whole shape" are `option`; float lists are read from
+own (read only in Spacing mode, as FreeCAD does: a `Spacings` entry other than −1 or `Offset`, 0 included, or a
+`SpacingPattern` of 2+ entries), positions left out, "Whole shape" are `option`; float lists are read from
 their own entry (`floatList`, little-endian count + doubles, bounded by the archive size). Fixtures: `pattern-fixtures.ts`
 (38 FreeCAD 1.1.4 parts, `make-pattern-fixtures.py`, ours; each distinct B-rep once, spaces collapsed), written into files
 by `pattern-parts.ts` (`partFile(name, change, options)`); tests `pattern.test.ts`, `pattern-hostile.test.ts`,
 `pattern-limits.test.ts` (`BENCH=1`). `history-corpus.test.ts` keeps 17 bodies with their whole history, 274 imports, 101
 references found, none missing or several, unless a change explains it.
+**S7 review round:** a stored element is the one whose index was asked (a reply without it is nonsense); a line or
+plane must be a finite point within `MAX_FEATURE_LENGTH` and a finite unit direction (an edge of no length, a face of no
+direction refused) and every tolerance comparison fails on NaN; a hole original counts `HOLE_CENTRE_WEIGHT` (2) × its
+centres in `MAX_TRANSFORM_INSTANCES` (500 overlapping hole cuts 49.9 s, 250 18.7 s); `axesWanted` is bounded by the body
+cap and one sub; construction features only through `#construct` and range-checked points; a row's extent past
+`MAX_FEATURE_LENGTH` is `value`; a Spacing-mode step past 360° maps as it is (FreeCAD keeps turning); a hole's cut is
+checked on Extrudo's own conditions in the decode (`value`) and `DecodedHole.cuts` lists only the buildable ones; the
+other-bodies check compares solids, faces and edges exactly (`ShapeMeasure.faces`/`edges` from `measureShape`) and the
+measures within `UNTOUCHED_TOLERANCE` 1e-12 (`untouchedDisagreement`; measured drift 0 on 37 fixture and 2 library
+checks). Extrudo's `operate` itself ignores a cut under 1e-6 of a body's volume, so no smaller sliver can reach another body.
 
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,

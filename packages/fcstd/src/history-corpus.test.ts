@@ -147,6 +147,15 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
     let otherDiffer = 0;
     const lines: string[] = [];
     const census: Record<string, number> = {};
+    // S7: how far another FreeCAD body's Extrudo body moved between two rebuilds it wasn't part of.
+    const untouched = {
+      checks: 0,
+      volume: 0,
+      area: 0,
+      corner: 0,
+      centre: 0,
+      each: [] as number[][],
+    };
     // S7: what the transforms and holes in the files hold, and what the walk did with them.
     const s7 = {
       secondAttempts: 0,
@@ -229,7 +238,19 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       // S3's way first, for what is not a body.
       const s3 = await importFcstd(bytes, 'X', { kernel, maxFileFeatures: 0 });
       const t = performance.now();
-      const { report } = await importFcstd(bytes, 'X', { kernel, solver });
+      const { report } = await importFcstd(bytes, 'X', {
+        kernel,
+        solver,
+        onUntouched: (d) => {
+          untouched.checks++;
+          untouched.each.push([d.volume, d.area, d.corner, d.centre]);
+          untouched.volume = Math.max(untouched.volume, d.volume);
+          untouched.area = Math.max(untouched.area, d.area);
+          const of = (v: number) => (d.diagonal > 0 ? v / d.diagonal : v);
+          untouched.corner = Math.max(untouched.corner, of(d.corner));
+          untouched.centre = Math.max(untouched.centre, of(d.centre));
+        },
+      });
       times.push(performance.now() - t);
       restarts += report.restarts;
       importsS3 += s3.report.shapes.length;
@@ -376,6 +397,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       ),
       notBodies: { same: otherSame, differ: otherDiffer },
       s7,
+      untouched,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

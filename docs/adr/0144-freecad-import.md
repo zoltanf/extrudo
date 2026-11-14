@@ -1180,9 +1180,9 @@ The closed set grows by three, worded in the app's `HISTORY_STOP`:
 `FeatureRefusal`, and S5's and S6's reasons are reused (`value`, `option`,
 `suppressed`, `up-to`, `sketch`, `element`, `reference`, `kernel`). A
 TransformMode of "Whole shape" (`option`; the library has none), a gap of its
-own (`Spacings`: −1 or 0 is the pattern's spacing, a length equal to it
-changes nothing, anything else `option`; `SpacingPattern` must be zeros; the
-library has none), positions left out (`SuppressedIndices` /
+own (read in Spacing mode only, as FreeCAD does: a `Spacings` entry other
+than −1 or `Offset`, 0 included, or a `SpacingPattern` of more than one
+entry, is `option`; the library has none; see the review round below), positions left out (`SuppressedIndices` /
 `SuppressedPositions`, none in the library). Numbers through `finite` and the
 reader's unreadable list: `Occurrences` a whole number from 1, lengths
 finite, ≥ 0 and at most S5's 10 km, 0 refused with more than one instance,
@@ -1192,7 +1192,7 @@ by the archive's size before inflating. **Caps of ours** (a count over one is
 a clean `limit` stop before any kernel call, never a failure):
 `MAX_ORIGINALS` 100 (checked before any is read), `MAX_TRANSFORM_STEPS` 16,
 `MAX_TRANSFORM_INSTANCES` **500** instances times originals (every step of a
-MultiTransform multiplied), `MAX_HOLE_CENTRES` 200 (Extrudo's `MAX_HOLES`, a
+MultiTransform multiplied; a hole original counts twice per centre, below), `MAX_HOLE_CENTRES` 200 (Extrudo's `MAX_HOLES`, a
 test keeps them equal). The instance cap is half of Extrudo's own 1,000
 (`MAX_PATTERN_INSTANCES`) because of its worst case. Measured on the Ubuntu
 machine, one run each, the whole import (`pattern-limits.test.ts`, `BENCH=1`):
@@ -1243,6 +1243,89 @@ The library's largest pattern makes 28 instances.
   groove are equal (they come after a pattern or hole that now holds), and the
   `type` stops fall from 9 to 4 (a subtractive pipe, an additive sphere, two
   base features).
+
+### Review round (2026-11-14)
+
+The owner's independent review of the S7 diff found eight things; the rule
+for each, as in S6: a value or a reply the importer can't use is a refusal
+with the right reason before the work it would cause, a limit of ours a clean
+stop. Tests: `pattern-review.test.ts` (18).
+
+1. **The element asked for.** A description may hold more elements than were
+   asked (`saneElements` allows it), so a transform's edge or face is the one
+   whose index is the one asked, never the reply's first; a reply without it
+   (where the count and no cap explain its absence) is nonsense: a kernel
+   failure and a restart.
+2. **A direction that isn't one.** A straight edge whose ends lie within
+   1e-9 mm of each other, a face whose direction is shorter than 1e-9, and any
+   line or plane that isn't a finite point within 10 km and a finite unit
+   direction are refused (`transform-reference`) before they are compared;
+   the origin and right-angle comparisons are written so that a non-finite
+   number fails them (`!(x <= tolerance)`).
+3. **A hole among the originals counts by its centres, twice each.** The cap
+   counts instances × originals, a hole original as `HOLE_CENTRE_WEIGHT` (2) ×
+   its centres (`MappedFeature.centres`), checked in the walk before the
+   transform's work (`limit`). Measured (whole import, one run each): a hole
+   of two centres repeated so that 500 hole cuts overlap their neighbours took
+   **49.9 s**, next to the 60 s a call may take; 250 such cuts (the most the
+   weight lets in, counted 500) took **18.7 s**, as the 500 overlapping
+   pockets round a turn do (20.7 s); 250 cuts apart 1.0 s.
+4. **The sketch axes asked for up front** (`axesWanted`) are looked for only
+   in the first `MAX_BODY_FEATURES` of the chain and their MultiTransforms'
+   first `MAX_TRANSFORM_STEPS` steps, and only on a reference with one
+   sub-element (what the decode takes); 100,000 sub-elements are refused in
+   well under a second.
+5. **Construction features** go through one guard (`#construct`: Extrudo's
+   refusal is a `failed` stop with the detail, never the walk's catch-all),
+   and every point is checked against `MAX_FEATURE_LENGTH` per coordinate
+   first (`transform-reference`, "past 10000000 mm").
+6. **Extents.** A row whose instances reach past `MAX_FEATURE_LENGTH` (the
+   spacing times count − 1, or the extent) is refused (`value`). **Past a
+   whole turn:** FreeCAD's pattern extension (its source read as a
+   description, `PolarPatternExtension::getTransformations` on main of
+   2026-09) places instance *i* of a Spacing-mode pattern at the sum of the
+   first *i* steps and rotates by it without a limit, so steps past 360° go
+   on round and land where the angle mod 360° says (on another instance when
+   it is a multiple); Extrudo's step mode rotates instance *i* by *i* steps
+   too, so it maps as it is (the fixture with more instances than fit a turn
+   rebuilds and reaches the check). In Extent mode FreeCAD takes 360°
+   (within 1e-7) as a whole turn and divides any other angle by count − 1;
+   where Extrudo would read it as a turn (−360°, the last 1e-7 short of 360°)
+   the importer writes the step. The same source settles the gaps: FreeCAD
+   reads `Spacings` and `SpacingPattern` only in Spacing mode (an entry ≠ −1
+   is used, 0 included; an entry equal to `Offset` it turns into −1 itself;
+   a pattern of one entry is not used), so the importer reads them so too and
+   refuses a gap of its own only there. The S7 rule (0 as the default, read
+   in every mode) was wrong: it would have taken a gap of 0 for the spacing.
+7. **A hole's cut against its hole** is refused in the decode (`value`) on
+   Extrudo's own conditions (`packages/kernel/src/features/hole.ts`): a cut
+   diameter not over the hole's by 1e-6 mm, a counterbore depth not in
+   (1e-6 mm, the blind depth − 1e-6 mm), a countersink angle not in
+   (1e-6°, 180° − 1e-6°) or its cone as deep as the blind hole. Where the file
+   doesn't name the cut, only the kinds that pass are tried
+   (`DecodedHole.cuts`): a stored depth of 0 rules out the counterbore, and
+   the countersink is then the one attempt.
+8. **The other bodies, exactly.** The measure now also counts faces and edges
+   (`measureShape`, `faces`, `edges`: both sides through the same code; a
+   reply may leave them out, `saneMeasure` requires whole numbers when they are
+   there), and a body that should be untouched must have the same solid, face
+   and edge counts and its volume, area, box and centre within
+   **`UNTOUCHED_TOLERANCE` 1e-12** (`untouchedDisagreement`). Measured: on the
+   fixtures, every transform and hole part with a second body beside it, 37
+   checks, every measure moved **exactly 0**; on the library 3 checks, the two
+   untouched ones 0, the third the through hole above (5.5e-4 of the other
+   body's volume). 1e-12 is far below anything a feature makes and above
+   rounding should a rebuild ever reorder the arithmetic. **Finding:** a cut
+   into another body under 1e-6 of its volume cannot happen in Extrudo:
+   `operate` leaves a body exactly as it was when a cut would take less than
+   1e-6 of its volume, so a hole whose tool clips another body by 3e-8 of its
+   volume leaves it bit-identical (the test asserts the drift is 0 and the
+   part holds, as in FreeCAD). The tighter check matters at and past that
+   threshold, where the counts catch any cut or join: a clip of 2.8e-6 stops
+   with "its solids, faces or edges changed".
+
+The library's numbers are unchanged by the round: 17 bodies with their whole
+history, 274 imports, 101 references found, no restart, no second attempt.
 
 ### What S8 and S9 inherit
 

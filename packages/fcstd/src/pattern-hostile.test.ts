@@ -90,7 +90,8 @@ describe('numbers a file holds', () => {
   });
 
   it('a gap of its own, and positions left out, are refused', async () => {
-    const gaps = await run('linear_h_axis', {
+    // linear_spacing is in Spacing mode, the only one where FreeCAD reads the gaps.
+    const gaps = await run('linear_spacing', {
       LinearPattern: { props: { Spacings: P.floats([5, -1]) } },
     });
     expect(gaps.body?.stop).toMatchObject({ reason: 'option' });
@@ -109,7 +110,7 @@ describe('numbers a file holds', () => {
   });
 
   it('a gap list cut short or of a billion numbers is unreadable, never read', async () => {
-    const short = await run('linear_h_axis', {
+    const short = await run('linear_spacing', {
       LinearPattern: { props: { Spacings: P.raw('<FloatList file="Nowhere"/>') } },
     });
     expect(short.body?.stop).toMatchObject({ reason: 'value' });

@@ -430,8 +430,8 @@ MultiTransform; ADR-0144's S7 amendment):
 | `Reversed`, `Reversed2` | `Bool` | Step (or turn) the other way |
 | `Occurrences`, `Occurrences2` | `Integer` | Instances, the original counted; `Occurrences2` is 1 without a second direction |
 | `Mode`, `Mode2` | `Integer` (1.0+) | 0 Extent: `Length` (mm; Polar: `Angle`, degrees) from the first instance to the last; 1 Spacing: `Offset` between neighbours. A file without `Mode` is Extent |
-| `Spacings`, `Spacings2` | `FloatList` (1.1) | One entry per gap: −1 (and 0, which 1.1 writes for a second direction) for the pattern's spacing, a length for a gap of its own |
-| `SpacingPattern`, `SpacingPattern2` | `FloatList` (1.1) | A repeating list of gaps; zeros when unused |
+| `Spacings`, `Spacings2` | `FloatList` (1.1) | Read in Spacing mode only: one entry per gap (the first `Occurrences` − 1), −1 for the pattern's `Offset`, any other value (0 included) the gap itself; FreeCAD turns an entry equal to `Offset` into −1. Extent mode ignores it (1.1 writes `[0]` for an added second direction) |
+| `SpacingPattern`, `SpacingPattern2` | `FloatList` (1.1) | Spacing mode only, experimental: a list of two or more gaps repeated where `Spacings` says −1; one entry or none is not used |
 | `Transformations` (MultiTransform) | `LinkList` | Its steps, applied in order, each multiplying the instances. The steps are members of the body without a `BaseFeature` and outside the chain; their `Originals` are empty |
 
 FreeCAD steps along the reference line's own direction: a sketch axis's (the
@@ -440,7 +440,11 @@ and an edge's **curve** direction, whatever the edge's orientation in the shape
 (the fixtures `linear_edge` and `linear_edge_y`: reversed edges, stepped along
 +x and +y). A polar pattern turns right-handed about that direction. A whole
 turn of 360° is spread into `Occurrences` equal steps (the last doesn't land
-on the first); anything less into `Occurrences` − 1.
+on the first); anything less into `Occurrences` − 1 (FreeCAD takes 360° within
+1e-7 as the whole turn, −360° as an angle). In Spacing mode instance *i* is
+turned by the sum of the first *i* steps with no limit: past 360° the
+instances go on round. (FreeCAD's `PolarPatternExtension` and
+`LinearPatternExtension`, read as a description.)
 
 A `FloatList` with values is written to an archive entry of its own named by
 the element's `file` attribute (`<FloatList file="Spacings"/>`; `file=""` for

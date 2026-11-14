@@ -8,11 +8,37 @@ import { MAX_PATTERN_INSTANCES } from '@extrudo/core';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MAX_TRANSFORM_INSTANCES } from './features';
+import { label, prop } from './fixtures';
 import { MAX_HOLE_CENTRES } from './holes';
 import { importFcstd } from './import';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { P, type PartChange, type PartOptions, partFile } from './pattern-parts';
 import { circle } from './sketch-fixtures';
+
+/** A LinearPattern after the part's hole, repeating it along the origin X axis over `length` mm. */
+const rowOfHole = (count: number, length: number): PartOptions => ({
+  extra: [
+    {
+      name: 'Row',
+      type: 'PartDesign::LinearPattern',
+      props: [
+        label('Row'),
+        prop('BaseFeature', 'App::PropertyLink', '<Link value="Hole"/>'),
+        prop(
+          'Originals',
+          'App::PropertyLinkList',
+          '<LinkList count="1"><Link value="Hole"/></LinkList>',
+        ),
+        prop('Direction', 'App::PropertyLinkSub', '<LinkSub value="X_Axis" count="0"></LinkSub>'),
+        prop('Occurrences', 'App::PropertyIntegerConstraint', `<Integer value="${count}"/>`),
+        prop('Length', 'App::PropertyLength', `<Float value="${length}"/>`),
+        prop('Shape', 'Part::PropertyPartShape', '<Part file="Hole.Shape.brp"/>'),
+      ],
+    },
+  ],
+  members: ['Row'],
+  tip: 'Row',
+});
 
 const bench = process.env.BENCH === '1';
 
@@ -92,6 +118,26 @@ describe.skipIf(!bench)('the slowest rebuild at each cap (BENCH=1)', () => {
         },
       },
       { sketchGeometry: { HoleSketch: many } },
+    );
+    expect(body?.stop?.reason).not.toBe('kernel');
+  }, 600_000);
+
+  it('a hole of two centres 125 times (counted 500): 250 cuts, each overlapping its neighbours', async () => {
+    const { body } = await time(
+      `holes 2 x ${process.env.HOLES ?? 125}, overlapping`,
+      'hole_blind_flat',
+      {},
+      rowOfHole(Number(process.env.HOLES ?? 125), 0.5),
+    );
+    expect(body?.stop?.reason).not.toBe('kernel');
+  }, 600_000);
+
+  it('a hole of two centres 125 times (counted 500): 250 cuts apart', async () => {
+    const { body } = await time(
+      'holes 2 x 125, a row',
+      'hole_blind_flat',
+      {},
+      rowOfHole(125, 2480),
     );
     expect(body?.stop?.reason).not.toBe('kernel');
   }, 600_000);

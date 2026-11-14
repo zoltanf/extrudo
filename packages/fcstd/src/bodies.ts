@@ -27,7 +27,14 @@ import {
 import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon } from '@extrudo/sketch/profiles';
 import type { CallOutcome, KernelBudget } from './budget';
-import { combined, type Drift, drift, historyDisagreement, saneMeasure } from './check';
+import {
+  combined,
+  type Drift,
+  drift,
+  historyDisagreement,
+  saneMeasure,
+  untouchedDisagreement,
+} from './check';
 import { addDressUp, type ReferenceTally } from './dressups';
 import {
   type DecodedDressUp,
@@ -38,6 +45,8 @@ import {
   FEATURE_TYPES,
   type FeatureKind,
   type FeatureRefusal,
+  MAX_TRANSFORM_INSTANCES,
+  MAX_TRANSFORM_STEPS,
 } from './features';
 import { type FinalShape, linkedObjects } from './final-shapes';
 import { addHole } from './holes';
@@ -175,6 +184,8 @@ export interface BodyWalkOptions {
    * matched edges and the construction features.
    */
   readonly originFirst?: boolean;
+  /** Hears how far each other body moved between two rebuilds (tests and the library run). */
+  readonly onUntouched?: (d: Drift) => void;
 }
 
 /** A body's chain of solid features up to its tip, following `BaseFeature`, or why there is none. */
@@ -468,7 +479,7 @@ export async function importBodies(
     /** This body's mapped features by FreeCAD name: what a transform's originals become. */
     const mappedBy = new Map<string, { feature: string; kind: FeatureKind }>();
     /** The sketch axes a transform of this body names, drawn when their sketch comes in (S7). */
-    const wantedAxes = axesWanted(doc, features);
+    const wantedAxes = axesWanted(doc, features, maxBody);
     /** The one place that decides where a body's history stops (S8 carries on instead). */
     const stop = (
       o: FcObject | undefined,
@@ -588,10 +599,7 @@ export async function importBodies(
       chain: readonly FcPlacement[],
       decodedSketch: DecodedSketch | undefined,
     ): Promise<void> => {
-      const cuts =
-        feature.cut === 'counterbore-or-countersink'
-          ? (['counterbore', 'countersink'] as const)
-          : ([feature.cut] as const);
+      const cuts = feature.cuts;
       await holdAll(
         f,
         chain,
@@ -656,6 +664,20 @@ export async function importBodies(
           return;
         }
         ids.push((m as { feature: string }).feature);
+      }
+      // A hole repeats all its centres, and a hole's cut costs about two pockets' (ADR-0144's S7
+      // amendment): each centre counts twice in the instance cap.
+      const weight = feature.originals.reduce((n, name) => {
+        const centres = mapped.find((x) => x.object === name)?.centres;
+        return n + (centres === undefined ? 1 : HOLE_CENTRE_WEIGHT * centres);
+      }, 0);
+      if (feature.instances * weight > MAX_TRANSFORM_INSTANCES) {
+        stop(
+          f,
+          'limit',
+          `it makes ${feature.instances * weight} instances (a hole counts each of its centres twice), more than ${MAX_TRANSFORM_INSTANCES}`,
+        );
+        return;
       }
       // A MultiTransform's steps are its own: one object, one body, once per file.
       if (feature.kind === 'multi')
@@ -860,10 +882,12 @@ export async function importBodies(
                 detail: 'it took away a body of another FreeCAD body',
                 final: true,
               };
-            if (historyDisagreement(is, was))
+            options.onUntouched?.(drift(is, was));
+            const why = untouchedDisagreement(is, was);
+            if (why)
               return {
                 reason: 'differs',
-                detail: 'it changed a body of another FreeCAD body',
+                detail: `it changed a body of another FreeCAD body: ${why}`,
                 final: true,
               };
           }
@@ -1017,6 +1041,13 @@ type Added =
       threadLost?: true;
     };
 
+/**
+ * What one centre of a hole among a transform's originals counts for in
+ * `MAX_TRANSFORM_INSTANCES`: 500 overlapping hole cuts took 50 s, 250 took
+ * 19 s, as 500 overlapping pockets do (ADR-0144's S7 amendment).
+ */
+export const HOLE_CENTRE_WEIGHT = 2;
+
 /** The features a pattern or mirror can repeat: Extrudo replays their tools (`PATTERNABLE_FEATURE_TYPES`). */
 const REPEATABLE: ReadonlySet<FeatureKind> = new Set([
   'pad',
@@ -1034,29 +1065,36 @@ const REFERENCE_PROPERTIES = ['Direction', 'Direction2', 'Axis', 'MirrorPlane'];
  * name, by sketch: drawn when the sketch is added, so a pattern can step
  * along them (decision 8: never by editing the sketch afterwards).
  */
-function axesWanted(doc: FcDocument, features: readonly FcObject[]): Map<string, Set<'h' | 'v'>> {
+function axesWanted(
+  doc: FcDocument,
+  features: readonly FcObject[],
+  max: number,
+): Map<string, Set<'h' | 'v'>> {
   const out = new Map<string, Set<'h' | 'v'>>();
   const look = (o: FcObject) => {
     for (const name of REFERENCE_PROPERTIES) {
       const v = o.properties[name]?.value;
       if (v?.kind !== 'linkSub' || !v.object) continue;
-      for (const s of v.subs) {
-        const axis = s.name === 'H_Axis' ? 'h' : s.name === 'V_Axis' ? 'v' : undefined;
-        if (!axis) continue;
-        const set = out.get(v.object) ?? new Set();
-        set.add(axis);
-        out.set(v.object, set);
-      }
+      // What the decode takes: one sub-element (several are refused).
+      const subs = v.subs.filter((x) => x.name !== '');
+      if (subs.length !== 1) continue;
+      const sub = subs[0]?.name;
+      const axis = sub === 'H_Axis' ? 'h' : sub === 'V_Axis' ? 'v' : undefined;
+      if (!axis) continue;
+      const set = out.get(v.object) ?? new Set();
+      set.add(axis);
+      out.set(v.object, set);
     }
   };
-  for (const f of features) {
+  // The features the walk can reach: the body's cap bounds the scan as it bounds the walk.
+  for (const f of features.slice(0, max)) {
     const kind = Object.hasOwn(FEATURE_TYPES, f.type) ? FEATURE_TYPES[f.type] : undefined;
     if (!kind || !TRANSFORM_KINDS.has(kind)) continue;
     look(f);
     const steps = f.properties.Transformations?.value;
     if (steps?.kind !== 'linkList') continue;
     // Bounded like the decode: a MultiTransform has at most a few steps.
-    for (const name of steps.objects.slice(0, 16)) {
+    for (const name of steps.objects.slice(0, MAX_TRANSFORM_STEPS)) {
       const child = doc.byName.get(name);
       if (child) look(child);
     }

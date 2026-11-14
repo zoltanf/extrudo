@@ -712,6 +712,8 @@ export type DecodedStep = DecodedLinear | DecodedPolar | DecodedMirrored;
 
 interface TransformCommon {
   readonly object: string;
+  /** Instances each original makes, itself counted (every step of a MultiTransform multiplied). */
+  readonly instances: number;
   /** The features it repeats, each once, in the file's order. */
   readonly originals: readonly string[];
   readonly sources: Readonly<Record<string, string>>;
@@ -858,23 +860,35 @@ function occurrences(o: FcObject, name: string): number {
 }
 
 /**
- * Refuses a pattern whose gaps aren't all its own spacing. FreeCAD 1.1 keeps
- * one entry per gap (`Spacings`): -1 (and 0, which it writes for a second
- * direction it adds) for "the pattern's spacing", a length for a gap of its
- * own; and a repeating list of gaps (`SpacingPattern`), zeros when unused
- * (FORMAT.md). A gap equal to the spacing changes nothing. A property that
- * isn't there is the default.
+ * Refuses a pattern whose gaps aren't all its own spacing. As FreeCAD's
+ * pattern extensions read them (FORMAT.md): only in Spacing mode, where the
+ * first `count − 1` entries of `Spacings` give each gap (−1, or a value equal
+ * to `Offset`, which FreeCAD turns into −1, for the pattern's own spacing;
+ * any other value, 0 included, a gap of its own) and a `SpacingPattern` of
+ * more than one entry repeats gaps of its own. In Extent mode neither is read.
+ * A property that isn't there is the default.
  */
-function defaultGaps(doc: FcDocument, o: FcObject, name: string, step: number | undefined): void {
-  if (o.properties[name] === undefined) return;
-  if (o.unreadable?.includes(name)) refuse('value', `its ${name} can't be read`);
-  const before = doc.problems.length;
-  const read = floatList(doc, o, name);
-  doc.problems.splice(before);
-  const list = read ?? refuse('value', `its ${name} can't be read`);
-  const own = (g: number) =>
-    step === undefined ? g !== 0 : g > 0 && Math.abs(g - step) > 1e-9 * Math.max(1, step);
-  if (list.some(own)) refuse('option', `it has gaps of their own (${name})`);
+function defaultGaps(
+  doc: FcDocument,
+  o: FcObject,
+  suffix: '' | '2',
+  spacing: number | undefined,
+  count: number,
+): void {
+  if (spacing === undefined) return;
+  const read = (name: string): number[] => {
+    if (o.properties[name] === undefined) return [];
+    if (o.unreadable?.includes(name)) refuse('value', `its ${name} can't be read`);
+    const before = doc.problems.length;
+    const list = floatList(doc, o, name);
+    doc.problems.splice(before);
+    return list ?? refuse('value', `its ${name} can't be read`);
+  };
+  const gaps = read(`Spacings${suffix}`).slice(0, Math.max(0, count - 1));
+  if (gaps.some((g) => g !== -1 && g !== spacing))
+    refuse('option', `it has gaps of their own (Spacings${suffix})`);
+  if (read(`SpacingPattern${suffix}`).length > 1)
+    refuse('option', `it repeats gaps of their own (SpacingPattern${suffix})`);
 }
 
 /** The positions a pattern leaves out (FreeCAD 1.1): refused unless there are none. */
@@ -907,9 +921,11 @@ function row(
   const distance = length(o, lengthName);
   if (count > 1 && !(distance > 0))
     refuse('value', `its ${lengthName} of 0 mm puts every copy on the original`);
-  const step = measure === 'spacing' ? distance : count > 1 ? distance / (count - 1) : distance;
-  defaultGaps(doc, o, `Spacings${suffix}`, step);
-  defaultGaps(doc, o, `SpacingPattern${suffix}`, undefined);
+  // The whole row, first instance to last, within the lengths the importer takes.
+  const extent = measure === 'spacing' ? distance * (count - 1) : distance;
+  if (!(extent <= MAX_FEATURE_LENGTH))
+    refuse('value', `its instances reach ${extent} mm along it, past ${MAX_FEATURE_LENGTH} mm`);
+  defaultGaps(doc, o, suffix, measure === 'spacing' ? distance : undefined, count);
   sources[`direction${n}`] = `Direction${suffix}`;
   sources[`count${n}`] = `Occurrences${suffix}`;
   sources[`distance${n}`] = lengthName;
@@ -947,14 +963,9 @@ function polar(
   if (!(Math.abs(angle) <= 360)) refuse('value', `its ${angleName} of ${angle}° is out of range`);
   if (count > 1 && angle === 0)
     refuse('value', `its ${angleName} of 0° puts every copy on the original`);
-  const turn = measure === 'total' && Math.abs(angle) === 360 ? count : count - 1;
-  defaultGaps(
-    doc,
-    o,
-    'Spacings',
-    measure === 'step' ? angle : turn > 0 ? Math.abs(angle) / turn : 0,
-  );
-  defaultGaps(doc, o, 'SpacingPattern', undefined);
+  // A step whose instances go past a whole turn: FreeCAD keeps turning (instance i at i
+  // steps, FORMAT.md), as Extrudo's step does, so it maps as it is.
+  defaultGaps(doc, o, '', measure === 'step' ? angle : undefined, count);
   sources.axis = 'Axis';
   sources.count = 'Occurrences';
   sources.angle = angleName;
@@ -1005,7 +1016,7 @@ function transform(
   if (originals.length === 0) return refuse('original', 'it repeats nothing');
   if (originals.includes(o.name)) return refuse('original', 'it lists itself among its originals');
   const sources: Record<string, string> = { features: 'Originals' };
-  const common = { object: o.name, originals };
+  const common = { object: o.name, originals, instances: 0 };
   let total: number;
   let decoded: DecodedTransform;
   if (kind === 'multi') {
@@ -1050,7 +1061,7 @@ function transform(
       'limit',
       `it makes ${total * originals.length} instances, more than ${MAX_TRANSFORM_INSTANCES}`,
     );
-  return decoded;
+  return { ...decoded, instances: total };
 }
 
 // --- Hole (S7) -------------------------------------------------------------------------------
@@ -1075,6 +1086,8 @@ export interface DecodedHole {
   /** Degrees; 0 for a flat bottom. */
   readonly tipAngle: number;
   readonly cut: DecodedHoleCut;
+  /** The cuts to try, in order, each one Extrudo's hole can build: one, or (a cut the file doesn't name) counterbore then countersink. */
+  readonly cuts: readonly ('none' | 'counterbore' | 'countersink')[];
   /** mm (`HoleCutDiameter`), with a cut. */
   readonly cutDiameter?: number;
   /** mm (`HoleCutDepth`), with a counterbore. */
@@ -1155,16 +1168,46 @@ function hole(doc: FcDocument, o: FcObject): DecodedHole {
   if (cut !== 'none') {
     out.cutDiameter = size(o, 'HoleCutDiameter');
     sources.cutDiameter = 'HoleCutDiameter';
-    if (cut !== 'countersink') {
-      out.cutDepth = size(o, 'HoleCutDepth');
-      sources.cutDepth = 'HoleCutDepth';
-    }
+    if (cut === 'counterbore') out.cutDepth = size(o, 'HoleCutDepth');
+    // Only one of the two kinds is open: a depth that isn't one rules the counterbore out.
+    else if (cut !== 'countersink') out.cutDepth = number(o, 'HoleCutDepth');
+    if (cut !== 'countersink') sources.cutDepth = 'HoleCutDepth';
     if (cut !== 'counterbore') {
       out.cutAngle = number(o, 'HoleCutCountersinkAngle');
-      if (!(out.cutAngle > 0 && out.cutAngle < 180))
-        refuse('value', `its HoleCutCountersinkAngle of ${out.cutAngle}° is out of range`);
       sources.cutAngle = 'HoleCutCountersinkAngle';
     }
+  }
+  // The cuts Extrudo's hole builds (its own conditions, `packages/kernel/src/features/hole.ts`).
+  const EPS = 1e-6;
+  const fits = (c: 'counterbore' | 'countersink'): string | undefined => {
+    const d = out.cutDiameter as number;
+    if (!(d > diameter + EPS))
+      return `its HoleCutDiameter of ${d} mm is not larger than its Diameter of ${diameter} mm`;
+    if (c === 'counterbore') {
+      const cb = out.cutDepth as number;
+      if (!(cb > EPS && cb <= MAX_FEATURE_LENGTH))
+        return `its HoleCutDepth of ${cb} mm is out of range`;
+      if (extent === 'blind' && !(cb < (depth as number) - EPS))
+        return `its counterbore of ${cb} mm is as deep as the hole`;
+      return undefined;
+    }
+    const a = out.cutAngle as number;
+    if (!(a > EPS && a < 180 - EPS)) return `its HoleCutCountersinkAngle of ${a}° is out of range`;
+    const cone = (d - diameter) / 2 / Math.tan((a * Math.PI) / 360);
+    if (extent === 'blind' && !(cone < (depth as number) - EPS))
+      return `its countersink is as deep as the hole`;
+    return undefined;
+  };
+  let cuts: ('none' | 'counterbore' | 'countersink')[] = ['none'];
+  if (cut === 'counterbore' || cut === 'countersink') {
+    const why = fits(cut);
+    if (why) refuse('value', why);
+    cuts = [cut];
+  } else if (cut === 'counterbore-or-countersink') {
+    const bore = fits('counterbore');
+    const sink = fits('countersink');
+    cuts = [...(bore ? [] : ['counterbore' as const]), ...(sink ? [] : ['countersink' as const])];
+    if (cuts.length === 0) refuse('value', bore as string);
   }
   // OnPoints 1, OnCircles 2, OnArcs 4; files before the setting drill at circles and arcs.
   const types = number(o, 'BaseProfileType', 6);
@@ -1181,6 +1224,7 @@ function hole(doc: FcDocument, o: FcObject): DecodedHole {
     ...(depth !== undefined ? { depth } : {}),
     tipAngle,
     cut,
+    cuts,
     ...out,
     reversed,
     on: { points: (types & 1) !== 0, circles: (types & 2) !== 0, arcs: (types & 4) !== 0 },

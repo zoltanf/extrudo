@@ -36,9 +36,15 @@ import {
 } from '@extrudo/core';
 import type { CallOutcome, KernelBudget } from './budget';
 import type { ReferenceTally } from './dressups';
-import type { DecodedReference, DecodedRow, DecodedStep, DecodedTransform } from './features';
+import {
+  type DecodedReference,
+  type DecodedRow,
+  type DecodedStep,
+  type DecodedTransform,
+  MAX_FEATURE_LENGTH,
+} from './features';
 import { rotate } from './final-shapes';
-import type { ShapeElements, SubShapeAt } from './import-kernel';
+import type { ElementEdge, ElementFace, ShapeElements, SubShapeAt } from './import-kernel';
 import {
   cellFor,
   checkReference,
@@ -78,6 +84,17 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [
 const norm = (v: Vec3) => Math.hypot(v[0], v[1], v[2]);
 const unit = (v: Vec3): Vec3 => scale(v, 1 / norm(v));
 const literal = (v: number) => `${Number(v.toPrecision(15))}`;
+
+/** A finite point within the lengths the importer takes (`MAX_FEATURE_LENGTH` from the origin, each coordinate). */
+const inRange = (p: Vec3) =>
+  p.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_FEATURE_LENGTH);
+/** A line or plane that is one: a point in range and a finite direction of unit length. */
+const sound = (origin: Vec3, direction: Vec3) =>
+  inRange(origin) && direction.every(Number.isFinite) && Math.abs(norm(direction) - 1) <= 1e-9;
+const unsound = (what: string): TransformStop => ({
+  stop: 'transform-reference',
+  detail: `its ${what} is no line or plane the importer can use (no length, no direction, or past ${MAX_FEATURE_LENGTH} mm)`,
+});
 
 /** How far off parallel two unit directions may be and count as one (a sine). */
 const PARALLEL = 1e-9;
@@ -204,9 +221,7 @@ export class TransformMapper {
     kind: 'edge' | 'face',
     index: number,
     name: string,
-  ): Promise<
-    { stored: ShapeElements; chain: readonly import('./model').FcPlacement[] } | TransformStop
-  > {
+  ): Promise<{ stored: ShapeElements; element: ElementEdge | ElementFace } | TransformStop> {
     const { doc, budget } = this.#c;
     if (!this.#c.walked.has(object))
       return {
@@ -229,7 +244,11 @@ export class TransformMapper {
       () => budget.kernel.describeStoredShape(text, chain, ask),
       (reply: unknown): reply is ShapeElements => {
         stored = saneElements(reply, ask);
-        return stored !== undefined;
+        if (!stored) return false;
+        // The element asked for must be there (a reply may hold others), unless a cap or the count says why not.
+        const count = kind === 'edge' ? stored.edgeCount : stored.faceCount;
+        const list: readonly { index: number }[] = kind === 'edge' ? stored.edges : stored.faces;
+        return stored.over !== undefined || index >= count || list.some((e) => e.index === index);
       },
     );
     if (described.kind !== 'done') return { stop: described.kind, detail: callDetail(described) };
@@ -245,18 +264,22 @@ export class TransformMapper {
         stop: 'element',
         detail: `it names ${cleanName(name, 'nothing')}, but ${cleanName(object, object)} has ${count} ${kind}${count === 1 ? '' : 's'}`,
       };
-    return { stored: s, chain };
+    const element = (kind === 'edge' ? s.edges : s.faces).find((e) => e.index === index) as
+      | ElementEdge
+      | ElementFace;
+    return { stored: s, element };
   }
 
   /** Finds a stored edge or face on the rebuilt body and returns its persistent reference. */
   async #match(
-    s: ShapeElements,
+    element: ElementEdge | ElementFace,
     kind: 'edge' | 'face',
     what: string,
   ): Promise<GeomRef | TransformStop> {
     const { budget, mine, design } = this.#c;
     this.#matched = true;
-    const point = kind === 'edge' ? (s.edges[0]?.midpoint as Vec3) : (s.faces[0]?.centroid as Vec3);
+    const point =
+      kind === 'edge' ? (element as ElementEdge).midpoint : (element as ElementFace).centroid;
     const cell = cellFor([point]);
     let bodies: Map<string, ShapeElements> | undefined;
     const rebuilt = await budget.call(
@@ -271,7 +294,8 @@ export class TransformMapper {
       if (d.over !== undefined)
         return { stop: 'limit', detail: 'its body has more than the importer describes' };
     const index = new ElementIndex(bodies as Map<string, ShapeElements>, cell);
-    const l = kind === 'edge' ? index.edge(s.edges[0] as never) : index.face(s.faces[0] as never);
+    const l =
+      kind === 'edge' ? index.edge(element as ElementEdge) : index.face(element as ElementFace);
     if (l.kind !== 'one') {
       if (l.kind === 'none') this.tally.none++;
       else this.tally.several++;
@@ -314,50 +338,66 @@ export class TransformMapper {
 
   // ------------------------------------------------------------ construction
 
-  #point(p: Vec3, n: number): GeomRef {
-    const added = this.#c.design.add(
+  /** `design.add` of a construction feature, refused (`failed`) where Extrudo refuses it. */
+  #construct(type: string, inputs: unknown, name: string): string | TransformStop {
+    try {
+      const id = this.#c.design.add(type as never, inputs as never, { name }).id;
+      this.constructions++;
+      return id;
+    } catch (error) {
+      return { stop: 'failed', detail: `Extrudo refused its ${name}: ${(error as Error).message}` };
+    }
+  }
+
+  #point(p: Vec3, n: number): GeomRef | TransformStop {
+    if (!inRange(p)) return unsound('reference');
+    const id = this.#construct(
       'constructionPoint',
       {
         x: expr(`${literal(p[0])} mm`, 'length'),
         y: expr(`${literal(p[1])} mm`, 'length'),
         z: expr(`${literal(p[2])} mm`, 'length'),
       },
-      { name: `${this.#c.name} point ${n}` },
+      `${this.#c.name} point ${n}`,
     );
-    this.constructions++;
-    return { kind: 'point', id: added.id };
+    return typeof id === 'string' ? { kind: 'point', id } : id;
   }
 
   /** An axis through two construction points: the line exactly, pointing FreeCAD's way. */
-  #axisOf(line: Line): GeomRef {
+  #axisOf(line: Line): GeomRef | TransformStop {
     // Points 10 mm apart about the line's origin keep the numbers as given.
     const a = this.#point(line.origin, 1);
+    if ('stop' in a) return a;
     const b = this.#point(add(line.origin, scale(line.direction, 10)), 2);
-    const added = this.#c.design.add(
+    if ('stop' in b) return b;
+    const id = this.#construct(
       'axisThroughPoints',
       { points: { kind: 'ref', refs: [a, b] } },
-      { name: `${this.#c.name} axis` },
+      `${this.#c.name} axis`,
     );
-    this.constructions++;
-    return { kind: 'axis', id: added.id };
+    return typeof id === 'string' ? { kind: 'axis', id } : id;
   }
 
   /** A plane through three construction points. */
-  #planeOf(plane: Plane): GeomRef {
+  #planeOf(plane: Plane): GeomRef | TransformStop {
     const n = unit(plane.normal);
     // Two directions in the plane: one square to the normal's largest component.
     const helper: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
     const u = unit(cross(n, helper));
     const v = cross(n, u);
     const p = [plane.origin, add(plane.origin, scale(u, 10)), add(plane.origin, scale(v, 10))];
-    const refs = p.map((x, i) => this.#point(x, i + 1));
-    const added = this.#c.design.add(
+    const refs: GeomRef[] = [];
+    for (const [i, x] of p.entries()) {
+      const r = this.#point(x, i + 1);
+      if ('stop' in r) return r;
+      refs.push(r);
+    }
+    const id = this.#construct(
       'planeThroughPoints',
       { points: { kind: 'ref', refs } },
-      { name: `${this.#c.name} plane` },
+      `${this.#c.name} plane`,
     );
-    this.constructions++;
-    return { kind: 'plane', id: added.id };
+    return typeof id === 'string' ? { kind: 'plane', id } : id;
   }
 
   // ------------------------------------------------------------ references
@@ -366,10 +406,11 @@ export class TransformMapper {
     if (this.#c.originFirst === false) return undefined;
     for (const a of ORIGIN_AXES) {
       const d = a.direction as Vec3;
-      if (norm(cross(d, line.direction)) > PARALLEL) continue;
+      // Comparisons that a non-finite number fails (NaN is never parallel or on the axis).
+      if (!(norm(cross(d, line.direction)) <= PARALLEL)) continue;
       // On the axis: the line's origin has no part square to it.
       const off = sub(line.origin, scale(d, dot(line.origin, d)));
-      if (norm(off) > onTolerance(line.origin)) continue;
+      if (!(norm(off) <= onTolerance(line.origin))) continue;
       return { ref: { kind: 'axis', id: a.id }, along: d, fc: line.direction };
     }
     return undefined;
@@ -379,8 +420,8 @@ export class TransformMapper {
     if (this.#c.originFirst === false) return undefined;
     for (const p of ORIGIN_PLANES) {
       const n = p.frame.normal as Vec3;
-      if (norm(cross(n, unit(plane.normal))) > PARALLEL) continue;
-      if (Math.abs(dot(plane.origin, n)) > onTolerance(plane.origin)) continue;
+      if (!(norm(cross(n, unit(plane.normal))) <= PARALLEL)) continue;
+      if (!(Math.abs(dot(plane.origin, n)) <= onTolerance(plane.origin))) continue;
       return { kind: 'plane', id: p.id };
     }
     return undefined;
@@ -439,30 +480,39 @@ export class TransformMapper {
         reference.element.name,
       );
       if ('stop' in found) return found;
-      const e = found.stored.edges[0];
-      if (!e || e.type !== 'line' || e.ends?.length !== 2)
+      const e = found.element as ElementEdge;
+      if (e.type !== 'line' || e.ends?.length !== 2)
         return {
           stop: 'transform-reference',
           detail: `its ${what} ${cleanName(reference.element.name, 'nothing')} is not a straight edge`,
         };
       // FreeCAD takes the line's own direction: the curve's first end to its last (FORMAT.md).
       const [a, b] = e.ends as [Vec3, Vec3];
+      if (!(norm(sub(b, a)) > 1e-9))
+        return {
+          stop: 'transform-reference',
+          detail: `its ${what} ${cleanName(reference.element.name, 'nothing')} has no length`,
+        };
       line = { origin: a, direction: unit(sub(b, a)) };
+      if (!sound(line.origin, line.direction)) return unsound(what);
       const origin = this.#originAxis(line);
       if (origin) return origin;
       const ref = await this.#match(
-        found.stored,
+        e,
         'edge',
         `its ${what} ${cleanName(reference.element.name, 'nothing')}`,
       );
       if ('stop' in ref) return ref;
       return { ref, along: canonical(line.direction), fc: line.direction };
     }
+    if (!sound(line.origin, line.direction)) return unsound(what);
     const origin = this.#originAxis(line);
     if (origin) return origin;
     const drawn = this.#drawn(reference);
     if (drawn) return { ref: drawn, along: line.direction, fc: line.direction };
-    return { ref: this.#axisOf(line), along: line.direction, fc: line.direction };
+    const axis = this.#axisOf(line);
+    if ('stop' in axis) return axis;
+    return { ref: axis, along: line.direction, fc: line.direction };
   }
 
   /** A mirror plane as an Extrudo plane reference. */
@@ -482,16 +532,17 @@ export class TransformMapper {
         reference.element.name,
       );
       if ('stop' in found) return found;
-      const face = found.stored.faces[0];
-      if (!face || face.type !== 'plane' || !face.direction)
+      const face = found.element as ElementFace;
+      if (face.type !== 'plane' || !face.direction || !(norm(face.direction) > 1e-9))
         return {
           stop: 'transform-reference',
           detail: `its mirror plane ${cleanName(reference.element.name, 'nothing')} is not a flat face`,
         };
+      if (!sound(face.centroid, unit(face.direction))) return unsound('mirror plane');
       const origin = this.#originPlane({ origin: face.centroid, normal: face.direction });
       if (origin) return origin;
       return this.#match(
-        found.stored,
+        face,
         'face',
         `its mirror plane ${cleanName(reference.element.name, 'nothing')}`,
       );
@@ -500,6 +551,7 @@ export class TransformMapper {
     const sketch = this.#c.sketches.get(reference.sketch);
     if (reference.kind === 'sketch-axis' && reference.axis === 'n') {
       const plane = { origin: f.origin, normal: f.n };
+      if (!sound(plane.origin, plane.normal)) return unsound('mirror plane');
       return this.#originPlane(plane) ?? sketch?.plane ?? this.#planeOf(plane);
     }
     // The plane through the line and the sketch's normal.
@@ -512,16 +564,21 @@ export class TransformMapper {
       line = l;
     }
     const plane = { origin: line.origin, normal: unit(cross(line.direction, f.n)) };
+    if (!sound(plane.origin, plane.normal)) return unsound('mirror plane');
     const origin = this.#originPlane(plane);
     if (origin) return origin;
     const drawn = this.#drawn(reference);
     if (drawn && sketch) {
-      const p = this.#c.design.planeAtAngle(
-        { axis: drawn, plane: sketch.plane, angle: '90 deg' },
-        { name: `${this.#c.name} plane` },
+      const id = this.#construct(
+        'planeAtAngle',
+        {
+          axis: { kind: 'ref', refs: [drawn] },
+          plane: { kind: 'ref', refs: [sketch.plane] },
+          angle: expr('90 deg', 'angle'),
+        },
+        `${this.#c.name} plane`,
       );
-      this.constructions++;
-      return { kind: 'plane', id: p.id };
+      return typeof id === 'string' ? { kind: 'plane', id } : id;
     }
     return this.#planeOf(plane);
   }
@@ -564,8 +621,17 @@ export class TransformMapper {
     const sense = (dot(line.along, line.fc) < 0 ? -1 : 1) * (s.reversed ? -1 : 1);
     // A whole turn the other way: FreeCAD spreads -360° like any angle short of a turn (the
     // last instance on the first), Extrudo like a turn; say the step instead.
-    const turn = s.measure === 'total' && Math.abs(s.angle) === 360 && s.angle < 0;
-    const angle = turn && s.count > 1 ? s.angle / (s.count - 1) : s.angle;
+    // FreeCAD takes an Extent of 360° (within 1e-7) as a whole turn and anything else over
+    // count − 1 steps; Extrudo takes 360° or more either way as a turn. Where they differ (−360°,
+    // the last 1e-7 short of a turn) the step is said instead.
+    const fcTurn = Math.abs(s.angle - 360) < 1e-7;
+    const turn = s.measure === 'total' && !fcTurn && Math.abs(s.angle) >= 360 - 1e-9;
+    const angle =
+      fcTurn && s.measure === 'total'
+        ? 360
+        : turn && s.count > 1
+          ? s.angle / (s.count - 1)
+          : s.angle;
     const inputs = circularPatternInputs({
       ...objectsOf(what),
       axis: line.ref,
@@ -634,6 +700,7 @@ export class TransformMapper {
       // A body mirrored with its copy fused in: the second mirror already has the diagonal.
       if ('bodies' in what) return { feature: second.feature, extra: [first.feature] };
       const axis = this.#originAxis(meet) ?? { ref: this.#axisOf(meet) };
+      if ('stop' in axis.ref) return axis.ref;
       const turn = this.#add(
         'circularPattern',
         circularPatternInputs({
@@ -684,7 +751,8 @@ export class TransformMapper {
       };
     const na = unit(pa.normal);
     const nb = unit(pb.normal);
-    if (Math.abs(dot(na, nb)) > PARALLEL)
+    if (!sound(pa.origin, na) || !sound(pb.origin, nb)) return unsound('mirror plane');
+    if (!(Math.abs(dot(na, nb)) <= PARALLEL))
       return { stop: 'multi-transform', detail: 'its two mirror planes are not at right angles' };
     // Planes n·x = h square to each other meet in the line through h₁n₁ + h₂n₂ along n₁ × n₂.
     const origin = add(scale(na, dot(pa.origin, na)), scale(nb, dot(pb.origin, nb)));
