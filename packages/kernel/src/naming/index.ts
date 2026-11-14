@@ -50,6 +50,7 @@ export {
   createdName,
   edgeName,
   faceRelation,
+  featuresOfName,
   indexedName,
   nameRelation,
   type ParsedCompound,

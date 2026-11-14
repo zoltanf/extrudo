@@ -360,7 +360,11 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
   axis: "a revolve turns about an axis Extrudo can't use yet",
   value: "a feature has a value Extrudo can't read",
   option: "a feature has a setting Extrudo can't rebuild",
-  'no-base': 'a cut comes before anything to cut',
+  'no-base': 'a cut, fillet or chamfer comes before anything to work on',
+  base: "a fillet or chamfer doesn't work on the feature before it",
+  element: "a fillet or chamfer names an edge or face its body doesn't have",
+  edges: 'a fillet or chamfer has no edges, or more than Extrudo can take',
+  reference: "a fillet's or chamfer's edges couldn't be found on the rebuilt body",
   chain: "its features don't follow each other",
   limit: 'it has too many features',
   stored: "a feature's shape can't be read from the file",
@@ -386,12 +390,13 @@ export function fcstdNotices(
   const history = bodies.filter((b) => b.outcome === 'history').length;
   const came = report.shapes.length + history;
   const plain = report.shapes.length;
+  const total = `${report.finalShapes} shape${report.finalShapes === 1 ? '' : 's'}`;
   const out = [
     history === 0
-      ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, as bodies without history.`
+      ? `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`
       : plain === 0
-        ? `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, with their history (sketches and features).`
-        : `Imported from the FreeCAD file: ${came} of ${report.finalShapes} shapes, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
+        ? `Imported from the FreeCAD file: ${came} of ${total}, with ${history === 1 ? 'its' : 'their'} history (sketches and features).`
+        : `Imported from the FreeCAD file: ${came} of ${total}, ${history} with ${history === 1 ? 'its' : 'their'} history and ${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history.`,
   ];
   const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);
   if (short.length > 0) {

@@ -192,6 +192,8 @@ function bind(service: KernelService) {
     storedShapeToStep: service.storedShapeToStep.bind(service),
     measureStoredShape: service.measureStoredShape.bind(service),
     measureBodies: service.measureBodies.bind(service),
+    describeStoredShape: service.describeStoredShape.bind(service),
+    describeBodies: service.describeBodies.bind(service),
     exportScad: service.exportScad.bind(service),
     inspect: service.inspect.bind(service),
     interference: service.interference.bind(service),

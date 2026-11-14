@@ -43,7 +43,13 @@ export {
   type SubShapeKind,
   type SubShapeRef,
 } from './history';
-export { type ImportRebuild, type ImportRebuilder, importRebuilder } from './import-rebuild';
+export {
+  type ImportRebuild,
+  type ImportRebuilder,
+  type ImportSubShape,
+  importRebuilder,
+  importReferences,
+} from './import-rebuild';
 export {
   type Box,
   type Inspection,
@@ -157,6 +163,7 @@ export {
   FINGERPRINT_THRESHOLD,
   faceEdgeSources,
   faceRelation,
+  featuresOfName,
   fingerprintOf,
   fingerprintScore,
   indexOfName,
@@ -291,9 +298,21 @@ export {
   type ViewPiece,
 } from './sheets';
 export type {
+  DetailNear,
+  ElementEdge,
+  ElementFace,
+  ElementLimit,
+  ElementRequest,
+  ShapeElements,
   ShapePlacement,
   StoredShapeMeasure,
   StoredShapeOptions,
   StoredShapeStep,
+} from './stored-shape';
+export {
+  MAX_ADJACENT,
+  MAX_DESCRIBED_EDGES,
+  MAX_DESCRIBED_FACES,
+  MAX_DETAILED_EDGES,
 } from './stored-shape';
 export { TEST_PART, type TestPart } from './test-part';

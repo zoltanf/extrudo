@@ -2,7 +2,8 @@
  * Test support (no production code): an `ImportKernel` with the kernel in
  * this thread, started as an import kernel, as the CLI would make one.
  */
-import { importRebuilder, KernelService, loadOcct } from '@extrudo/kernel/node';
+import type { BodyId } from '@extrudo/core';
+import { importRebuilder, importReferences, KernelService, loadOcct } from '@extrudo/kernel/node';
 import type { ImportKernel } from './import-kernel';
 
 export function nodeImportKernel(): ImportKernel & {
@@ -20,6 +21,12 @@ export function nodeImportKernel(): ImportKernel & {
     measureStoredShape: (text: string, chain: Parameters<ImportKernel['measureStoredShape']>[1]) =>
       service.measureStoredShape(text, chain),
     rebuild: (...args: Parameters<ImportKernel['rebuild']>) => rebuilder.rebuild(...args),
+    describeStoredShape: (...args: Parameters<ImportKernel['describeStoredShape']>) =>
+      service.describeStoredShape(...args),
+    describeBodies: (...[bodies, near]: Parameters<ImportKernel['describeBodies']>) =>
+      service.describeBodies(bodies as BodyId[], { points: [...near.points], radius: near.radius }),
+    references: (items: Parameters<ImportKernel['references']>[0]) =>
+      importReferences(service, items),
     restart: async () => {
       kernel.restarts++;
       service = start();

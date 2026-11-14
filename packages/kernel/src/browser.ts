@@ -60,6 +60,8 @@ function connect(worker: Worker): KernelConnection {
     storedShapeToStep: (text, chain, options) => api.storedShapeToStep(text, chain, options),
     measureStoredShape: (text, chain) => api.measureStoredShape(text, chain),
     measureBodies: (bodies) => api.measureBodies(bodies),
+    describeStoredShape: (text, chain, ask) => api.describeStoredShape(text, chain, ask),
+    describeBodies: (bodies, near) => api.describeBodies(bodies, near),
     exportScad: (options) => api.exportScad(options),
     inspect: (targets) => api.inspect(targets),
     interference: (bodies) => api.interference(bodies),

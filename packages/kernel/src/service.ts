@@ -53,8 +53,13 @@ import {
   SheetViewsCancelledError,
 } from './sheets/views';
 import {
+  type DetailNear,
+  describeShapes,
+  describeStoredShape,
+  type ElementRequest,
   measureShape,
   measureStoredShape,
+  type ShapeElements,
   type ShapePlacement,
   type StoredShapeMeasure,
   type StoredShapeOptions,
@@ -242,6 +247,31 @@ export interface KernelApi {
    * Rejects if a body is no longer in the model.
    */
   measureBodies(bodies: readonly BodyId[]): Promise<Record<BodyId, StoredShapeMeasure>>;
+  /**
+   * A third-party file's stored B-rep text, placed by `chain`, with the edges
+   * and faces `ask` names described for matching (P6-25 S6, ADR-0144
+   * decision 4), and their neighbours: the faces each edge bounds, the edges
+   * of each face. Refused like `storedShapeToStep` unless this is an import
+   * kernel.
+   */
+  describeStoredShape(
+    text: string,
+    chain: readonly ShapePlacement[],
+    ask: ElementRequest,
+  ): Promise<ShapeElements>;
+  /**
+   * Every edge and face of bodies of the last finished recompute described
+   * as `describeStoredShape` describes a stored shape's (the same code), by
+   * ID, in detail the edges `near` the points given (P6-25 S6): an import
+   * looks a file's edges up among them, then takes
+   * `reference` of the one it found. Rejects if a body is no longer in the
+   * model; past a cap (shared by the bodies of one call: `describeShapes`)
+   * every body comes back with its counts only (`over`, `limit`).
+   */
+  describeBodies(
+    bodies: readonly BodyId[],
+    near?: DetailNear,
+  ): Promise<Record<BodyId, ShapeElements>>;
   /**
    * Bodies of the last finished recompute as an OpenSCAD file (P6-09,
    * ADR-0088): OpenSCAD code where the features translate, polyhedra at the
@@ -655,6 +685,37 @@ export class KernelService implements KernelApi {
       // No prototype: the IDs are the caller's strings.
       const out = Object.create(null) as Record<BodyId, StoredShapeMeasure>;
       for (const id of bodies) out[id] = measureShape(kernel, this.#bodyShape(id, 'measure'));
+      return out;
+    });
+  }
+
+  describeStoredShape(
+    text: string,
+    chain: readonly ShapePlacement[],
+    ask: ElementRequest,
+  ): Promise<ShapeElements> {
+    if (!this.#options.importKernel) return Promise.reject(notAnImportKernel());
+    return this.#run((kernel) => describeStoredShape(kernel, text, chain, ask));
+  }
+
+  describeBodies(
+    bodies: readonly BodyId[],
+    near?: DetailNear,
+  ): Promise<Record<BodyId, ShapeElements>> {
+    return this.#run((kernel) => {
+      // No prototype: the IDs are the caller's strings.
+      const out = Object.create(null) as Record<BodyId, ShapeElements>;
+      // One call, one set of caps: the bodies share them (`describeShapes`).
+      const unique = [...new Set(bodies)];
+      const described = describeShapes(
+        kernel,
+        unique.map((id) => this.#bodyShape(id, 'measure')),
+        undefined,
+        near,
+      );
+      unique.forEach((id, i) => {
+        out[id] = described[i] as ShapeElements;
+      });
       return out;
     });
   }

@@ -46,6 +46,8 @@ export function workerApi(service: KernelService): KernelApi {
     storedShapeToStep: (text, chain, options) => service.storedShapeToStep(text, chain, options),
     measureStoredShape: (text, chain) => service.measureStoredShape(text, chain),
     measureBodies: (bodies) => service.measureBodies(bodies),
+    describeStoredShape: (text, chain, ask) => service.describeStoredShape(text, chain, ask),
+    describeBodies: (bodies, near) => service.describeBodies(bodies, near),
     exportScad: (options) => service.exportScad(options),
     inspect: (targets) => service.inspect(targets),
     interference: (bodies) => service.interference(bodies),

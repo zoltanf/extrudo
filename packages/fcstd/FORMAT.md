@@ -395,6 +395,30 @@ role `X_Axis` … in its `Role` or name, listed in the body's origin's
 `OriginFeatures`), a datum line or a solid's edge. `Base` and `Axis` (vectors,
 read-only) are the axis as FreeCAD resolved it.
 
+**Fillet and Chamfer** (dress-ups, `DressUp`):
+
+| Property | Value element | Meaning |
+|---|---|---|
+| `Base` | `LinkSub` | The feature before it in the chain and the sub-elements it works on: `EdgeN` and `FaceN` of **that feature's stored shape** (not of the dress-up's own), 1-based in `TopExp::MapShapes` order, which the stored text keeps |
+| `Radius` (Fillet) | `Float` | mm, one radius for every edge |
+| `ChamferType` | `Integer` (0.19+) | 0 Equal distance, 1 Two distances, 2 Distance and Angle; a file from before has equal distances |
+| `Size`, `Size2` | `Float` | mm: the first size (on the reference face), the second (type 1) |
+| `Angle` | `Float` | Degrees (type 2), from the reference face |
+| `FlipDirection` | `Bool` | The sizes go on the other face. FreeCAD 1.0 turned its meaning round: it toggles the flag of an older file of type 1 or 2 when it opens one, and so does the importer (no library file has either type) |
+| `UseAllEdges` | `Bool` (0.20+) | Every edge of the base, whatever `Base` names |
+| `Suppressed` | `Bool` (1.0+) | As for the others |
+
+What FreeCAD works on: each `EdgeN`, and every edge of each `FaceN`, taken
+once and only where the edge lies between exactly two faces of the base (a
+seam or a free edge is left out; FreeCAD also leaves out an edge whose two
+faces meet smoothly, a flag the description doesn't carry, so such an edge
+reaches the check). OCCT then rounds or bevels the whole chain of
+tangent-continuous edges each one starts, in FreeCAD as in Extrudo. A
+chamfer's reference face for an edge is the first of its two faces in the
+base's face order (the lower `FaceN`), the second with `FlipDirection`; the
+authored fixtures show both, and a twin with the other face differs only in
+its centre of mass (ADR-0144's S6 amendment).
+
 ## Not read yet
 
 - Sketches: external geometry (`ExternalGeometry`, `ExternalGeo`), `MapMode`
@@ -405,8 +429,9 @@ read-only) are the axis as FreeCAD resolved it.
 - Link arrays (`ElementCount`, `PlacementList`, `LinkElement`s) and links to
   other documents: one instance or a problem.
 - FreeCAD's binary shape form.
-- PartDesign features other than Pad, Pocket, Revolution and Groove, and of
-  those the up-to methods, tapers, custom directions and axes other than the
-  sketch's, its lines and an origin axis (they are refused with a reason).
+- PartDesign features other than Pad, Pocket, Revolution, Groove, Fillet and
+  Chamfer, and of those the up-to methods, tapers, custom directions and axes
+  other than the sketch's, its lines and an origin axis, and `UseAllEdges`
+  (they are refused with a reason).
 - `ObjectDeps`, `Touched`/`Invalid` beyond the flag, the recompute log, the
   camera.
