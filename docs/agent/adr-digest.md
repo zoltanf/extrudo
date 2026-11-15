@@ -5044,6 +5044,18 @@ angle and axis, which a reader takes first); tests `reference.test.ts`, `referen
 references found, all 6 up-to features in, 5 steps, unless a change explains it (the fix round's run: see the
 amendment).
 
+**ADR-0144, S9 arcs (projected arcs):** `transforms.ts` (`externals()`, `arcThrough`), `sketch-map.ts` (the external
+arc drawn, `ProjectedEntity.kind: 'arc'`), `bodies.ts` (`projectionVerdict`). Rules: **an arc of a circle comes in as a
+projection** like a line: 1.0+ from its stored `GeomArcOfCircle`; before 1.0 from the matched stored edge (a circle
+whose axis is the sketch's normal, either sense) projected along the normal, **which of the two arcs from the edge's
+`midpoint`, never from the ends' order** (`arcThrough`; ends/middle off the circle, ends together, middle on an end, a
+radius of zero, not finite or past `MAX_FEATURE_LENGTH` → `kind`). Drawn as S4 draws an arc, construction, **point
+positions FreeCAD's (1 = whichever drawn end is at FreeCAD's start)**, so a turned arc keeps its ends' names. The check:
+the report's arc has the drawn centre, both ends on the drawn radius, the drawn start and end (S9's tolerance); the ends
+swapped (in Extrudo the other arc of the circle, since arcs run counter-clockwise) is redrawn the kernel's way by the
+line's `projectionTry` rule; anything else stays out. `ExternalCause` has no `arc` any more. Fixtures
+`external_arc_*` (5); library: 5 of 5 arcs in, 16 constraints through projections, 131 references found.
+
 **ADR-0144, S10 (parameters and expressions):** files `fc-expr.ts` (`parseFcExpression`, FreeCAD's grammar: `^`
 left-assoc and looser than unary minus, a unit only after a number, `;`/`,` arguments, `1,5`; unit and constant tokens
 are never names; `MAX_EXPRESSION_LENGTH` 4,096, `_TOKENS` 1,024, `_DEPTH` 64; `cellAddress` upper case only), `fc-emit.ts`

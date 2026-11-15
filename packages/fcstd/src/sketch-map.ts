@@ -174,7 +174,10 @@ export interface SketchMapResult {
  * External geometry to bring in as a projection (S9), by geometry index
  * (−3 − k): the curve where FreeCAD has it, in the sketch's own coordinates,
  * and the Extrudo projection that makes it (its source and curve key).
- * `reversed`: Extrudo's projected line runs from FreeCAD's end to its start.
+ * `reversed`: Extrudo's projected line runs from FreeCAD's end to its start;
+ * a projected arc runs counter-clockwise from FreeCAD's end to its start (the
+ * other arc of the circle between the same ends), its point positions still
+ * FreeCAD's (position 1 at FreeCAD's start).
  */
 export interface ExternalPlan {
   readonly curve: FcGeometry;
@@ -191,8 +194,8 @@ export interface ProjectedEntity {
   readonly projection: string;
   readonly key: string;
   readonly entity: string;
-  readonly kind: 'line' | 'circle' | 'point';
-  /** A line's ends (start, end), a circle's centre, a point. */
+  readonly kind: 'line' | 'circle' | 'arc' | 'point';
+  /** A line's ends (start, end), a circle's centre, an arc's start, end and centre (Extrudo's), a point. */
   readonly points: readonly Vec2[];
   readonly radius?: number;
 }
@@ -492,6 +495,24 @@ export function mapSketch(
     } else if (c.kind === 'circle') {
       const h = k.circle(m(c.center), c.radius);
       d = { kind: 'circle', id: h.id, pos: { 3: h.center.id }, parts: [h.id, h.center.id] };
+    } else if (c.kind === 'arc') {
+      // As S4 draws an arc (counter-clockwise in Extrudo's frame from its start), or the
+      // other way round when the kernel projects it so; position 1 stays FreeCAD's start.
+      const { start, end } = arcEnds(c);
+      const [ms, me, mc] = [m(start), m(end), m(c.center)];
+      const h =
+        placement.mirrored !== !!plan.reversed
+          ? k.arcCentered(mc, me, ms)
+          : k.arcCentered(mc, ms, me);
+      const at = (id: string): Vec2 => [entities[id]?.x as number, entities[id]?.y as number];
+      const first = dist(at(h.start.id), ms) <= dist(at(h.end.id), ms) ? h.start : h.end;
+      const last = first === h.start ? h.end : h.start;
+      d = {
+        kind: 'arc',
+        id: h.id,
+        pos: { 1: first.id, 2: last.id, 3: h.center.id },
+        parts: [h.id, h.start.id, h.end.id, h.center.id],
+      };
     } else if (c.kind === 'point') {
       const h = k.point(m(c.at));
       d = { kind: 'point', id: h.id, pos: { 1: h.id }, parts: [h.id] };
@@ -960,14 +981,19 @@ export function mapSketch(
       projection: d.projection,
       key: d.key,
       entity: d.id,
-      kind: d.kind as 'line' | 'circle' | 'point',
+      kind: d.kind as 'line' | 'circle' | 'arc' | 'point',
       points:
         d.kind === 'line'
           ? [at(e?.start as string), at(e?.end as string)]
           : d.kind === 'circle'
             ? [at(e?.center as string)]
-            : [at(d.id)],
+            : d.kind === 'arc'
+              ? [at(e?.start as string), at(e?.end as string), at(e?.center as string)]
+              : [at(d.id)],
       ...(d.kind === 'circle' ? { radius: e?.radius as number } : {}),
+      ...(d.kind === 'arc'
+        ? { radius: dist(at(e?.center as string), at(e?.start as string)) }
+        : {}),
     });
   }
   // S10: every driving dimension without a FreeCAD name gets the import's own next name.

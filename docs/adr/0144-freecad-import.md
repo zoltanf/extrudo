@@ -1928,25 +1928,23 @@ file has them: they don't follow …"; "the planes of *n* tilted sketches").
   sketches' lines 6, ShapeBinders' edges 12, Part features 3. In the bodies the
   walk reaches, 17 sketches have links: their constraints name 27 external
   curves, **7 came in as projections and 9 constraints through them** (a
-  fillet's, two pads' and four pockets' edges), 25 constraints stay out. The 20
+  fillet's, two pads' and four pockets' edges), 25 constraints stay out. Since
+  the arcs amendment below, 12 and 16 (the five arcs), 18 stay out. The
   curves that stay out, by cause (`SketchOutcome.external.out`, summed by the
-  library test):
+  library test; 20 in S9, 15 since the arcs):
 
   | Cause | Curves |
   |---|---|
   | The source is outside the body's walked features (ShapeBinders, S12's) | 9 |
-  | An arc (a part of a circle; files from before 1.0, so no stored projection, and the importer projects only whole circles) | 5 |
+  | An arc (files from before 1.0; S9 projected only whole circles) | 5 in S9, 0 since the arcs amendment |
   | No counterpart on the rebuilt body (`none`) | 2 |
-  | A curve the importer doesn't project (not a line, nor a circle square to the sketch) | 2 |
+  | A curve the importer doesn't project (`kind`: not a line, nor a circle or an arc of one square to the sketch) | 2 |
   | A line of another sketch that didn't come in with this body | 1 |
   | A vertex (the matcher describes none) | 1 |
 
   None was reported elsewhere by the kernel, none past a cap, none ambiguous.
-  The arcs are the one cause a small change would cover: an arc of a circle
-  whose axis is the sketch's normal, planned from the stored edge's centre,
-  radius and two ends, drawn as an Extrudo arc counter-clockwise, and checked
-  against the kernel's `arc` like a line (centre, start and end, or the two
-  ends the other way round); left for the owner to decide.
+  The arcs were the one cause a small change would cover; the arcs amendment
+  below brings them in.
 - **Bodies (35): 25 with their history** (21 before; 21 whole and 4 with part
   of it), **6 from the file's shape** (10 before), 4 empty left out. **266
   `import`s** (270 before); the 348 shapes that aren't bodies come in exactly as
@@ -2048,6 +2046,95 @@ up-to features, 0 restarts; median 0.1 s a file, slowest 14.4 s.
 - A body's vertex as a reference (datum lines through vertices, projected
   vertices) needs the kernel to describe vertices for the matcher: one
   `describe` change in `stored-shape.ts`, no facade change.
+
+## Amendment (S9, arcs, 2026-11-15): arcs as projected edges
+
+An external curve that is an arc of a circle now comes in as a projection, as
+lines and whole circles do (S9's "Projected (external) geometry in
+sketches"); nothing else of S9 changes. `packages/fcstd`: `transforms.ts`
+(`externals()` plans the arc, `arcThrough`), `sketch-map.ts` (the arc drawn,
+`ProjectedEntity.kind: 'arc'`), `bodies.ts` (`projectionVerdict` checks it).
+No facade change, no schema change, no new app sentence.
+
+- **Files from 1.0 on** store the projection: a `Part::GeomArcOfCircle` in the
+  sketch's coordinates (FORMAT.md), read by S4's decoder (a radius that isn't
+  positive and finite, or angles that make no arc, leave the record unread,
+  cause `link`), drawn from there as lines and circles are.
+- **Files from before 1.0** store none. An edge whose curve is a circle, whose
+  two ends are apart and whose axis is the sketch's normal (either sense,
+  within 1e-9 as a sine) is projected along the normal: its centre, radius and
+  two ends from the matcher's description of the stored edge, and **which of
+  the two arcs between the ends it is from the edge's middle point**
+  (`ElementEdge.midpoint`, in the description already): the arc runs
+  counter-clockwise from the end after which the middle comes first
+  (`arcThrough`). An end or the middle off the circle (1e-6 mm + 1e-9 of the
+  centre's distance from the origin), the two ends on each other, the middle
+  on an end, a radius of zero, not finite or past `MAX_FEATURE_LENGTH` make no
+  arc: it stays out, `kind`. A whole circle keeps its own path; an arc whose
+  axis isn't the normal, an ellipse or a spline stays out (`kind`). The cause
+  `arc` is gone from `ExternalCause`: what it counted now comes in or is
+  `kind`.
+- **Either way the arc is drawn** as an Extrudo construction arc, as S4 draws a
+  sketch's arc (counter-clockwise in Extrudo's frame, the ends swapped in a
+  mirrored one), its point positions FreeCAD's (1 its start, 2 its end, 3 its
+  centre), and registered as the sketch's projection under the kernel's key
+  `edge`, so the app's projection sync owns it afterwards (an arc entity takes
+  a reported arc's centre, start and end in place). A drawn arc whose ends lie
+  within the tolerance of each other is left out (`kind`).
+- **The check** is the line's: the sketch's report must give an arc (the
+  kernel's `{ type: 'arc', center, start, end }`, counter-clockwise from
+  `start`) with the drawn centre, both ends on the drawn radius, and the drawn
+  start and end, within S9's projection tolerance. **The other way round** for
+  an arc in Extrudo is a report with the two ends swapped: since an Extrudo
+  arc always runs counter-clockwise, that is the other arc of the same circle
+  between the same ends. It is drawn the kernel's way at the next try (from
+  FreeCAD's end to its start), by the line's rule and counters
+  (`projectionTry`: turned back once if the next report disagrees, then left
+  out, at most `MAX_PROJECTION_REPEATS` tries more). **A turned arc keeps
+  FreeCAD's names for its ends:** position 1 is whichever drawn end lies on
+  FreeCAD's start, so a constraint on the start still names the point where
+  the file's start is; the vetting proves it (with the names swapped instead,
+  the solver would move the notch's corners, and the test that turns the arc
+  sees two of its three constraints refused). What changes is the curve
+  between the ends, which only a constraint on the curve itself sees; the
+  vetting decides those as for any other.
+- **Constraints** through it go through S4's mapping and vetting as through a
+  sketch's arc: its centre, its ends, point on object, tangent, concentric,
+  equal radius where S4 maps them; one S4 doesn't map stays out as before.
+- **Hostile** (`reference-hostile.test.ts`): a stored arc with a radius of zero
+  or not finite, a centre not finite, a start equal to the end (`link`: not
+  read), a radius or centre past the length limit, a sweep of 1e-11 rad, a
+  radius too small to tell the ends apart (`kind`), another radius (the kernel
+  reports it elsewhere: `elsewhere`); a kernel that reports a line, a circle,
+  another radius or nothing for it (`elsewhere`), or turns it every time it is
+  drawn (turned back once, then out); a description with the arc's middle off
+  the circle (before 1.0: `kind`). Each leaves the projection out and the
+  sketch as before (the constraints through it out as `external`), no stop. A
+  kernel that turns it once ends with the arc in as the file has it (the third
+  try); one that always reports the other arc, with it in the kernel's way and
+  every constraint mapped (the second try).
+- **Fixtures:** five more parts (`make-reference-fixtures.py`, FreeCAD 1.1.4;
+  5 distinct stored shapes more, 43 KB): the plate with one vertical corner
+  rounded (radius 6), a pocket's circle concentric with the projected top arc,
+  the same from the bottom arc 10 below the sketch's plane, a notch with its
+  corners on the arc's start, end and centre, a circle tangent to the arc, and
+  a side sketch that sees the arc edge-on. The first four come in with their
+  whole history, the projection in and every constraint mapped, with the
+  stored projection and with it taken away (the path before 1.0). The edge-on
+  one: FreeCAD 1.1.4 stores its projection as a line, which comes in as S9's
+  lines do (the kernel projects the edge-on arc to the same line); with the
+  stored projection taken away it stays out (`kind`) and its sketch is as in
+  S9.
+- **The library** (`history-corpus.test.ts`): **all 5 arcs come in** (files
+  before 1.0: three from a pocket's edges in one sketch, one each from two
+  MultiTransforms' edges), and **7 constraints more through them** (16
+  through projections in all, 9 before); those three sketches now map every
+  constraint. Named external curves 27, projected 12 (7 before), out 15 (the
+  table above without the arcs); constraints left out through external
+  geometry 18 (25). References found 131 (126: the five arcs' matches), 2
+  none. Unchanged: 25 bodies with history, 6 from the file's shape, 266
+  imports, 0 restarts, every feature row of S9's table; median 0.1 s a file,
+  slowest 14.5 s.
 
 ## Amendment (S10, 2026-11-15): parameters and expressions
 
@@ -2402,11 +2489,12 @@ name shown is cut to its first 40 characters and "…").
   earlier sketch's constraint had taken. The rule took 18 rounds over the
   whole library.
 - **The standing numbers did not move:** 25 bodies with their history (21 whole
-  and 4 after a step), 6 from the file's shape, 4 empty, 266 `import`s, 126
-  references found, 0 restarts, median 0.1 s a file (slowest 14.4 s).
+  and 4 after a step), 6 from the file's shape, 4 empty, 266 `import`s, 131
+  references found (the arcs amendment's number; 126 before it), 0 restarts,
+  median 0.1 s a file (slowest 14.4 s).
 - **The fix round (2026-11-15) moved none of these numbers:** the same 50
   parameters, 52 expressions kept, 11 names changed, 18 rounds; 25 bodies with
-  history, 266 imports, 126 references, 0 restarts. No library expression uses
+  history, 266 imports, the references as before, 0 restarts. No library expression uses
   `mod`, `round`, `trunc` or `cbrt`, none is proven by a count, and none has a
   stored 0 where its sense would be read off the numbers.
 - **What Extrudo's language would save:** no expression in the library uses

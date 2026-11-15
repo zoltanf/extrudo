@@ -540,7 +540,13 @@ edge's curve from its first parameter to its last.
   projects the linked element again on every recompute.
 - **What a projection is:** the element projected onto the sketch plane along
   its normal: a line or circle parallel to the plane comes through as itself,
-  a line square to it becomes a point.
+  a line square to it becomes a point. An arc of a circle parallel to the
+  plane is stored as a `Part::GeomArcOfCircle` like a sketch's own arc
+  (centre, radius, `AngleXU`, `StartAngle` < `EndAngle` in the arc's frame,
+  so counter-clockwise from its start about the stored normal); FreeCAD 1.1.4
+  turns the frame rather than the angles (a quarter arc from +X to +Y about
+  its centre is stored with `AngleXU` −π/2 and angles π/2 to π). An arc seen
+  edge-on (its circle square to the plane) is stored as a line segment.
 
 ## Expressions, spreadsheets and variable sets (S10)
 

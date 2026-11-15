@@ -476,7 +476,7 @@ export function datumDisagreement(c: DatumCheck, report: unknown): string | 'non
 
 /**
  * How many times a feature is tried again for its sketch's projections (S9):
- * a line drawn the way the report has it, turned back once if the next report
+ * a line or an arc drawn the way the report has it, turned back once if the next report
  * disagrees, then left out; a curve elsewhere left out.
  */
 export const MAX_PROJECTION_REPEATS = 3;
@@ -485,7 +485,7 @@ export const PROJECTION_TOLERANCE = 1e-6;
 
 /**
  * The kernel's projections of a sketch against where the importer drew them
- * (S9): the geometry indices whose line came in the other way round
+ * (S9): the geometry indices whose line or arc came in the other way round
  * (`reversed`), and those that came in elsewhere, as another kind, or lost
  * (`off`). `'nonsense'` for a report that isn't a sketch's.
  */
@@ -522,12 +522,31 @@ export function projectionVerdict(
           center?: unknown;
           radius?: unknown;
           at?: unknown;
+          start?: unknown;
+          end?: unknown;
         }
       | undefined;
     if (e.kind === 'line' && curve?.type === 'line' && vec2(curve.a) && vec2(curve.b)) {
       const [s0, s1] = e.points as [Vec2, Vec2];
       if (near(curve.a, s0) && near(curve.b, s1)) continue;
       if (near(curve.a, s1) && near(curve.b, s0)) reversed.push(e.geo);
+      else off.push(e.geo);
+    } else if (
+      e.kind === 'arc' &&
+      curve?.type === 'arc' &&
+      vec2(curve.center) &&
+      vec2(curve.start) &&
+      vec2(curve.end)
+    ) {
+      // The same centre and radius, the same two ends; the ends the other way round is the
+      // other arc between them, which the next try draws the kernel's way (as a line's).
+      const [s0, s1, c0] = e.points as [Vec2, Vec2, Vec2];
+      const [cx, cy] = curve.center;
+      const radius = ([x, y]: [number, number]) =>
+        Math.abs(Math.hypot(x - cx, y - cy) - (e.radius as number)) <= PROJECTION_TOLERANCE;
+      if (!near(curve.center, c0) || !radius(curve.start) || !radius(curve.end)) off.push(e.geo);
+      else if (near(curve.start, s0) && near(curve.end, s1)) continue;
+      else if (near(curve.start, s1) && near(curve.end, s0)) reversed.push(e.geo);
       else off.push(e.geo);
     } else if (
       e.kind === 'circle' &&
