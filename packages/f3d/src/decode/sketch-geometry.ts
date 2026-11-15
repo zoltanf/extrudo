@@ -400,7 +400,7 @@ export const sketchConic: RecordDecoder<SketchSpline> = {
 };
 
 /** u32 degree, f64 fit tolerance, knots, weights and poles; undefined when the bytes are not one. */
-function readNurbs(
+export function readNurbs(
   r: Reader,
 ): Pick<SketchSpline, 'degree' | 'knots' | 'weights' | 'poles'> | undefined {
   if (r.remaining < 12 + 36) return undefined;
