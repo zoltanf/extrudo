@@ -533,9 +533,28 @@ function header(w: StepWriter): number {
   );
 }
 
-/** A double in a compact STEP lexical form. */
-function g(v: number): string {
-  return Number.isFinite(v) ? Number.parseFloat(v.toPrecision(9)).toString() : '0';
+/**
+ * A double as a STEP real, rounded to nine significant digits: JavaScript's
+ * shortest form of that, which has no exponent from 1e-6 up to 1e21 (an
+ * integral value prints as an integer, which the kernel's reader takes as a
+ * real; integer arguments such as knot multiplicities and entity numbers go
+ * through here too and must stay integers). Outside that range the exponent
+ * form gets the decimal point and the capital `E` the exchange syntax needs:
+ * `1e-7` → `1.E-7`, `1.5e+21` → `1.5E21`. The kernel's reader took `1e-7` and
+ * `2e-1` as 0, and `1e+21` as nothing it could build (ADR-0083, 2026-11-15).
+ *
+ * The B-rep stream's doubles are not checked when it is read, and a product of
+ * finite ones can overflow, so a number that is not finite can reach this:
+ * the body is refused, rather than written with a 0 in its place.
+ */
+export function stepReal(v: number): string {
+  if (!Number.isFinite(v)) throw new UnsupportedGeometry('a number that is not finite');
+  const s = Number.parseFloat(v.toPrecision(9)).toString();
+  const e = s.indexOf('e');
+  if (e < 0) return s;
+  const mantissa = s.slice(0, e);
+  const exponent = s.slice(s[e + 1] === '+' ? e + 2 : e + 1);
+  return `${mantissa.includes('.') ? mantissa : `${mantissa}.`}E${exponent}`;
 }
 
 /** Emits AP214 STEP entities, numbering them as `#n=…;` (lengths: cm in, mm out). */
@@ -557,7 +576,7 @@ class StepWriter {
       refs.length
         ? text.replace(/\{\}/g, () => {
             const v = refs[i++];
-            return typeof v === 'number' ? g(v) : String(v);
+            return typeof v === 'number' ? stepReal(v) : String(v);
           })
         : text
     };`;
@@ -570,12 +589,14 @@ class StepWriter {
 
   point(p: [number, number, number]): number {
     const [x, y, z] = p.map((v) => v * 10) as [number, number, number];
-    return this.add(`CARTESIAN_POINT('',(${g(x)},${g(y)},${g(z)}))`);
+    return this.add(`CARTESIAN_POINT('',(${stepReal(x)},${stepReal(y)},${stepReal(z)}))`);
   }
 
   direction(d: [number, number, number]): number {
     const n = Math.hypot(d[0], d[1], d[2]) || 1;
-    return this.add(`DIRECTION('',(${g(d[0] / n)},${g(d[1] / n)},${g(d[2] / n)}))`);
+    return this.add(
+      `DIRECTION('',(${stepReal(d[0] / n)},${stepReal(d[1] / n)},${stepReal(d[2] / n)}))`,
+    );
   }
 
   /** An axis placement from an origin, a z and an x direction (x orthogonalized to z). */
@@ -643,7 +664,7 @@ class StepWriter {
 
   /** A list of numbers or references, `(a,b,…)`. */
   static list(xs: (number | string)[]): string {
-    return `(${xs.map((x) => (typeof x === 'number' ? g(x) : x)).join(',')})`;
+    return `(${xs.map((x) => (typeof x === 'number' ? stepReal(x) : x)).join(',')})`;
   }
 
   bsplineCurve(c: AsmBSplineCurve): number {

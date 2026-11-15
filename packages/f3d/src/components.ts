@@ -66,10 +66,11 @@ export class ComponentMapping {
     const byId = this.#byId;
     for (const c of components) byId.set(c.id, c);
     const taken = new Set<string>();
+    const next = new Map<string, number>();
     const nested = new Map<number, string[]>();
     for (const c of components) {
       if (c.root) continue;
-      const name = uniqueName(c.name, taken);
+      const name = uniqueName(c.name, taken, next);
       const handle = d.component(name);
       this.#handles.set(c.id, handle);
       if (!c.visible) {
@@ -202,13 +203,23 @@ export class ComponentMapping {
   }
 }
 
-/** A component name Extrudo takes: non-empty, at most 100 characters, unique in any case. */
-function uniqueName(name: string, taken: Set<string>): string {
+/**
+ * A component name Extrudo takes: non-empty, at most 100 characters, unique in
+ * any case. The name itself, else `name (2)`, `name (3)`, … (`Component1`,
+ * `Component2`, … for no name): the first one not `taken`. `next` keeps, per
+ * name in lower case, the counter its last search stopped at; every name below
+ * it is taken and stays taken, so the search goes on from there and k
+ * components of one name cost k, not k² (ADR-0083, 2026-11-15).
+ */
+export function uniqueName(name: string, taken: Set<string>, next: Map<string, number>): string {
   // Trimmed again after the cut: Extrudo trims a name before it checks it is unique.
   const base = name.trim().slice(0, 90).trim();
-  let chosen = base || 'Component1';
-  for (let n = 2; taken.has(chosen.toLowerCase()); n++)
-    chosen = base ? `${base} (${n})` : `Component${n}`;
+  const at = (n: number) => (base ? (n === 1 ? base : `${base} (${n})`) : `Component${n}`);
+  const key = base.toLowerCase();
+  let n = next.get(key) ?? 1;
+  while (taken.has(at(n).toLowerCase())) n++;
+  next.set(key, n);
+  const chosen = at(n);
   taken.add(chosen.toLowerCase());
   return chosen;
 }
