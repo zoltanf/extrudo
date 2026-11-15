@@ -23,11 +23,14 @@ import {
   type BodyId,
   type ComponentId,
   evaluateParameters,
+  type FeatureId,
   faceSketchFrame,
   importInputs,
+  isConstructionType,
   newId,
   ORIGIN_PLANES,
   type SketchData,
+  setFeatureVisibility,
   updateBody,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
@@ -41,6 +44,17 @@ import {
 import { sha256Hex } from '@extrudo/storage';
 import type { AsmSurface } from './asm';
 import type { BaseStep, BodyStep } from './brep-step';
+import {
+  ENTITIES_PER_UNIT,
+  hiddenSketchesNote,
+  ImportBudget,
+  type InputValue,
+  MAX_IMPORT_ENTITIES,
+  overBudgetNote,
+  sketchEntities,
+  TOO_MANY_ENTITIES,
+} from './budget';
+import { F3dFormatError } from './bytes';
 import { firstFace } from './chamfer-side';
 import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
@@ -79,6 +93,7 @@ import type {
   F3dEdgeFeature,
   F3dExtrude,
   F3dFace,
+  F3dFeature,
   F3dHole,
   F3dOffsetFaces,
   F3dRevolve,
@@ -712,6 +727,8 @@ export function f3dToDesign(
    * with a start offset begins (Extrudo's extrude starts on its sketch).
    */
   const moved = new Map<string, SketchEntry | undefined>();
+  /** The sketch copies `movedSketch` made (the import's budget charges their size). */
+  const copies = new Set<string>();
   const movedSketch = (entry: SketchEntry, cm: number, name: string): SketchEntry | undefined => {
     const key = `${entry.source.id}@${cm}`;
     if (moved.has(key)) return moved.get(key);
@@ -742,9 +759,52 @@ export function f3dToDesign(
         { name },
       );
       made = { handle, placement, tags, curves, texts, source, profileCurves: used };
+      copies.add(handle.id);
     }
     moved.set(key, made);
     return made;
+  };
+
+  // One budget for the work the design asks of the app at each open (`budget.ts`).
+  const budget = new ImportBudget();
+  let entities = 0;
+  /** An input as the kernel reads it: a plain number as it is, else evaluated with the design so far. */
+  const inputValue: InputValue = (f, input) => {
+    const v = f.inputs[input];
+    if (v?.kind !== 'expr') return undefined;
+    const n = v.expr.trim() === '' ? Number.NaN : Number(v.expr);
+    if (Number.isFinite(n)) return n;
+    const got = evaluateParameters(d.doc).inputs.get(f.id)?.get(input);
+    return got?.ok ? got.value : undefined;
+  };
+  /**
+   * Charges what one file feature added (features `from` on); past the
+   * budget they come in suppressed, with a note. Then counts the sketches'
+   * size, past `MAX_IMPORT_ENTITIES` the import is refused.
+   */
+  const charge = (feature: F3dFeature, from: number) => {
+    const added = d.doc.features.slice(from);
+    if (added.length === 0) return;
+    // A full-length thread runs its longest face's length (unknown: the most turns).
+    const lengths = feature.type === 'thread' ? (feature.lengths ?? []) : [];
+    const fullTurns =
+      lengths.length > 0 && lengths.every((l) => l !== undefined) && feature.type === 'thread'
+        ? Math.max(...(lengths as number[])) / feature.spec.pitch
+        : undefined;
+    // Once the budget is spent, nothing is evaluated: a count is taken as the most.
+    const value: InputValue = budget.left > 0 ? inputValue : () => undefined;
+    const units = budget.cost(added, value, copies, fullTurns);
+    if (units > 0 && !budget.spend(units)) {
+      // Construction planes stay: later sketches on the same plane share them.
+      for (const f of added) {
+        if (isConstructionType(f.type)) continue;
+        budget.suppressed(f.id);
+        d.suppress(f.id);
+      }
+      report.notes.push(overBudgetNote(feature.name));
+    }
+    for (const f of added) entities += sketchEntities(f);
+    if (entities > MAX_IMPORT_ENTITIES) throw new F3dFormatError(TOO_MANY_ENTITIES);
   };
 
   for (const feature of f3d.features) {
@@ -761,6 +821,7 @@ export function f3dToDesign(
       report.skipped.push(skippedFeature(feature.name, feature.kind, feature.leftOut));
       continue;
     }
+    const from = d.doc.features.length;
     try {
       if (feature.type === 'sketch') {
         const placement = placeSketch(
@@ -1029,9 +1090,12 @@ export function f3dToDesign(
       }
     } catch (error) {
       report.skipped.push(skippedFeature(feature.name, feature.kind, (error as Error).message));
+    } finally {
+      charge(feature, from);
     }
   }
   components.enter(undefined);
+  hideUnusedSketches(d, budget, report);
   // Bodies hidden in the file stay hidden (a STEP export of the same design leaves them out too)
   // — unless a body that can be seen (shown, in a shown component) came from a
   // feature not imported (its shape may be the hidden one's moved on; a Body to
@@ -1082,6 +1146,55 @@ export function f3dToDesign(
     });
   }
   return { design: d, report, bodies, ...(files.size > 0 ? { files } : {}) };
+}
+
+/**
+ * Sketches no feature uses stay visible while finding their profiles fits the
+ * import's budget (the app finds the profiles of every visible sketch each
+ * time the design opens): each is charged its points and curves, then its
+ * profiles are found here, once, and charged their edges (one with text, its
+ * points and curves only). Past the budget a
+ * sketch comes in hidden; one note names them. A sketch a feature uses is not
+ * touched.
+ */
+function hideUnusedSketches(d: Design, budget: ImportBudget, report: ImportReport): void {
+  const features = d.doc.features;
+  const used = new Set<string>();
+  for (const f of features)
+    for (const v of Object.values(f.inputs)) {
+      if (v.kind !== 'ref') continue;
+      for (const r of v.refs) {
+        const owner = r.id.split('/')[0] as string;
+        if (owner !== f.id) used.add(owner);
+      }
+    }
+  const hidden: FeatureId[] = [];
+  const names: string[] = [];
+  for (const f of features) {
+    if (f.type !== 'sketch' || f.suppressed || f.visible === false || used.has(f.id)) continue;
+    const sketch = f.inputs.sketch;
+    if (sketch?.kind !== 'sketchData') continue;
+    // A text's characters were charged with its sketch; its profiles are not
+    // found here (that work grows faster than the text's length).
+    const text = Object.values(sketch.sketch.entities).some((e) => e.type === 'text');
+    if (budget.spend(Math.ceil(sketchEntities(f) / ENTITIES_PER_UNIT))) {
+      if (text) continue;
+      let edges = 0;
+      try {
+        for (const p of detectProfiles(sketch.sketch))
+          edges += p.outer.edges.length + p.holes.reduce((n, h) => n + h.edges.length, 0);
+      } catch (error) {
+        // Refused (too many crossings): the app finds none either.
+        if (!profilesRefusal(error)) throw error;
+      }
+      if (budget.spend(Math.ceil(edges / ENTITIES_PER_UNIT))) continue;
+    }
+    hidden.push(f.id);
+    names.push(f.name);
+  }
+  if (hidden.length === 0) return;
+  d.state.dispatch(setFeatureVisibility({ ids: hidden, visible: false }));
+  report.notes.push(hiddenSketchesNote(names));
 }
 
 /** The Extrudo frame of a sketch plane: its origin, axes and normal (mm). */

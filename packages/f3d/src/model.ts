@@ -363,6 +363,11 @@ export interface F3dThread extends FeatureBase {
   spec: ThreadSpec;
   /** The faces it threads, each named by its recipe's first face. */
   faces: F3dFace[];
+  /**
+   * Each face's length along its axis (cm), from its edges' vertices, where
+   * the B-rep tells (`axialLength`): what a full-length thread runs.
+   */
+  lengths?: (number | undefined)[];
 }
 
 export interface F3dTorus extends FeatureBase {
@@ -1070,7 +1075,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           if (face) threaded.push(face);
         }
       }
-      if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
+      if (spec)
+        features.push({
+          type: 'thread',
+          ...base,
+          spec,
+          faces: threaded,
+          lengths: threaded.map((face) => axialLength(face, faces)),
+        });
       else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'PathPattern') {
       const inside = insideOnce;
@@ -1475,6 +1487,34 @@ function faceOf(
   }
   if (others.length > 0) out.states = others;
   return out;
+}
+
+/**
+ * A cylinder's or cone's length along its axis (cm): the spread of its edges'
+ * vertices along the axis, on the B-rep face `faceOf` found for it. Undefined
+ * for a copy, another surface, or a face without vertices.
+ */
+function axialLength(face: F3dFace, faces: Map<string, AsmFace[]>): number | undefined {
+  const s = face.surface;
+  const first = face.tags[0];
+  if (s?.kind !== 'cone' || face.instance || !first) return undefined;
+  const design = Math.abs(first.designs[0] ?? -1);
+  const found = statesOf(face.tags, faces.get(`${first.token}@${design}`) ?? [])[0];
+  const norm = Math.hypot(...s.axis);
+  if (found?.surface !== s || !(norm > 0)) return undefined;
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  for (const edge of found.edges)
+    for (const p of edge.points) {
+      const t =
+        ((p[0] - s.center[0]) * s.axis[0] +
+          (p[1] - s.center[1]) * s.axis[1] +
+          (p[2] - s.center[2]) * s.axis[2]) /
+        norm;
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+  return hi > lo && Number.isFinite(hi - lo) ? hi - lo : undefined;
 }
 
 /**

@@ -36,6 +36,7 @@ export {
   type SimplifyFeatureReport,
 } from './features/simplify-for-print';
 export type { SketchOutputData, SketchProfileInfo } from './features/sketch';
+export { MAX_TURNS } from './features/thread';
 export {
   decodeHistory,
   type HistoryRecord,
