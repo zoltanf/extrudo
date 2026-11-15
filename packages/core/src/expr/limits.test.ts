@@ -210,6 +210,18 @@ describe('cycle messages', () => {
     ]);
   });
 
+  it('follows no reference past an error in the same expression, as the walk always has', () => {
+    // `y` closes a cycle through `x`, but `x` fails before it reaches `y`.
+    const d = {
+      ...doc([]),
+      parameters: named(['x', 'y'], (i) => (i === 0 ? '1 mm + 1 deg + y' : 'x')),
+    };
+    expect(results(d).map(message)).toEqual([
+      "Can't add a length and an angle.",
+      'Uses `x`, which has an error.',
+    ]);
+  });
+
   it('lists the path of up to 20 members and counts a longer cycle', () => {
     const cycle = (n: number) => Array.from({ length: n }, (_, i) => `q${i}`);
     const twenty = results({ ...doc([]), parameters: named(cycle(20)) });

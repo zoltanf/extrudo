@@ -68,12 +68,15 @@ Parameters dialog live in `apps/web/src/parameters/`. **Amendment of 2026-11-15
 (limits):** `parse` refuses a source over `MAX_EXPRESSION_LENGTH` (10,000) before
 reading it and a call over `MAX_CALL_ARGUMENTS` (1,000) values; a parameter whose chain
 through others is over `MAX_PARAMETER_DEPTH` (10,000 levels, the summed `heightOf`) is an
-error, exact and order-independent (`chains`). One evaluation goes at most `STEP_LEVELS`
-(512) deep; past it the stack unwinds (`TooDeep`) and `evaluateFromTop` evaluates the deeper
-parameter first; a cycle longer than a step gets "refers to itself through N parameters."
-All limit errors are `ExprError`s with code `limit`. Never spread a node's children into a
-call; a new path into `evaluateParameter` goes through `evaluateFromTop`. The f3d import
-keeps the value of a file expression past a limit (`pastLimit`, `tooDeep` in `map.ts`). ADR-0007 (P0-04) set the
+error, exact and order-independent (`chains`). These and `MAX_DEPTH` are `ExprError`s with
+code `limit`. `evaluateParameters` parses everything first, then runs the depth-first walk
+on its own stack of nodes (`operands`/`combine`): each node once, results as the recursive
+walk's; keep it so (no recursion through parameters, no restart). A cycle lists its path up
+to 20 members and 500 characters of names, then counts them. "Did you mean" is banded and
+spends at most `SUGGESTION_CELLS` per evaluation; `Scope.has` answers "is it a parameter".
+Never spread a node's children into a call. The f3d import keeps the value of only the
+parameter past a limit, with its own error (`pastLimit`, `tooDeep` in `map.ts`); the FreeCAD
+import reads `code === 'limit'`. ADR-0007 (P0-04) set the
 design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
 wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the

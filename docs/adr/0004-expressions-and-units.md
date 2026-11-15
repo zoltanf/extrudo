@@ -118,7 +118,7 @@ and unitless (§4.3), rather than mathjs, which is too big.
 ## Amendment, 2026-11-15: limits on length, values per call and depth through parameters
 
 **Decision.** Three limits join the nesting limit (`MAX_DEPTH`, 256 levels, ADR-0083's
-amendment of 2026-10-15). Past any of them the expression is an error like any other,
+amendment of 2026-10-15). Past any of the four the expression is an error like any other,
 with code `limit` on its `ExprError`:
 
 1. **Length.** `parse` reads at most `MAX_EXPRESSION_LENGTH` = 10,000 characters and refuses a
@@ -132,27 +132,41 @@ with code `limit` on its `ExprError`:
    `a` is 1): `p0 = p1` … `p9999 = 1 mm` is 10,000 deep and evaluates. The first parameter
    past the limit says "Nested more than 10000 levels deep through the parameters it
    uses.", underlining its reference to the next one, and those that use it say "Uses
-   `p…`, which has an error." like any other dependent.
+   `p…`, which has an error." like any other dependent. Each evaluated parameter records
+   its deepest chain (its own height plus the deepest of those it uses); one that evaluates
+   has evaluated every reference, so the number is exact and doesn't depend on the order of
+   the list.
 
-**How the depth is kept.** Each evaluated parameter records its deepest chain (its own height
-plus the deepest of the parameters it uses); a parameter that evaluates has evaluated
-every reference, so the number is exact and the error doesn't depend on the order of the
-list. One evaluation follows a chain at most `STEP_LEVELS` (512 levels) deep: past that it
-unwinds uncached, `evaluateFromTop` evaluates the parameter it had reached first, then
-tries again. A chain listed from its near end so costs time linear in its length, and its
-results are the same as those of one long evaluation. A cycle found within one step keeps
-its message with the path. A cycle longer than a step is found when its evaluation reaches
-a parameter that waits for it; each member then says "`p0` refers to itself through 600
-parameters." (code `cycle`) instead of listing them all.
+**Evaluation on its own stack.** `evaluateParameters` reads every expression first, then walks
+the references depth-first exactly as before (§6): in list order, each parameter's
+expression left to right, a parameter evaluated when it is first reached, a cycle found
+when the walk reaches one it is inside of. The walk keeps its own stack of expression nodes
+(`operands` and `combine` in `evaluate.ts` are one node's steps, which `evaluateNode` also
+uses), so every node is evaluated once, each reference is read once per use, and a chain of
+parameters of any length needs no deeper call stack than one expression. Its results are
+those of the recursive walk, errors and cycle messages included.
+
+**Cycle messages.** A cycle lists its path, as before, while it has at most 20 members whose
+names come to at most 500 characters; past that each member says "`p0` refers to itself
+through 600 parameters." (code `cycle`, same underline), so a cycle's messages stay linear
+in its size. Parameter names keep no length limit: any name the schema takes today can be in
+a saved design, and every message names a parameter at most twice.
+
+**Suggestions.** "Did you mean" compares only names whose length is within the distance it
+accepts, stops a comparison once it can't be close enough, and spends at most 1,000,000
+cells of edit-distance work per evaluation; once that is spent, the rest of the unknown
+names get no suggestion. Suggestions are otherwise the same as before (ties go to the first
+name in the list). A call to an unknown function asks the scope whether the name is a
+parameter (`Scope.has`) instead of listing every name.
 
 **Importers.** The f3d import keeps a user parameter's value, with its usual note
 (`Parameter x: "…" kept as its value (<message>).`, the expression quoted up to 80
-characters), when its expression is past the length or values limit, and, when the file's
-parameters go past the depth limit through each other, every one of them with an error
-(found on a scratch document before any is made), so the rest evaluate. A feature input
-whose expression from the file is past a limit takes its value. The FreeCAD import's
-parameter cap (1,000) keeps its chains far inside the depth limit; its `TOO_DEEP` pattern
-still matches the depth message.
+characters, the message its own error), when its own expression is past a limit; those that
+use it keep their expressions and evaluate against that value. For depth, `tooDeep` cuts a
+scratch copy of the file's parameters at each one that carries the depth error, then looks
+again, until none does. A feature input whose expression from the file is past a limit
+takes its value. The FreeCAD import tells core's limits by `code === 'limit'`; its
+1,000-parameter cap keeps its chains far inside the depth limit.
 
 **Census behind the numbers** (2026-11-15, every expression in the repository's fixtures,
 66 designs and 616 expressions, and in the 252 designs of the private import corpus as
@@ -164,23 +178,26 @@ imported, 8,474 expressions):
 | Most values in one call | 0 (no calls) | 1 | 1,000 | 1,000× |
 | Tallest expression | 4 levels | 6 | 256 (`MAX_DEPTH`) | 43× |
 | Deepest chain of parameters | 3 parameters, 7 levels | 4 parameters, 7 levels | 10,000 levels | 1,400× |
+| Longest parameter name | 10 characters | NAMES_CORPUS | none | |
 
 No fixture or corpus design comes near a limit, so no saved design changes. A spreadsheet
 imported from FreeCAD, where each row uses the one before, is the longest chain an import
 makes: at its 1,000-parameter cap, with rows like `=A1 + 1`, about 2,000 levels.
 
 **Rejected:**
-- **A depth limit of 512 levels, the step itself.** Simple, but a FreeCAD spreadsheet of a
-  few hundred chained rows imports today and would stop evaluating.
+- **A depth limit of 512 levels.** A FreeCAD spreadsheet of a few hundred chained rows imports
+  today and would stop evaluating.
 - **Counting parameters, not levels.** Each parameter of a chain can nest 255 levels, so a
   count of parameters says little about how deep evaluation goes; levels count both, like
   `MAX_DEPTH` within one expression.
-- **Marking every parameter on the stack when it gets too deep.** Simple, but it gives the
-  error to parameters whose own chain is within the limit and depends on the list order.
-- **Marking only those whose chain to the stack's top is past the limit, and evaluating the
-  rest later.** Exact, but each parameter of a long chain then walks a whole step again:
-  quadratic in the chain's length.
-- **The full path for a cycle longer than a step.** Every member's message would list every
-  member: quadratic in the cycle's length.
+- **Following a chain in steps and starting again from where a step ended.** Bounded, but
+  each restart walks the step again: quadratic when many parameters are reached past a
+  step's end.
+- **An evaluation order worked out from the references before evaluating.** Simple, but the
+  recursive walk doesn't follow a reference that comes after an error in the same
+  expression, so a cycle behind such an error would be reported where the walk reports the
+  error.
+- **A length limit on parameter names.** A saved design may have longer names today and
+  would no longer open; bounded cycle messages make it unnecessary.
 - **A smaller length limit (1,000).** Still 13× the longest real expression, but 10,000 costs
   little, since reading is linear in the length.
