@@ -3,6 +3,11 @@
  * size: two splines of many poles laid over each other, so every piece of one
  * is near every piece of the other (hand-built, no real file's bytes).
  */
+import { ApiError } from '@extrudo/api';
+import {
+  TOO_MANY_CROSSINGS as TOO_MANY_PROFILES,
+  TooManyCrossingsError,
+} from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import type { ProfileOperand } from './decode/extrude';
 import type { SketchSpline, Vec3 } from './decode/sketch-geometry';
@@ -100,5 +105,31 @@ describe('region matching budget', () => {
     expect(selectProfiles([operand()], () => entry)).toBe(TOO_MANY_CROSSINGS);
     expect(performance.now() - again).toBeLessThan(50);
     expect(performance.now() - t).toBeLessThan(3000);
+  });
+});
+
+describe("a sketch over Extrudo's own crossing limit", () => {
+  // `MAX_PROFILE_CUTS` (ADR-0020's amendment of 2026-11-15): the API refuses
+  // the sketch's regions, and the feature is skipped with the same reason as
+  // the import's own budget gives.
+  it('gives TOO_MANY_CROSSINGS', () => {
+    const refusal = new ApiError(TOO_MANY_PROFILES, { cause: new TooManyCrossingsError() });
+    const entry = {
+      ...entryOf(10),
+      handle: {
+        id: 's',
+        name: 'Sketch1',
+        get regions(): never {
+          throw refusal;
+        },
+        profiles: (): never => {
+          throw refusal;
+        },
+      },
+    } as unknown as SketchEntry;
+    expect(selectProfiles([operand()], () => entry)).toBe(TOO_MANY_CROSSINGS);
+    expect(selectProfiles([{ ...operand(), regions: undefined }], () => entry)).toBe(
+      TOO_MANY_CROSSINGS,
+    );
   });
 });

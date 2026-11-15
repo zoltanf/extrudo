@@ -62,6 +62,7 @@ import {
   updateFeatureInputs,
   updateParameter,
 } from '@extrudo/core';
+import { isTooManyCrossings } from '@extrudo/sketch/profiles';
 import {
   type AnnotationRef,
   fingerprintedAnchor,
@@ -206,6 +207,20 @@ export function plainInput(input: FeatureInputs[string]): unknown {
 const round3 = (n: number) => Math.round(n * 1000) / 1000 + 0;
 
 /**
+ * A sketch's profiles and regions (`regionsOf`); none, and `problem` saying
+ * why, when its curves cross too often for them to be found (ADR-0020's
+ * amendment of 2026-11-15). The sketch itself is described as ever.
+ */
+function profilesOf(sketch: SketchHandle, shapeCurves?: readonly (readonly string[])[]) {
+  try {
+    return { profiles: sketch.profiles(), regions: regionsOf(sketch, shapeCurves) };
+  } catch (error) {
+    if (!isTooManyCrossings(error) || !(error instanceof Error)) throw error;
+    return { profiles: [], regions: [], problem: error.message };
+  }
+}
+
+/**
  * Each of a sketch's profiles as an agent tells them apart (#85), in the order
  * of `profiles()`: its reference, area (mm²), box and centroid in sketch
  * coordinates, the curves of its outer loop and of each hole, and, for a sketch
@@ -301,8 +316,7 @@ function featureDetail(host: AgentHost, id: string) {
       ...base,
       plane: sketch.plane,
       ...(frame && { frame }),
-      profiles: sketch.profiles(),
-      regions: regionsOf(sketch),
+      ...profilesOf(sketch),
       curves,
     };
   }
@@ -879,8 +893,7 @@ const HANDLERS: { [T in ToolName]: Handler<T> } = {
         return {
           id,
           name: nameOf(h, id as FeatureId),
-          profiles: sketch.profiles(),
-          regions: regionsOf(sketch, shapeCurves),
+          ...profilesOf(sketch, shapeCurves),
         };
       },
       (summary) => {

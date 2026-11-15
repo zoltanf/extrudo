@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SketchData, SketchDimension, SketchEntity, SketchEntityId } from '@extrudo/core';
+import { isTooManyCrossings, TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
 import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { Design } from './design';
@@ -595,3 +596,36 @@ function sketchConstraintTypes(): string[] {
     'symmetric',
   ];
 }
+
+/**
+ * A sketch whose curves cross too often for its regions to be found
+ * (`MAX_PROFILE_CUTS`, ADR-0020's amendment of 2026-11-15): asking for its
+ * regions is a refused call, with the reason, like the API's other refusals.
+ */
+describe('a sketch with too many crossings', () => {
+  it('refuses its regions with an ApiError that says why', () => {
+    const d = Design.create();
+    const s = d.sketch(d.origin.xy, (k) => {
+      k.rectangle([0, 0], [40, 20]);
+      // 330 chords that all cross: about 54,000 crossings.
+      for (let i = 0; i < 330; i++) {
+        const a = (Math.PI * i) / 330;
+        k.line(
+          [100 + 30 * Math.cos(a), 10 + 30 * Math.sin(a)],
+          [100 - 30 * Math.cos(a + 0.3), 10 - 30 * Math.sin(a + 0.3)],
+        );
+      }
+    });
+    for (const ask of [() => s.regions, () => s.profiles(), () => s.profileAt([1, 1])]) {
+      let error: unknown;
+      try {
+        ask();
+      } catch (e) {
+        error = e;
+      }
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as Error).message).toBe(TOO_MANY_CROSSINGS);
+      expect(isTooManyCrossings(error)).toBe(true);
+    }
+  });
+});
