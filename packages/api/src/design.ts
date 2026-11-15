@@ -996,10 +996,20 @@ export class Design {
     return found;
   }
 
+  /**
+   * A parameter by handle (its ID), or by a string: the name first, then the
+   * ID, so a parameter named like another's ID (`p12`) is the one it names.
+   */
   #parameterOf(parameter: ParameterLike): Parameter {
-    const wanted = typeof parameter === 'string' ? parameter : parameter.name;
-    const found = this.doc.parameters.find((p) => p.id === wanted || p.name === wanted);
-    if (!found) throw new ApiError(`There is no parameter "${wanted}".`);
+    const all = this.doc.parameters;
+    const found =
+      typeof parameter === 'string'
+        ? (all.find((p) => p.name === parameter) ?? all.find((p) => p.id === parameter))
+        : all.find((p) => p.id === parameter.id);
+    if (!found)
+      throw new ApiError(
+        `There is no parameter "${typeof parameter === 'string' ? parameter : parameter.name}".`,
+      );
     return found;
   }
 
