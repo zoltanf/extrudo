@@ -29,11 +29,10 @@ import {
 import {
   detectProfiles,
   PROFILE_TOLERANCE,
+  ProfilesRefusedError,
   profileCentroid,
   profileIds,
   profileKey,
-  TOO_MANY_CROSSINGS,
-  TooManyCrossingsError,
 } from '@extrudo/sketch/profiles';
 import { KernelError, MeshBodyError, type ShapeHandle, type ShapeScope } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
@@ -51,10 +50,13 @@ import { lineOf, planeOf, pointOf } from './references';
 
 /**
  * Why a feature has none of the profiles it picked when their sketch's
- * curves cross too often (`SketchOutputData.tooManyCrossings`).
+ * curves cross too often (`SketchOutputData.profilesRefused`).
  */
 export const TOO_MANY_CROSSINGS_TO_PICK =
   'Its sketch has too many curve crossings to find its profiles. Remove or simplify curves in the sketch.';
+
+/** The same when the sketch's curves lie too far out (`MAX_PROFILE_COORDINATE`). */
+export const TOO_LARGE_TO_PICK = 'Its sketch has coordinates too large to find its profiles.';
 
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
 export interface SketchProfileInfo {
@@ -95,11 +97,12 @@ export interface SketchOutputData {
   /** Largest first. */
   profiles: SketchProfileInfo[];
   /**
-   * Set when the sketch's curves cross too often for its regions to be
-   * found (`MAX_PROFILE_CUTS`, ADR-0020's amendment of 2026-11-15): it has
-   * no faces and no `profiles`, and a feature that picked one says why.
+   * Set when `detectProfiles` refused the sketch (its curves cut each other
+   * too often or lie too far out; ADR-0020's amendment of 2026-11-15): it
+   * has no faces and no `profiles`, and a feature that picked one fails
+   * with this message (`TOO_MANY_CROSSINGS_TO_PICK`, `TOO_LARGE_TO_PICK`).
    */
-  tooManyCrossings?: true;
+  profilesRefused?: string;
   /**
    * Every line of the sketch, construction lines too, from its start to its
    * end in sketch coordinates (mm): what a revolve's axis refers to
@@ -176,7 +179,8 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
     using scope = kernel.scope();
     // The regions first: a sketch refused there has no faces to make.
     const detected = detectedRegions(data);
-    const { faces, regionIds, textOf } = detected
+    const refused = detected instanceof ProfilesRefusedError ? detected : undefined;
+    const { faces, regionIds, textOf } = !(detected instanceof ProfilesRefusedError)
       ? sketchFaces(kernel, scope, curves, ids, data, frame, detected)
       : { faces: [], regionIds: [], textOf: new Map<string, SketchEntityId>() };
 
@@ -205,7 +209,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       });
     }
     const warnings = textWarnings(data);
-    if (!detected) warnings.unshift(TOO_MANY_CROSSINGS);
+    if (refused) warnings.unshift(refused.message);
     const texts = textsOf(data);
     const exact = exactCurves(data);
     const points = sketchPoints(data);
@@ -215,7 +219,9 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       frame,
       sketch: data,
       profiles,
-      ...(!detected && { tooManyCrossings: true as const }),
+      ...(refused && {
+        profilesRefused: refused.reason === 'size' ? TOO_LARGE_TO_PICK : TOO_MANY_CROSSINGS_TO_PICK,
+      }),
       lines: sketchLines(data),
       curves: sketchCurves(data),
       exact,
@@ -857,13 +863,16 @@ interface DetectedRegion {
   text?: SketchEntityId;
 }
 
-/** The sketch's regions; `undefined` when its curves cross too often to find them. */
-function detectedRegions(data: SketchData): DetectedRegion[] | undefined {
+const regionsOrNone = (d: DetectedRegion[] | ProfilesRefusedError) =>
+  d instanceof ProfilesRefusedError ? [] : d;
+
+/** The sketch's regions, or why `detectProfiles` refused to find them. */
+function detectedRegions(data: SketchData): DetectedRegion[] | ProfilesRefusedError {
   let profiles: ReturnType<typeof detectProfiles>;
   try {
     profiles = detectProfiles(data);
   } catch (error) {
-    if (error instanceof TooManyCrossingsError) return undefined;
+    if (error instanceof ProfilesRefusedError) return error;
     throw error;
   }
   return profiles.map((p) => ({
@@ -891,7 +900,7 @@ export function profileFaceIds(
   faces: readonly PlanarFace[],
   curveIds: readonly SketchEntityId[],
   data: SketchData,
-  detected: readonly DetectedRegion[] = detectedRegions(data) ?? [],
+  detected: readonly DetectedRegion[] = regionsOrNone(detectedRegions(data)),
 ): {
   ids: string[];
   reassigned: number;

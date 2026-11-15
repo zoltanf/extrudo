@@ -5,8 +5,9 @@
  * profiles are back.
  */
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
+import { TOO_LARGE_COORDINATES, TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
-import { sketchProfiles, sketchProfilesRefused } from './profiles';
+import { sketchProfiles, sketchProfilesProblem } from './profiles';
 
 function sketch(crossing: boolean) {
   const b = new SketchBuilder();
@@ -32,12 +33,20 @@ describe('sketchProfiles', () => {
   it('gives no profiles for a sketch with too many crossings, and says why', () => {
     const data = sketch(true);
     expect(sketchProfiles(data, 0)).toEqual([]);
-    expect(sketchProfilesRefused(data, 0)).toBe(true);
+    expect(sketchProfilesProblem(data, 0)).toBe(TOO_MANY_CROSSINGS);
   });
 
   it('gives the profiles back without the crossing curves', () => {
     const data = sketch(false);
     expect(sketchProfiles(data, 0)).toHaveLength(1);
-    expect(sketchProfilesRefused(data, 0)).toBe(false);
+    expect(sketchProfilesProblem(data, 0)).toBeUndefined();
+  });
+
+  it('gives no profiles for a sketch with coordinates too large, and says why', () => {
+    const b = new SketchBuilder();
+    b.circle(0, 0, 5);
+    b.line(0, 0, 2e9, 0);
+    expect(sketchProfiles(b.sketch, 0)).toEqual([]);
+    expect(sketchProfilesProblem(b.sketch, 0)).toBe(TOO_LARGE_COORDINATES);
   });
 });

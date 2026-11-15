@@ -5,7 +5,7 @@
  * one detection. Text (P4-03) needs its font before it has ink, so the loaded
  * fonts' version is part of the key: fonts that arrive later redraw it.
  * A sketch whose curves cross too often has no profiles
- * (`sketchProfilesRefused` says so; ADR-0020's amendment of 2026-11-15).
+ * (`sketchProfilesProblem` says why; ADR-0020's amendment of 2026-11-15).
  */
 import {
   type FeatureId,
@@ -13,7 +13,7 @@ import {
   type SelectionItem,
   type SketchData,
 } from '@extrudo/core';
-import { detectProfiles, type Profile, TooManyCrossingsError } from '@extrudo/sketch/profiles';
+import { detectProfiles, type Profile, ProfilesRefusedError } from '@extrudo/sketch/profiles';
 import { fontsStore } from './fonts';
 
 export { TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
@@ -22,8 +22,8 @@ interface Entry {
   profiles: readonly Profile[];
   /** The fonts' version the profiles were detected with. */
   version: number;
-  /** The curves cross too often to find the profiles (`MAX_PROFILE_CUTS`): there are none. */
-  refused?: true;
+  /** Why `detectProfiles` refused the sketch (`ProfilesRefusedError`): there are no profiles. */
+  refused?: string;
 }
 
 const cache = new WeakMap<SketchData, Entry>();
@@ -35,12 +35,16 @@ export function sketchProfiles(
   return detected(data, version).profiles;
 }
 
-/** Whether the sketch's curves cross too often for its profiles to be found (it then has none). */
-export function sketchProfilesRefused(
+/**
+ * Why the sketch has no profiles when `detectProfiles` refused it (its
+ * curves cut each other too often or lie too far out), in the user's
+ * words; `undefined` when it found them.
+ */
+export function sketchProfilesProblem(
   data: SketchData,
   version: number = fontsStore.getState().version,
-): boolean {
-  return detected(data, version).refused === true;
+): string | undefined {
+  return detected(data, version).refused;
 }
 
 function detected(data: SketchData, version: number): Entry {
@@ -50,8 +54,8 @@ function detected(data: SketchData, version: number): Entry {
   try {
     entry = { profiles: detectProfiles(data), version };
   } catch (error) {
-    if (!(error instanceof TooManyCrossingsError)) throw error;
-    entry = { profiles: [], version, refused: true };
+    if (!(error instanceof ProfilesRefusedError)) throw error;
+    entry = { profiles: [], version, refused: error.message };
   }
   cache.set(data, entry);
   return entry;

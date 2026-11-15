@@ -62,7 +62,7 @@ import {
   updateFeatureInputs,
   updateParameter,
 } from '@extrudo/core';
-import { isTooManyCrossings } from '@extrudo/sketch/profiles';
+import { profilesRefusal } from '@extrudo/sketch/profiles';
 import {
   type AnnotationRef,
   fingerprintedAnchor,
@@ -215,8 +215,9 @@ function profilesOf(sketch: SketchHandle, shapeCurves?: readonly (readonly strin
   try {
     return { profiles: sketch.profiles(), regions: regionsOf(sketch, shapeCurves) };
   } catch (error) {
-    if (!isTooManyCrossings(error) || !(error instanceof Error)) throw error;
-    return { profiles: [], regions: [], problem: error.message };
+    const refusal = profilesRefusal(error);
+    if (!refusal) throw error;
+    return { profiles: [], regions: [], problem: refusal.message };
   }
 }
 

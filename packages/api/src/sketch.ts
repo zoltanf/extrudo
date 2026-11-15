@@ -62,8 +62,8 @@ import {
   detectProfiles,
   insidePolygon,
   type Profile,
+  ProfilesRefusedError,
   profileAt,
-  TooManyCrossingsError,
 } from '@extrudo/sketch/profiles';
 import type { FeatureOptions } from './design';
 import { ApiError } from './error';
@@ -458,14 +458,15 @@ export class SketchHandle extends FeatureHandle<'sketch'> {
 
   /**
    * The regions this sketch holds, with their holes (ADR-0020). Throws an
-   * `ApiError` (its `cause` a `TooManyCrossingsError`) when the curves
-   * cross too often for them to be found (`MAX_PROFILE_CUTS`).
+   * `ApiError` (its `cause` a `ProfilesRefusedError`) when they can't be
+   * found: the curves cut each other too often (`MAX_PROFILE_CUTS`) or lie
+   * too far out (`MAX_PROFILE_COORDINATE`).
    */
   get regions(): Profile[] {
     try {
       return detectProfiles(this.data);
     } catch (error) {
-      if (error instanceof TooManyCrossingsError)
+      if (error instanceof ProfilesRefusedError)
         throw new ApiError(error.message, { cause: error });
       throw error;
     }

@@ -29,7 +29,7 @@ import {
   sketchEntityRefId,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
-import { insidePolygon, isTooManyCrossings } from '@extrudo/sketch/profiles';
+import { insidePolygon, profilesRefusal } from '@extrudo/sketch/profiles';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { type Binder, namingFor } from './bind';
 import { type CallOutcome, type KernelBudget, NONSENSE_REPLY } from './budget';
@@ -678,10 +678,12 @@ export function profileRefs(handle: SketchHandle, multiFace: boolean): GeomRef[]
   try {
     all = handle.regions;
   } catch (error) {
-    // More crossings than Extrudo finds regions for (`MAX_PROFILE_CUTS`).
-    if (isTooManyCrossings(error))
-      return 'its sketch has too many curve crossings to find its profiles';
-    throw error;
+    // Regions Extrudo refuses to find (`ProfilesRefusedError`).
+    const refusal = profilesRefusal(error);
+    if (!refusal) throw error;
+    return refusal.reason === 'size'
+      ? 'its sketch has coordinates too large to find its profiles'
+      : 'its sketch has too many curve crossings to find its profiles';
   }
   const regions = all.filter((r) => !r.text);
   if (regions.length > MAX_PROFILE_REGIONS)

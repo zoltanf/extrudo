@@ -4,14 +4,11 @@
  * is near every piece of the other (hand-built, no real file's bytes).
  */
 import { ApiError } from '@extrudo/api';
-import {
-  TOO_MANY_CROSSINGS as TOO_MANY_PROFILES,
-  TooManyCrossingsError,
-} from '@extrudo/sketch/profiles';
+import { ProfilesRefusedError } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import type { ProfileOperand } from './decode/extrude';
 import type { SketchSpline, Vec3 } from './decode/sketch-geometry';
-import { type SketchEntry, selectProfiles, TOO_MANY_CROSSINGS } from './map';
+import { type SketchEntry, selectProfiles, TOO_LARGE_SKETCH, TOO_MANY_CROSSINGS } from './map';
 import { type F3dSketch, IDENTITY } from './model';
 import { MAX_PIECE_WORK, regionPieces, sketchPieces } from './regions';
 
@@ -108,13 +105,13 @@ describe('region matching budget', () => {
   });
 });
 
-describe("a sketch over Extrudo's own crossing limit", () => {
-  // `MAX_PROFILE_CUTS` (ADR-0020's amendment of 2026-11-15): the API refuses
-  // the sketch's regions, and the feature is skipped with the same reason as
-  // the import's own budget gives.
-  it('gives TOO_MANY_CROSSINGS', () => {
-    const refusal = new ApiError(TOO_MANY_PROFILES, { cause: new TooManyCrossingsError() });
-    const entry = {
+describe("a sketch past Extrudo's own limits", () => {
+  // `MAX_PROFILE_CUTS` and `MAX_PROFILE_COORDINATE` (ADR-0020's amendment of
+  // 2026-11-15): the API refuses the sketch's regions, and the feature is
+  // skipped with the reason.
+  const refusing = (reason: 'crossings' | 'size') => {
+    const refusal = new ApiError('refused', { cause: new ProfilesRefusedError(reason) });
+    return {
       ...entryOf(10),
       handle: {
         id: 's',
@@ -127,9 +124,14 @@ describe("a sketch over Extrudo's own crossing limit", () => {
         },
       },
     } as unknown as SketchEntry;
-    expect(selectProfiles([operand()], () => entry)).toBe(TOO_MANY_CROSSINGS);
-    expect(selectProfiles([{ ...operand(), regions: undefined }], () => entry)).toBe(
-      TOO_MANY_CROSSINGS,
-    );
+  };
+
+  it.each([
+    ['crossings', TOO_MANY_CROSSINGS],
+    ['size', TOO_LARGE_SKETCH],
+  ] as const)('gives the reason for %s', (reason, text) => {
+    const entry = refusing(reason);
+    expect(selectProfiles([operand()], () => entry)).toBe(text);
+    expect(selectProfiles([{ ...operand(), regions: undefined }], () => entry)).toBe(text);
   });
 });

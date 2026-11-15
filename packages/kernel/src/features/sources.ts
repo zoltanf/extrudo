@@ -15,7 +15,7 @@ import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../ke
 import { faceEdgeSources, type SweepSource } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext } from '../recompute/types';
-import { type SketchOutputData, TOO_MANY_CROSSINGS_TO_PICK } from './sketch';
+import type { SketchOutputData } from './sketch';
 import { add, dot, length, scale, sub } from './vec';
 
 /** Cosines within this of 1 are parallel directions. */
@@ -90,7 +90,7 @@ function profilePart(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base {
   const data = output.data as Partial<SketchOutputData> | undefined;
   const face = output.shapes?.[parsed.profile];
   const info = data?.profiles?.find((p) => p.id === parsed.profile);
-  if (data?.tooManyCrossings) throw new KernelError(TOO_MANY_CROSSINGS_TO_PICK);
+  if (data?.profilesRefused) throw new KernelError(data.profilesRefused);
   if (face === undefined || !info || !data?.frame) {
     throw new LostReferenceError(
       `Can't find one of its profiles any more: an earlier change to the sketch removed it. Edit the ${noun} and pick it again.`,
@@ -140,7 +140,7 @@ function textParts(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base[] {
     });
   }
   if (parts.length === 0) {
-    if (data.tooManyCrossings) throw new KernelError(TOO_MANY_CROSSINGS_TO_PICK);
+    if (data.profilesRefused) throw new KernelError(data.profilesRefused);
     // A text of the sketch that draws nothing: no font, nothing to draw,
     // or construction geometry.
     throw new KernelError(`The text has no letters to ${noun}.`);

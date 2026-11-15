@@ -16,8 +16,8 @@ import {
 import {
   detectProfiles,
   interiorPoint,
+  ProfilesRefusedError,
   profileCentroid,
-  TooManyCrossingsError,
 } from '@extrudo/sketch/profiles';
 import type { EmitContext } from './context';
 import { arr, call, type Expr, num, obj, raw, str, tmpl } from './print';
@@ -168,7 +168,7 @@ function regionInterior(
   try {
     regions = detectProfiles(data);
   } catch (error) {
-    if (error instanceof TooManyCrossingsError) return undefined;
+    if (error instanceof ProfilesRefusedError) return undefined;
     throw error;
   }
   const region = regions.find((profile) => profile.id === id);

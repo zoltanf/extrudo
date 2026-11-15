@@ -68,27 +68,52 @@ const MIN_CIRCLE_SAMPLES = 96;
  */
 export const MAX_PROFILE_CUTS = 100_000;
 
-/** Why a sketch has no regions when it has more cuts than `MAX_PROFILE_CUTS`, in the user's words. */
+/**
+ * Every cut a pair of segments makes counts too, ends included: two
+ * curves that meet end to end cut each other four times (each end on the
+ * other curve, found twice). A sketch may have `MAX_PROFILE_CUTS` plus this
+ * many per segment; the most per segment in real sketches is about 14, and
+ * their excess over 8 per segment at most a few hundred. Many curves
+ * through one point, or stacked on each other, pass it.
+ */
+export const PROFILE_CUTS_PER_SEGMENT = 8;
+
+/**
+ * The largest coordinate (mm, either axis, of any normal curve's box) a
+ * sketch may have for its regions to be found: 1,000 km. Within it a
+ * double still resolves 0.12 µm, far finer than `PROFILE_TOLERANCE`, and
+ * squares and products of coordinates stay finite and exact enough for the
+ * tolerance tests. Real sketches reach a few metres; the tests' largest 20 km.
+ */
+export const MAX_PROFILE_COORDINATE = 1e9;
+
+/** Why a sketch has no regions when its curves cut each other too often (`MAX_PROFILE_CUTS`), in the user's words. */
 export const TOO_MANY_CROSSINGS =
   'This sketch has too many curve crossings to find its profiles. Remove or simplify curves.';
 
+/** Why a sketch has no regions when a curve lies beyond `MAX_PROFILE_COORDINATE`, in the user's words. */
+export const TOO_LARGE_COORDINATES = 'This sketch has coordinates too large to find its profiles.';
+
 /**
- * `detectProfiles` refuses a sketch with more than `MAX_PROFILE_CUTS` cuts
- * inside its curves. The sketch itself is fine: it only has no regions.
+ * `detectProfiles` refuses a sketch whose curves cut each other too often
+ * (`crossings`: `MAX_PROFILE_CUTS`, `PROFILE_CUTS_PER_SEGMENT`) or lie too
+ * far out (`size`: `MAX_PROFILE_COORDINATE`). The sketch itself is fine: it
+ * only has no regions.
  */
-export class TooManyCrossingsError extends Error {
-  override readonly name = 'TooManyCrossingsError';
-  constructor() {
-    super(TOO_MANY_CROSSINGS);
+export class ProfilesRefusedError extends Error {
+  override readonly name = 'ProfilesRefusedError';
+  readonly reason: 'crossings' | 'size';
+  constructor(reason: 'crossings' | 'size') {
+    super(reason === 'size' ? TOO_LARGE_COORDINATES : TOO_MANY_CROSSINGS);
+    this.reason = reason;
   }
 }
 
-/** Whether `error` is that refusal, or an error caused by it (the API's `ApiError`). */
-export function isTooManyCrossings(error: unknown): boolean {
-  return (
-    error instanceof TooManyCrossingsError ||
-    (error instanceof Error && error.cause instanceof TooManyCrossingsError)
-  );
+/** That refusal, when `error` is it or was caused by it (the API's `ApiError`). */
+export function profilesRefusal(error: unknown): ProfilesRefusedError | undefined {
+  if (error instanceof ProfilesRefusedError) return error;
+  if (error instanceof Error && error.cause instanceof ProfilesRefusedError) return error.cause;
+  return undefined;
 }
 
 /** One sketch curve's share of a loop, in loop order. */
@@ -301,38 +326,63 @@ const overlap = (a: Segment['box'], b: Segment['box']) =>
  */
 const PAIR_GRID_MIN = 32;
 
-/** The cuts inside curves so far (`MAX_PROFILE_CUTS`). */
+/** The cuts so far: inside curves (`MAX_PROFILE_CUTS`), and all of them, with what they may reach. */
 interface CutCount {
   inside: number;
+  all: number;
+  maxAll: number;
+}
+
+/**
+ * Throws `ProfilesRefusedError('size')` when a segment's box reaches past
+ * `MAX_PROFILE_COORDINATE` (infinite too), before any pair is tested. A NaN
+ * box (a degenerate curve) is no reason: it meets nothing (`overlap` is
+ * false for it) and stays out of the pair search.
+ */
+function checkSize(segments: readonly Segment[]): void {
+  for (const s of segments)
+    for (const v of s.box)
+      if (Math.abs(v) > MAX_PROFILE_COORDINATE) throw new ProfilesRefusedError('size');
 }
 
 /**
  * Cuts every segment where another crosses or touches it, or ends on it.
- * Throws `TooManyCrossingsError` as soon as the cuts inside curves pass
- * `MAX_PROFILE_CUTS`: their total doesn't depend on the order of the
- * pairs, so neither does the refusal.
+ * Throws `ProfilesRefusedError('crossings')` as soon as the cuts inside
+ * curves pass `MAX_PROFILE_CUTS`, or all cuts pass it plus
+ * `PROFILE_CUTS_PER_SEGMENT` per segment: their totals don't depend on the
+ * order of the pairs, so neither does the refusal.
  */
 function cutSegments(segments: readonly Segment[], allPairs: boolean): void {
-  const count: CutCount = { inside: 0 };
   const n = segments.length;
+  const count: CutCount = {
+    inside: 0,
+    all: 0,
+    maxAll: MAX_PROFILE_CUTS + PROFILE_CUTS_PER_SEGMENT * n,
+  };
   if (n >= PAIR_GRID_MIN && !allPairs) {
+    // Segments with a NaN in their box meet nothing: they stay out of the
+    // grid (it needs finite boxes), and the others keep their order.
+    const index: number[] = [];
+    for (let i = 0; i < n; i++)
+      if ((segments[i] as Segment).box.every((v) => !Number.isNaN(v))) index.push(i);
     // The grid's boxes are wider than `overlap`'s tolerance: it may only
     // pass over pairs that `overlap` refuses too.
-    const boxes = new Float64Array(4 * n);
-    let finite = true;
-    for (let i = 0; i < n; i++) {
+    const boxes = new Float64Array(4 * index.length);
+    index.forEach((i, k) => {
       const b = (segments[i] as Segment).box;
-      for (let k = 0; k < 4; k++) {
-        const v = b[k] as number;
-        if (!(Math.abs(v) <= 1e300)) finite = false;
-        boxes[4 * i + k] = k < 2 ? v - 2 * PROFILE_TOLERANCE : v + 2 * PROFILE_TOLERANCE;
-      }
-    }
-    if (finite) {
-      for (const [i, j] of nearPairsWithin(boxes))
-        cutPair(segments[i] as Segment, segments[j] as Segment, count);
-      return;
-    }
+      for (let c = 0; c < 4; c++)
+        boxes[4 * k + c] =
+          c < 2
+            ? (b[c] as number) - 2 * PROFILE_TOLERANCE
+            : (b[c] as number) + 2 * PROFILE_TOLERANCE;
+    });
+    for (const [i, j] of nearPairsWithin(boxes))
+      cutPair(
+        segments[index[i] as number] as Segment,
+        segments[index[j] as number] as Segment,
+        count,
+      );
+    return;
   }
   for (let i = 0; i < n; i++) {
     const si = segments[i] as Segment;
@@ -342,15 +392,19 @@ function cutSegments(segments: readonly Segment[], allPairs: boolean): void {
 
 const ends = (s: Segment): Vec2[] => (s.closed ? [] : [s.at(0), s.at(s.max)]);
 
-/** 1 for a cut away from the segment's ends (by more than the tolerance; anywhere on a circle), else 0. */
+/**
+ * 0 for a cut within the tolerance of the segment's ends, else 1 (anywhere
+ * on a circle, and a cut at no number at all).
+ */
 const inside = (s: Segment, u: number): number =>
-  s.closed || (u * s.scale > PROFILE_TOLERANCE && (s.max - u) * s.scale > PROFILE_TOLERANCE)
+  s.closed || (!(u * s.scale <= PROFILE_TOLERANCE) && !((s.max - u) * s.scale <= PROFILE_TOLERANCE))
     ? 1
     : 0;
 
 /** Cuts two segments where they cross or touch, or where an end of one lies on the other. */
 function cutPair(si: Segment, sj: Segment, count: CutCount): void {
   if (!overlap(si.box, sj.box)) return;
+  const before = si.cuts.length + sj.cuts.length;
   for (const p of intersectCurves(si.shape, sj.shape)) {
     const ui = si.param(p);
     const uj = sj.param(p);
@@ -372,7 +426,9 @@ function cutPair(si: Segment, sj: Segment, count: CutCount): void {
       count.inside += inside(si, u);
     }
   }
-  if (count.inside > MAX_PROFILE_CUTS) throw new TooManyCrossingsError();
+  count.all += si.cuts.length + sj.cuts.length - before;
+  if (count.inside > MAX_PROFILE_CUTS || count.all > count.maxAll)
+    throw new ProfilesRefusedError('crossings');
 }
 
 // Vertices ---------------------------------------------------------------------
@@ -383,6 +439,12 @@ class Vertices {
   readonly #cells = new Map<string, number[]>();
 
   id(p: Vec2): number {
+    // A point at no finite position merges with nothing (every distance to
+    // it is NaN or infinite): it needs no cell, and no cell needs scanning.
+    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) {
+      this.points.push(p);
+      return this.points.length - 1;
+    }
     const cx = Math.floor(p[0] / PROFILE_TOLERANCE);
     const cy = Math.floor(p[1] / PROFILE_TOLERANCE);
     for (let dx = -1; dx <= 1; dx++) {
@@ -764,8 +826,9 @@ function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityI
  * The closed regions of a sketch (FR-SK-11), largest first. Regions don't
  * overlap: where curves cross, each piece of the plane between them is its
  * own region, and a region inside another is a hole of it as well as a
- * region of its own. Throws `TooManyCrossingsError` for a sketch whose
- * curves cross too often (`MAX_PROFILE_CUTS`).
+ * region of its own. Throws `ProfilesRefusedError` for a sketch whose
+ * curves cut each other too often (`MAX_PROFILE_CUTS`) or lie too far out
+ * (`MAX_PROFILE_COORDINATE`).
  */
 export function detectProfiles(data: SketchData): Profile[] {
   return detect(data, false);
@@ -785,6 +848,7 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
     for (const segment of segmentsOf(data, id, e)) segments.push(segment);
   }
   if (segments.length === 0) return [];
+  checkSize(segments);
   cutSegments(segments, allPairs);
   const vertices = new Vertices();
   const pieces = piecesOf(segments, vertices);

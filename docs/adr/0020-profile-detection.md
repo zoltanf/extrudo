@@ -141,7 +141,9 @@ they were. Rules for any change here:
   yields goes through the same `overlap` test (0.1 µm) and the same cut code
   (`cutPair`) as before. Its boxes are widened by twice that tolerance, so
   rounding can't make it drop a pair `overlap` would keep. A sketch with a
-  box that isn't finite (beyond ±1e300 or NaN) tests every pair.
+  box that isn't finite (beyond ±1e300 or NaN) tests every pair (replaced on
+  2026-11-15: a NaN box stays out of the grid, a box past
+  `MAX_PROFILE_COORDINATE` is refused).
 - Pairs come **in the order of the all-pairs loop** (`i` ascending, then
   `j`): a segment's cuts are pushed in the same order, and equal cuts (a
   `-0`, a `NaN` from a degenerate curve) sort the same way.
@@ -202,7 +204,7 @@ import with some thousand of them froze the tab or ran it out of memory
 (1,000 lines: 494,000 regions, 10.8 s, 1.6 GB; 2,000 lines: 2 million
 regions, 66 s, 6.5 GB), and the kernel's face build after it took longer
 still. Now `detectProfiles` counts the **cuts inside curves** while it cuts
-(`cutPair`) and throws `TooManyCrossingsError` as soon as there are more
+(`cutPair`) and throws `ProfilesRefusedError` as soon as there are more
 than **`MAX_PROFILE_CUTS` = 100,000**. A crossing of two curves makes two
 such cuts (one in each), an end of one curve on another makes one, and
 curves that meet end to end make none (a cut within `PROFILE_TOLERANCE` of
@@ -266,7 +268,7 @@ they never disagree on whether a sketch has regions:
 
 - **The app** (`apps/web/src/sketch/profiles.ts`): `sketchProfiles` gives
   no profiles for such a sketch (no fills, nothing to pick) and
-  `sketchProfilesRefused` says so; the sketch palette shows
+  `sketchProfilesProblem` says why; the sketch palette shows
   `TOO_MANY_CROSSINGS` ("This sketch has too many curve crossings to find
   its profiles. Remove or simplify curves.") under the DOF counter, the way
   the counter shows an over-constrained sketch. It is asked only while
@@ -274,7 +276,7 @@ they never disagree on whether a sketch has regions:
 - **The kernel's sketch feature** detects the regions *before* its face
   build (`planarFaces`) and on a refusal makes no faces at all: the sketch
   ends with a warning (the same text, in the timeline), no `profiles`, and
-  `tooManyCrossings: true` in its output; its curves, points and lines are
+  `profilesRefused` (the feature message) in its output; its curves, points and lines are
   there as before (paths, holes, revolve axes, projections still work). A
   feature that picked one of its profiles (`profilePart`, a whole text in
   `textParts`, the OpenSCAD export's `sketchOutput`) fails with
@@ -283,7 +285,7 @@ they never disagree on whether a sketch has regions:
   "Can't find one of its profiles any more".
 - **The API**: `SketchHandle.regions` (and so `profiles()`, `profileAt`,
   `profilesInside`) throws an `ApiError` with the same message, its `cause`
-  the `TooManyCrossingsError`, as its other refusals do; the script emitter
+  the `ProfilesRefusedError`, as its other refusals do; the script emitter
   names such a sketch's profiles by ID (`design.ref`) instead of by a point
   inside. The app's agent tools (`agent/tools.ts`) describe such a sketch
   with no profiles or regions and the reason as `problem`.
@@ -291,7 +293,7 @@ they never disagree on whether a sketch has regions:
   `TOO_MANY_CROSSINGS` reason (its work budget `MAX_PIECE_WORK` is
   unchanged), the FreeCAD import's `profileRefs` the same words; both skip
   the feature with that reason, as before for their own budgets
-  (`isTooManyCrossings` knows the error behind an `ApiError`). The FreeCAD
+  (`profilesRefusal` finds the error behind an `ApiError`). The FreeCAD
   import's worst case at its curve cap, a grid of 250 × 250 lines
   (125,000 cuts), was refused after the detection by its region cap; it is
   now refused while it is cut.
@@ -333,6 +335,50 @@ cheap check before `detectProfiles` (it would repeat the cutting; the
 detection's own cutting stops just as early). A result with a reason
 instead of a throw (every caller would change; with a typed error only the
 callers that must go on catch it, and the rest fail loudly).
+
+**Two more rules (same day).** Cuts inside curves are not the only work
+that grows with a sketch's arrangement, so the detection refuses two more
+kinds of sketch through the same error (`ProfilesRefusedError`, its
+`reason` `crossings` or `size`) and the same paths in the app, the kernel,
+the API and the importers:
+
+- **All cuts count too.** Every cut a pair makes is counted, ends included
+  (two curves that meet end to end cut each other four times: each end on
+  the other curve, found twice). A sketch may have `MAX_PROFILE_CUTS` plus
+  `PROFILE_CUTS_PER_SEGMENT` = 8 per segment; past that it is refused with
+  the crossings message. Curves that only meet at their ends, many of them
+  at one point or stacked on each other, otherwise piled cuts up at their
+  ends without counting (1,000 such lines 1.1 s and 2,000 4.2 s before;
+  refused in about 50 ms now). Real sketches: at most 14 cuts per segment
+  (1,017 sketches of the f3d corpus), and their cuts over 8 per segment at
+  most 217 in all; a 60,000-line closed polyline (4 per segment) passes.
+  The total doesn't depend on the order of the pairs either. The worst
+  accepted sketch sorts and merges `MAX_PROFILE_CUTS` + 8 per segment cuts:
+  linear in its curves beyond the limit's own share.
+- **Coordinates.** A sketch whose normal curves reach past
+  `MAX_PROFILE_COORDINATE` = 10⁹ mm (1,000 km, either axis of a segment's
+  box; an infinite one too) is refused before any pair is tested, with its
+  own message: "This sketch has coordinates too large to find its
+  profiles." (features: "Its sketch has coordinates too large to find its
+  profiles."; the importers' reason "its sketch has coordinates too large to
+  find its profile(s)"). Why 10⁹: a double there still resolves 0.12 µm,
+  about 800 steps inside `PROFILE_TOLERANCE`, squares (10¹⁸) and products
+  stay far from overflow, and the vertex grid's cell numbers (10¹³) stay
+  exact integers. Far above real use: the corpus's largest coordinate is
+  4.7 m, the test suite's 20 km. Lines tens of orders longer overflowed
+  their own squared length, so their cuts landed nowhere and counted as
+  nothing (100 such lines took 8.6 s; refused in 1 ms now). The old switch
+  that tested every pair when a coordinate passed 10³⁰⁰ is gone with it: a
+  large polyline with one line far out took 4.6 s (20,000 lines), now
+  refused in 59 ms.
+- **What stays as it was.** A curve at no number (a NaN coordinate, a
+  degenerate curve: 12 of the suite's sketches have one) meets nothing:
+  `overlap` is false for its box, so it now stays out of the grid instead
+  of switching it off (20,000 lines and one such curve: 4.6 s → 0.44 s,
+  the same regions), and a vertex at no finite position no longer scans
+  the others (it never merged with any). A cut that is not clearly within
+  the tolerance of a segment's end counts as inside (`inside` fails
+  closed; for any number the answer is as before).
 
 **Still not bounded.** Work that grows without crossings: boxes that
 overlap without crossing (10,000 concentric circles: 50 million pairs,

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SketchData, SketchDimension, SketchEntity, SketchEntityId } from '@extrudo/core';
-import { isTooManyCrossings, TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
+import { profilesRefusal, TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
 import { readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { Design } from './design';
@@ -625,7 +625,7 @@ describe('a sketch with too many crossings', () => {
       }
       expect(error).toBeInstanceOf(ApiError);
       expect((error as Error).message).toBe(TOO_MANY_CROSSINGS);
-      expect(isTooManyCrossings(error)).toBe(true);
+      expect(profilesRefusal(error)?.reason).toBe('crossings');
     }
   });
 });
