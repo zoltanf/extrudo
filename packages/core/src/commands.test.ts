@@ -8,6 +8,7 @@ import {
 } from './customizer';
 import {
   addParameter,
+  addParameters,
   bodyDisplay,
   insertFeature,
   isFeatureVisible,
@@ -167,6 +168,39 @@ describe('document commands', () => {
     expect(apply(doc, updateSettings({ units: 'in', precision: 3 })).parameters).toEqual(
       doc.parameters,
     );
+  });
+
+  it('adds many parameters in one step, with the checks one at a time makes', () => {
+    const many = Array.from({ length: 5000 }, (_, i) => parameter(`q${i}`, `n${i}`));
+    const doc = apply(sampleDocument(), addParameters({ parameters: many }));
+    expect(doc.parameters.map((p) => p.name).slice(0, 4)).toEqual(['width', 'wall', 'n0', 'n1']);
+    expect(doc.parameters).toHaveLength(5002);
+    const refused = (name: string) => {
+      const one = (() => {
+        try {
+          apply(sampleDocument(), addParameter({ parameter: parameter('p9', name) }));
+        } catch (error) {
+          return (error as Error).message;
+        }
+      })();
+      expect(one).toBeDefined();
+      expect(() =>
+        apply(
+          sampleDocument(),
+          addParameters({ parameters: [parameter('p8', 'fine'), parameter('p9', name)] }),
+        ),
+      ).toThrow(one as string);
+    };
+    refused('wall');
+    refused('a b');
+    refused('mm');
+    // Two of one name in one step: the second is refused like a second step would be.
+    expect(() =>
+      apply(
+        sampleDocument(),
+        addParameters({ parameters: [parameter('p8', 'gap'), parameter('p9', 'gap')] }),
+      ),
+    ).toThrow('A parameter named "gap" already exists.');
   });
 
   it('add, edit and delete parameters, keeping names unique and valid', () => {

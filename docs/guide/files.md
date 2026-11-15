@@ -64,7 +64,10 @@ These are in the Home tab's **Import** group.
   file's up is Z or Y, and a mesh has a **Units** setting. **Position** centres the model on the
   origin, standing on the XY plane (the default), or keeps it where the file has it. An `.f3d` file picked here opens as a
   new design instead, with its parameters, sketches, pulled solids, fillets and chamfers; a
-  notice says what came across. Extrudo also checks each body it rebuilt against the shape
+  notice says what came across. A very large design may come in with some features
+  suppressed, where it asks for more pattern copies, hole centres, thread turns, text or sketch
+  copies than one import takes, and with sketches no feature uses hidden; the notice names
+  them, and you can unsuppress or show them yourself. Extrudo also checks each body it rebuilt against the shape
   stored in the file. A body it couldn't rebuild, or rebuilt differently, comes in as the
   file's own shape, without history (an **Import Body3** feature at the end of the timeline),
   and one **Remove rebuilt bodies** feature takes the rebuilt version out: suppress it to see
