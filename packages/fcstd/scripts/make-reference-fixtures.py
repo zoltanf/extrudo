@@ -4,6 +4,8 @@
 # the stored shapes, the property grammar and the EdgeN / FaceN numbering are
 # FreeCAD's own. Writes fixtures.json (no file metadata: only the objects'
 # own XML from Document.xml, never the document's properties).
+# reference-fixtures-to-module.py beside this script turns fixtures.json into
+# packages/fcstd/src/reference-fixtures.ts (its header gives the commands).
 #
 # Run: freecadcmd make-reference-fixtures.py <output directory>   (FreeCAD 1.1)
 # Writes fixtures.json and log.txt into that directory, never beside the script

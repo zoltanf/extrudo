@@ -4,7 +4,8 @@
  * axis, datum lines and planes as a pattern's or mirror's reference, sketches
  * on tilted planes and faces, and projected (external) geometry in sketches.
  * The parts are ours: built with FreeCAD 1.1.4 by the script beside this
- * package (`packages/fcstd/scripts/make-reference-fixtures.py`), so each
+ * package (`packages/fcstd/scripts/make-reference-fixtures.py`, its JSON made
+ * this module by `reference-fixtures-to-module.py` beside it), so each
  * stored shape, each property as FreeCAD writes it and the `EdgeN` / `FaceN`
  * numbering are FreeCAD's own. The same form as `pattern-fixtures.ts` (read by
  * `pattern-parts.ts`): each distinct B-rep text once (`REF_BREP`, each run of
