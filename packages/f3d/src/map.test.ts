@@ -15,7 +15,7 @@ import type { AsmSurface } from './asm';
 import type { ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { Vec3 } from './decode/sketch-geometry';
-import { alongSweep, bodyOrder, f3dToDesign } from './map';
+import { alongSweep, bodyOrder, f3dToDesign, PROFILE_REGIONS_UNREAD } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
 
 /** A region of whole curves (each one piece of one), as the decoder gives it. */
@@ -1680,5 +1680,20 @@ describe('profile regions whose record the sketch has outgrown', () => {
       [pieces([[1n, 1, 1]])],
     );
     expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * 17.5 ** 2 * 0.8, 0)]);
+  });
+});
+
+describe('profile regions', () => {
+  it("leaves out an extrude whose profile's regions were not read, instead of extruding every profile", () => {
+    const f3d = washer();
+    const extrude = f3d.features[1] as F3dExtrude;
+    extrude.profiles = [{ id: 30, sketch: 5 }];
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toContainEqual({
+      name: 'Extrude1',
+      kind: 'Extrude',
+      reason: PROFILE_REGIONS_UNREAD,
+    });
+    expect(design.toJSON().features.map((f) => f.type)).toEqual(['sketch']);
   });
 });

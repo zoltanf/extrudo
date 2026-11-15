@@ -2170,10 +2170,9 @@ function selectProfilesOf(
       continue;
     }
     const regions = sketch.handle.regions;
-    if (!operand.regions) {
-      profiles.push(...sketch.handle.profiles());
-      continue;
-    }
+    // Every profile operand of a file lists its regions; one whose regions
+    // record is missing or not read names no profile this could pick.
+    if (!operand.regions) return PROFILE_REGIONS_UNREAD;
     const present = new Set([...sketch.tags.values()].map(String));
     const before = profiles.length;
     let lost = 0;
@@ -3404,6 +3403,8 @@ export const regionStats: Record<string, number> = {
 
 /** Why a feature's profile was not found when its sketch's region matching ran out of budget. */
 export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
+/** Why a feature is left out when a profile's regions record is missing or could not be read. */
+export const PROFILE_REGIONS_UNREAD = "its profile's regions could not be read";
 /** Why a feature's profile was not found when its sketch's curves lie too far out to find regions. */
 export const TOO_LARGE_SKETCH = 'its sketch has coordinates too large to find its profile';
 
