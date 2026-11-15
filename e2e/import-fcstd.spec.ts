@@ -13,6 +13,7 @@ import {
   rectangle,
 } from '../packages/fcstd/src/history-fixtures';
 import { paramFile } from '../packages/fcstd/src/parameter-parts';
+import { partFile } from '../packages/fcstd/src/part-parts';
 import { BREP, PATTERN_CASES } from '../packages/fcstd/src/pattern-fixtures';
 import { partObjects } from '../packages/fcstd/src/pattern-parts';
 import { refFile } from '../packages/fcstd/src/reference-parts';
@@ -29,7 +30,7 @@ import {
 } from './benchmark-helpers';
 import { parameterExpression, parametersDialog } from './helpers';
 
-// The FreeCAD import (P6-25 S3, S5 to S9, ADR-0144): its worker reads
+// The FreeCAD import (P6-25 S3, S5 to S11, ADR-0144): its worker reads
 // the file and its own kernel worker turns each stored shape into STEP, and
 // rebuilds each PartDesign body's features against the shapes the file
 // stores, finding a fillet's edges on the rebuilt body, stepping a
@@ -383,4 +384,42 @@ test("a FreeCAD file's spreadsheets come in as parameters that drive the model (
     .toEqual([50, 20, 10]);
   const after = solidFacts(meshOfStl(await exportModel(page, 'STL')));
   expect(after.volume).toBeCloseTo(10_000 - 3 * ((Math.PI * 9 * 4) / 2), -1);
+});
+
+test('a Part workbench tree comes in as primitives and a combine, live (S11)', async ({ page }) => {
+  test.setTimeout(180_000);
+  await importFile(page, 'Holed.FCStd', Buffer.from(partFile('box_cyl_cut')));
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await expect(
+    page.getByText(
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (primitives and booleans).',
+    ),
+  ).toBeVisible();
+  const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
+  await expect
+    .poll(() => chips.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label'))), {
+      timeout: 60_000,
+    })
+    .toEqual(['Box', 'Cylinder', 'Cut']);
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  // FreeCAD's 30 × 20 × 10 box with the cylinder's hole: one body, named as the file names the cut.
+  await expect(viewport).toHaveAttribute('data-bodies', /^Cut:\d+:30,20,10$/, { timeout: 60_000 });
+
+  // Editing the box rebuilds the cut.
+  await page
+    .getByRole('list', { name: 'Features' })
+    .getByRole('button', { name: /^Box/ })
+    .dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Box dialog' });
+  const length = edit.getByRole('textbox', { name: 'Length' });
+  await expect(length).toHaveValue('30 mm');
+  await length.fill('40 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await length.press('Enter');
+  await expect(edit).toBeHidden();
+  await expect(viewport).toHaveAttribute('data-bodies', /^Cut:\d+:40,20,10$/, { timeout: 60_000 });
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
 });

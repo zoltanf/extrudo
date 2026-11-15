@@ -149,6 +149,28 @@ export {
   prepareParameters,
 } from './params';
 export {
+  eulerXYZ,
+  importTrees,
+  MAX_TREE_FEATURES,
+  MAX_TREE_PASSES,
+  type TreeImport,
+  type TreeNodeReport,
+  type TreeReason,
+} from './part-import';
+export { MAX_PART_DRESSUP_EDGES, type PartDressUpEdge, readPartDressUpEdges } from './part-read';
+export {
+  isTreeTop,
+  type LeafReason,
+  MAX_IMPORT_TREE_NODES,
+  MAX_MULTI_OPERANDS,
+  MAX_TREE_NODES,
+  type PartNodeKind,
+  type PartPlan,
+  type PlannedNode,
+  type PlannedTree,
+  partTrees,
+} from './part-tree';
+export {
   BOX_TOLERANCE,
   disagreement,
   FREECAD_DEFAULT_COLOUR,

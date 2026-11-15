@@ -11,7 +11,7 @@ import {
   randomUuid,
 } from '@extrudo/core';
 import type { ImportReport, ImportResult } from '@extrudo/f3d';
-import type { FcstdImportReport, HistoryStop, LeftOutReason } from '@extrudo/fcstd';
+import type { FcstdImportReport, HistoryStop, LeftOutReason, TreeReason } from '@extrudo/fcstd';
 import {
   ArchiveError,
   type ProjectId,
@@ -381,38 +381,67 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
   restarts: 'the geometry kernel failed too often',
 };
 
+/** Why a Part tree (S11) came in as the file's shape, or built on its shapes, in the app's words (after "because"). */
+const TREE_REASON: Record<TreeReason, string> = {
+  ...HISTORY_STOP,
+  type: "part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet",
+  partial: 'it is only part of a cylinder, sphere or torus',
+  value: "a size can't be used",
+  placement: "a placement can't be used",
+  operand: "part of it links to something Extrudo can't use",
+  cycle: 'its parts are built from each other in a loop',
+  compound: 'a compound is used as one shape',
+  edges: "a fillet or chamfer has edges or sizes Extrudo can't rebuild",
+  limit: 'it is larger than Extrudo takes',
+  body: "a body it uses didn't come in with its history",
+  passes: 'it took too many tries to rebuild',
+  container: "its containers' placements couldn't be applied",
+};
+
 /** The FreeCAD import's report as a few readable notices. */
 export function fcstdNotices(
   report: Pick<
     FcstdImportReport,
     'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'
   > &
-    Partial<Pick<FcstdImportReport, 'bodies' | 'parameters'>>,
+    Partial<Pick<FcstdImportReport, 'bodies' | 'parameters' | 'trees'>>,
 ): string[] {
   if (report.finalShapes === 0)
     return ['The FreeCAD file has no shapes to import, so the design is empty.'];
   const bodies = report.bodies ?? [];
+  const trees = report.trees ?? [];
   // Bodies with their whole history, and with the part after a stored-shape step (S8).
   const stepped = bodies.filter((b) => b.outcome === 'history' && b.steps.length > 0);
-  const whole = bodies.filter((b) => b.outcome === 'history').length - stepped.length;
+  // Part trees (S11): built whole, or on the file's shapes for some of their parts.
+  const leafy = trees.filter((t) => t.outcome === 'leaves');
+  const treesWhole = trees.filter((t) => t.outcome === 'history').length;
+  const whole = bodies.filter((b) => b.outcome === 'history').length - stepped.length + treesWhole;
+  const partial = stepped.length + leafy.length;
   const plain = report.shapes.length;
-  const came = plain + whole + stepped.length;
+  const came = plain + whole + partial;
+  // What "history" is made of: a body's sketches and features, a tree's primitives and booleans.
+  const historyBodies = bodies.some((b) => b.outcome === 'history');
+  const historyTrees = treesWhole + leafy.length > 0;
+  const made =
+    historyBodies && historyTrees
+      ? 'sketches, features, primitives and booleans'
+      : historyTrees
+        ? 'primitives and booleans'
+        : 'sketches and features';
   const total = `${report.finalShapes} shape${report.finalShapes === 1 ? '' : 's'}`;
   const its = (n: number) => (n === 1 ? 'its' : 'their');
   const parts = [
     ...(whole > 0 ? [`${whole} with ${its(whole)} history`] : []),
-    ...(stepped.length > 0
-      ? [`${stepped.length} with part of ${its(stepped.length)} history`]
-      : []),
+    ...(partial > 0 ? [`${partial} with part of ${its(partial)} history`] : []),
     ...(plain > 0 ? [`${plain} as ${plain === 1 ? 'a body' : 'bodies'} without history`] : []),
   ];
   const out = [
     parts.length > 1
       ? `Imported from the FreeCAD file: ${came} of ${total}, ${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}.`
-      : stepped.length > 0
-        ? `Imported from the FreeCAD file: ${came} of ${total}, with part of ${its(came)} history (sketches and features).`
+      : partial > 0
+        ? `Imported from the FreeCAD file: ${came} of ${total}, with part of ${its(came)} history (${made}).`
         : whole > 0
-          ? `Imported from the FreeCAD file: ${came} of ${total}, with ${its(whole)} history (sketches and features).`
+          ? `Imported from the FreeCAD file: ${came} of ${total}, with ${its(whole)} history (${made}).`
           : `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`,
   ];
   out.push(...parameterNotices(report.parameters));
@@ -431,13 +460,33 @@ export function fcstdNotices(
         : `Rebuilt on the file's own ${one ? 'shape' : 'shapes'} part way through: ${names}${why}. The features after that point come in with their history; the ones before it stay in the timeline but no longer shape the ${one ? 'body' : 'bodies'}.`,
     );
   }
-  const short = bodies.filter((b) => b.outcome === 'shape' && b.stop);
+  if (leafy.length > 0) {
+    // S11: a tree built on the file's shapes for some of its parts; nothing below them stays.
+    const reasons = leafy.flatMap((t) =>
+      t.nodes.filter((n) => n.outcome === 'leaf').map((n) => n.reason as TreeReason),
+    );
+    const one = leafy.length === 1;
+    out.push(
+      `Built on the file's own ${one ? 'shape for a part of it' : 'shapes for parts of them'}: ${listed(leafy.map((t) => t.name))}${one ? ', because' : '. Most often because'} ${commonestOf(reasons, TREE_REASON).join(', or ')}. What uses ${one ? 'that part comes' : 'those parts comes'} in with its history.`,
+    );
+  }
+  const short = [
+    ...bodies
+      .filter((b) => b.outcome === 'shape' && b.stop)
+      .map((b) => ({ name: b.name, why: HISTORY_STOP[b.stop?.reason as HistoryStop] })),
+    ...trees
+      .filter((t) => t.outcome === 'shape' && t.reason)
+      .map((t) => ({ name: t.name, why: TREE_REASON[t.reason as TreeReason] })),
+  ];
   if (short.length > 0) {
-    const common = commonest(short.map((b) => b.stop?.reason as HistoryStop));
-    const partial = short.filter((b) => b.bodies.length > 0);
+    const common = commonestOf(
+      short.map((x) => x.why),
+      Object.fromEntries(short.map((x) => [x.why, x.why])),
+    );
+    const rebuilt = bodies.filter((b) => b.outcome === 'shape' && b.stop && b.bodies.length > 0);
     out.push(
       `Taken from the file's own shapes, without their whole history: ${listed(short.map((b) => b.name))}${short.length === 1 ? ', because' : '. Most often because'} ${common.join(', or ')}.${
-        partial.length > 0
+        rebuilt.length > 0
           ? ' The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.'
           : ''
       }`,
@@ -562,12 +611,20 @@ const shortName = (name: string) => {
 
 /** The two commonest reasons, in the app's words. */
 function commonest(reasons: readonly HistoryStop[]): string[] {
-  const why = new Map<HistoryStop, number>();
-  for (const reason of reasons) why.set(reason, (why.get(reason) ?? 0) + 1);
+  return commonestOf(reasons, HISTORY_STOP);
+}
+
+/** The two commonest reasons, most common first, each in the app's words. */
+function commonestOf<R extends string>(reasons: readonly R[], words: Record<R, string>): string[] {
+  const why = new Map<string, number>();
+  for (const reason of reasons) {
+    const text = words[reason];
+    why.set(text, (why.get(text) ?? 0) + 1);
+  }
   return [...why]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 2)
-    .map(([reason]) => HISTORY_STOP[reason]);
+    .map(([text]) => text);
 }
 
 /** At most six items, then "and N more". */

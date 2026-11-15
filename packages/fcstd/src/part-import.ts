@@ -33,8 +33,9 @@ import {
   type OriginPlaneId,
   originPlane,
   originPlaneRef,
-  primitiveInputs,
   type PrimitiveType,
+  primitiveInputs,
+  updateFeatureInputs,
 } from '@extrudo/core';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import type { Binder } from './bind';
@@ -242,6 +243,12 @@ export interface PrimitivePlan {
   readonly sources: Record<string, string>;
   /** The placement a move after it must give it (in the tree's frame), when its inputs can't. */
   readonly move?: FcPlacement;
+  /**
+   * A box's centre as its corner plus half its sizes: `x` and `y` are `base +
+   * l · length / 2 + w · width / 2`, so a bound length or width grows the box
+   * from FreeCAD's corner, as the file's model does.
+   */
+  readonly follows?: Readonly<Record<'x' | 'y', readonly [number, number, number]>>;
 }
 
 const sizeOf = (o: FcObject, n: string) => {
@@ -318,13 +325,38 @@ export function primitivePlan(
   const mn = memberOf(nP);
   if (own && mn) sources.offset = mn;
   if (height) numbers.height = mm(along.sense * height);
+  let follows: PrimitivePlan['follows'];
   if (kind === 'box') {
     const theta = Math.atan2(dot(ex, yP), dot(ex, xP)) * (180 / Math.PI);
     if (literal(theta) !== '0') numbers.rotation = deg(theta);
+    const ey = rotate(p.rotation, [0, 1, 0]);
+    follows = {
+      x: [dot(t, xP), dot(ex, xP), dot(ey, xP)],
+      y: [dot(t, yP), dot(ex, yP), dot(ey, yP)],
+    };
   }
   for (const [k, v] of Object.entries(numbers))
     if (v === '0 mm' && k !== 'height') delete numbers[k];
-  return { type: kind, plane: along.id, numbers, sources };
+  return { type: kind, plane: along.id, numbers, sources, ...(follows ? { follows } : {}) };
+}
+
+const LITERAL = /^\s*-?[0-9.]+(?:e-?[0-9]+)?\s*(mm|deg)?\s*$/;
+
+/** A coordinate as its base plus half of each size that is an expression, or `undefined` when none is. */
+export function followText(
+  [base, kl, kw]: readonly [number, number, number],
+  length: string,
+  width: string,
+): string | undefined {
+  const live = (e: string) => !LITERAL.test(e);
+  if (!live(length) && !live(width)) return undefined;
+  const term = (k: number, e: string) => {
+    if (Math.abs(k) <= 1e-12) return '';
+    const half = `(${e}) / 2`;
+    const scaled = Math.abs(Math.abs(k) - 1) <= 1e-12 ? half : `${half} * ${literal(Math.abs(k))}`;
+    return `${k < 0 ? ' - ' : ' + '}${scaled}`;
+  };
+  return `${mm(base)}${term(kl, length)}${term(kw, width)}`;
 }
 
 /** One rebuild's answer once checked, and the IDs its features had. */
@@ -913,6 +945,23 @@ export async function importTrees(
               moves++;
             }
             const bound = bindPart(o, added.id, p.sources);
+            if (p.follows) {
+              // A bound length or width: the centre follows it, so the box grows from its corner.
+              const inputs = design.doc.features.find((x) => x.id === added.id)?.inputs as
+                | Record<string, { kind?: string; expr?: string; unit?: string }>
+                | undefined;
+              const length = inputs?.length?.expr ?? '0 mm';
+              const width = inputs?.width?.expr ?? '0 mm';
+              const changes: Record<string, unknown> = {};
+              for (const axis of ['x', 'y'] as const) {
+                const text = followText(p.follows[axis], length, width);
+                if (text) changes[axis] = { kind: 'expr', expr: text, unit: 'length' };
+              }
+              if (Object.keys(changes).length > 0)
+                design.state.dispatch(
+                  updateFeatureInputs({ id: added.id as FeatureId, inputs: changes as never }),
+                );
+            }
             return {
               features,
               keeps: [],
@@ -959,10 +1008,15 @@ export async function importTrees(
               features.unshift(...ids);
               made = [...base];
             } else {
-              // A common of several shapes is the common of each with the next, in order.
+              // A common of several shapes is the common of each with the next, in order; a
+              // newer MultiCommon may ask for the common of the first with all the rest, which is
+              // Extrudo's intersect with several tools.
+              const behavior = o.properties.Behavior?.value;
+              const rest =
+                behavior?.kind === 'enum' && behavior.index === 1 ? [tools.flat()] : tools;
               let acc = base;
               const steps: string[] = [];
-              for (const t of tools) {
+              for (const t of rest) {
                 acc.forEach((b, k) => {
                   steps.push(
                     design.add(
@@ -1272,6 +1326,12 @@ export async function importTrees(
             ? { stored: expected.faces, rebuilt: counted }
             : undefined;
         return { bodies, added, drift: drift(got, expected), ...(faces ? { faces } : {}) };
+      } catch (error) {
+        // Nothing a node's own work throws ends the tree: the node doesn't hold.
+        return {
+          stop: 'failed',
+          detail: clip(`importing it failed: ${(error as Error)?.message ?? String(error)}`),
+        };
       } finally {
         if (!committed) {
           options.binder?.discard();

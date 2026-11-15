@@ -627,6 +627,59 @@ Its variables are dynamic properties (`status` bit 21) with `group` and `doc`
 `…Bool`, `…String`, links. A variable may have an expression of its own in
 the set's `ExpressionEngine`.
 
+## The Part workbench's trees (S11)
+
+A Part document has no body and no timeline: each object has its own
+`Placement` and its own stored `Shape`, and a boolean names its operands by
+link. Nothing in the file orders them but the links.
+
+- **The placement rule.** When FreeCAD recomputes an object it sets the
+  result's root location to the object's own `Placement`, replacing what was
+  there. A primitive is built in its own frame and placed by it; a boolean,
+  fillet, mirror … computes its result from its operands' shapes as they are
+  placed, then puts its own `Placement` on top (the identity unless the user
+  moved it). The stored B-rep already carries that placement as its root
+  location. An enclosing `App::Part` adds its own placement to everything in
+  it (the container chain of the final-shapes rule).
+- **Primitives** (`Part::Box`, `Part::Cylinder`, `Part::Sphere`,
+  `Part::Torus`, `Part::Cone`, `Part::Ellipsoid`, `Part::Prism`,
+  `Part::Wedge` …), sizes as `App::PropertyLength`: a box's `Length`, `Width`,
+  `Height` from its corner at the origin along +X, +Y, +Z; a cylinder's
+  `Radius`, `Height` with its base centred on the origin and its axis +Z
+  (`Angle` 360 for a whole one; 1.x adds `FirstAngle`, `SecondAngle`, a skew,
+  0 for an upright one); a sphere's `Radius`, centred (`Angle1` −90, `Angle2`
+  90, `Angle3` 360 for a whole one); a torus's `Radius1` (to the tube's
+  centre) and `Radius2` (the tube), centred, axis Z (`Angle1` −180, `Angle2`
+  180, `Angle3` 360). A property the file leaves out takes FreeCAD's default,
+  the whole primitive.
+- **Booleans:** `Part::Cut`, `Part::Fuse`, `Part::Common` name `Base` and
+  `Tool` (`App::PropertyLink`); `Part::MultiFuse` and `Part::MultiCommon` a
+  `Shapes` list, the first shape first. A MultiCommon is the common of all its
+  shapes (newer versions add a `Behavior` choice, the common of the first with
+  the rest, which no file we have sets). Each has `Refine` (a bool, 0.17 on),
+  which merges faces on one surface after the boolean; it changes faces, not
+  the solid. A fuse of shapes that don't touch keeps them as separate solids
+  of one compound. FreeCAD hides the operands in `GuiDocument.xml`; an operand
+  may feed several objects.
+- **`Part::Compound`** lists `Links`: a compound of their shapes, no boolean.
+- **`Part::Fillet` and `Part::Chamfer`** name `Base` and list their edges in
+  `Edges` (`Part::PropertyFilletEdges`), not in the XML: `<FilletEdges
+  file="Edges"/>` names an archive entry of its own (`Edges`, `Edges1` …).
+  The entry is little-endian: a 32-bit count, then per edge a 32-bit index,
+  the `EdgeN` of the base's stored shape from 1, and two doubles: a fillet's
+  radius at the edge's start and end (equal for a constant radius), a
+  chamfer's first and second size. Every edge has its own sizes. 1.x adds
+  `EdgeLinks`, the same edges as a sub-link list. The reader takes the entry
+  only when its length is exactly the count's (4 + 20 per edge) and the count
+  at most 1,000; anything else is refused with a reason before any value is
+  used.
+- **Placements** are read as everywhere else (`Px Py Pz` and the quaternion or
+  angle and axis); one whose rotation is no rotation (a zero quaternion or
+  axis) is read as the identity and marked, and S11 builds nothing on it.
+- **Expressions** on a Part object's sizes (`Length`, `Radius` …) and on its
+  placement's members (`.Placement.Base.x`) are ordinary `ExpressionEngine`
+  entries of the object.
+
 ## Not read yet
 
 - Sketches: `ExternalTypes`' intersections, external geometry from objects

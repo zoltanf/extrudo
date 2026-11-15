@@ -15,13 +15,12 @@ import { type BodyHistory, bodyChain, importBodies } from './bodies';
 import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
-import { readFcstd } from './model';
+import { readFcstd, storedShapeEntry } from './model';
 import { cleanName } from './names';
+import { type ParametersReport, parametersReport } from './parameters-report';
+import { prepareParameters } from './params';
 import { importTrees, type TreeImport } from './part-import';
 import { partTrees } from './part-tree';
-import { type ParametersReport, parametersReport } from './parameters-report';
-import { storedShapeEntry } from './model';
-import { prepareParameters } from './params';
 import { type ImportedShape, importShapes, type LeftOutShape, setBodies } from './shapes';
 import { containerChain, releasePlane } from './sketch-place';
 

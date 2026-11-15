@@ -5091,6 +5091,30 @@ after them. Groups cut by UTF-16 units (`cutUnits`). `ExpressionOutcome.number`:
 only those count as "plain numbers" in the notice; notice names cut to 40 characters. Core's errors by code (`cycle`) or by
 pinned words (`CORE_TOO_DEEP` → `limit`, `CORE_DEPENDENT`).
 
+**ADR-0144, S11 (Part trees):** files `part-tree.ts` (`partTrees`, `classify`, `isTreeTop`: the trees from the file
+alone, iterative depth-first, operands base first; `usesOf`), `part-import.ts` (`importTrees`, `primitivePlan`,
+`eulerXYZ`, `followText`), `part-read.ts` (`readPartDressUpEdges`: count, then per edge int32 index and two doubles,
+the entry exactly 4 + 20 per edge, at most 1,000); `bind.ts` `bindPart`, `mark` and the `double` transform; `params.ts`
+takes a Part object's single-name properties and `Placement.Base.x|y|z` as `input` targets (`partValue`); `model.ts`
+marks a placement whose rotation is no rotation (`degenerate`). Rules: **every node that comes in as a feature is checked
+against its own stored shape** (S5's check, its own transaction); one that can't or doesn't hold is a **stored leaf**
+(S8's `convertStored` + `import`, placed in its top's frame) and the tree carries on above it; **nothing of its operands
+stays**: trees that share an object are one unit inside one outer transaction, and a pass with waste (a failed node with
+built operands, a failed top) is cancelled and built again with what it learnt, at most `MAX_TREE_PASSES` (4); a top that
+can't come in this way is S3's final shape (`outcome: 'shape'`, with the reason). Mapped: whole upright `Part::Box`,
+`Cylinder`, `Sphere`, `Torus` (sizes as diameters: `double`), `Cut`/`Common` (one combine per base body, `keepTools` on all
+but the last), `Fuse`/`MultiFuse` (one join; shapes that don't touch: no feature, `apart`), `MultiCommon` (a chain of
+intersects: Extrudo's intersect with several tools is the target with their union), `Fillet`/`Chamfer` (S6's `addDressUp`,
+one radius / one pair of sizes for all edges), a compound as a cut's tool or a fuse's member (its members), a
+`PartDesign::Body` operand (walked then, `BodyWalkOptions.known`). **Placement:** a primitive's own inputs on the origin
+plane along its turned Z, else one free `move` after it (`t + R·c − c`, `c` the box centre measured by a rebuild in the
+transaction); a boolean's own placement one move of its result; one move of the top for its containers. A shared operand:
+a `move` copy before each use but the last. A box's `x`/`y` follow a bound length or width (`followText`). Limits:
+`MAX_TREE_NODES` 500, `MAX_IMPORT_TREE_NODES` 2,000, `MAX_MULTI_OPERANDS` 64, `MAX_TREE_FEATURES` 4,000. Report
+`FcstdImportReport.trees`; the app's `TREE_REASON` and the "Built on the file's own shape…" notice. Fixtures
+`part-fixtures.ts` (22 FreeCAD documents, the B-rep texts deflated), `part-parts.ts`; tests `part.test.ts`,
+`part-hostile.test.ts`. S3's library test runs with `maxImportTreeNodes: 0`.
+
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,
