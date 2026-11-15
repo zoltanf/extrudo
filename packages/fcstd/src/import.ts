@@ -203,7 +203,7 @@ export async function importFcstd(
       linkArrays,
       restarts: budget.restarts,
       bodies,
-      parameters: parametersReport(prepared, binder),
+      parameters: parametersReport(prepared, binder, design.doc),
     },
   };
 }

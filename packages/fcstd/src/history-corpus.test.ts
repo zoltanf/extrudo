@@ -364,7 +364,23 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         for (const c of report.parameters.renames) bump(s10.renames, `${c.what} ${c.why}`);
         s10.rounds += report.parameters.rounds;
         for (const e of report.parameters.expressions) {
-          if (e.outcome === 'kept' || e.outcome === 'unmapped') continue;
+          if (e.outcome === 'kept' || e.outcome === 'unmapped') {
+            // Outside the repository only (FCSTD_REPORT): what came in and what didn't reach Extrudo.
+            if (e.target !== 'other')
+              lines.push(
+                JSON.stringify({
+                  file,
+                  s10: e.outcome,
+                  target: e.target,
+                  object: e.object,
+                  path: e.path,
+                  expression: e.expression,
+                  text: e.text,
+                  detail: e.detail,
+                }),
+              );
+            continue;
+          }
           // The expression's shape only: names as X, quoted labels as <<L>>, numbers as N.
           const shape = e.expression
             .replace(/<<[^>]*>>/g, '<<L>>')

@@ -607,8 +607,10 @@ degrees).
 - An alias is a letter then letters, digits or `_`, not a cell address and
   not a unit or constant token (FreeCAD 1.1 refuses `mm`, `pi`, `deg`, `H`, a
   leading `_`, a letter outside ASCII; older files may hold such aliases).
-  Aliases differ by case (`Width`, `width`). A sheet's own `ExpressionEngine`
-  may bind a row to another (`.cells.Bind.B7.ZZ7`).
+  Aliases differ by case (`Width`, `width`). A cell address is upper case:
+  FreeCAD 1.1 takes `e1` and `x1` as aliases. A name a formula or a reference
+  reads is looked up as an alias first, then as an address. A sheet's own
+  `ExpressionEngine` may bind a row to another (`.cells.Bind.B7.ZZ7`).
 
 ### `App::VarSet`
 

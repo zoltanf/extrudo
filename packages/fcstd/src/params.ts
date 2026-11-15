@@ -706,8 +706,15 @@ export function prepareParameters(
     if (s.kind === 'cell' && s.alias !== undefined) nameSource(s, s.alias, 'alias');
   for (const s of wanted) if (s.kind === 'variable') nameSource(s, s.at, 'property');
   const constraintNames = new Map<string, Map<number, string>>();
+  // Only the sketches a PartDesign body holds can come in with a body's history (S5).
+  const inBodies = new Set<string>();
   for (const o of doc.objects) {
-    if (!o.type.startsWith('Sketcher::SketchObject')) continue;
+    if (o.type !== 'PartDesign::Body') continue;
+    const g = o.properties.Group?.value;
+    if (g?.kind === 'linkList') for (const m of g.objects) inBodies.add(m);
+  }
+  for (const o of doc.objects) {
+    if (!o.type.startsWith('Sketcher::SketchObject') || !inBodies.has(o.name)) continue;
     const map = new Map<number, string>();
     constraintRecords(o).forEach((c, i) => {
       if (!c.driving || c.name === '' || constraintDim(c.type) === undefined) return;

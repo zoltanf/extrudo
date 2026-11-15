@@ -4,6 +4,7 @@
  * expression of the file with its one outcome, and the names that changed.
  * Plain data; the app words it (`fcstdNotices`).
  */
+import { type ExtrudoDocument, parameterNames } from '@extrudo/core';
 import type { Binder } from './bind';
 import type { ExpressionReason } from './fc-emit';
 import type {
@@ -38,7 +39,13 @@ export interface ParametersReport {
   readonly rounds: number;
 }
 
-export function parametersReport(p: PreparedParameters, binder: Binder): ParametersReport {
+/** The report; `doc` is the design at the end, so only the names that came in count as changed. */
+export function parametersReport(
+  p: PreparedParameters,
+  binder: Binder,
+  doc: ExtrudoDocument,
+): ParametersReport {
+  const names = parameterNames(doc);
   return {
     parameters: p.parameters,
     leftOut: p.leftOut,
@@ -51,7 +58,7 @@ export function parametersReport(p: PreparedParameters, binder: Binder): Paramet
       ...(e.outcome?.text !== undefined ? { text: e.outcome.text } : {}),
       ...(e.outcome?.detail !== undefined ? { detail: e.outcome.detail } : {}),
     })),
-    renames: p.names.changes,
+    renames: p.names.changes.filter((c) => names.has(c.to)),
     rounds: binder.rounds,
   };
 }
