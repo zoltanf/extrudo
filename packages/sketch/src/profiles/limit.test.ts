@@ -138,7 +138,7 @@ describe('sketches under the limit', () => {
   };
   const CASES: Record<string, { data: () => SketchData; regions: number; digest: string }> = {
     plate: {
-      data: () => plate({ entities: 90 }).builder.sketch,
+      data: () => plate({ entities: 90, layout: 'anchored' }).builder.sketch,
       regions: 30,
       digest: '29abdbde9dff4d9b',
     },
