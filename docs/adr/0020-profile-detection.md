@@ -205,11 +205,11 @@ import with some thousand of them froze the tab or ran it out of memory
 regions, 66 s, 6.5 GB), and the kernel's face build after it took longer
 still. Now `detectProfiles` counts the **cuts inside curves** while it cuts
 (`cutPair`) and throws `ProfilesRefusedError` as soon as there are more
-than **`MAX_PROFILE_CUTS` = 100,000**. A crossing of two curves makes two
+than **`MAX_PROFILE_CUTS` = 20,000**. A crossing of two curves makes two
 such cuts (one in each), an end of one curve on another makes one, and
 curves that meet end to end make none (a cut within `PROFILE_TOLERANCE` of
 a segment's end doesn't count; on a circle every cut counts). In plain
-words: **about 50,000 crossings**.
+words: **about 10,000 crossings**.
 
 **Why this quantity.** It is known before the work that grows with the
 output (pieces, vertices, faces, loops, IDs) and predicts it: every piece
@@ -240,28 +240,46 @@ later still. Time or memory measurements were never an option: the same
 sketch must give the same answer on every machine, in the worker and in
 the app.
 
-**Why 100,000.** Far above real use: the largest real sketch seen (1,045
-sketches of imported and example designs) has 456 regions. Counted in this
-repository: its fixture designs have no cut inside a curve at all; the
-8,959 detections of the whole Vitest suite (templates, examples, imports,
-fuzzing) have at most 40, apart from the profile tests' own stress
-sketches (random sketches up to 784, a 10,000-pole spline across a line
-6,730) and the FreeCAD import's worst case (125,000, below); text has
-none worth counting (a glyph's outline meets itself end to end: 1,223
-segments, 0 cuts inside curves). At the limit a sketch has up to about
-50,000 regions, a hundred times the largest real one. Low enough: right at
-it `detectProfiles` takes about a second and 300 MB more than before the
-call (318 chords: 49,622 regions, 1.0 s; a 223 × 223 grid: 99,456 cuts,
-49,284 regions, 0.92 s, 283 MB; 224 crossing circles: 99,904 cuts, 0.93 s,
-313 MB); one chord, line or circle more is refused in 40–65 ms.
+**Why 20,000.** It was first set at 100,000, the most that keeps the
+detection around a second; the owner lowered it to 20,000 after counting
+real sketches, because the kernel's face build right under the limit
+costs far more than the detection (below), and real sketches stay far
+below either.
+
+- **Real sketches.** All 1,017 sketches of the 252 designs of an f3d
+  corpus (imported, then counted with the limit lifted): at most 236 cuts
+  inside curves; 99.9th percentile 204, 99th 158, median 6, 410 with none;
+  none above 1,000. The sketch with the most regions (456) has none: 1,824
+  lines in separate loops. Text sketches (39) at most 36. The repository's
+  fixture designs, examples and wall-bracket template: none at all. The
+  8,959 detections of the whole Vitest suite (templates, examples, imports,
+  fuzzing) have at most 40, apart from the profile tests' own stress
+  sketches (random sketches up to 784, a 10,000-pole spline across a line
+  6,730) and the FreeCAD import's worst case (125,000, below). So 20,000
+  is 85 times the largest real sketch.
+- **Right under the limit** `detectProfiles` takes 0.3–0.6 s and up to
+  150 MB more than before the call: 142 chords (19,840 cuts, 9,779
+  regions) 0.29 s, 83 MB; a 100 × 100 grid (19,998 cuts) 0.32 s, 87 MB;
+  100 crossing circles (19,800) 0.27 s, 89 MB; 88 weaving splines
+  (19,751, 9,856 segments) 0.56 s, 145 MB. Just over it, a sketch is
+  refused in 17–39 ms (lines, grid, circles) and 142 ms (splines, whose
+  polylines are most of it).
+- **The kernel right under the limit** (`planarFaces` + `profileFaceIds`,
+  in Node): the 142 chords 3.1 s and 304 MB of process (186 before), the
+  100 circles 9.8 s and 356 MB, the 88 splines 32 s and 435 MB, plus a
+  second run of about as long for the 1,286 regions only the finer fuzzy
+  value finds (ADR-0025's amendment of 2026-11-09). Under a limit of
+  50,000 the same took 8.0 s, 32 s (and a second run) and 88 s (and a
+  second run); under 100,000 about 15 s, 50 s and minutes.
 
 **Early and the same everywhere.** The count is checked after each pair, so
 a refused sketch costs the pairs up to the limit and no more: 100,000 lines
 that all cross (5 billion pairs and crossings) are refused after about
-50,000 pairs (`limit.test.ts` counts the `intersectCurves` calls), in
-0.43 s and 215 MB, most of both for the 100,000 segments and their grid;
-2,000 lines in 84 ms. What is left is linear in the curves: 1,000 weaving
-splines (112,000 segments) are refused in 0.47 s, 5,000 (560,000) in 1.3 s. The
+10,000 pairs (`limit.test.ts` counts the `intersectCurves` calls), in
+0.39 s and 170 MB, most of both for the 100,000 segments and their grid.
+What is left is linear in the curves: with the limit at 100,000, 1,000
+weaving splines (112,000 segments) were refused in 0.47 s, 5,000
+(560,000) in 1.3 s. The
 total doesn't depend on the order the pairs come in, so the grid's pairs
 and every pair agree. The one constant serves the app and the kernel, so
 they never disagree on whether a sketch has regions:
@@ -310,22 +328,20 @@ count is new. `limit.test.ts` holds a digest of the whole output of six
 sketches (plate, gear, grid, chords, crossing circles, weaving splines)
 recorded on the code before the limit. The whole Vitest suite's sketches
 (1,349 distinct ones, saved while the suite ran on the code before the
-limit) went through the code before and after: a digest of the whole
-output is the same for all 1,348 under the limit, and the one refused is
-the FreeCAD grid above. The count costs nothing measurable: per sketch,
-interleaved, median of 7 runs, the median time went 0.061 → 0.063 ms, the
-median ratio 1.002 (10th–90th percentile 0.92–1.10), and 0.993 with the
-order swapped.
+limit) went through the code before and after, with every rule of this
+amendment and the limit at 20,000: a digest of the whole output is the
+same for all 1,348 under the limits, and the one refused is the FreeCAD
+grid above (no other suite sketch comes near). The counting costs nothing
+measurable: per sketch, interleaved, median of 9 runs, the median time
+went 0.057 → 0.056 ms, the median ratio 1.001 (10th–90th percentile
+0.95–1.05), and 0.985 with the order swapped.
 
 **The kernel at the limit.** Its face build costs more per region than the
-detection (`planarFaces` + `profileFaceIds` in Node, same machine): 300
-chords (44,145 faces) 13.6 s and 600 MB; a 200 × 200 grid (39,601) 11.6 s;
-100 crossing circles (9,901) 9.6 s; 100 weaving splines (12,657) 41 s,
-1,990 regions found only in the finer second run. So a sketch right under
-the limit can keep the worker busy for tens of seconds to minutes (it is
-in the worker: the app stays responsive, and the recompute can be
-cancelled). A lower limit would bound that too; 100,000 was kept for the
-detection's budget of about a second (an open question for the owner).
+detection (about 0.3 ms a face for lines, 1 ms for circles, 3 ms for
+splines, in Node, same machine; 300 chords, 44,145 faces: 13.6 s and 600
+MB). Right under 20,000 a sketch keeps the worker busy for 3 s (lines) to
+about a minute (crossing splines, with the second run); it is in the
+worker: the app stays responsive, and the recompute can be cancelled.
 
 **Considered and dropped.** A time or memory budget (not deterministic).
 Counting the pieces after the cutting (too late: the cutting itself is the
