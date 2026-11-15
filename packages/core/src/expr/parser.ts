@@ -99,8 +99,8 @@ export const MAX_DEPTH = 256;
  * takes. Typed and imported expressions stay far below both; past them the
  * expression is an error like any other (ADR-0004 amendment 2026-11-15).
  */
-export const MAX_LENGTH = 10_000;
-export const MAX_ARGUMENTS = 1000;
+export const MAX_EXPRESSION_LENGTH = 10_000;
+export const MAX_CALL_ARGUMENTS = 1000;
 
 /** Each parsed node's height, for evaluation through parameters (leaves are 1). */
 const heights = new WeakMap<Node, number>();
@@ -111,10 +111,10 @@ export function heightOf(node: Node): number {
 }
 
 export function parse(source: string): Node {
-  if (source.length > MAX_LENGTH) {
+  if (source.length > MAX_EXPRESSION_LENGTH) {
     throw new ExprError(
-      `Longer than ${MAX_LENGTH} characters: split it into parameters.`,
-      { start: MAX_LENGTH, end: source.length },
+      `Longer than ${MAX_EXPRESSION_LENGTH} characters: split it into parameters.`,
+      { start: MAX_EXPRESSION_LENGTH, end: source.length },
       'limit',
     );
   }
@@ -367,9 +367,9 @@ export function parse(source: string): Node {
     const args: Node[] = [];
     if (peek().text !== ')') {
       for (;;) {
-        if (args.length === MAX_ARGUMENTS) {
+        if (args.length === MAX_CALL_ARGUMENTS) {
           throw new ExprError(
-            `\`${token.text}\` takes at most ${MAX_ARGUMENTS} values.`,
+            `\`${token.text}\` takes at most ${MAX_CALL_ARGUMENTS} values.`,
             token,
             'limit',
           );

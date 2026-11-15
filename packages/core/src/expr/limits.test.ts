@@ -5,7 +5,7 @@ import { pid } from '../testing';
 import { ExprError } from './errors';
 import { type EvaluateResult, evaluateExpression } from './evaluate';
 import { evaluateParameters, MAX_PARAMETER_DEPTH } from './parameters';
-import { MAX_ARGUMENTS, MAX_DEPTH, MAX_LENGTH, parse } from './parser';
+import { MAX_CALL_ARGUMENTS, MAX_DEPTH, MAX_EXPRESSION_LENGTH, parse } from './parser';
 
 const DEEP = `Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.`;
 
@@ -36,22 +36,25 @@ const message = (r: EvaluateResult | undefined) => (r && !r.ok ? r.error.message
 
 describe('expression limits: length', () => {
   it('reads an expression of the longest length and refuses a longer one', () => {
-    const longest = `1${' '.repeat(MAX_LENGTH - 1)}`;
+    const longest = `1${' '.repeat(MAX_EXPRESSION_LENGTH - 1)}`;
     expect(evaluateExpression(longest)).toMatchObject({ ok: true, value: 1 });
     const result = evaluateExpression(`${longest} `);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.message).toBe(
-      `Longer than ${MAX_LENGTH} characters: split it into parameters.`,
+      `Longer than ${MAX_EXPRESSION_LENGTH} characters: split it into parameters.`,
     );
     expect(result.error.code).toBe('limit');
-    expect(result.error.span).toEqual({ start: MAX_LENGTH, end: MAX_LENGTH + 1 });
+    expect(result.error.span).toEqual({
+      start: MAX_EXPRESSION_LENGTH,
+      end: MAX_EXPRESSION_LENGTH + 1,
+    });
   });
 
   it('refuses a very long expression without reading it', () => {
     const source = `${'1 + '.repeat(250_000)}1`;
     const t = performance.now();
-    expect(() => parse(source)).toThrow(`Longer than ${MAX_LENGTH} characters`);
+    expect(() => parse(source)).toThrow(`Longer than ${MAX_EXPRESSION_LENGTH} characters`);
     expect(performance.now() - t).toBeLessThan(50);
   });
 });
@@ -60,17 +63,17 @@ describe('expression limits: values per call', () => {
   const call = (count: number) => `min(${Array(count).fill('1 mm').join(', ')})`;
 
   it('reads a call with the most values and refuses one more', () => {
-    expect(evaluateExpression(call(MAX_ARGUMENTS))).toMatchObject({ ok: true, value: 1 });
-    const result = evaluateExpression(call(MAX_ARGUMENTS + 1));
+    expect(evaluateExpression(call(MAX_CALL_ARGUMENTS))).toMatchObject({ ok: true, value: 1 });
+    const result = evaluateExpression(call(MAX_CALL_ARGUMENTS + 1));
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.error.message).toBe(`\`min\` takes at most ${MAX_ARGUMENTS} values.`);
+    expect(result.error.message).toBe(`\`min\` takes at most ${MAX_CALL_ARGUMENTS} values.`);
     expect(result.error.code).toBe('limit');
     expect(result.error.span).toEqual({ start: 0, end: 3 });
   });
 
   it('refuses a call with very many values with an expression error everywhere', () => {
-    for (const count of [MAX_ARGUMENTS + 1, 200_000]) {
+    for (const count of [MAX_CALL_ARGUMENTS + 1, 200_000]) {
       const source = call(count);
       expect(() => parse(source)).toThrow(ExprError);
       expect(evaluateExpression(source).ok).toBe(false);

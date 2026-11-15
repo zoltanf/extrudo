@@ -20,6 +20,7 @@ export {
   type EvaluatedParameter,
   evaluateParameters,
   lowestFreeModelParameterName,
+  MAX_PARAMETER_DEPTH,
   mentions,
   nextModelParameterName,
   type ParameterEvaluation,
@@ -30,6 +31,8 @@ export {
 } from './parameters';
 export {
   isNumberLiteral,
+  MAX_CALL_ARGUMENTS,
+  MAX_EXPRESSION_LENGTH,
   type Node,
   parse,
   references,

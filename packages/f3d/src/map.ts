@@ -22,11 +22,14 @@ import {
   addAttachment,
   type BodyId,
   type ComponentId,
+  ExprError,
   evaluateParameters,
   faceSketchFrame,
   importInputs,
   newId,
   ORIGIN_PLANES,
+  type ParameterId,
+  parse,
   type SketchData,
   updateBody,
 } from '@extrudo/core';
@@ -347,6 +350,52 @@ function numberExpression(value: number, unit: string): string {
   return `${Number((value * 10).toPrecision(12))} mm`;
 }
 
+/**
+ * The limit an expression from the file goes past, if any: its length or the
+ * values in one call (ADR-0004 amendment 2026-11-15). The import keeps its
+ * value instead.
+ */
+function pastLimit(expression: string): ExprError | undefined {
+  try {
+    parse(expression);
+  } catch (error) {
+    if (error instanceof ExprError && error.code === 'limit') return error;
+  }
+  return undefined;
+}
+
+/**
+ * The user parameters nested past the depth limit through each other, with
+ * the error to note: when one is, every one with an error keeps its value, so
+ * the chain is cut and the rest evaluate.
+ */
+function tooDeep(
+  parameters: readonly ParameterValue[],
+  empty: ExtrudoDocument,
+): Map<string, ExprError> {
+  const numbers = parameters.filter((p) => p.text === undefined);
+  const evaluated = evaluateParameters({
+    ...empty,
+    parameters: numbers.map((p, i) => ({
+      id: `${i}` as ParameterId,
+      name: p.name,
+      expression: p.expression,
+      unit: unitKind(p.unit) ?? 'length',
+    })),
+  }).parameters;
+  const found = new Map<string, ExprError>();
+  const results = [...evaluated.values()].map((p) => p.result);
+  const limit = results.find((r) => !r.ok && r.error.code === 'limit');
+  if (!limit || limit.ok) return found;
+  for (const [name, p] of evaluated) if (!p.result.ok) found.set(name, limit.error);
+  return found;
+}
+
+/** An expression to quote in a note: its start when it is long. */
+function quoted(expression: string): string {
+  return expression.length > 80 ? `${expression.slice(0, 80)}…` : expression;
+}
+
 /** A bundled font this import draws text in (`@extrudo/fonts`). */
 interface TextFont {
   id: string;
@@ -475,9 +524,13 @@ export function f3dToDesign(
   const components = new ComponentMapping(d, f3d, report);
 
   // User parameters, in the order they were made.
+  const deep = tooDeep(f3d.userParameters, d.doc);
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
     const unit = p.text === undefined ? unitKind(p.unit) : undefined;
     try {
+      const limit =
+        p.text === undefined ? (pastLimit(p.expression) ?? deep.get(p.name)) : undefined;
+      if (limit) throw limit;
       d.parameter(p.name, p.text !== undefined ? `'${p.text}'` : p.expression, {
         ...(p.comment ? { comment: p.comment } : {}),
         ...(unit ? { unit } : {}),
@@ -492,14 +545,13 @@ export function f3dToDesign(
         });
         userNames.add(p.name);
         report.notes.push(
-          `Parameter ${p.name}: "${p.expression}" kept as its value (${(error as Error).message}).`,
+          `Parameter ${p.name}: "${quoted(p.expression)}" kept as its value (${(error as Error).message}).`,
         );
       } catch (inner) {
         report.notes.push(`Parameter ${p.name} skipped: ${(inner as Error).message}`);
       }
     }
   }
-
   // The file's sketch constraints and dimensions, vetted by the solver.
   let constraints: ConstraintContext | undefined;
   if (options.solver) {
@@ -548,7 +600,10 @@ export function f3dToDesign(
     const names = p.expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
     const units = new Set(['mm', 'cm', 'm', 'in', 'ft', 'deg', 'rad', 'um', 'mil']);
     const own = names.every((n) => units.has(n) || known(n));
-    if (own && names.some((n) => known(n))) return negate ? `-(${p.expression})` : p.expression;
+    if (own && names.some((n) => known(n))) {
+      const expression = negate ? `-(${p.expression})` : p.expression;
+      if (!pastLimit(expression)) return expression;
+    }
     return numberExpression(negate ? -p.value : p.value, p.unit);
   };
 
