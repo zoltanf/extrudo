@@ -1,8 +1,8 @@
 import type { SketchData } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
-import { nearPairsWithin } from './pairs';
-import { detectProfiles, detectProfilesAllPairs } from './profiles';
+import { nearPairsWithin, type PairSearchStats } from './pairs';
+import { detectProfiles, detectProfilesAllPairs, MAX_PROFILE_COORDINATE } from './profiles';
 
 /** mulberry32: a small seeded generator, so a failure repeats. */
 function random(seed: number) {
@@ -37,7 +37,7 @@ describe('nearPairsWithin', () => {
     const rnd = random(7);
     for (let round = 0; round < 300; round++) {
       const n = 1 + Math.floor(rnd() * 400);
-      const kind = round % 4;
+      const kind = round % 7;
       const boxes = new Float64Array(4 * n);
       for (let i = 0; i < n; i++) {
         // Short boxes on a lattice (they touch and repeat), a few long ones,
@@ -60,6 +60,23 @@ describe('nearPairsWithin', () => {
           y = 0;
           h = rnd() * 1e-6;
           w = rnd() < 0.05 ? 100 : 0.01;
+        } else if (kind >= 4) {
+          // Grids of several levels: long and tall boxes of many lengths
+          // among short ones, which meet in a wider level's grid or in one
+          // only as wide as one of them; far out too (kind 6).
+          const r = rnd();
+          const long = lattice(2 ** Math.floor(rnd() * 8) * (0.5 + rnd()));
+          if (r < 0.25) w = long;
+          else if (r < 0.5) h = long;
+          else if (r < 0.6) {
+            w = long;
+            h = lattice(2 ** Math.floor(rnd() * 8) * rnd());
+          }
+          if (kind === 5) {
+            x = lattice(rnd() * 200) - 100;
+            y = lattice(rnd() * 200) - 100;
+          }
+          if (kind === 6 && i < 2) x = i === 0 ? 1e9 : -1e9;
         }
         boxes.set([x, y, x + w, y + h], 4 * i);
       }
@@ -100,6 +117,84 @@ function randomSketch(rnd: () => number): SketchData {
   }
   return b.sketch;
 }
+
+/** The boxes a detection hands the pair search for these lines (with its padding of twice the tolerance). */
+function lineBoxes(lines: readonly [number, number, number, number][]): Float64Array {
+  const boxes = new Float64Array(4 * lines.length);
+  lines.forEach(([x0, y0, x1, y1], i) => {
+    boxes.set(
+      [
+        Math.min(x0, x1) - 2e-4,
+        Math.min(y0, y1) - 2e-4,
+        Math.max(x0, x1) + 2e-4,
+        Math.max(y0, y1) + 2e-4,
+      ],
+      4 * i,
+    );
+  });
+  return boxes;
+}
+
+function pairTests(boxes: Float64Array): { tests: number; pairs: number } {
+  const stats: PairSearchStats = { tests: 0 };
+  let pairs = 0;
+  for (const _ of nearPairsWithin(boxes, stats)) pairs++;
+  return { tests: stats.tests, pairs };
+}
+
+describe('nearPairsWithin compares a few boxes per box', () => {
+  /** A closed polyline of n lines on a circle of radius 1 m. */
+  const polyline = (n: number) =>
+    Array.from({ length: n }, (_, k): [number, number, number, number] => {
+      const at = (k: number) => [
+        1000 * Math.cos((2 * Math.PI * k) / n),
+        1000 * Math.sin((2 * Math.PI * k) / n),
+      ];
+      return [...at(k), ...at(k + 1)] as [number, number, number, number];
+    });
+
+  it("keeps its cell size whatever the sketch's extent", () => {
+    const n = 20_000;
+    const near = pairTests(lineBoxes(polyline(n)));
+    const far = pairTests(
+      lineBoxes([
+        ...polyline(n),
+        [MAX_PROFILE_COORDINATE - 1, 0, MAX_PROFILE_COORDINATE, 0],
+        [-MAX_PROFILE_COORDINATE, 0, -MAX_PROFILE_COORDINATE + 1, 0],
+      ]),
+    );
+    expect(far.pairs).toBe(near.pairs);
+    expect(near.tests).toBeLessThan(5 * n);
+    expect(far.tests).toBeLessThan(5 * n);
+  });
+
+  it('tests a box much longer than most only against the boxes near it', () => {
+    // n short dashes, and n long lines 0.01 mm apart: no two boxes meet.
+    const n = 5000;
+    const lines: [number, number, number, number][] = [];
+    for (let i = 0; i <= n; i++) {
+      const x = -100 + (i % 100) * 0.05;
+      const y = -10 - Math.floor(i / 100) * 0.05;
+      lines.push([x, y, x + 0.01, y]);
+    }
+    for (let i = 0; i < n; i++) lines.push([0, i * 0.01, 1000, i * 0.01]);
+    const { tests, pairs } = pairTests(lineBoxes(lines));
+    expect(pairs).toBe(0);
+    expect(tests).toBeLessThan(10 * lines.length);
+  });
+
+  it('tests long and tall boxes of a hatch only against the boxes near them', () => {
+    // Long lines left, tall lines right, short dashes below: none meet.
+    const n = 3000;
+    const lines: [number, number, number, number][] = [];
+    for (let i = 0; i < n; i++) lines.push([0, i * 0.01, 500, i * 0.01]);
+    for (let i = 0; i < n; i++) lines.push([600 + i * 0.01, 0, 600 + i * 0.01, 500]);
+    for (let i = 0; i <= 2 * n; i++) lines.push([i * 0.05, -10, i * 0.05 + 0.01, -10]);
+    const { tests, pairs } = pairTests(lineBoxes(lines));
+    expect(pairs).toBe(0);
+    expect(tests).toBeLessThan(10 * lines.length);
+  });
+});
 
 describe('detectProfiles with the pair search', () => {
   it('finds the same regions as testing every pair, to the last bit (fixed seed)', () => {
