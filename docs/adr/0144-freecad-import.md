@@ -2786,8 +2786,8 @@ because *reason*, or *reason*. What uses those parts comes in with its history."
 - **The 14 trees that come in as today, by reason:** 4 chamfers (`reference`) in one file,
   each on a deep tree of booleans that held, where an edge the chamfer names has no counterpart
   on the rebuilt body (the check compares the solids' measures, not their edges; the rebuilt
-  booleans' edges are not FreeCAD's there); 1 chamfer (`failed`): our OCCT refuses its 1 mm on
-  an edge where at most 0.99 mm fits, as S6's two fillets; 3 MultiCommons (`failed`): a common
+  booleans' edges are not FreeCAD's there); 1 chamfer (`failed`): our OCCT refuses its size on
+  an edge it doesn't fit, as S6's two fillets; 3 MultiCommons (`failed`): a common
   whose first shape is several solids, one of which misses the others, which Extrudo's intersect
   refuses where FreeCAD drops it; 2 MultiCommons (`operand`): a shape they use is a Python
   object whose stored shape can't come in; 2 cuts (`differs`, by 4.5e-5 and 5.9e-5 in volume:
