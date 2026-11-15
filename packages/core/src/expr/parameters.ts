@@ -23,12 +23,18 @@ import {
 import { heightOf, type Node, parse, references, type Span } from './parser';
 
 /**
- * How deep evaluation may go through parameters: the summed nesting of a
- * chain of parameters, each one's own levels counted (`a + 1` is 2, `a` is 1).
- * Far beyond any design; past it the parameter is an error like any other
+ * How deep parameters may refer to each other: the summed nesting of a chain
+ * of parameters, each one's own levels counted (`a + 1` is 2, `a` is 1). Far
+ * beyond any design; past it the parameter is an error like any other
  * (ADR-0004, amendment of 2026-11-15).
  */
-export const MAX_PARAMETER_DEPTH = 512;
+export const MAX_PARAMETER_DEPTH = 10_000;
+
+/**
+ * How deep one evaluation follows a chain before it evaluates the parameter
+ * it has reached first and comes back (`evaluateFromTop`), in the same levels.
+ */
+const STEP_LEVELS = 512;
 
 export type ParameterOwner =
   | { type: 'user'; id: ParameterId }
@@ -147,8 +153,10 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   let depth = 0;
   /** Each evaluated parameter's deepest chain through the parameters it uses, its own height included. */
   const chains = new Map<string, number>();
-  /** Parameters waiting for one deeper down to be evaluated first (see `evaluateFromTop`). */
-  const waiting = new Set<string>();
+  /** Parameters waiting for one deeper down to be evaluated first, deepest last (`evaluateFromTop`). */
+  const order: string[] = [];
+  /** Each waiting parameter's stack when it went past `STEP_LEVELS`: the chain to the next in `order`. */
+  const waiting = new Map<string, string[]>();
   /** Where `member`'s expression refers to `next`, or all of it. */
   const spanTo = (member: string, next: string): Span => {
     const own = parsedOf(member);
@@ -195,9 +203,23 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
       // Unwinds to the members, which then report their cycle error.
       throw new ExprError('cycle', { start: 0, end: 0 });
     }
-    // One waiting for this evaluation: a cycle too long to follow.
-    const top = stack[stack.length - 1];
-    if (top !== undefined && waiting.has(name)) throw deepError(top, name);
+    if (stack.length > 0 && waiting.has(name)) {
+      // One waiting for this evaluation: a cycle longer than one step. Its
+      // members say how many there are rather than list them.
+      const cycle = [
+        ...order.slice(order.indexOf(name), -1).flatMap((w) => waiting.get(w) ?? []),
+        ...stack,
+      ];
+      const count = new Set(cycle).size;
+      cycle.forEach((member, i) => {
+        const message = `\`${member}\` refers to itself through ${count} parameters.`;
+        cycleErrors.set(
+          member,
+          new ExprError(message, spanTo(member, cycle[i + 1] ?? name), 'cycle'),
+        );
+      });
+      throw new ExprError('cycle', { start: 0, end: 0 });
+    }
     // biome-ignore lint/style/noNonNullAssertion: only called for known names.
     const source = sources.get(name)!;
     const p = parsedOf(name);
@@ -206,8 +228,8 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
       result = { ok: false, error: p.error };
     } else {
       const height = heightOf(p.node);
-      // Past the limit, the stack unwinds uncached and this one is evaluated first.
-      if (depth + height > MAX_PARAMETER_DEPTH) throw new TooDeep(name);
+      // Past a step, the stack unwinds uncached and this one is evaluated first.
+      if (depth + height > STEP_LEVELS) throw new TooDeep(name, [...stack]);
       stack.push(name);
       onStack.add(name);
       depth += height;
@@ -241,13 +263,12 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   }
 
   /**
-   * Evaluates `name`. A chain too deep to follow in one go is evaluated from
-   * where it went past the limit first, so evaluation never goes deeper than
-   * the limit, however long the chain.
+   * Evaluates `name`. A chain too deep to follow in one step is evaluated
+   * from where the step ended first, so evaluation never goes deeper than
+   * `STEP_LEVELS`, however long the chain.
    */
   function evaluateFromTop(name: string): EvaluateResult {
-    const order = [name];
-    waiting.add(name);
+    order.push(name);
     while (order.length > 0) {
       const next = order[order.length - 1] as string;
       try {
@@ -256,8 +277,8 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
         waiting.delete(next);
       } catch (error) {
         if (!(error instanceof TooDeep)) throw error;
+        waiting.set(next, error.path);
         order.push(error.name);
-        waiting.add(error.name);
       }
     }
     // biome-ignore lint/style/noNonNullAssertion: just evaluated.
@@ -371,11 +392,14 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   };
 }
 
-/** Unwinds an evaluation that went past the depth limit, from the parameter where it did. */
+/** Unwinds an evaluation that went past a step, from the parameter where it did. */
 class TooDeep {
   readonly name: string;
-  constructor(name: string) {
+  /** The stack that led there. */
+  readonly path: string[];
+  constructor(name: string, path: string[]) {
     this.name = name;
+    this.path = path;
   }
 }
 

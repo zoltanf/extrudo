@@ -114,10 +114,25 @@ describe('expression limits: depth through parameters', () => {
     expect(pastReversed.slice(0, -1).every((r) => r.ok)).toBe(true);
   });
 
+  it('evaluates a long chain inside the limit, whichever way round the list is', () => {
+    const n = 3000;
+    const values = Array.from({ length: n }, (_, i) => n - i);
+    const forward = results(doc(chain(n)));
+    expect(forward.map((r) => r.ok && r.value)).toEqual(values);
+    const backward = results(
+      doc(
+        chain(n)
+          .reverse()
+          .map((e) => e.replace(/p(\d+)/, (_, k) => `p${n - 1 - Number(k)}`)),
+      ),
+    );
+    expect(backward.map((r) => r.ok && r.value)).toEqual([...values].reverse());
+  });
+
   it('ends a chain of any length in an expression error', () => {
     // `pk = p(k+1) + 1 mm` nests two levels each.
     const within = MAX_PARAMETER_DEPTH / 2;
-    for (const n of [1000, 5000, 20_000]) {
+    for (const n of [within + 100, 30_000]) {
       const t = Date.now();
       const all = results(doc(chain(n)));
       expect(Date.now() - t).toBeLessThan(n / 2);
@@ -154,16 +169,24 @@ describe('expression limits: depth through parameters', () => {
     expect(all.filter((r) => r.ok)).toHaveLength(MAX_PARAMETER_DEPTH - MAX_DEPTH + 1);
   });
 
-  it('keeps the cycle message for a cycle, and refuses one too long to follow', () => {
+  it('keeps the cycle message for a cycle, and counts the members of a long one', () => {
     const short = results(doc(['p1 + 1 mm', 'p2', 'p0']));
     expect(message(short[0])).toBe('`p0` refers to itself: p0 → p1 → p2 → p0.');
-    const n = 5000;
-    const ring = chain(n);
-    ring[n - 1] = 'p0';
-    const t = Date.now();
-    const all = results(doc(ring));
-    expect(Date.now() - t).toBeLessThan(2000);
-    expect(all.every((r) => !r.ok)).toBe(true);
-    expect(all.some((r) => message(r) === DEEP)).toBe(true);
+    for (const n of [3000, 20_000]) {
+      const ring = chain(n);
+      ring[n - 1] = 'p0';
+      const t = Date.now();
+      const all = results(doc(ring));
+      expect(Date.now() - t).toBeLessThan(n / 2);
+      expect(all.map(message)).toEqual(
+        Array.from({ length: n }, (_, i) => `\`p${i}\` refers to itself through ${n} parameters.`),
+      );
+      const evaluation = evaluateParameters(doc(ring));
+      expect(
+        [...evaluation.parameters.values()].every(
+          (p) => !p.result.ok && p.result.error.code === 'cycle',
+        ),
+      ).toBe(true);
+    }
   });
 });

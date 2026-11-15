@@ -274,14 +274,15 @@ describe('f3dToDesign', () => {
 
   it('keeps the values of user parameters nested past the depth limit through each other', () => {
     const f3d = washer();
-    const n = 600;
-    // `p0 = p1 + 1 mm`, … `p599 = 1 mm`, and `thick` as before.
+    const n = 300;
+    // `p0 = abs(…abs(p1)…) + 1 mm` with 48 calls (50 levels), … `p299 = 1 mm`, and `thick` as before.
+    const nested = (ref: string) => `${'abs('.repeat(48)}${ref}${')'.repeat(48)} + 1 mm`;
     f3d.userParameters.push(
       ...Array.from({ length: n }, (_, i) =>
         parameter({
           name: `p${i}`,
           number: i + 2,
-          expression: i === n - 1 ? '1 mm' : `p${i + 1} + 1 mm`,
+          expression: i === n - 1 ? '1 mm' : nested(`p${i + 1}`),
           user: true,
           value: (n - i) / 10,
         }),
@@ -295,13 +296,13 @@ describe('f3dToDesign', () => {
     ).toEqual([]);
     expect(evaluated.get('p0')?.result).toMatchObject({ value: n });
     // The far end keeps its expressions; those past the limit keep their values.
-    const within = MAX_PARAMETER_DEPTH / 2;
+    const within = Math.floor((MAX_PARAMETER_DEPTH - 1) / 50) + 1;
     const exprs = new Map(doc.parameters.map((p) => [p.name, p.expression]));
-    expect(exprs.get(`p${n - within}`)).toBe(`p${n - within + 1} + 1 mm`);
+    expect(exprs.get(`p${n - within}`)).toBe(nested(`p${n - within + 1}`));
     expect(exprs.get(`p${n - within - 1}`)).toBe(`${within + 1} mm`);
     expect(exprs.get('p0')).toBe(`${n} mm`);
     expect(report.notes).toContain(
-      `Parameter p0: "p1 + 1 mm" kept as its value (Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.).`,
+      `Parameter p0: "${nested('p1').slice(0, 80)}…" kept as its value (Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.).`,
     );
     expect(report.notes).toHaveLength(n - within);
   });

@@ -127,27 +127,32 @@ with code `limit` on its `ExprError`:
 2. **Values per call.** A call takes at most `MAX_CALL_ARGUMENTS` = 1,000 values: "`min` takes
    at most 1000 values." with the function's name underlined. A node's height is computed
    with a loop over its children, never by spreading them into a call.
-3. **Depth through parameters.** `MAX_PARAMETER_DEPTH` = 512 levels, counted as the summed
+3. **Depth through parameters.** `MAX_PARAMETER_DEPTH` = 10,000 levels, counted as the summed
    height of the expressions along a chain of parameters (`a + 1 mm` is 2 levels, a bare
-   `a` is 1): `p0 = p1` … `p511 = 1 mm` is 512 deep and evaluates. The first parameter past
-   the limit says "Nested more than 512 levels deep through the parameters it uses.",
-   underlining its reference to the next one, and those that use it say "Uses `p…`, which
-   has an error." like any other dependent. A real cycle keeps its message.
+   `a` is 1): `p0 = p1` … `p9999 = 1 mm` is 10,000 deep and evaluates. The first parameter
+   past the limit says "Nested more than 10000 levels deep through the parameters it
+   uses.", underlining its reference to the next one, and those that use it say "Uses
+   `p…`, which has an error." like any other dependent.
 
 **How the depth is kept.** Each evaluated parameter records its deepest chain (its own height
 plus the deepest of the parameters it uses); a parameter that evaluates has evaluated
 every reference, so the number is exact and the error doesn't depend on the order of the
-list. When the evaluation stack itself would go past the limit (a chain listed from its
-near end), it unwinds uncached and `evaluateFromTop` evaluates the parameter where it went
-past first, then tries again: work stays linear in the chain's length. A parameter reached
-again while one waits for it is in a cycle longer than the limit and gets the depth error.
+list. One evaluation follows a chain at most `STEP_LEVELS` (512 levels) deep: past that it
+unwinds uncached, `evaluateFromTop` evaluates the parameter it had reached first, then
+tries again. A chain listed from its near end so costs time linear in its length, and its
+results are the same as those of one long evaluation. A cycle found within one step keeps
+its message with the path. A cycle longer than a step is found when its evaluation reaches
+a parameter that waits for it; each member then says "`p0` refers to itself through 600
+parameters." (code `cycle`) instead of listing them all.
 
 **Importers.** The f3d import keeps a user parameter's value, with its usual note
 (`Parameter x: "…" kept as its value (<message>).`, the expression quoted up to 80
 characters), when its expression is past the length or values limit, and, when the file's
 parameters go past the depth limit through each other, every one of them with an error
 (found on a scratch document before any is made), so the rest evaluate. A feature input
-whose expression from the file is past a limit takes its value.
+whose expression from the file is past a limit takes its value. The FreeCAD import's
+parameter cap (1,000) keeps its chains far inside the depth limit; its `TOO_DEEP` pattern
+still matches the depth message.
 
 **Census behind the numbers** (2026-11-15, every expression in the repository's fixtures,
 66 designs and 616 expressions, and in the 252 designs of the private import corpus as
@@ -158,18 +163,24 @@ imported, 8,474 expressions):
 | Longest expression | 31 characters | 73 | 10,000 | 137× |
 | Most values in one call | 0 (no calls) | 1 | 1,000 | 1,000× |
 | Tallest expression | 4 levels | 6 | 256 (`MAX_DEPTH`) | 43× |
-| Deepest chain of parameters | 3 parameters, 7 levels | 4 parameters, 7 levels | 512 levels | 73× |
+| Deepest chain of parameters | 3 parameters, 7 levels | 4 parameters, 7 levels | 10,000 levels | 1,400× |
 
-No fixture or corpus design comes near a limit, so no saved design changes.
+No fixture or corpus design comes near a limit, so no saved design changes. A spreadsheet
+imported from FreeCAD, where each row uses the one before, is the longest chain an import
+makes: at its 1,000-parameter cap, with rows like `=A1 + 1`, about 2,000 levels.
 
 **Rejected:**
+- **A depth limit of 512 levels, the step itself.** Simple, but a FreeCAD spreadsheet of a
+  few hundred chained rows imports today and would stop evaluating.
 - **Counting parameters, not levels.** Each parameter of a chain can nest 255 levels, so a
-  count of parameters says little about how deep evaluation goes; levels count both.
+  count of parameters says little about how deep evaluation goes; levels count both, like
+  `MAX_DEPTH` within one expression.
 - **Marking every parameter on the stack when it gets too deep.** Simple, but it gives the
   error to parameters whose own chain is within the limit and depends on the list order.
 - **Marking only those whose chain to the stack's top is past the limit, and evaluating the
-  rest later.** Exact, but each parameter of a long chain then walks the whole limit again:
+  rest later.** Exact, but each parameter of a long chain then walks a whole step again:
   quadratic in the chain's length.
-- **A smaller length limit (1,000).** Still 13× the longest real expression, but a
-  hand-written formula with long names gets close; 10,000 costs little, since reading is
-  linear in the length.
+- **The full path for a cycle longer than a step.** Every member's message would list every
+  member: quadratic in the cycle's length.
+- **A smaller length limit (1,000).** Still 13× the longest real expression, but 10,000 costs
+  little, since reading is linear in the length.
