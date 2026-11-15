@@ -283,6 +283,12 @@ describe('asmFaces edges', () => {
     expect(b?.edges[0]?.across).toEqual([{ token: 'a', design: 7 }]);
   });
 
+  it('reads a surface the faces share once', () => {
+    const [a, b] = asmFaces(twoFaces());
+    expect(a?.surface).toEqual({ kind: 'plane', point: [0, 0, 0], normal: [0, 0, 1] });
+    expect(b?.surface).toBe(a?.surface);
+  });
+
   it('walks a coedge cycle that never comes back to its start once', () => {
     // Loop 3 starts at coedge 4, whose next (itself) never returns to 5... walked once each.
     const faces = asmFaces(twoFaces(ptr(4)));

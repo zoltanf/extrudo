@@ -756,6 +756,10 @@ export function f3dToDesign(
       });
       continue;
     }
+    if (feature.type === 'other' && feature.leftOut) {
+      report.skipped.push(skippedFeature(feature.name, feature.kind, feature.leftOut));
+      continue;
+    }
     try {
       if (feature.type === 'sketch') {
         const placement = placeSketch(
