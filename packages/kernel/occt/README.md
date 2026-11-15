@@ -17,8 +17,10 @@ You normally don't build it. `pnpm check`, `pnpm dev` and `pnpm build` run
 `pnpm occt ensure`, which compares `dist/.inputs-hash` with a hash of the inputs
 (the config, everything in `facade/`, the toolchain version) and, if they
 differ, downloads the matching build from the GitHub release `occt-<hash>`. It
-uses `gh` when installed (needed while the repo is private) and a plain HTTPS
-download otherwise.
+uses `gh` when installed and a plain HTTPS download otherwise. The tarball
+must have the SHA-256 pinned for `occt-<hash>` in `scripts/wasm-pins.json`, and
+`ensure` rehashes the unpacked files against `dist/.sha256` on every run (ADR-0001's
+amendment of 2026-11-15).
 
 CI publishes that release: the `occt` job in `.github/workflows/ci.yml` builds
 each new input hash once and uploads `dist/` as `extrudo-occt-<hash>.tar.gz`.
@@ -40,7 +42,9 @@ docker run --rm -v "$PWD/facade:/f:ro" --entrypoint sh ghcr.io/taucad/opencascad
   -c 'em++ -std=c++17 -fsyntax-only -fwasm-exceptions -I/opencascade.js/build/occt-includes /f/extrudo_facade.cpp'
 ```
 
-Then push; CI builds and publishes the new hash before the tests run.
+Then push; CI builds and publishes the new hash before the tests run. The
+tests fail until the new release is pinned: run `pnpm wasm:pin` after the `occt`
+job has finished and commit `scripts/wasm-pins.json`.
 
 Things the builds ran into:
 

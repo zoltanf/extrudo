@@ -288,7 +288,8 @@ decided or learned on the way:
   OpenSCAD's mirror; the security review of 2026-10-15, finding C7). The digest
   comes from the same release, so this catches a damaged or altered download,
   not a replaced release; pinning the digests in the repository or attesting
-  the builds needs a CI change and is open.
+  the builds needs a CI change and is open. (Pinned since 2026-11-15: the
+  amendment of that day, below.)
 - **Crash recovery (NFR-03).** A `WebAssembly.RuntimeError` (OCCT abort, out of
   memory trap) marks the instance dead and surfaces as `KernelCrashError`.
   `KernelClient` then terminates the worker and starts a new one; a worker that
@@ -415,3 +416,52 @@ machine: within noise.
 **Decision.** Unchanged: the facade keeps owning OCCT memory (one copy out, no
 OCCT type in the bindings). Raw bindings come back only for a concrete need,
 and then a handle must never be deleted while OCCT still references it.
+
+## Amendment 2026-11-15: the release tarballs' digests are pinned in the repository
+
+**Context.** Since 2026-11-10 `pnpm wasm` checked each release tarball against
+the SHA-256 the releases API reports for it. GitHub computes that digest when
+the asset is uploaded, so it vouches for whatever the release holds now: a
+release deleted and recreated with other bytes (by anyone with write access,
+or by any CI run, whose WASM jobs hold a `contents: write` token) passes the
+check. Nothing in git said which bytes a commit expects.
+
+**Decision.** `scripts/wasm-pins.json` holds, per build (`occt`, `planegcs`,
+`openscad`), the release tag of the current inputs and its tarball's SHA-256.
+`fetch` (and so `ensure` and `pnpm wasm`) looks up the pin for the exact tag
+before downloading and refuses when there is none or it is for another tag;
+after the download it refuses a tarball whose SHA-256 differs, printing the
+file, the expected and the actual digest, and unpacks nothing. A mismatch is
+never retried by building, not even for OpenSCAD's mirror (whose missing-pin
+fallback, the upstream build, is checked against its own pinned SHA-256 in
+`openscad.mjs`). The releases API digest is no longer used to accept a
+download. Unpacking, and a local `build`, record every file's SHA-256 in
+`dist/.sha256`; `ensure` rehashes `dist/` on every run (well under a second for
+the 21 MB OCCT build) and refuses a changed, added or missing file instead of
+using it. A `dist/` with no record (unpacked before this) is downloaded again.
+
+Updating the pins: `publish` writes the pin of the tarball it uploads, and
+`pin` (`pnpm wasm:pin` for all three) records the digest GitHub reports for
+the already published release of the current inputs. CI's runners can't commit,
+so a change to a build's inputs goes: push, CI's WASM job builds and publishes
+the new release (and stays green; its run summary shows the new pin), then
+`pnpm wasm:pin` on the branch and commit `scripts/wasm-pins.json`. Until then the
+jobs that run `pnpm wasm` (tests, Docker, e2e) fail with "no SHA-256 for
+<tag>". The pin change is a reviewed diff in the pull request. `pin` refuses
+to change the digest of a tag that is already pinned: same inputs with other
+bytes means the release was replaced.
+
+**Trust.** A pin still starts from GitHub's digest of what CI uploaded (or the
+digest the publisher computed), so it trusts the CI run that built it; what it
+adds is that a release replaced later is refused, and that every change of
+the expected bytes goes through git review.
+
+**Rejected.** Passing the digest from the publishing job to the later jobs of
+the same run (job outputs): CI would pass without a committed pin, and the
+gate needed to stop such a branch merging fails the same jobs anyway. A CI job
+committing the pin back to the branch: a bot push to contributor branches, and
+impossible for forks. Pinning each unpacked file instead of the tarball:
+nineteen digests in review instead of three. Build attestations
+(`gh attestation verify`): a stronger statement about how a build was made,
+but every machine that fetches would need `gh` (or a sigstore client); open,
+if wanted later.

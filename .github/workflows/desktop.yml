@@ -9,7 +9,8 @@ name: Desktop
 #
 # The WASM downloads need the `occt-<hash>`, `planegcs-<hash>` and
 # `openscad-<hash>` releases of this commit's inputs, which CI's first three jobs
-# publish: run this after CI has run for the commit (a tag on main always has).
+# publish, pinned in scripts/wasm-pins.json: run this after CI has run for the
+# commit (a tag on main always has).
 #
 # On a tag the `homebrew` job also renders the Homebrew cask from the arm64 mac
 # zip and pushes it to the zoltanf/homebrew-extrudo tap (P6-01, ADR-0075's
