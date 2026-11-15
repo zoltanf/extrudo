@@ -577,7 +577,8 @@ script made with FreeCAD 1.1.4 (`parameter-fixtures.ts`, the truth table
 | a sketch constraint | takes the computed number whatever its unit (`1 / 2 in` on a length gives 0.0197 mm; an angle in degrees, stored in radians) |
 | `sin cos tan` | an angle, or a plain number read as **degrees**, also when it is a cell's value (`10 * sin(Spreadsheet.n)` with n = 30 is 5; `10 * sin(pi / 6)` is 0.0914) |
 | `asin acos atan atan2` | an angle in degrees |
-| `%`, `mod` | `17 % 5` and `mod(17; 5)` are 2 |
+| `%`, `mod` | `17 % 5` and `mod(17; 5)` are 2; `%` is the floored remainder, also for quantities (`-7.5 % 3` is 1.5), `mod` is C's `fmod`, the dividend's sign (`mod(-7.5; 3)` is −1.5) |
+| `round`, `trunc`, `cbrt` | `round` rounds halves away from zero (`round(-2.5)` is −3), `trunc(-7.5)` is −7, `cbrt(-27)` is −3 (the sweep, `sweep-fixtures.ts`) |
 | names | a unit or constant token (`mm`, `pi`, `e`, `deg`, `H`, `W` …) is never a name: such an alias is refused, and a constraint named `W` can be neither set nor read by an expression |
 | `1,5` | 1.5 (a comma between digits); `;` or `,` with a space between arguments |
 

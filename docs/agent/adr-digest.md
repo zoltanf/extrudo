@@ -5066,7 +5066,18 @@ depth with `DrillForDepth`, MultiTransform steps don't. A sketch's `AttachmentOf
 plane made for it alone (then released from sharing); a datum's only where S9 kept `offsetPlane`. Limits: 256
 expressions per object, 10,000 per import, 1,000 parameters (measured: 1.9 s to import, 3.8 ms to evaluate), 10,000
 cells per sheet, 64 rule rounds per feature. Report `FcstdImportReport.parameters`; the app's `parameterNotices`.
-Fixtures `parameter-fixtures.ts` (11 FreeCAD parts, each object's own XML, tokenised), `parameter-parts.ts`.
+Fixtures `parameter-fixtures.ts` (11 FreeCAD parts, each object's own XML, tokenised), `parameter-parts.ts`. **Fix round (2026-11-15):** every rewrite is exact for every value, not only the stored one
+(`sweep.test.ts` over `sweep-fixtures.ts`, FreeCAD's values of 69 expressions at 13 values of `n`): `mod()` is C's `fmod`
+(`a - b * trunc(a / b)`), `%` floors, `trunc(q)` = `max(floor(q), 0) + min(ceil(q), 0)`, `round(x)` (half away from zero)
+= `max(floor(x + 0.5), 0) + min(ceil(x - 0.5), 0)`, `cbrt(x)` = `max(x, 0) ^ (1/3) - max(-x, 0) ^ (1/3)`; rounding only of a
+plain number. A translated formula with proofs that Extrudo computes otherwise takes the proven number; proofs only from
+constraints, plane offsets and Length/Distance/Angle/Float properties (never counts, `…Constraint`, `Percent`). A stored 0
+is never bound where the sense is read off the numbers (`sameOrNeg` → `zero`, `ZERO`). The `Binder` snapshots `Names` and
+its rounds in `begin`, restores in `discard` (the walk calls it when a try fails; the next `begin` and `finish` too).
+Constraint names are fitted after the parameters' evaluation (names of sources that went out released), unaliased cells'
+after them. Groups cut by UTF-16 units (`cutUnits`). `ExpressionOutcome.number`: what it sets is a number of the design;
+only those count as "plain numbers" in the notice; notice names cut to 40 characters. Core's errors by code (`cycle`) or by
+pinned words (`CORE_TOO_DEEP` → `limit`, `CORE_DEPENDENT`).
 
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,

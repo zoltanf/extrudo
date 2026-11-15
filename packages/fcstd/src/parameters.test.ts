@@ -10,16 +10,24 @@
 import {
   type ExtrudoDocument,
   evaluateParameters,
+  loadDocument,
+  parameterNames,
   setSketchGeometry,
   updateParameter,
 } from '@extrudo/core';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { settleSketches } from '@extrudo/sketch/inference';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { ZERO } from './bind';
 import { type FcstdImportOptions, type FcstdImportResult, importFcstd } from './import';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { PARAM_CASES, PARAM_TRUTH } from './parameter-fixtures';
 import { PARAM_PARTS, type ParamPartOptions, paramFile, sheetObject } from './parameter-parts';
+import { P, type PartChange, partFile } from './pattern-parts';
+
+/** An S7 part (`pattern-fixtures.ts`) through the same import. */
+const runPart = (name: string, change: PartChange = {}) =>
+  importFcstd(partFile(name, change), 'Parts', { kernel, solver: new SketchSolver(planegcs) });
 
 let planegcs: PlanegcsModule;
 let kernel: ReturnType<typeof nodeImportKernel>;
@@ -232,7 +240,6 @@ describe('the parameter parts (ADR-0144 S10)', () => {
     const r = await run('functions_table');
     const o = outcomes(r);
     const numbers: Record<string, string> = {
-      'trunc(7.9)': 'function',
       'exp(2)': 'function',
       'log(100)': 'function',
       'log10(1000)': 'function',
@@ -265,7 +272,7 @@ describe('the parameter parts (ADR-0144 S10)', () => {
         1e-9 * Math.max(1, Math.abs(want)),
       );
     }
-    expect(kept).toBe(73);
+    expect(kept).toBe(74);
     expect(params(r)).toEqual([
       ['n', 'unitless', '30', 'Spreadsheet'],
       ['len_mm', 'length', '8 mm', 'Spreadsheet'],
@@ -325,8 +332,11 @@ describe('the parameter parts (ADR-0144 S10)', () => {
   it('bound_datum_upto is live: the datum plane’s offset and the up-to offset', async () => {
     const r = await run('bound_datum_upto');
     const v = await volume(r);
-    const higher = await change(r, 'level', '20 mm');
-    expect(higher).toBeGreaterThan(v);
+    // The boss (12 × 12) goes up to the datum plane plus 1.5 mm: the plane 2 mm higher adds 2 × 144.
+    expect(v).toBeCloseTo(8000 + 144 * 9.5, 6);
+    expect(await change(r, 'level', '20 mm')).toBeCloseTo(8000 + 144 * 11.5, 6);
+    // The up-to offset itself, 1.5 → 3 mm.
+    expect(await change(r, 'past', '3 mm')).toBeCloseTo(8000 + 144 * 13, 6);
   }, 120_000);
 
   it('names: reserved words renamed, cases kept, a constraint’s name after an alias', async () => {
@@ -392,7 +402,7 @@ describe('the wrong cases (ADR-0144 S10)', () => {
     expect(outcomes(r)['Pad.Length']).toBe('reference');
   }, 120_000);
 
-  it('a cycle between two cells, and between a cell and a constraint', async () => {
+  it('a cycle between two cells; a cell that reads the constraint that reads it is that constraint’s number', async () => {
     const r = await run('sheet_plate', {
       edit: (o, xml) =>
         o === 'Spreadsheet'
@@ -424,15 +434,158 @@ describe('the wrong cases (ADR-0144 S10)', () => {
     expect(evaluatesCleanly(r.design.doc)).toEqual([]);
   }, 120_000);
 
+  it('a cycle between two constraints of a sketch: both numbers', async () => {
+    const r = await run('model_refs', {
+      edit: (o, xml) =>
+        o === 'Sketch'
+          ? xml.replace(
+              /<ExpressionEngine count="1">/,
+              '<ExpressionEngine count="2"><Expression path=".Constraints.Width" expression="Constraints[11] * 2"/>',
+            )
+          : xml,
+    });
+    const o = outcomes(r);
+    expect(o['Sketch..Constraints.Width']).toBe('cycle');
+    expect(o['Sketch.Constraints[11]']).toBe('cycle');
+    // What reads Width still reads it: its number is the file's.
+    expect(o['Pad.Length']).toBe('kept');
+    expect(evaluatesCleanly(r.design.doc)).toEqual([]);
+  }, 120_000);
+
+  it('a formula the file proves otherwise takes the proven number', async () => {
+    const height = (content: string) => (o: string, xml: string) =>
+      o === 'Spreadsheet'
+        ? xml.replace(
+            'content="10" displayUnit="mm" alias="height"',
+            `content="${content}" alias="height"`,
+          )
+        : xml;
+    // FreeCAD's mod() is C's fmod: mod(-7; 3) is -1, and the formula comes in.
+    const exact = await run('sheet_plate', { edit: height('=mod(-7; 3) + 11') });
+    expect(exact.report.parameters.parameters.find((p) => p.name === 'height')?.from).toBe(
+      'formula',
+    );
+    // A formula every bound property contradicts (a file FreeCAD didn't recompute).
+    const r = await run('sheet_plate', { edit: height('=5 * 2 + 1') });
+    expect(r.report.parameters.parameters.find((p) => p.name === 'height')).toMatchObject({
+      from: 'proven',
+      expression: '10 mm',
+      formula: { reason: 'differs' },
+    });
+    for (const x of [exact, r]) {
+      const o = outcomes(x);
+      expect(o['Pad.Length']).toBe('kept');
+      expect(o['PocketSketch..AttachmentOffset.Base.z']).toBe('kept');
+      expect(o['Pocket.Length']).toBe('kept');
+    }
+  }, 120_000);
+
+  it('a proof only from a target that stores the value as it is given', async () => {
+    const r = await run('sheet_plate', {
+      edit: (o, xml) =>
+        o === 'Spreadsheet'
+          ? xml
+              // Occurrences (an integer) rounds 3.004 to 3: no proof.
+              .replace('content="3" alias="count"', 'content="=exp(1.1)" alias="count"')
+              // A sketch's diameter stores 6 as it is given: a proof.
+              .replace('content="=6 mm" alias="hole_d"', 'content="=exp(0) * 6 mm" alias="hole_d"')
+          : xml,
+    });
+    expect(r.report.parameters.leftOut.find((x) => x.at === 'B5')).toMatchObject({
+      reason: 'function',
+    });
+    const occurrences = r.report.parameters.expressions.find(
+      (e) => e.object === 'LinearPattern' && e.path === 'Occurrences',
+    );
+    expect(occurrences).toMatchObject({ outcome: 'reference', number: true });
+    expect(r.report.parameters.parameters.find((p) => p.name === 'hole_d')).toMatchObject({
+      from: 'proven',
+      expression: '6 mm',
+    });
+    expect(outcomes(r)['PocketSketch.Constraints[2]']).toBe('kept');
+  }, 120_000);
+
+  it('a name an alias would have taken but didn’t: the constraint keeps it', async () => {
+    const r = await run('names', {
+      edit: (o, xml) =>
+        o === 'Spreadsheet'
+          ? xml.replace('content="20" alias="width"', 'content="=1 / 0" alias="width"')
+          : o === 'Sketch'
+            ? xml.replace('&lt;&lt;Maße #1&gt;&gt;.width', '&lt;&lt;Maße #1&gt;&gt;.Width / 2')
+            : xml,
+    });
+    expect(r.report.parameters.leftOut.find((x) => x.at === 'A2')?.reason).toBe('differs');
+    expect(r.report.parameters.renames.map((c) => c.from)).not.toContain('width');
+    expect(dimensionNames(r, 'Sketch')).toContain('width');
+  }, 120_000);
+
+  it('a group of 60 emoji is cut to 40 UTF-16 units and the design saves and opens', async () => {
+    const label = '😀'.repeat(60);
+    const r = await run('sheet_plate', {
+      extra: [sheetObject('E', label, [['A1', '1', 'emoji']])],
+    });
+    const g = r.design.doc.parameters.find((p) => p.name === 'emoji')?.group as string;
+    expect(g).toBe('😀'.repeat(20));
+    expect(g.length).toBe(40);
+    expect(() => loadDocument(JSON.parse(JSON.stringify(r.design.toJSON())))).not.toThrow();
+  }, 120_000);
+
+  it('a pattern’s distance stored as 0 with an expression: its sense can’t be told', async () => {
+    const r = await run('bound_patterns', {
+      edit: (o, xml) =>
+        o === 'LinearPattern'
+          ? xml
+              .replace(
+                /(<Property name="Length" type="App::PropertyLength"[^>]*><Float value=")[^"]*"/,
+                '$10"',
+              )
+              .replace(
+                /(<Property name="Occurrences" type="[^"]*"[^>]*><Integer value=")[^"]*"/,
+                '$11"',
+              )
+              .replace('&lt;&lt;P&gt;&gt;.span', '&lt;&lt;P&gt;&gt;.span * 0')
+              .replace('LinearPattern.Shape.brp', 'Pocket.Shape.brp')
+          : xml,
+    });
+    const length = r.report.parameters.expressions.find(
+      (e) => e.object === 'LinearPattern' && e.path === 'Length',
+    );
+    expect(r.report.bodies[0]?.mapped.map((m) => m.object)).toContain('LinearPattern');
+    expect(length).toMatchObject({ outcome: 'target', detail: ZERO, number: true });
+  }, 120_000);
+
+  it('a try that doesn’t hold gives back its names: the same dN as when the first try holds', async () => {
+    // The pad reads the hole's diameter, so each try of the hole names that input.
+    const reads = {
+      Pad: {
+        props: {
+          ExpressionEngine: P.raw(
+            '<ExpressionEngine count="1"><Expression path="Length" expression="Hole.Diameter * 2"/></ExpressionEngine>',
+          ),
+        },
+      },
+    };
+    const first = await runPart('hole_countersink', reads);
+    const second = await runPart('hole_countersink', {
+      ...reads,
+      Hole: { props: { HoleCutType: P.raw('<Integer value="5"/>') } },
+    });
+    expect(second.report.bodies[0]?.secondAttempts).toBe(1);
+    const names = (x: FcstdImportResult) => [...parameterNames(x.design.doc)].sort();
+    expect(names(first).some((n) => /^d\d+$/.test(n))).toBe(true);
+    expect(names(second)).toEqual(names(first));
+    expect(second.report.parameters.rounds).toBe(first.report.parameters.rounds);
+  }, 120_000);
+
   it('a formula that doesn’t translate: a number where a property proves it, else out', async () => {
     const r = await run('sheet_plate', {
       edit: (o, xml) =>
         o === 'Spreadsheet'
           ? xml
-              .replace('content="40" alias="width"', 'content="=trunc(40.5)" alias="width"')
+              .replace('content="40" alias="width"', 'content="=exp(0) * 40" alias="width"')
               .replace(
                 'content="12.5" alias="unused_one"',
-                'content="=trunc(7.9)" alias="unused_one"',
+                'content="=log10(7.9)" alias="unused_one"',
               )
           : xml,
     });

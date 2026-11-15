@@ -78,6 +78,26 @@ const dimKind = (d: FcDim): ParameterKind | undefined =>
           ? 'angle'
           : undefined;
 
+/** Core's parser refusing a tree's height (`bind.ts`'s `CORE_TOO_DEEP`, pinned by its test). */
+const TOO_DEEP = /^Nested more than \d+ levels deep/;
+
+/** The rule's tolerance (`bind.ts`'s `within`, which this module can't import). */
+const within = (got: number, want: number) =>
+  Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want));
+
+/**
+ * `text` cut to at most `max` UTF-16 units (what the schema's `max(40)`
+ * counts), never inside a surrogate pair.
+ */
+export function cutUnits(text: string, max: number): string {
+  let out = '';
+  for (const c of text) {
+    if (out.length + c.length > max) break;
+    out += c;
+  }
+  return out;
+}
+
 /** A number for an expression: 15 significant digits. */
 const literal = (v: number) => `${Number(v.toPrecision(15))}`;
 
@@ -143,7 +163,13 @@ export interface Entry {
   /** Why it can't come in, whatever its target does (syntax, limit …). */
   readonly failure?: { reason: ExpressionReason; detail: string };
   /** The outcome, once the walk is done. */
-  outcome?: { outcome: 'kept' | ExpressionReason; detail?: string; text?: string };
+  outcome?: {
+    outcome: 'kept' | ExpressionReason;
+    detail?: string;
+    text?: string;
+    /** What it sets came in, holding the file's number (a dimension, an input, a plane's distance). */
+    number?: true;
+  };
 }
 
 /** A name the file gave that changed on the way in. */
@@ -166,6 +192,8 @@ export interface ImportedParameter {
   readonly group?: string;
   /** From the file's value, its formula, or a number a bound property proves. */
   readonly from: 'value' | 'formula' | 'proven';
+  /** For a proven number: why its formula didn't come in. */
+  readonly formula?: { readonly reason: ExpressionReason; readonly detail: string };
 }
 
 export interface ParameterLeftOut {
@@ -237,6 +265,21 @@ export class Names {
     this.taken.add(name);
     if (name !== wanted) this.changes.push({ from: wanted, to: name, what, why: why ?? 'invalid' });
     return name;
+  }
+  /** Frees a name a source took and then didn't use (it stayed out). */
+  release(name: string): void {
+    this.taken.delete(name);
+    const i = this.changes.findIndex((c) => c.to === name);
+    if (i >= 0) this.changes.splice(i, 1);
+  }
+  /** What `restore` goes back to (a try that doesn't hold gives back the names it took). */
+  snapshot(): { taken: Set<string>; changes: number } {
+    return { taken: new Set(this.taken), changes: this.changes.length };
+  }
+  restore(at: { taken: Set<string>; changes: number }): void {
+    this.taken.clear();
+    for (const n of at.taken) this.taken.add(n);
+    this.changes.length = at.changes;
   }
   /** Extrudo's own next `dN`, skipping every name taken. */
   auto(): string {
@@ -601,8 +644,10 @@ export function prepareParameters(
     };
 
   // ------------------------------------------------------------- proofs
+  // Only from targets that store the value as it is given: a count rounds it, a constrained
+  // property clamps it.
   for (const e of entries) {
-    if (e.node?.kind !== 'path') continue;
+    if (e.node?.kind !== 'path' || !storesExactly(e)) continue;
     const s = sourceOf(e.owner, e.node);
     const stored = storedValue(e);
     if (s && stored !== undefined) s.proofs.push(stored);
@@ -705,27 +750,21 @@ export function prepareParameters(
   for (const s of wanted)
     if (s.kind === 'cell' && s.alias !== undefined) nameSource(s, s.alias, 'alias');
   for (const s of wanted) if (s.kind === 'variable') nameSource(s, s.at, 'property');
-  const constraintNames = new Map<string, Map<number, string>>();
-  // Only the sketches a PartDesign body holds can come in with a body's history (S5).
-  const inBodies = new Set<string>();
-  for (const o of doc.objects) {
-    if (o.type !== 'PartDesign::Body') continue;
-    const g = o.properties.Group?.value;
-    if (g?.kind === 'linkList') for (const m of g.objects) inBodies.add(m);
+  // Unaliased cells: a name of the importer's own comes after the constraints' (below); until
+  // then a provisional one, never a name anything else holds, so their formulas can be evaluated.
+  const madeUp: Source[] = [];
+  for (const s of wanted) {
+    if (s.kind !== 'cell' || s.alias !== undefined || s.out) continue;
+    if (count >= max) {
+      s.out = { reason: 'limit', detail: `past the ${max} parameters an import adds` };
+      continue;
+    }
+    let k = madeUp.length;
+    while (names.taken.has(`fcstd_cell_${k}`)) k++;
+    s.name = `fcstd_cell_${k}`;
+    madeUp.push(s);
+    count++;
   }
-  for (const o of doc.objects) {
-    if (!o.type.startsWith('Sketcher::SketchObject') || !inBodies.has(o.name)) continue;
-    const map = new Map<number, string>();
-    constraintRecords(o).forEach((c, i) => {
-      if (!c.driving || c.name === '' || constraintDim(c.type) === undefined) return;
-      const n = names.fit(c.name, 'constraint');
-      if (n !== undefined) map.set(i, n);
-    });
-    if (map.size > 0) constraintNames.set(o.name, map);
-  }
-  for (const s of wanted)
-    if (s.kind === 'cell' && s.alias === undefined)
-      nameSource(s, `${cleanName(s.object.label, s.object.name)}_${s.at}`, 'cell');
 
   // ------------------------------------------------------------ expressions
   const named = wanted.filter((s) => s.name !== undefined && s.kindOf !== undefined);
@@ -748,26 +787,29 @@ export function prepareParameters(
     const unit = s.kindOf === 'length' ? ' mm' : s.kindOf === 'angle' ? ' deg' : '';
     return `${literal(v)}${unit}`;
   };
+  /** A source's expression from its value or its formula; `false` when its formula didn't translate. */
+  const emitSource = (s: Source): boolean => {
+    const formula = (s.cell as FcCell | undefined)?.content.startsWith('=');
+    if (!s.node || s.formulaFailure) return false;
+    const r = emitExtrudo(s.node, resolveFor(s.object), {
+      mode: 'parameter',
+      dim: kindDim(s.kindOf as ParameterKind),
+    });
+    if (!r.ok) {
+      s.formulaFailure = { reason: r.reason, detail: r.detail };
+      return false;
+    }
+    s.expression = r.text;
+    s.from = formula ? 'formula' : 'value';
+    return true;
+  };
   for (const s of topological(named, formulaReads)) {
-    const kind = s.kindOf as ParameterKind;
     if (s.value !== undefined && !s.node) {
       s.expression = asNumber(s, s.value);
       s.from = 'value';
       continue;
     }
-    const formula = (s.cell as FcCell | undefined)?.content.startsWith('=');
-    if (s.node && !s.formulaFailure) {
-      const r = emitExtrudo(s.node, resolveFor(s.object), {
-        mode: 'parameter',
-        dim: kindDim(kind),
-      });
-      if (r.ok) {
-        s.expression = r.text;
-        s.from = formula ? 'formula' : 'value';
-        continue;
-      }
-      s.formulaFailure = { reason: r.reason, detail: r.detail };
-    }
+    if (emitSource(s)) continue;
     const v = proven(s);
     if (v !== undefined) {
       s.expression = asNumber(s, v);
@@ -778,36 +820,102 @@ export function prepareParameters(
   }
 
   // Extrudo's own evaluation of the set: a parameter that errors takes its proven number, or stays out.
-  for (let round = 0; round <= named.length; round++) {
-    const list = named.filter((s) => !s.out && s.expression !== undefined);
-    const params: Parameter[] = list.map((s, i) => ({
-      id: `fcp${i}` as ParameterId,
-      name: s.name as string,
-      expression: s.expression as string,
-      unit: s.kindOf as ParameterKind,
-    }));
-    const evaluation = evaluateParameters({ ...design.doc, parameters: params, features: [] });
-    let changed = false;
-    for (const s of list) {
-      const r = evaluation.parameters.get(s.name as string)?.result;
-      if (r?.ok && Number.isFinite(r.value)) continue;
-      changed = true;
-      const v = s.from === 'formula' ? proven(s) : undefined;
-      if (v !== undefined) {
-        s.expression = asNumber(s, v);
-        s.from = 'proven';
-      } else
-        s.out = {
-          reason:
-            r && !r.ok && r.error.code === 'cycle'
-              ? 'cycle'
-              : s.from === 'formula'
-                ? 'differs'
-                : 'reference',
-          detail: r && !r.ok ? r.error.message : 'it has no value',
-        };
+  const settle = () => {
+    for (let round = 0; round <= named.length; round++) {
+      const list = named.filter((s) => !s.out && s.expression !== undefined);
+      const params: Parameter[] = list.map((s, i) => ({
+        id: `fcp${i}` as ParameterId,
+        name: s.name as string,
+        expression: s.expression as string,
+        unit: s.kindOf as ParameterKind,
+      }));
+      const evaluation = evaluateParameters({ ...design.doc, parameters: params, features: [] });
+      let changed = false;
+      for (const s of list) {
+        const r = evaluation.parameters.get(s.name as string)?.result;
+        if (r?.ok && Number.isFinite(r.value)) {
+          // A formula the file proves otherwise (every bound property stores another value) is that number.
+          const v = s.from === 'formula' ? proven(s) : undefined;
+          if (v !== undefined && !within(r.value, v)) {
+            changed = true;
+            s.expression = asNumber(s, v);
+            s.from = 'proven';
+            s.formulaFailure = {
+              reason: 'differs',
+              detail: `Extrudo computes ${Number(r.value.toPrecision(12))} from its formula, the file ${Number(v.toPrecision(12))}`,
+            };
+          }
+          continue;
+        }
+        changed = true;
+        const v = s.from === 'formula' ? proven(s) : undefined;
+        if (v !== undefined) {
+          s.expression = asNumber(s, v);
+          s.from = 'proven';
+        } else
+          s.out = {
+            reason:
+              !r || r.ok
+                ? 'reference'
+                : r.error.code === 'cycle'
+                  ? 'cycle'
+                  : TOO_DEEP.test(r.error.message)
+                    ? 'limit'
+                    : s.from === 'formula'
+                      ? 'differs'
+                      : 'reference',
+            detail: r && !r.ok ? r.error.message : 'it has no value',
+          };
+      }
+      if (!changed) break;
     }
-    if (!changed) break;
+  };
+  settle();
+
+  // Names: those of what stayed out are free again; then the named constraints'; then the
+  // importer's own for unaliased cells, written into the formulas that read them.
+  for (const x of named)
+    if (x.out && x.name !== undefined && !madeUp.includes(x)) names.release(x.name);
+  const constraintNames = new Map<string, Map<number, string>>();
+  // Only the sketches a PartDesign body holds can come in with a body's history (S5).
+  const inBodies = new Set<string>();
+  for (const o of doc.objects) {
+    if (o.type !== 'PartDesign::Body') continue;
+    const g = o.properties.Group?.value;
+    if (g?.kind === 'linkList') for (const m of g.objects) inBodies.add(m);
+  }
+  for (const o of doc.objects) {
+    if (!o.type.startsWith('Sketcher::SketchObject') || !inBodies.has(o.name)) continue;
+    const map = new Map<number, string>();
+    constraintRecords(o).forEach((c, i) => {
+      if (!c.driving || c.name === '' || constraintDim(c.type) === undefined) return;
+      const n = names.fit(c.name, 'constraint');
+      if (n !== undefined) map.set(i, n);
+    });
+    if (map.size > 0) constraintNames.set(o.name, map);
+  }
+  const provisional = new Map<string, string>();
+  for (const x of madeUp) {
+    if (x.out) continue;
+    const n = names.fit(`${cleanName(x.object.label, x.object.name)}_${x.at}`, 'cell');
+    if (n === undefined) {
+      x.out = { reason: 'limit', detail: 'no free name for it' };
+      continue;
+    }
+    provisional.set(x.name as string, n);
+    x.name = n;
+  }
+  if (provisional.size > 0) {
+    for (const x of topological(named, formulaReads)) {
+      if (x.out || x.from !== 'formula' || emitSource(x)) continue;
+      const v = proven(x);
+      if (v !== undefined) {
+        x.expression = asNumber(x, v);
+        x.from = 'proven';
+      } else
+        x.out = x.formulaFailure ?? { reason: 'reference', detail: 'its value is not in the file' };
+    }
+    settle();
   }
 
   // ------------------------------------------------------------------ add
@@ -818,7 +926,7 @@ export function prepareParameters(
       for (const s of come) {
         const group = cleanName(s.object.label, s.object.name);
         const comment = s.property?.doc ? cleanName(s.property.doc, '') : '';
-        const g = [...group].slice(0, MAX_GROUP_LENGTH).join('').trim();
+        const g = cutUnits(group, MAX_GROUP_LENGTH).trim();
         design.parameter(s.name as string, s.expression as string, {
           unit: s.kindOf as ParameterKind,
           ...(g ? { group: g } : {}),
@@ -833,6 +941,7 @@ export function prepareParameters(
           expression: s.expression as string,
           ...(g ? { group: g } : {}),
           from: s.from as 'value' | 'formula' | 'proven',
+          ...(s.from === 'proven' && s.formulaFailure ? { formula: { ...s.formulaFailure } } : {}),
         });
       }
     });
@@ -976,6 +1085,24 @@ function targetKind(e: Entry): ParameterKind | 'count' | undefined {
     return d.count ? 'count' : (dimKind(d.dim) ?? undefined);
   }
   return undefined;
+}
+
+/** Properties that store a value as an expression gives it (no rounding, no clamping). */
+const EXACT_TYPES: ReadonlySet<string> = new Set([
+  'App::PropertyLength',
+  'App::PropertyDistance',
+  'App::PropertyAngle',
+  'App::PropertyFloat',
+]);
+
+/** Whether an entry's target stores its expression's value exactly: a constraint, a plane offset, an exact property. */
+function storesExactly(e: Entry): boolean {
+  if (e.target === 'dimension' || e.target === 'plane') return true;
+  if (e.target !== 'input') return false;
+  const p = Object.hasOwn(e.owner.properties, e.property as string)
+    ? e.owner.properties[e.property as string]
+    : undefined;
+  return p !== undefined && EXACT_TYPES.has(p.type);
 }
 
 /** The value the file stores for an entry's target (mm, degrees, a count). */

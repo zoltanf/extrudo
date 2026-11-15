@@ -1497,7 +1497,17 @@ export async function importBodies(
             : {}),
           ...(second ? { secondAttempt: true as const } : {}),
         });
-      });
+      }).then(
+        (failure) => {
+          // A try that didn't hold gives back the names it took (S10's fix round).
+          if (failure) binder?.discard();
+          return failure;
+        },
+        (error: unknown) => {
+          binder?.discard();
+          throw error;
+        },
+      );
     };
 
     /**

@@ -58,7 +58,6 @@ function run(text: string, kind: 'length' | 'angle') {
 
 /** Rows that stay numbers, by the expression as typed, with why. */
 const NUMBERS: Record<string, string> = {
-  'trunc(7.9)': 'function', // Extrudo has no trunc
   'exp(2)': 'function',
   'log(100)': 'function',
   'log10(1000)': 'function',
@@ -69,7 +68,7 @@ const NUMBERS: Record<string, string> = {
 };
 
 describe('the truth table (ADR-0144 S10)', () => {
-  it('has the 85 rows FreeCAD wrote, 3 of them refused by FreeCAD', () => {
+  it('has the 85 rows FreeCAD wrote, 4 of them refused by FreeCAD', () => {
     expect(PARAM_TRUTH).toHaveLength(85);
     expect(PARAM_TRUTH.filter((r) => !r[3]).map((r) => r[2])).toEqual([
       '(4 + 6) mm',

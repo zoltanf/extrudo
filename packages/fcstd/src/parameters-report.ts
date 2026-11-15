@@ -28,6 +28,13 @@ export interface ExpressionOutcome {
   /** The Extrudo text it came in as. */
   readonly text?: string;
   readonly detail?: string;
+  /**
+   * What it sets came in, holding the file's number: a dimension, an input or
+   * a plane's distance the walk added. Only these are "plain numbers" in the
+   * app's notice; any other target (a property Extrudo has no counterpart
+   * for, an object that came in as a shape only) is in no number of the design.
+   */
+  readonly number?: true;
 }
 
 export interface ParametersReport {
@@ -57,6 +64,7 @@ export function parametersReport(
       outcome: e.outcome?.outcome ?? 'unmapped',
       ...(e.outcome?.text !== undefined ? { text: e.outcome.text } : {}),
       ...(e.outcome?.detail !== undefined ? { detail: e.outcome.detail } : {}),
+      ...(e.outcome?.number ? { number: true as const } : {}),
     })),
     renames: p.names.changes.filter((c) => names.has(c.to)),
     rounds: binder.rounds,
@@ -81,7 +89,7 @@ export function parameterCounts(r: ParametersReport) {
     parameters,
     expressions,
     kept,
-    numbers: r.expressions.length - kept,
+    numbers: r.expressions.filter((e) => e.outcome !== 'kept' && e.number).length,
     renames: r.renames.length,
   };
 }

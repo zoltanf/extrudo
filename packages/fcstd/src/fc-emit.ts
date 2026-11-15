@@ -230,6 +230,7 @@ const ARITY: Readonly<Record<string, [number, number]>> = {
   cbrt: [1, 1],
   abs: [1, 1],
   round: [1, 1],
+  trunc: [1, 1],
   floor: [1, 1],
   ceil: [1, 1],
   pow: [2, 2],
@@ -346,13 +347,24 @@ function binary(node: Extract<FcNode, { kind: 'binary' }>, resolve: Resolver): P
   }
 }
 
-/** Python's remainder (FreeCAD's `%`): `a - b * floor(a / b)`, with the left value's unit. */
-function remainder(a: Piece, b: Piece): Piece {
+/**
+ * FreeCAD's `trunc` of a plain number `q` (its text, unitless in Extrudo):
+ * `max(floor(q), 0) + min(ceil(q), 0)`, exact for every q (the sweep's rows).
+ */
+const truncOf = (q: string) => `(max(floor(${q}), 0) + min(ceil(${q}), 0))`;
+
+/**
+ * FreeCAD's remainders, with the left value's unit: `%` floors (Python's
+ * remainder, `a - b * floor(a / b)`), `mod()` truncates (C's `fmod`,
+ * `a - b * trunc(a / b)`, the sign of the dividend).
+ */
+function remainder(a: Piece, b: Piece, kind: 'floor' | 'trunc' = 'floor'): Piece {
   if (!isNone(b.fc) && !sameFc(a.fc, b.fc))
     refuse('unit', 'it takes a remainder of values of different units');
   // `b` with `a`'s whole Extrudo dimension, so `a / b` has none and `floor` rounds nothing but the number.
   const bb = shift(b, addDim(exOf(a), exOf(b), -1));
-  const text = `${wrap(a, PREC.add)} - ${wrap(bb, PREC.mul)} * floor(${wrap(a, PREC.mul)} / ${wrap(bb, PREC.unary)})`;
+  const q = `${wrap(a, PREC.mul)} / ${wrap(bb, PREC.unary)}`;
+  const text = `${wrap(a, PREC.add)} - ${wrap(bb, PREC.mul)} * ${kind === 'floor' ? `floor(${q})` : truncOf(q)}`;
   return piece(`(${text})`, PREC.atom, a.fc, a.ex);
 }
 
@@ -414,27 +426,43 @@ function call(node: Extract<FcNode, { kind: 'call' }>, resolve: Resolver): Piece
           `${node.name}() of a value whose unit has no ${k === 2 ? 'square' : 'cube'} root`,
         );
       const x = plain(one);
-      return k === 2
-        ? piece(`sqrt(${x.text})`, PREC.atom, fc, NONE)
-        : piece(`${wrap(x, PREC.atom)} ^ (1 / 3)`, PREC.pow, fc, NONE);
+      if (k === 2) return piece(`sqrt(${x.text})`, PREC.atom, fc, NONE);
+      // FreeCAD's cube root of a negative number is negative; Extrudo's `^` refuses one.
+      return piece(
+        `(max(${x.text}, 0) ^ (1 / 3) - max(-${wrap(x, PREC.unary)}, 0) ^ (1 / 3))`,
+        PREC.atom,
+        fc,
+        NONE,
+      );
     }
     case 'abs':
       return piece(`abs(${one.text})`, PREC.atom, one.fc, one.ex);
     case 'round':
+    case 'trunc':
     case 'floor':
-    case 'ceil':
+    case 'ceil': {
       // Extrudo rounds in display units: only a plain number keeps its meaning.
       if (!isNone(one.fc))
         refuse(
           'function',
           `${node.name}() of a value with a unit rounds in the display unit in Extrudo`,
         );
-      return piece(`${node.name}(${plain(one).text})`, PREC.atom, none, NONE);
+      const x = plain(one).text;
+      // FreeCAD rounds halves away from zero, Extrudo's `round` up: written with floor and ceil.
+      if (node.name === 'round')
+        return piece(
+          `(max(floor(${x} + 0.5), 0) + min(ceil(${x} - 0.5), 0))`,
+          PREC.atom,
+          none,
+          NONE,
+        );
+      if (node.name === 'trunc') return piece(truncOf(x), PREC.atom, none, NONE);
+      return piece(`${node.name}(${x})`, PREC.atom, none, NONE);
+    }
     case 'pow':
       return power(one, args[1] as Piece);
     case 'mod':
-      // C's fmod truncates, Python's remainder floors: the same where a / b ≥ 0, which the rule checks.
-      return remainder(one, args[1] as Piece);
+      return remainder(one, args[1] as Piece, 'trunc');
     case 'min':
     case 'max': {
       const xs = aligned(args, `${node.name}()`);

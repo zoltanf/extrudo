@@ -731,12 +731,25 @@ describe('parameterNotices (ADR-0144 S10)', () => {
     expression: '1 mm',
     from: 'value' as const,
   });
-  const expr = (outcome: Report['expressions'][number]['outcome']) => ({
+  /** An expression of the file; `number`: what it sets came in holding the file's number. */
+  const expr = (
+    outcome: Report['expressions'][number]['outcome'],
+    number = outcome !== 'kept' && outcome !== 'unmapped',
+  ) => ({
     object: 'Pad',
     path: 'Length',
     expression: 'x',
     target: 'input' as const,
     outcome,
+    ...(number ? { number: true as const } : {}),
+  });
+  /** One on something that came in as a shape only, or on a property Extrudo has none of. */
+  const other = () => ({
+    object: 'Window',
+    path: 'OverallHeight',
+    expression: '.Height.Value',
+    target: 'other' as const,
+    outcome: 'target' as const,
   });
   const report = (r: Partial<Report>): Report => ({
     parameters: [],
@@ -789,6 +802,38 @@ describe('parameterNotices (ADR-0144 S10)', () => {
     expect(parameterNotices(report({ parameters: [param('sheet', 'S')] }))).toEqual([
       "1 parameter came in from the file's spreadsheet.",
     ]);
+  });
+
+  it('counts as plain numbers only what came in as a number of the design', () => {
+    const others = Array.from({ length: 85 }, other);
+    expect(parameterNotices(report({ expressions: others }))).toEqual([]);
+    expect(
+      parameterNotices(report({ parameters: [param('sheet', 'S')], expressions: others })),
+    ).toEqual(["1 parameter came in from the file's spreadsheet."]);
+    expect(
+      parameterNotices(
+        report({
+          parameters: [param('sheet', 'S'), param('sheet', 'S')],
+          expressions: [...others, expr('kept'), expr('differs'), expr('target', false)],
+        }),
+      ),
+    ).toEqual([
+      "2 parameters came in from the file's spreadsheet; 1 of its 2 expressions came in live and 1 as a plain number.",
+    ]);
+  });
+
+  it('shows a long name cut', () => {
+    const long = 'w'.repeat(5_000);
+    const out = parameterNotices(
+      report({
+        parameters: [param('sheet', 'S')],
+        renames: [{ from: long, to: `${'w'.repeat(64)}`, what: 'alias', why: 'long' }],
+      }),
+    );
+    expect(out[1]).toBe(
+      `One name changed to fit Extrudo's rules: ${'w'.repeat(40)}… to ${'w'.repeat(40)}….`,
+    );
+    expect((out[1] as string).length).toBeLessThan(200);
   });
 
   it('says which names changed, three of them at most', () => {

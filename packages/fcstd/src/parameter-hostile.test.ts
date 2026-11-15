@@ -79,6 +79,11 @@ describe('S10 limits, each a clean outcome', () => {
     }
   }, 120_000);
 
+  it('a chain FreeCAD’s parser takes but Extrudo’s is too tall for: a number (limit)', async () => {
+    const r = await run('sheet_plate', padReads(`${Array(299).fill('0').join(' + ')} + 10`));
+    expect(outcome(r, 'Pad.Length')).toMatchObject({ outcome: 'limit', number: true });
+  }, 120_000);
+
   it('more expressions on one object than it reads: the rest are numbers (limit)', async () => {
     const many = Array.from(
       { length: MAX_OBJECT_EXPRESSIONS + 5 },

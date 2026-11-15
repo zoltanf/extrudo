@@ -115,8 +115,12 @@ export class Binder {
   #pendingOutcomes: [Entry, NonNullable<Entry['outcome']>][] = [];
   #before = new Set<string>();
   readonly #released: ((planeFeature: string) => void) | undefined;
-  /** Rounds of the rule over the whole import. */
+  /** Rounds of the rule over the whole import (held tries only). */
   rounds = 0;
+  /** What a try that doesn't hold restores. */
+  #snapshot:
+    | { names: ReturnType<PreparedParameters['names']['snapshot']>; rounds: number }
+    | undefined;
 
   constructor(
     design: Design,
@@ -134,6 +138,9 @@ export class Binder {
 
   /** A feature's try begins: what it adds from here is fresh. */
   begin(): void {
+    // A try neither committed nor discarded (the walk went on to another) gives its names back now.
+    this.discard();
+    this.#snapshot = { names: this.#p.names.snapshot(), rounds: this.rounds };
     this.#pending = new Map();
     this.#pendingOutcomes = [];
     this.#before = new Set(this.#design.doc.features.map((f) => f.id));
@@ -145,10 +152,26 @@ export class Binder {
     for (const [e, o] of this.#pendingOutcomes) e.outcome = o;
     this.#pending = new Map();
     this.#pendingOutcomes = [];
+    this.#snapshot = undefined;
+  }
+
+  /**
+   * The try didn't hold (its transaction was cancelled): the names it took
+   * (`dN`s for its sketch and for inputs others read) and its rounds of the
+   * rule are given back, so a later try names what it adds as the first would.
+   */
+  discard(): void {
+    if (!this.#snapshot) return;
+    this.#p.names.restore(this.#snapshot.names);
+    this.rounds = this.#snapshot.rounds;
+    this.#snapshot = undefined;
+    this.#pending = new Map();
+    this.#pendingOutcomes = [];
   }
 
   /** Every entry's outcome: what didn't get one in a held feature didn't come in. */
   finish(): void {
+    this.discard();
     naming.delete(this.#design);
     for (const e of this.#p.entries)
       e.outcome ??= e.failure
@@ -216,8 +239,9 @@ export class Binder {
     const candidates: Candidate[] = [];
     const doc = () => this.#design.doc;
     const findFeature = (id: string) => doc().features.find((x) => x.id === id);
-    const outcome = (e: Entry, o: NonNullable<Entry['outcome']>) =>
+    const outcome = (e: Entry, o: NonNullable<Entry['outcome']>): void => {
       this.#pendingOutcomes.push([e, o]);
+    };
     const entriesOf = (o: FcObject) => this.#p.byOwner.get(o.name) ?? [];
 
     // The new sketch: every driving dimension is a model value; bound ones are candidates.
@@ -255,10 +279,6 @@ export class Binder {
       });
       for (const e of entriesOf(sketchObject)) {
         if (e.target !== 'dimension' || e.index === undefined) continue;
-        if (e.failure) {
-          outcome(e, { outcome: e.failure.reason, detail: e.failure.detail });
-          continue;
-        }
         const id = sk.dimensions[e.index];
         const t = sk.transforms[e.index];
         const d = id !== undefined && Object.hasOwn(dimensions, id) ? dimensions[id] : undefined;
@@ -276,16 +296,26 @@ export class Binder {
           });
           continue;
         }
+        // From here the dimension is in the design, holding the file's number.
+        if (e.failure) {
+          outcome(e, { outcome: e.failure.reason, detail: e.failure.detail, number: true });
+          continue;
+        }
         if (t === undefined) {
           outcome(e, {
             outcome: 'target',
             detail: 'its constraint came in as another value than it stores',
+            number: true,
           });
           continue;
         }
         const stored = storedValue(e);
         if (stored === undefined) {
-          outcome(e, { outcome: 'target', detail: 'its constraint stores no number' });
+          outcome(e, {
+            outcome: 'target',
+            detail: 'its constraint stores no number',
+            number: true,
+          });
           continue;
         }
         const ex = d.type === 'angle' ? ANGLE : LENGTH;
@@ -327,7 +357,7 @@ export class Binder {
           : undefined;
         if (value?.kind !== 'expr') continue;
         const t = this.#writtenAs(f, property, value.expr, feature, fe.inputs as FeatureInputs);
-        if (!t) continue;
+        if (!t || t === 'zero') continue;
         const key = pairKey(f.name, property);
         const ex = dims(value.unit);
         if (this.#p.readInputs.has(key)) {
@@ -346,10 +376,6 @@ export class Binder {
     }
     for (const e of entriesOf(f)) {
       if (e.target !== 'input') continue;
-      if (e.failure) {
-        outcome(e, { outcome: e.failure.reason, detail: e.failure.detail });
-        continue;
-      }
       const property = e.property as string;
       const input = bySource.get(property);
       const value =
@@ -365,12 +391,22 @@ export class Binder {
         });
         continue;
       }
+      // From here the input is in the design, holding the file's number.
+      if (e.failure) {
+        outcome(e, { outcome: e.failure.reason, detail: e.failure.detail, number: true });
+        continue;
+      }
       const t = this.#writtenAs(f, property, value.expr, feature, fe.inputs as FeatureInputs);
       const stored = storedValue(e);
+      if (t === 'zero') {
+        outcome(e, { outcome: 'target', detail: ZERO, number: true });
+        continue;
+      }
       if (!t || stored === undefined) {
         outcome(e, {
           outcome: 'target',
           detail: `${property} came in as another value than the file stores`,
+          number: true,
         });
         continue;
       }
@@ -408,29 +444,39 @@ export class Binder {
     const entries = (this.#p.byOwner.get(owner.name) ?? []).filter((e) => e.target === 'plane');
     const e = entries[0];
     if (!e) return;
-    for (const extra of entries.slice(1))
-      outcome(extra, { outcome: 'target', detail: 'a second expression on the same offset' });
-    if (e.failure) {
-      outcome(e, { outcome: e.failure.reason, detail: e.failure.detail });
-      return;
-    }
-    const why = (detail: string) => outcome(e, { outcome: 'target', detail });
+    const why = (detail: string, number?: true) =>
+      outcome(e, { outcome: 'target', detail, ...(number ? { number } : {}) });
     const plane = this.#design.doc.features.find((x) => x.id === planeFeature);
-    const offset = owner.properties.AttachmentOffset?.value;
-    const r = offset?.kind === 'placement' ? offset.value.rotation : undefined;
-    if (!r || Math.abs(r[0]) > 1e-12 || Math.abs(r[1]) > 1e-12 || Math.abs(r[2]) > 1e-12) {
-      why(`${what}'s offset turns it`);
-      return;
-    }
     const distance = plane ? (plane.inputs as FeatureInputs).distance : undefined;
     const stored = storedValue(e);
     if (!plane || distance?.kind !== 'expr' || stored === undefined) {
       why(`${what} has no distance`);
       return;
     }
+    // From here the plane's distance is in the design, holding the file's number.
+    for (const extra of entries.slice(1))
+      outcome(extra, {
+        outcome: 'target',
+        detail: 'a second expression on the same offset',
+        number: true,
+      });
+    if (e.failure) {
+      outcome(e, { outcome: e.failure.reason, detail: e.failure.detail, number: true });
+      return;
+    }
+    const offset = owner.properties.AttachmentOffset?.value;
+    const r = offset?.kind === 'placement' ? offset.value.rotation : undefined;
+    if (!r || Math.abs(r[0]) > 1e-12 || Math.abs(r[1]) > 1e-12 || Math.abs(r[2]) > 1e-12) {
+      why(`${what}'s offset turns it`, true);
+      return;
+    }
     const t = sameOrNeg(literalValue(distance.expr), stored);
+    if (t === 'zero') {
+      why(ZERO, true);
+      return;
+    }
     if (!t) {
-      why(`${what}'s distance is not its offset`);
+      why(`${what}'s distance is not its offset`, true);
       return;
     }
     candidates.push({
@@ -497,7 +543,7 @@ export class Binder {
     expr: string,
     feature: DecodedFeature,
     inputs: FeatureInputs,
-  ): DimensionTransform | undefined {
+  ): DimensionTransform | 'zero' | undefined {
     const p = Object.hasOwn(f.properties, property) ? f.properties[property] : undefined;
     if (!p || (p.value.kind !== 'float' && p.value.kind !== 'integer')) return undefined;
     // A polar pattern written as its step where FreeCAD has the whole angle: not the property.
@@ -517,7 +563,7 @@ export class Binder {
       const node = c.entry.node as FcNode;
       const r = emitExtrudo(node, this.#resolver(c.entry.owner), c.target);
       if (!r.ok) {
-        outcome(c.entry, { outcome: r.reason, detail: r.detail });
+        outcome(c.entry, { outcome: r.reason, detail: r.detail, number: true });
         continue;
       }
       c.text = applyTransform(r.text, c.transform);
@@ -551,8 +597,7 @@ export class Binder {
             ? evaluation.dimensions.get(c.holder.feature)?.get(c.holder.id)
             : evaluation.inputs.get(c.holder.feature)?.get(c.holder.input);
         if (!r) failed.push([c, 'differs', 'Extrudo has no value for it']);
-        else if (!r.ok)
-          failed.push([c, r.error.code === 'cycle' ? 'cycle' : 'differs', r.error.message]);
+        else if (!r.ok) failed.push([c, coreReason(r.error), r.error.message]);
         else if (
           c.count
             ? !(Number.isInteger(r.value) && r.value === c.expected)
@@ -566,12 +611,12 @@ export class Binder {
       }
       if (failed.length === 0) break;
       // An error that comes from another failing one may clear once that one is a number again.
-      const own = failed.filter(([, , detail]) => !/^Uses `/.test(detail));
+      const own = failed.filter(([, , detail]) => !CORE_DEPENDENT.test(detail));
       const out = own.length > 0 ? own : failed;
       for (const [c, reason, detail] of out) {
         write(c, c.literal);
         live.splice(live.indexOf(c), 1);
-        outcome(c.entry, { outcome: reason, detail });
+        outcome(c.entry, { outcome: reason, detail, number: true });
       }
       if (++round >= MAX_BIND_ROUNDS) {
         for (const c of live) {
@@ -579,6 +624,7 @@ export class Binder {
           outcome(c.entry, {
             outcome: 'limit',
             detail: 'past the rounds of the rule a feature takes',
+            number: true,
           });
         }
         live.length = 0;
@@ -591,14 +637,40 @@ export class Binder {
   }
 }
 
+/**
+ * Core's errors this module tells apart. `ExprError.code` has `cycle` (and
+ * `unknown-name`); its other errors are told by their words, pinned by
+ * `bind.test.ts` so a change of wording in core fails a test here.
+ */
+export const CORE_DEPENDENT = /^Uses `/;
+export const CORE_TOO_DEEP = /^Nested more than \d+ levels deep/;
+
+/** The reason for an error core gives for an expression. */
+export function coreReason(error: {
+  code?: string | undefined;
+  message: string;
+}): ExpressionReason {
+  if (error.code === 'cycle') return 'cycle';
+  if (CORE_TOO_DEEP.test(error.message)) return 'limit';
+  return 'differs';
+}
+
+/** Why an input read off its numbers with a stored 0 is not bound. */
+export const ZERO = "its value is 0 in the file, so its sense can't be told";
+
 /** A literal the importer wrote (`10 mm`, `-3 deg`, `4`) as its number. */
 function literalValue(expr: string): number {
   const m = /^\s*(-?[0-9.]+(?:e-?[0-9]+)?)\s*(mm|deg)?\s*$/.exec(expr);
   return m ? Number(m[1]) : Number.NaN;
 }
 
-function sameOrNeg(written: number, stored: number): DimensionTransform | undefined {
+export function sameOrNeg(
+  written: number,
+  stored: number,
+): DimensionTransform | 'zero' | undefined {
   if (!Number.isFinite(written) || !Number.isFinite(stored)) return undefined;
+  // 0 fits both senses: read off the numbers alone, the sense can't be told.
+  if (within(stored, 0)) return 'zero';
   if (within(written, stored)) return 'same';
   if (stored !== 0 && within(written, -stored)) return 'neg';
   return undefined;

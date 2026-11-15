@@ -516,9 +516,8 @@ export function parameterNotices(p: FcstdImportReport['parameters'] | undefined)
   if (!p) return [];
   const n = p.parameters.length;
   const live = p.expressions.filter((e) => e.outcome === 'kept').length;
-  const numbers = p.expressions.filter(
-    (e) => e.outcome !== 'kept' && e.outcome !== 'unmapped',
-  ).length;
+  // Only what came in as a number of the design (a dimension, an input, a plane's distance).
+  const numbers = p.expressions.filter((e) => e.outcome !== 'kept' && e.number).length;
   if (n === 0 && live + numbers === 0) return [];
   const sheets = p.parameters.filter((x) => x.source === 'sheet').map((x) => x.object);
   const sets = p.parameters.filter((x) => x.source === 'variable-set').map((x) => x.object);
@@ -544,7 +543,7 @@ export function parameterNotices(p: FcstdImportReport['parameters'] | undefined)
   const out = [`${sentence[0]?.toUpperCase()}${sentence.slice(1)}.`];
   const renamed = p.renames.length;
   if (renamed > 0) {
-    const shown = p.renames.slice(0, 3).map((r) => `${r.from} to ${r.to}`);
+    const shown = p.renames.slice(0, 3).map((r) => `${shortName(r.from)} to ${shortName(r.to)}`);
     const more = renamed - shown.length;
     out.push(
       `${renamed === 1 ? 'One name' : `${renamed} names`} changed to fit Extrudo's rules: ${
@@ -554,6 +553,12 @@ export function parameterNotices(p: FcstdImportReport['parameters'] | undefined)
   }
   return out;
 }
+
+/** A file's name in a notice: its first 40 characters, then "…". */
+const shortName = (name: string) => {
+  const chars = [...name];
+  return chars.length <= 40 ? name : `${chars.slice(0, 40).join('')}…`;
+};
 
 /** The two commonest reasons, in the app's words. */
 function commonest(reasons: readonly HistoryStop[]): string[] {
