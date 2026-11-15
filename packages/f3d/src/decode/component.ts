@@ -216,6 +216,28 @@ export function readOccurrence(
   return undefined;
 }
 
+/**
+ * Each component placed by an occurrence in another's occurrence list gets that
+ * component as its parent (`[owner, occurrence records]` per list, in order; a
+ * later list wins). An occurrence names the first component, in `components`'
+ * order, that has it. One pass over each: a file with tens of thousands of
+ * occurrences is linear, not a scan of every component per entry (ADR-0083,
+ * 2026-11-15).
+ */
+export function setParents(
+  components: Map<number, F3dComponent>,
+  lists: [owner: number, occurrences: number[]][],
+): void {
+  const byOccurrence = new Map<number, F3dComponent>();
+  for (const c of components.values())
+    for (const o of c.occurrences) if (!byOccurrence.has(o.id)) byOccurrence.set(o.id, c);
+  for (const [owner, occurrences] of lists)
+    for (const occ of occurrences) {
+      const child = byOccurrence.get(occ);
+      if (child && child.id !== owner) child.parent = owner;
+    }
+}
+
 /** The design's components, and which feature lists and body containers are whose. */
 export function readComponents(seg: Segment): ComponentTree {
   const components = new Map<number, F3dComponent>();
@@ -251,11 +273,13 @@ export function readComponents(seg: Segment): ComponentTree {
     if (!component) continue;
     component.occurrences.push(read.occurrence);
   }
-  for (const [list, owner] of occurrenceLists)
-    for (const occ of ofType(seg, levelRefs(seg, list), OCCURRENCE)) {
-      const child = [...components.values()].find((c) => c.occurrences.some((o) => o.id === occ));
-      if (child && child.id !== owner) child.parent = owner;
-    }
+  setParents(
+    components,
+    [...occurrenceLists].map(([list, owner]) => [
+      owner,
+      ofType(seg, levelRefs(seg, list), OCCURRENCE),
+    ]),
+  );
   // A hidden-occurrence record names the occurrence's path from the root, then
   // the path again: the occurrence is the last one before the repeat (else the
   // record's first component, where the path's references are of another form).
