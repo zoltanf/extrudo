@@ -34,13 +34,20 @@ the two WASM builds (the OpenCascade kernel and the sketch solver) that match
 the files in your checkout. They are not in git; CI builds each new version
 once and publishes it as a GitHub release. Downloading uses the
 [GitHub CLI](https://cli.github.com/) when it is installed (`gh auth login`)
-and a plain HTTPS download otherwise.
+and a plain HTTPS download otherwise. Each download must have the SHA-256
+pinned for it in [`scripts/wasm-pins.json`](scripts/wasm-pins.json), and the
+unpacked files are checked again on every run: on a mismatch `pnpm wasm` stops
+with the file's name, the expected and the actual digest. Don't edit the pin
+to make it pass; report it (a replaced release or a damaged download), and
+delete the build's `dist/` folder if it was your local copy that changed.
 
 **If you change the C++ facade, the OCCT build config, the planegcs build
 script or its patch**, the WASM you need does not exist yet. Push your branch
 and let CI build it (`gh workflow run ci.yml --ref <your-branch>`; about 15
 minutes for OpenCascade), or build it yourself with Docker (`pnpm occt build`,
-`pnpm planegcs build`). Details are in
+`pnpm planegcs build`). Once CI has published the new build, run
+`pnpm wasm:pin` and commit the changed `scripts/wasm-pins.json`; until then
+CI's test jobs stop with "no SHA-256 for <tag>". Details are in
 [`packages/kernel/occt/README.md`](packages/kernel/occt/README.md) and
 [`packages/sketch/planegcs/README.md`](packages/sketch/planegcs/README.md).
 

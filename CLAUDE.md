@@ -59,7 +59,8 @@ pnpm check        # typecheck + Biome + package boundaries + license allow-list 
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
 pnpm changelog    # fold docs/changelog.d/ into docs/CHANGELOG.md (release step)
-pnpm wasm         # download the OCCT, planegcs and OpenSCAD WASM for the current inputs (check/dev/build do this)
+pnpm wasm         # download the OCCT, planegcs and OpenSCAD WASM for the current inputs, checked against scripts/wasm-pins.json (check/dev/build do this)
+pnpm wasm:pin     # after CI published a build of changed inputs: pin its SHA-256; commit scripts/wasm-pins.json
 pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only)
 pnpm openscad build  # download OpenSCAD's pinned WASM snapshot (ADR-0071; no Docker)
