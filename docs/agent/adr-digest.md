@@ -5056,6 +5056,41 @@ swapped (in Extrudo the other arc of the circle, since arcs run counter-clockwis
 line's `projectionTry` rule; anything else stays out. `ExternalCause` has no `arc` any more. Fixtures
 `external_arc_*` (5); library: 5 of 5 arcs in, 16 constraints through projections, 131 references found.
 
+**ADR-0144, S10 (parameters and expressions):** files `fc-expr.ts` (`parseFcExpression`, FreeCAD's grammar: `^`
+left-assoc and looser than unary minus, a unit only after a number, `;`/`,` arguments, `1,5`; unit and constant tokens
+are never names; `MAX_EXPRESSION_LENGTH` 4,096, `_TOKENS` 1,024, `_DEPTH` 64; `cellAddress` upper case only), `fc-emit.ts`
+(`emitExtrudo(node, resolver, target)`: each piece keeps its FreeCAD `fc` and Extrudo `ex` dimension and is shifted by
+`* 1 mm` / `* 1 deg` where they must agree; reasons `EXPRESSION_REASONS`, a closed set), `params.ts`
+(`prepareParameters`: sources, every `ExpressionEngine` entry parsed once, votes and kinds, names, cell formulas, the
+parameters added in one transaction before the first sketch; `Names.fit`, `ObjectIndex`), `bind.ts` (`Binder`: called in
+`bodies.ts`'s `hold` around `add()`, inside the feature's transaction; `namingFor(design)` gives `addSketch` the
+constraint names and `dN`s), `parameters-report.ts`; `sketch-map.ts` returns `transforms` (`same`/`neg`/`half`) and takes
+`names`/`freeName`; `sketch-place.ts` `releasePlane`. Rules: **an expression comes in only when `evaluateParameters` of
+the design with it written gives the stored value** (`|got − want| ≤ 1e-9 · max(1, |want|)`, mm or degrees; a count the
+stored integer exactly), else the importer's literal goes back with the reason; the shape check then runs with the
+expressions in; **never a second evaluator**: text to text, core evaluates. Every expression is written from what it
+reads (sources and model values by key), never by renaming text. Names: aliases, variable-set properties, named driving
+constraints of sketches in PartDesign bodies, then made-up names (`<label>_<address>`, `dN`); `Names.fit` keeps a name
+Extrudo takes, else `_` for bad characters, cut to 64, `_1`, `_2` … (1,000 tries). FreeCAD's names and labels only in
+`Map`s and null-prototype records. A cell formula that can't come in is a number only when a property bound to exactly
+that cell proves it. Feature inputs bind "as written or negated" by value; a polar pattern written as its step, a hole's
+depth with `DrillForDepth`, MultiTransform steps don't. A sketch's `AttachmentOffset.Base.z` binds only to an offset
+plane made for it alone (then released from sharing); a datum's only where S9 kept `offsetPlane`. Limits: 256
+expressions per object, 10,000 per import, 1,000 parameters (measured: 1.9 s to import, 3.8 ms to evaluate), 10,000
+cells per sheet, 64 rule rounds per feature. Report `FcstdImportReport.parameters`; the app's `parameterNotices`.
+Fixtures `parameter-fixtures.ts` (11 FreeCAD parts, each object's own XML, tokenised), `parameter-parts.ts`. **Fix round (2026-11-15):** every rewrite is exact for every value, not only the stored one
+(`sweep.test.ts` over `sweep-fixtures.ts`, FreeCAD's values of 69 expressions at 13 values of `n`): `mod()` is C's `fmod`
+(`a - b * trunc(a / b)`), `%` floors, `trunc(q)` = `max(floor(q), 0) + min(ceil(q), 0)`, `round(x)` (half away from zero)
+= `max(floor(x + 0.5), 0) + min(ceil(x - 0.5), 0)`, `cbrt(x)` = `max(x, 0) ^ (1/3) - max(-x, 0) ^ (1/3)`; rounding only of a
+plain number. A translated formula with proofs that Extrudo computes otherwise takes the proven number; proofs only from
+constraints, plane offsets and Length/Distance/Angle/Float properties (never counts, `…Constraint`, `Percent`). A stored 0
+is never bound where the sense is read off the numbers (`sameOrNeg` → `zero`, `ZERO`). The `Binder` snapshots `Names` and
+its rounds in `begin`, restores in `discard` (the walk calls it when a try fails; the next `begin` and `finish` too).
+Constraint names are fitted after the parameters' evaluation (names of sources that went out released), unaliased cells'
+after them. Groups cut by UTF-16 units (`cutUnits`). `ExpressionOutcome.number`: what it sets is a number of the design;
+only those count as "plain numbers" in the notice; notice names cut to 40 characters. Core's errors by code (`cycle`) or by
+pinned words (`CORE_TOO_DEEP` → `limit`, `CORE_DEPENDENT`).
+
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,

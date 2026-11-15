@@ -1226,6 +1226,18 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   what it was attached to in FreeCAD when the model changes." Chips: Sketch, Pad, "DatumLine point
   1", "DatumLine point 2", DatumLine (the `axisThroughPoints`), "GrooveSketch plane", GrooveSketch,
   Groove; the body row is "Part" (the fixture body's label), shown; no chip in error.
+- **S10:** the fifth test imports S10's `sheet_plate` part on its own (`paramFile` from
+  `packages/fcstd/src/parameter-parts.ts`, FreeCAD's own shapes) as `Plate.FCStd`. Notices: "…: 1 of
+  1 shape, with its history (sketches and features)." and "11 parameters came in from the file's
+  spreadsheets; all 10 of its expressions came in live." Six chips, none in error. The
+  Parameters dialog (`openParameters` / `closeParameters` from `benchmark-helpers.ts`) has the
+  sections `[data-parameter-section="Params"]` and `"Derived"` (the sheets' labels) and rows
+  `width`, `depth`, `height`, `inset`, `count`, `pitch`, `Params_B6` (the unaliased cell B6);
+  the sketch's dimension `Wide` follows `width`, so it sits behind the "Show … that follow a
+  user parameter" line (`parameterExpression` clicks it) and reads `width`. Setting `width` to
+  `50 mm` and reading an STL export back (`exportModel`, `meshOfStl`, `solidFacts`, polled: the
+  project's kernel recomputes) gives a box of 50 × 20 × 10 (from 40 × 20 × 10) with three half
+  holes still in it.
 
 ### `e2e/import-mesh.spec.ts`
 

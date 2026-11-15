@@ -145,6 +145,13 @@ export interface SketchMapResult {
   readonly ids: readonly (readonly string[] | undefined)[];
   /** The Extrudo dimension each mapped FreeCAD constraint became, when it became one. */
   readonly dimensions: readonly (string | undefined)[];
+  /**
+   * S10: how each such dimension's value is the constraint's: `same`, `neg`
+   * (an X or Y distance stored negative), `half` (an arc's diameter as a
+   * radius); `undefined` where it is neither (an angle FreeCAD stores outside
+   * 0..180°), so no expression can be bound to it or read from it.
+   */
+  readonly transforms: readonly (DimensionTransform | undefined)[];
   /** The largest displacement (points, radii) the final solve caused, mm. */
   readonly maxDisplacement: number;
   /** Degrees of freedom left after the final solve; `undefined` without a solve. */
@@ -193,7 +200,14 @@ export interface ProjectedEntity {
   readonly radius?: number;
 }
 
+/** How an Extrudo dimension's value is its FreeCAD constraint's (S10). */
+export type DimensionTransform = 'same' | 'neg' | 'half';
+
 export interface SketchMapOptions {
+  /** S10: the Extrudo name of each named driving constraint, by constraint index (the import's name rule). */
+  readonly names?: ReadonlyMap<number, string>;
+  /** S10: names a driving dimension without a FreeCAD name (the import's `dN`, skipping every name it holds). */
+  readonly freeName?: () => string;
   /** S9: external geometry to project, by geometry index; any other is left out (`external`). */
   readonly external?: ReadonlyMap<number, ExternalPlan>;
   /** Vets the constraints; without one none is imported. */
@@ -223,6 +237,8 @@ interface Item {
   value?: number;
   /** It is a dimension (it holds the constraint's value). */
   dimension?: boolean;
+  /** How its value is the constraint's (S10). */
+  transform?: DimensionTransform;
 }
 
 interface Candidate {
@@ -234,6 +250,8 @@ interface Candidate {
   name?: string;
   /** The ID of the dimension among its items. */
   dimension?: string;
+  /** How the dimension's value is the constraint's (S10). */
+  transform?: DimensionTransform;
 }
 
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
@@ -573,25 +591,31 @@ export function mapSketch(
   const candidates: Candidate[] = [];
   const values: Record<string, number> = {};
   let name: string | undefined;
+  /** The index of the constraint `itemsOf` reads. */
+  let current = -1;
 
   /** The items for one FreeCAD constraint; throws `Leave`. */
   const itemsOf = (c: FcConstraint): Item[] => {
     name = undefined;
     const driven = !c.driving;
     const dimension = (add: (expr: string, o: { driven: boolean; name?: string }) => string) => {
-      return (v: number, unit: 'mm' | 'deg'): Item => {
+      return (v: number, unit: 'mm' | 'deg', transform?: DimensionTransform): Item => {
+        const given = options.names ? options.names.get(current) : undefined;
         const own =
           !driven &&
-          c.name.length > 0 &&
-          c.name.length <= 64 &&
-          /^[A-Za-z_][A-Za-z0-9_]*$/.test(c.name) &&
-          !isReservedName(c.name) &&
-          !options.taken.has(c.name);
-        if (own) name = c.name;
-        const label = own ? c.name : undefined;
+          (options.names
+            ? given !== undefined
+            : c.name.length > 0 &&
+              c.name.length <= 64 &&
+              /^[A-Za-z_][A-Za-z0-9_]*$/.test(c.name) &&
+              !isReservedName(c.name) &&
+              !options.taken.has(c.name));
+        const label = own ? (given ?? c.name) : undefined;
+        if (label !== undefined && !options.names) name = label;
         return {
           add: () => add(`${literal(v)} ${unit}`, { driven, ...(label ? { name: label } : {}) }),
           dimension: true,
+          ...(transform ? { transform } : {}),
           ...(driven ? {} : { value: v }),
         };
       };
@@ -676,7 +700,7 @@ export function mapSketch(
         if (third !== GEO_UNDEF) return leave('unsupported');
         if (c.value < 0) return leave('mismatch');
         const length = (target: string | [string, string]) =>
-          dimension((expr, o) => k.distance(target, expr, o).id)(c.value, 'mm');
+          dimension((expr, o) => k.distance(target, expr, o).id)(c.value, 'mm', 'same');
         if (second === GEO_UNDEF) {
           if (fp !== 0) return leave('unsupported');
           const l = curve(first);
@@ -730,7 +754,11 @@ export function mapSketch(
         }
         const t = target;
         return [
-          dimension((expr, opts) => k.distance(t, expr, { ...opts, orientation: o }).id)(v, 'mm'),
+          dimension((expr, opts) => k.distance(t, expr, { ...opts, orientation: o }).id)(
+            v,
+            'mm',
+            c.value < 0 ? 'neg' : 'same',
+          ),
         ];
       }
       case 9: {
@@ -765,7 +793,7 @@ export function mapSketch(
           dimension(
             (expr, o) =>
               k.angle(ai, bi, expr, { ...o, ...(supplement ? { supplement: true } : {}) }).id,
-          )(deg, 'deg'),
+          )(deg, 'deg', Math.abs(deg - (c.value * 180) / Math.PI) <= 1e-9 ? 'same' : undefined),
         ];
       }
       case 10: {
@@ -801,11 +829,17 @@ export function mapSketch(
         const r = radiusOf(a.id);
         if (c.type === 18 && a.kind === 'circle') {
           check(near(2 * r, c.value));
-          return [dimension((expr, o) => k.diameter(a.id, expr, o).id)(c.value, 'mm')];
+          return [dimension((expr, o) => k.diameter(a.id, expr, o).id)(c.value, 'mm', 'same')];
         }
         const want = c.type === 18 ? c.value / 2 : c.value;
         check(near(r, want));
-        return [dimension((expr, o) => k.radius(a.id, expr, o).id)(want, 'mm')];
+        return [
+          dimension((expr, o) => k.radius(a.id, expr, o).id)(
+            want,
+            'mm',
+            c.type === 18 ? 'half' : 'same',
+          ),
+        ];
       }
       case 12: {
         const [a, b] = [curve(first), curve(second)];
@@ -868,6 +902,7 @@ export function mapSketch(
       return;
     }
     try {
+      current = index;
       const items = itemsOf(c);
       if (candidates.length >= MAX_CANDIDATES) {
         constraintOutcomes[index] = 'limit';
@@ -961,6 +996,12 @@ export function mapSketch(
         : {}),
     });
   }
+  // S10: every driving dimension without a FreeCAD name gets the import's own next name.
+  if (options.freeName)
+    for (const d of Object.values(
+      k.data.dimensions as Record<string, { driven?: boolean; paramName?: string }>,
+    ))
+      if (!d.driven && d.paramName === undefined) d.paramName = options.freeName();
   const throughExternal = candidates.filter(
     (c) =>
       constraintOutcomes[c.index] === 'mapped' &&
@@ -978,6 +1019,10 @@ export function mapSketch(
     dimensions: sketch.constraints.map((_, i) => {
       const c = byIndex.get(i);
       return c && c.ids.length > 0 ? c.dimension : undefined;
+    }),
+    transforms: sketch.constraints.map((_, i) => {
+      const c = byIndex.get(i);
+      return c && c.ids.length > 0 && c.dimension !== undefined ? c.transform : undefined;
     }),
     maxDisplacement,
     ...(dof !== undefined ? { dof } : {}),
@@ -1033,7 +1078,10 @@ function vet(
       try {
         const id = item.add();
         c.ids.push(id);
-        if (item.dimension) c.dimension = id;
+        if (item.dimension) {
+          c.dimension = id;
+          if (item.transform) c.transform = item.transform;
+        }
         if (item.value !== undefined) values[id] = item.value;
       } catch {
         refused = true;

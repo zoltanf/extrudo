@@ -31,6 +31,7 @@ import {
 import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon } from '@extrudo/sketch/profiles';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
+import { type Binder, namingFor } from './bind';
 import { type CallOutcome, type KernelBudget, NONSENSE_REPLY } from './budget';
 import {
   combined,
@@ -287,6 +288,8 @@ export interface BodyWalkOptions {
   readonly maxAttachmentsBytes?: number;
   /** Receives the bytes of the attachments the steps add (S8): the caller writes them with the design. */
   readonly files?: Map<AttachmentId, Uint8Array>;
+  /** Binds the file's expressions as each feature comes in (S10). */
+  readonly binder?: Binder;
 }
 
 /** Reasons that end a body however its features go on: its chain, the walk's limits, the budget (S8). */
@@ -1457,7 +1460,28 @@ export async function importBodies(
           detail: "it came after features whose stored shape couldn't come in",
         });
       const makesBody = mine.length === 0 && taken.length === 0;
-      return check(f, chain, add, others, (added, d) => {
+      const binder = options.binder;
+      // S10: the file's expressions on what the try adds, bound before the rebuild checks it.
+      const bound = binder
+        ? async (): Promise<Added> => {
+            binder.begin();
+            const a = await add();
+            if (!('stop' in a)) {
+              const sketchObject = a.newSketch
+                ? doc.byName.get(a.newSketch.outcome.sketch)
+                : undefined;
+              const made = (a.datums ?? []).flatMap((d) => {
+                const name = [...datums].find(([, x]) => x === d)?.[0];
+                const object = name !== undefined ? doc.byName.get(name) : undefined;
+                return object ? [{ object, how: d.how, features: d.features }] : [];
+              });
+              binder.bind(f, feature, a, sketchObject, made);
+            }
+            return a;
+          }
+        : add;
+      return check(f, chain, bound, others, (added, d) => {
+        binder?.commit();
         // A feature held: the run before it (if any) is over, its step stays.
         run = undefined;
         if (makesBody) bodyMaker ??= added.feature;
@@ -1492,7 +1516,17 @@ export async function importBodies(
             : {}),
           ...(second ? { secondAttempt: true as const } : {}),
         });
-      });
+      }).then(
+        (failure) => {
+          // A try that didn't hold gives back the names it took (S10's fix round).
+          if (failure) binder?.discard();
+          return failure;
+        },
+        (error: unknown) => {
+          binder?.discard();
+          throw error;
+        },
+      );
     };
 
     /**
@@ -2171,7 +2205,14 @@ function sketchFor(
   const object = doc.byName.get(name) as FcObject;
   const axes = new Set(wanted.get(name) ?? []);
   if (wantsAxis) axes.add(wantsAxis);
+  const naming = namingFor(design);
   const result = addSketch(design, doc, object, {
+    ...(naming
+      ? {
+          freeName: naming.freeName,
+          ...(naming.names(object.name) ? { names: naming.names(object.name) } : {}),
+        }
+      : {}),
     ...(solver ? { solver } : {}),
     ...(decoded ? { decoded } : {}),
     name: cleanName(object.label, object.name),

@@ -2136,3 +2136,381 @@ No facade change, no schema change, no new app sentence.
   imports, 0 restarts, every feature row of S9's table; median 0.1 s a file,
   slowest 14.5 s.
 
+## Amendment (S10, 2026-11-15): parameters and expressions
+
+A FreeCAD file's spreadsheet cells and variable-set numbers come in as Extrudo
+user parameters, and the file's expressions on sketch dimensions, feature
+inputs and plane offsets come in as Extrudo expressions wherever Extrudo
+computes the file's value from them. `packages/fcstd`: `fc-expr.ts` (FreeCAD's
+expression language: tokenizer, recursive-descent parser, limits), `fc-emit.ts`
+(the tree as Extrudo text), `params.ts` (`prepareParameters`: the sources,
+every expression of the file parsed once, kinds, names, the parameters added),
+`bind.ts` (`Binder`: the rule, as the walk adds each feature),
+`parameters-report.ts`; S4's `sketch-map.ts` records how each dimension's value
+is its constraint's and takes the import's names. No schema change, no facade
+change, no change to Extrudo's expression language. Fixtures: 11 small parts we
+made with FreeCAD 1.1.4 through our own script
+(`packages/fcstd/scripts/make-parameter-fixtures.py`; `parameter-fixtures.ts`
+keeps each object's own `<Object>` XML with the properties the importer never
+reads left out, numbers' trailing zeros cut, a constraint's redundant
+`ElementIds` dropped and FreeCAD's repeated markup as tokens, 22 distinct
+stored shapes, 336 KB; `parameter-parts.ts` writes them back into files). **All
+11 come in with their whole history**, as they did before this slice.
+
+### The rule
+
+**An expression comes in only when Extrudo's own evaluation of what the
+importer wrote gives the value the file stores for that property.** The file
+stores every property's last computed value beside its expression, so the
+translation is never trusted: inside the feature's transaction, before its
+rebuild, the importer writes the translated expression into the dimension
+(`updateSketchDimension`, no geometry moved) or the input (`updateFeatureInputs`),
+evaluates the whole design with `@extrudo/core`'s `evaluateParameters`, and
+compares each value with the stored one: `|got − want| ≤ 1e-9 · max(1, |want|)`,
+mm or degrees (an angle constraint's radians turned into degrees first; a count
+must be exactly the stored integer). The floor of 1e-9 mm or degree for values
+below 1 is six orders below OCCT's confusion tolerance (1e-7 mm) and seven
+above what two doubles of the same 15 or 16 digits differ by; every kept row
+of the truth table and of the library is within it. What fails goes back to the
+importer's literal, in rounds (an error that comes from another failing
+expression waits a round; at most 64, `MAX_BIND_ROUNDS`, each taking at least
+one out), so a kept set is always one that evaluates. Then the feature is
+rebuilt and checked against its stored shape **with the expressions in it**,
+as before; a feature that doesn't hold takes its bindings back with its
+transaction. Nothing is evaluated by a second evaluator of ours: the importer
+translates text to text.
+
+### What becomes a parameter
+
+- **Cells with an alias** whose content is a number, a quantity (`6 mm`) or a
+  formula, one parameter each, named after the alias, in a group named after
+  the sheet's label (cleaned, cut to the schema's 40 UTF-16 units, never inside
+  a surrogate pair). **A cell
+  without an alias** only when something that comes in reads it (by address,
+  or from a formula of a cell that comes in), named `<sheet label>_<address>`
+  (`Params_B6`). A text cell never.
+- **Variable-set properties** of type Length, Distance, Angle, Float, Integer
+  (and their constraint and percent forms), named after the property, grouped
+  under the set's label, the property's description (`doc`) as the comment.
+  Bool, String, Link and other types stay out (`type`); an expression that
+  reads one is a number (`reference`).
+- They come in whether or not something reads them, before the first sketch or
+  feature, in one undo step ("Parameters from the file"), in document order.
+- **A cell's value is not in the file.** A formula that translates is the
+  parameter's expression and Extrudo computes it; whatever reads it proves it
+  (the rule). A formula that doesn't translate (a function Extrudo lacks, a
+  model value it reads, a loop of cells, an Extrudo error such as a division
+  by zero) comes in as a plain number only when the file proves the value: a
+  property bound to exactly that cell stores it (all such properties agreeing);
+  otherwise the cell stays out with its reason and what reads it is a number.
+  **A proof comes only from a target that stores the value as it is given**: a
+  sketch constraint, a plane offset, a property of type Length, Distance, Angle
+  or Float; never a count (it rounds: `Occurrences` from `=exp(1.1)` stores 3
+  for 3.004) nor a `…Constraint` or `Percent` type (they clamp). **A formula
+  that translates is checked against its proofs too**: where Extrudo computes
+  another value than the proven one (beyond the rule's tolerance) the parameter
+  takes the proven number (`from: 'proven'`, the formula's reason `differs`)
+  and the set is evaluated again for what reads it.
+- **Kinds.** FreeCAD's plain numbers have no unit; Extrudo wants a length in a
+  length field. Each plain-number source gets votes from what reads it, in one
+  pass over each expression's tree: a source that alone carries the result's
+  unit to a length or angle target (through sums, products, a numerator, `abs`,
+  `min`, `max`, `sum`, `average`, `hypot`, `cath`) votes for that kind; one in
+  a trigonometric function, a rounding, an exponent, a denominator, read by a
+  count, or multiplied with a value that already has the unit votes unitless;
+  two plain sources sharing a product vote nothing. A formula cell's own votes
+  then pass to the one source it carries, in one pass backwards over the cells
+  in dependency order. Unanimous votes decide; mixed votes make it unitless
+  (the truth table's `n`, read by `n / 3` and by `sin(n)`); no votes: its own
+  unit (a quantity, a property's type), then a formula's kind from its parts
+  (one pass forwards), then its display unit when that is a length or an angle,
+  else unitless. The emitter makes any choice exact (below), so the kinds only
+  decide how readable the expressions are; the outcome doesn't depend on the
+  order the file lists things in, and the work is linear in the expressions'
+  size.
+
+### Names
+
+One namespace: user parameters first (aliases, then variable-set properties,
+in document order), then the **named driving constraints** of the sketches
+PartDesign bodies hold (in document order; the dimension gets the name as its
+`paramName` whether or not an expression reads it), then names the importer
+makes up (unaliased cells, `dN` for every other driving dimension and for a
+feature input an expression reads, skipping every name taken). The
+constraints' names are fitted **after** the parameters' evaluation, so a name
+whose parameter stayed out is free again (`Names.release`) and no rename is
+reported for a name nobody took; unaliased cells carry a provisional name
+until then and get theirs after the constraints'. **A try that doesn't hold
+gives back the names it took** (the `Binder` snapshots `Names` in `begin` and
+restores it in `discard`, called by the walk when a try's check fails and by
+the next `begin` or `finish` for a try nobody committed): a feature that holds
+at its second try gets the `dN`s it would have got at its first, and the rule's
+round count counts held tries only. The rule,
+`Names.fit`: a name Extrudo takes (`PARAMETER_NAME`, not a unit, function or
+constant, not taken; case matters, so `Width` and `width` both stay) is kept;
+otherwise characters outside the pattern become `_`, a name that would start
+with a digit gets `p_`, it is cut to 64 characters (`MAX_PARAMETER_NAME`), and
+`_1`, `_2` … is added until one is free (at most 1,000 tries,
+`MAX_RENAME_TRIES`, then the parameter stays out with `limit`). Every
+expression is written from what it **reads**, never from its text, so a
+renamed name is read by its new name everywhere. The report lists each change
+of a name that came in (old, new, why: `reserved`, `taken`, `invalid`,
+`long`). The `names` fixture: `cos` → `cos_1`, `max` → `max_1`, `round` →
+`round_1` (reserved), the constraints `width` → `width_1` and `d` → `d_1`
+(taken by the aliases); `sin_`, `in_`, `d`, `e1`, `x1`, `A1x`, `Pad`, `Width`
+and `width` stay. JavaScript's own property names (`__proto__`,
+`constructor`, `toString`, `hasOwnProperty`) as aliases, variable names and
+constraint names come in working: the importer keeps them in `Map`s and
+null-prototype records only, and `@extrudo/core` evaluates them (its
+`evaluateParameters` keys by `Map`, `ownEntry` guards its unit table): nothing
+mishandles one.
+
+FreeCAD's references resolve as FreeCAD resolves them: `<<Label>>.x` by label
+only; `Name.x` by internal name first, then by label, unresolved when the name
+is also another object's label or two objects share the label; `Name.x` where
+no object is called `Name` is the owner's own property; `prop` and `.prop` the
+owner's. In a cell's formula a bare name is the sheet's own alias, then its
+address. Cell addresses are upper case (FreeCAD 1.1 takes `e1` and `x1` as
+aliases); an alias that is an address is no alias.
+
+### What an expression reads, and where it is written
+
+**Reads:** a cell (alias or address), a variable-set property, a sketch
+constraint by name or index (its driving dimension's name), a feature input the
+importer maps (`Pad.Length`, an own `Length`; the input gets a `dN`). A model
+value whose Extrudo value isn't FreeCAD's is read through the same
+transformation (`-d3`, `d5 * 2`) or not at all. A driven dimension, a placement
+member, `Shape.*`, a label, a sub-object, another document, the pseudo-properties
+and `hiddenref` stay numbers (`reference`).
+
+**Targets.** A sketch constraint S4 mapped to a dimension (one S4 left out or
+made driven takes its expression with it: `unmapped`); a feature input through
+`MappedFeature.sources`; a plane offset (below); anything else a number or
+nothing, as before (`target`).
+
+| Feature | Extrudo input | FreeCAD property | Binding |
+|---|---|---|---|
+| Pad, Pocket | `distance` | `Length` (one side, symmetric: the whole length) | as written |
+| | `distance2` | `Length2` (TwoLengths, Two sides) | as written |
+| | `offset`, `offset2` | `Offset`, `Offset2` (up-to) | as written |
+| | `flip`, `direction`, `toObject` | `Reversed`, `Midplane`, `SideType`, `Type`, `UpToFace` | not a number (`target`) |
+| Revolution, Groove | `angle` | `Angle` | as written |
+| Fillet | `radius` | `Radius` | as written |
+| Chamfer | `distance`, `distanceB`, `angle` | `Size`, `Size2`, `Angle` | as written |
+| LinearPattern | `count1`, `count2` | `Occurrences`, `Occurrences2` | as written; must be the stored integer exactly (Extrudo refuses a count that isn't whole, FreeCAD rounds) |
+| | `distance1`, `distance2` | `Length` (Extent) or `Offset` (Spacing), and `…2` | as written, or negated where the importer writes the other sense |
+| PolarPattern | `count` | `Occurrences` | as written, the integer exactly |
+| | `angle` | `Angle` (Extent) or `Offset` (Spacing) | as written or negated; not bindable where the importer writes the step for FreeCAD's whole angle (−360°, a turn short by under 1e-7) |
+| MultiTransform | its steps' inputs | its children's properties | not bound in this slice (`unmapped`) |
+| Hole | `diameter`, `tipAngle` | `Diameter`, `DrillPointAngle` | as written |
+| | `depth` | `Depth` | as written; not bindable with `DrillForDepth` (the importer takes the point off) |
+| | `cbDiameter` / `csDiameter`, `cbDepth`, `csAngle` | `HoleCutDiameter`, `HoleCutDepth`, `HoleCutCountersinkAngle` | as written |
+| Sketch on an offset plane (S4) | the plane's `distance` | the sketch's `AttachmentOffset.Base.z` | as written or negated, when the plane was made for this sketch, the sketch is attached to one origin plane by an offset that doesn't turn it and no container moves it; the plane is then the sketch's own (no later sketch shares it) |
+| Datum plane kept as an offset plane (S9) | its construction's `distance` | `AttachmentOffset.Base.z` | as written or negated, when the offset doesn't turn it |
+| Sketch constraints | `distance` | Distance | as written |
+| | X or Y `distance` | DistanceX, DistanceY | negated where FreeCAD stores a negative value |
+| | `radius`, `diameter` | Radius; Diameter of a circle; Diameter of an arc | as written; an arc's diameter halved |
+| | `angle` | Angle | in degrees, as written when FreeCAD's value is in 0…180°, else not bindable |
+
+"As written or negated" is read off the numbers: the input the importer wrote
+equals the stored property or its negation (the same tolerance), else the
+input is not bindable. **A stored 0 fits both senses, so such an input is not
+bound** (`target`, "its value is 0 in the file, so its sense can't be told").
+Of the negated inputs, a linear pattern's distance and a polar pattern's angle
+can be 0 with one occurrence (tested: the pattern comes in, its expression
+doesn't); a sketch's or a datum's plane offset can't reach it (an offset of 0
+is the origin plane itself, never an offset plane); an X or Y distance takes
+its sense from the mapping (the stored sign), and a distance of 0 is no
+dimension but a coincidence. The other inputs are written as they are and
+can't be 0 where an expression would bind (a length, a size, an angle, a
+count is above 0, and an up-to offset of 0 isn't written). **An angle
+dimension** is bound only while FreeCAD stores it in 0…180°, and Extrudo's
+angle is unsigned: a parameter that later takes it out of that range
+diverges from FreeCAD. **Old two-length pads:** S5 maps FreeCAD's `TwoLengths`
+as the file has it (side 1 `Length`, side 2 `Length2`), without FreeCAD 1.1's
+swap, so their expressions keep their meaning unchanged; the rule checks them
+like any other.
+
+### The translator
+
+FreeCAD's meaning, from its grammar and the truth table (FORMAT.md): `^` left
+to right and looser than a unary minus, `%` and `mod`, `;` or `,` between
+arguments, `1,5` as 1.5, a unit only right after a number, `1' 2"` as a sum, a
+plain number in `sin`/`cos`/`tan` read as degrees (also a name's value),
+inverse functions giving degrees, `pi`, `e`, units as tokens that are never
+names. The emitter keeps each piece's FreeCAD and Extrudo dimensions; both
+languages hold mm and degrees, so only the dimensions can differ, and where an
+operator needs them to agree it writes `* 1 mm`, `/ 1 mm`, `* 1 deg` (a number
+literal takes the unit directly: `2 mm`). It writes parentheses wherever the
+languages group differently (`(2 ^ 3) ^ 2`, `(-2) ^ 2`), and:
+
+| FreeCAD | Extrudo |
+|---|---|
+| `mm cm m in ft deg rad`, `"` `'` `°` | as they are |
+| `nm um µm dm km thou mil yd mi`, `gon M ′ AS ″`, a unit to a power | the number in mm or degrees (`1500 um` → `1.5 mm`, `50 gon` → `45 deg`, `5 (mm ^ 2)` → `5 * 1 mm ^ 2`) |
+| units of other dimensions | `unit` |
+| `sin(x)` with a plain `x` | `sin(x * 1 deg)` (`sin(30)` → `sin(30 deg)`) |
+| `asin acos atan sqrt abs min max` | as they are (arguments brought to one dimension) |
+| `floor ceil` | only of a plain number (Extrudo rounds in display units otherwise): `function` |
+| `trunc(x)` | `(max(floor(x), 0) + min(ceil(x), 0))`, of a plain number only |
+| `round(x)` (half away from zero; Extrudo's `round` goes half up) | `(max(floor(x + 0.5), 0) + min(ceil(x - 0.5), 0))`, of a plain number only |
+| `a % b` (the floored remainder, also for quantities) | `(a - b * floor(a / b))`, `b` given `a`'s dimension so `floor` sees a plain number |
+| `mod(a; b)` (C's `fmod`, the dividend's sign) | `(a - b * T)` with `T` the `trunc` form of `a / b` |
+| `pow(a; b)` | `a ^ b` |
+| `cbrt(x)` (negative for a negative x) | `(max(x, 0) ^ (1 / 3) - max(-x, 0) ^ (1 / 3))` |
+| `hypot(a; b[; c])`, `cath(h; a[; b])` | `sqrt(a ^ 2 + b ^ 2 …)`, `sqrt(h ^ 2 - a ^ 2 …)` |
+| `sum`, `average`, `count` of values | `(a + b …)`, `(a + b …) / n`, `n` |
+| `pi`, `e` | `pi`, `2.718281828459045` |
+| comparisons, `? :`, text, `True`/`False`/`None` | `operator` |
+| `exp log log10 atan2 sinh cosh tanh stddev`, vectors, placements, ranges | `function` |
+| a constraint target given a value of another unit | FreeCAD's number, as FreeCAD takes it (`1 / 2 in` → `1 / 2 in * 1 mm ^ 2`, 0.0197 mm) |
+| a quantity property given a value of another unit | `unit` (FreeCAD refuses it) |
+
+`atan2` has no rewrite that holds for every sign without a condition.
+**Every rewrite is exact for every value, not only at the stored one** (the
+rule only sees the stored value): `sweep.test.ts` evaluates each of the 69
+expressions of FreeCAD's own sweep (`sweep-fixtures.ts`, made by
+`scripts/make-expression-sweep.py`: 13 values of a cell `n` from −27 to 27,
+the negative halves included) in Extrudo at each value: 55 translate and are
+equal to FreeCAD's number and unit at all 13 (where FreeCAD has an error,
+a division by zero, a root or a fractional power of a negative number, `7 % 0`,
+Extrudo has one too; no row has a FreeCAD error where Extrudo has a value), 14
+are refused (`round`, `floor`, `ceil`, `trunc` of a length or an angle; `atan2`,
+`exp`, `log`, `log10`, `sinh`, `cosh`, `tanh`: `function`; the conditional and
+the comparison: `operator`). The rounding forms rest on Extrudo's `floor` and
+`ceil` of a plain number being `Math.floor` and `Math.ceil` (their display-unit
+factor is 1 there); `x + 0.5` for an x one unit in the last place below a half
+(0.49999999999999994) rounds up in both forms' floating point, which the rule
+would catch at the stored value. The
+reasons are a closed set (`EXPRESSION_REASONS`, a sentence each): `syntax`,
+`function`, `operator`, `unit`, `reference`, `target`, `unmapped`, `differs`,
+`cycle`, `limit`. Core's errors map by their code (`cycle`) or, where core has
+no code, by its words, pinned by `bind.test.ts`: "Nested more than 256 levels
+deep" (a FreeCAD chain whose tree is too tall for Extrudo's parser) is
+`limit`, "Uses `…`, which has an error" marks a dependent failure that waits a
+round.
+
+**The truth table** (85 rows, 4 of them refused by FreeCAD and so not in the
+file): 74 kept, each evaluating in Extrudo to FreeCAD's stored value; 7
+numbers: `exp`, `log`, `log10` and the two `atan2` rows (`function`),
+the conditional and the comparison (`operator`). `round`, `floor` and `ceil` of
+literals are kept, and `trunc`; all 12 angle rows are kept (`gon` scaled, `pi / 6 rad`
+taken as FreeCAD's number).
+
+**Cycles.** Cells whose formulas read each other (strongly connected
+components, iterative) are not translated: they come in as proven numbers or
+stay out (`cycle`). Expressions the walk writes that close a loop are found by
+Extrudo's own evaluation, which marks every member, and go back to their
+numbers (`cycle`), so a design never gets a cyclic set from an import.
+
+### Limits (hostile files)
+
+| Limit | Value | Past it |
+|---|---|---|
+| An expression's length / tokens / nesting | 4,096 characters / 1,024 / 64 (`MAX_EXPRESSION_*`; the library's longest is 66 characters) | a number (`limit`), checked before any recursion: 1 MB and 100,000 parentheses are refused by the length |
+| Extrudo text the emitter writes | 16,384 characters (`%` repeats its operands) | `limit` |
+| Expressions per object / per import | 256 / 10,000 (S5's 64 per mapped feature stays) | `limit` |
+| Parameters per import | 1,000 (`MAX_IMPORT_PARAMETERS`) | the rest stay out (`limit`) |
+| Cells read per sheet | 10,000 | not read |
+| A name / a group / a comment | 64 / 40 / 300 characters | cut |
+| Renaming tries | 1,000 | the parameter stays out |
+| The rule's rounds per feature | 64 | the rest are numbers (`limit`) |
+
+**Measured** (Ubuntu machine, shared, one run each, `parameter-limits.test.ts`,
+`BENCH=1`): a chain of cells each the one before plus one, imported with
+`sheet_plate`: 100 parameters 0.5 s, evaluating the design 0.9 ms, opening it
+(`loadDocument`) 5 ms; **1,000: 1.9 s, 3.8 ms, 6.5 ms**; 10,000: 141 s, 44 ms,
+63 ms. The import's cost is adding them (each `addParameter` command is linear
+in the design, so the whole is quadratic), not evaluating; 1,000 keeps an
+import's parameters under 2 s and each later edit's evaluation under 4 ms. A
+sheet of a million cells (2.4 MB zipped) imports in 2.2 s: the XML reader reads
+every element (its 4,000,000 elements stop a larger one) and this importer the
+first 10,000 cells. The rule costs one evaluation of the design per feature
+with expressions, plus one per round that took something out (the library: 18
+rounds in all). Also clean: a number that isn't finite in a cell (`limit`), a
+formula Extrudo computes to infinity or divides by zero (out, or the proven
+number), an alias that is a cell address, the same alias in two sheets
+(renamed), two sheets of one label and a name that is another object's label
+(unresolved), inputs of one feature that read each other (`cycle`).
+
+### The report and the app
+
+`FcstdImportReport.parameters` (`ParametersReport`): the parameters that came
+in (name, sheet or variable set, the cell or property, kind, expression,
+group, from its value, its formula or a proven number, and for a proven one
+its formula's reason), the sources left out with why, **every
+`ExpressionEngine` entry of the file with one outcome** (kept with its Extrudo
+text, or the reason it is a number; `unmapped` for what didn't come in), the
+names changed (of names that came in), the rule's rounds. An entry whose target
+came in as a number of the design (a dimension, an input, a plane's distance
+the walk added) and isn't kept has **`number: true`**: only those are "plain
+numbers". An expression on a property Extrudo has no counterpart for, or on an
+object that came in as a shape only, keeps its outcome (`target`) without the
+flag and is in no number of the design. `parameterCounts` adds them up
+by source and kind, target and outcome. `fcstdNotices` adds, only when the file
+has parameters or expressions: "*n* parameters came in from the file's
+spreadsheets; *k* of its *t* expressions came in live and *m* as plain
+numbers." (singular and plural, "spreadsheet and variable set", "its one
+expression", "both of", "all *t* of"; only kept expressions and those with
+`number` are counted, so a file whose expressions are all on other targets
+gets the parameters' sentence alone: "*n* parameters came in from the file's
+spreadsheets."), and when names changed: "*r* names changed to fit Extrudo's
+rules: cos to cos_1, max to max_1 and round to round_1, and 1 more." (each
+name shown is cut to its first 40 characters and "…").
+
+### The library (60 files, `history-corpus.test.ts`)
+
+- **Parameters: 50** came in: 46 from 5 spreadsheets (32 lengths, 14
+  unitless), 4 from a variable set (lengths). 9 sources stayed out: 7
+  variable-set properties that are bools or links (`type`), 1 text cell, 1
+  formula that reads a shape's volume (`reference`).
+- **Expressions: 168** in the files, each with one outcome:
+
+  | Target | Kept | As numbers | Didn't come in |
+  |---|---|---|---|
+  | Sketch dimension | 41 | 0 | 3 (`unmapped`) |
+  | Feature input | 10 | 3 (1 `syntax`, 2 `target`) | 1 (`unmapped`) |
+  | Plane offset | 1 | 2 (`target`) | 0 |
+  | Anything else | 0 | 107 (`target`) | 0 |
+
+- **What stays a number on something that comes in, by reason:** `syntax` 1,
+  a pad length read from a sheet alias that is a unit token (FreeCAD itself
+  drops it when it opens the file); `target` 2, two holes' thread sizes, an
+  enumeration read from a text cell; `target` 2, the offsets of the two tilted
+  sketches, which sit on planes through their own frames (S9), not on an offset
+  plane of an origin plane. The 4 `unmapped` are on a sketch and a pad of a
+  body whose history ends before them. The 107 other targets are Arch objects'
+  sizes, labels and elevations (85, `.Height.Value` and the like), extrusions
+  of the Part workbench (4, S11's), visibility and link properties read from
+  bools and links (8), sketch placement members other than an offset (5), a
+  Draft array's intervals (2), drawing scales (2) and a configuration table's
+  binding and enumeration (2). No `differs`, no `cycle`, no `limit`.
+- **Names changed: 11**, all named constraints whose names a parameter or an
+  earlier sketch's constraint had taken. The rule took 18 rounds over the
+  whole library.
+- **The standing numbers did not move:** 25 bodies with their history (21 whole
+  and 4 after a step), 6 from the file's shape, 4 empty, 266 `import`s, 131
+  references found (the arcs amendment's number; 126 before it), 0 restarts,
+  median 0.1 s a file (slowest 14.4 s).
+- **The fix round (2026-11-15) moved none of these numbers:** the same 50
+  parameters, 52 expressions kept, 11 names changed, 18 rounds; 25 bodies with
+  history, 266 imports, the references as before, 0 restarts. No library expression uses
+  `mod`, `round`, `trunc` or `cbrt`, none is proven by a count, and none has a
+  stored 0 where its sense would be read off the numbers.
+- **What Extrudo's language would save:** no expression in the library uses
+  `%`, a comparison or a condition, and `%` translates anyway; in the truth
+  table a comparison and a conditional would save 2 rows, `trunc`, `exp`,
+  `log`, `log10` and `atan2` 6.
+
+### What S11 to S13 inherit
+
+- S11: the 4 Part-workbench extrusions' `LengthFwd` read variable-set lengths
+  that already come in as parameters; their inputs bind through the same
+  `Binder` once S11 maps the extrusion (its `sources` and a `bind` call in its
+  transaction).
+- S12: expressions on objects outside the bodies the walk reaches are
+  `unmapped` or `target` today; a container's placement members stay numbers.
+- MultiTransform steps' inputs (their children's properties) could bind through
+  the step's `sources` (`0.count1` …), not done here.
+- A configuration table (a sheet's row bound to another through
+  `.cells.Bind…`) maps onto ADR-0059's configurations; 1 library file has one.

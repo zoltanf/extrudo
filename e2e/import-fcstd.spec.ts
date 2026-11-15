@@ -12,6 +12,7 @@ import {
   num,
   rectangle,
 } from '../packages/fcstd/src/history-fixtures';
+import { paramFile } from '../packages/fcstd/src/parameter-parts';
 import { BREP, PATTERN_CASES } from '../packages/fcstd/src/pattern-fixtures';
 import { partObjects } from '../packages/fcstd/src/pattern-parts';
 import { refFile } from '../packages/fcstd/src/reference-parts';
@@ -19,6 +20,14 @@ import { shapesFile } from '../packages/fcstd/src/shape-fixtures';
 import { circle } from '../packages/fcstd/src/sketch-fixtures';
 import { STEP_FIXTURES } from '../packages/fcstd/src/step-parts';
 import { boxBrep } from '../packages/kernel/src/read-brep-test-support';
+import {
+  closeParameters,
+  exportModel,
+  meshOfStl,
+  openParameters,
+  solidFacts,
+} from './benchmark-helpers';
+import { parameterExpression, parametersDialog } from './helpers';
 
 // The FreeCAD import (P6-25 S3, S5 to S9, ADR-0144): its worker reads
 // the file and its own kernel worker turns each stored shape into STEP, and
@@ -321,4 +330,57 @@ test('a groove about a datum line comes in with the datum as a construction axis
     timeout: 60_000,
   });
   await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
+});
+
+test("a FreeCAD file's spreadsheets come in as parameters that drive the model (S10)", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await importFile(page, 'Plate.FCStd', Buffer.from(paramFile('sheet_plate')));
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await expect(
+    page.getByText(
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and features).',
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "11 parameters came in from the file's spreadsheets; all 10 of its expressions came in live.",
+    ),
+  ).toBeVisible();
+  const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
+  await expect(chips).toHaveCount(6, { timeout: 60_000 });
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  const before = solidFacts(meshOfStl(await exportModel(page, 'STL')));
+  expect(before.size.map((v) => Math.round(v))).toEqual([40, 20, 10]);
+
+  await openParameters(page);
+  const dialog = parametersDialog(page);
+  // The sheets' labels are the groups.
+  await expect(dialog.locator('[data-parameter-section="Params"]')).toBeVisible();
+  await expect(dialog.locator('[data-parameter-section="Derived"]')).toBeVisible();
+  for (const name of ['width', 'depth', 'height', 'inset', 'count', 'pitch', 'Params_B6'])
+    await expect(dialog.locator(`[data-parameter-row="${name}"]`)).toBeVisible();
+  // The sketch's named dimension shows the cell it follows; the pattern's length its formula.
+  await expect(await parameterExpression(page, 'Wide')).toHaveValue('width');
+  const width = await parameterExpression(page, 'width');
+  await expect(width).toHaveValue('40 mm');
+  await width.fill('50 mm');
+  await width.press('Enter');
+  await closeParameters(page);
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  // 50 wide now, and the three half holes (pitch = width / 4 * 0.8) still fit.
+  await expect
+    .poll(
+      async () =>
+        solidFacts(meshOfStl(await exportModel(page, 'STL'))).size.map((v) => Math.round(v)),
+      { timeout: 60_000 },
+    )
+    .toEqual([50, 20, 10]);
+  const after = solidFacts(meshOfStl(await exportModel(page, 'STL')));
+  expect(after.volume).toBeCloseTo(10_000 - 3 * ((Math.PI * 9 * 4) / 2), -1);
 });

@@ -190,6 +190,17 @@ export function forgetRemovedPlanes(d: Design): void {
   for (const [key, plane] of made) if (!present.has(plane.id)) made.delete(key);
 }
 
+/**
+ * Takes a plane `placeSketch` made out of the planes later sketches share
+ * (S10: its distance follows one sketch's expression now), so a later sketch
+ * at the same place makes its own.
+ */
+export function releasePlane(d: Design, planeFeature: string): void {
+  const made = madePlanes.get(d);
+  if (!made) return;
+  for (const [key, plane] of made) if (plane.id === planeFeature) made.delete(key);
+}
+
 /** Why a sketch has no Extrudo plane. */
 export const NO_PLANE =
   'its plane is tilted off every origin axis, and Extrudo has no plane for it';
