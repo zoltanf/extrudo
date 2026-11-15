@@ -261,6 +261,17 @@ describe('nearPairsWithin charges all its work', () => {
     expect(tests).toBeGreaterThan(n * widths);
   });
 
+  it('keeps cell numbers exact when every box lies within one base side', () => {
+    // Half the boxes span the whole extent, the rest are points in it.
+    const n = 200;
+    const boxes = new Float64Array(4 * n);
+    for (let i = 0; i < n; i++) {
+      const v = i / n;
+      boxes.set(i % 2 ? [0, 0, 1, 1] : [v, v, v, v], 4 * i);
+    }
+    expect([...nearPairsWithin(boxes)]).toStrictEqual(allPairs(boxes));
+  });
+
   it('refuses through its budget as soon as the work passes it', () => {
     const lines: [number, number, number, number][] = [];
     for (let k = 0; k < 5000; k++) lines.push([k, 0, k + 0.5, 0]);

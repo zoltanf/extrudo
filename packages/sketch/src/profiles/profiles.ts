@@ -98,9 +98,10 @@ export const MAX_PROFILE_COORDINATE = 1e9;
 /**
  * The most segments a sketch's curves may make for its regions to be found
  * (a line is one, an arc or circle one, an ellipse, spline or text one per
- * piece of its polyline): every segment costs a share of every step.
- * Counted curve by curve, before any pair is tested. Real sketches reach
- * about 12,000 (ADR-0020's amendment of 2026-11-15, second).
+ * piece of its polyline, charged before the polyline is made): every
+ * segment costs a share of every step. Counted curve by curve, before any
+ * pair is tested. Real sketches reach about 12,000 (ADR-0020's amendment
+ * of 2026-11-15, second).
  */
 export const MAX_PROFILE_SEGMENTS = 200_000;
 
@@ -113,10 +114,12 @@ export const MAX_PROFILE_POINTS = 2_000_000;
 
 /**
  * The most tests detection may make of curves near each other, cutting
- * each other or not: pairs of segments whose boxes meet, and the regions
- * (and their polygons' points) an outline is tested against to find the
- * region it is a hole of. Checked as they are made. Real sketches reach
- * about 400,000 (ADR-0020's amendment of 2026-11-15, second).
+ * each other or not: the pair search's own work (cells made and looked up,
+ * boxes looked at; `PairSearchStats`), pairs of segments whose boxes meet,
+ * and the levels, regions and polygons' points an outline is tested against
+ * to find the region it is a hole of. Checked as they are counted. Real
+ * sketches reach about 1,000,000 (ADR-0020's amendment of 2026-11-15,
+ * second).
  */
 export const MAX_PROFILE_TESTS = 10_000_000;
 

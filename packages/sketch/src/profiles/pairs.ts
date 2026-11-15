@@ -82,10 +82,8 @@ const MAX_CELLS_LOG2 = 50;
  */
 function levelsOf(base: number, extent: number): (w: number, h: number) => [number, number] {
   const fit = (MAX_SPAN - 1) * base;
-  const finest = Math.max(
-    FINEST,
-    extent > base ? Math.ceil(Math.log2(extent / base)) - MAX_CELLS_LOG2 : FINEST,
-  );
+  const finest =
+    extent > 0 ? Math.max(FINEST, Math.ceil(Math.log2(extent / base)) - MAX_CELLS_LOG2) : 0;
   const up = (side: number) => {
     let k = side > fit ? Math.ceil(Math.log2(side / fit)) : 0;
     while (side > fit * 2 ** k) k++;
