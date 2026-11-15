@@ -35,6 +35,7 @@ import {
   detectProfiles,
   insidePolygon,
   interiorPoint,
+  isTooManyCrossings,
   type Profile,
 } from '@extrudo/sketch/profiles';
 import { sha256Hex } from '@extrudo/storage';
@@ -2006,11 +2007,29 @@ export function unmatchedRegion(
   return `profile region {${wanted.join('|')}} not found in ${sketch} (it has ${count}: ${have.map((k) => `{${k}}`).join(' ')})`;
 }
 
-/** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
+/**
+ * The Extrudo profiles a feature's profile operands select, and the sketch
+ * they are in. A sketch whose curves cross too often for Extrudo to find its
+ * regions (`MAX_PROFILE_CUTS`, ADR-0020's amendment of 2026-11-15) gives
+ * `TOO_MANY_CROSSINGS` too.
+ */
 export function selectProfiles(
   operands: ProfileOperand[],
   sketchOf: (operand: ProfileOperand) => SketchEntry | string,
   note: (text: string) => void = () => {},
+): { profiles: GeomRef[]; entry: SketchEntry } | string {
+  try {
+    return selectProfilesOf(operands, sketchOf, note);
+  } catch (error) {
+    if (isTooManyCrossings(error)) return TOO_MANY_CROSSINGS;
+    throw error;
+  }
+}
+
+function selectProfilesOf(
+  operands: ProfileOperand[],
+  sketchOf: (operand: ProfileOperand) => SketchEntry | string,
+  note: (text: string) => void,
 ): { profiles: GeomRef[]; entry: SketchEntry } | string {
   const profiles: GeomRef[] = [];
   let entry: SketchEntry | undefined;

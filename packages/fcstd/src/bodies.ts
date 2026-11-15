@@ -29,7 +29,7 @@ import {
   sketchEntityRefId,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
-import { insidePolygon } from '@extrudo/sketch/profiles';
+import { insidePolygon, isTooManyCrossings } from '@extrudo/sketch/profiles';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { type CallOutcome, type KernelBudget, NONSENSE_REPLY } from './budget';
 import {
@@ -650,7 +650,16 @@ const boxOf = (ring: readonly Pt[]) => {
  * only where its box holds the point.
  */
 export function profileRefs(handle: SketchHandle, multiFace: boolean): GeomRef[] | string {
-  const regions = handle.regions.filter((r) => !r.text);
+  let all: SketchHandle['regions'];
+  try {
+    all = handle.regions;
+  } catch (error) {
+    // More crossings than Extrudo finds regions for (`MAX_PROFILE_CUTS`).
+    if (isTooManyCrossings(error))
+      return 'its sketch has too many curve crossings to find its profiles';
+    throw error;
+  }
+  const regions = all.filter((r) => !r.text);
   if (regions.length > MAX_PROFILE_REGIONS)
     return `its sketch has ${regions.length} closed regions, more than ${MAX_PROFILE_REGIONS}`;
   const boxes = regions.map((r) => boxOf(r.outer.polygon));

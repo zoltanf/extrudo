@@ -222,7 +222,12 @@ import {
   TextPanel,
 } from '../sketch/panels';
 import { pickDrawing } from '../sketch/pickDrawing';
-import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
+import {
+  profileIdsIn,
+  sketchProfiles,
+  sketchProfilesRefused,
+  TOO_MANY_CROSSINGS,
+} from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import {
   deleteSelection,
@@ -2728,6 +2733,11 @@ function Shell({
     () => sketchContent && faceOutline(sketchContent.plane, sketchContent.data),
     [sketchContent],
   );
+  // Asked only while profiles show: the fills' detection, cached, answers it.
+  const sketchProblem =
+    showProfiles && sketchContent && sketchProfilesRefused(sketchContent.data, fontsVersion)
+      ? TOO_MANY_CROSSINGS
+      : undefined;
   const setOutline = (on: boolean) => {
     if (!activeSketch || !sketchContent) return;
     try {
@@ -3535,6 +3545,7 @@ function Shell({
               onOutline={setOutline}
               onLookAt={() => lookAtSketch(stores)}
               onFinish={() => finishSketch(stores)}
+              problem={sketchProblem}
             />
             {toasts && (
               <Toasts

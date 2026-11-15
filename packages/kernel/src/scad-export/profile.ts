@@ -24,7 +24,7 @@ import {
   type ProfileEdge,
   type ProfileLoop,
 } from '@extrudo/sketch/profiles';
-import type { SketchOutputData } from '../features/sketch';
+import { type SketchOutputData, TOO_MANY_CROSSINGS_TO_PICK } from '../features/sketch';
 import { add, dot, scale, sub } from '../features/vec';
 import { KernelError } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
@@ -230,6 +230,8 @@ function sketchOutput(ctx: CsgContext, feature: FeatureId): SketchOutputData {
       id: feature,
     });
   }
+  // Its regions were never found (ADR-0020's amendment of 2026-11-15).
+  if (data.tooManyCrossings) throw new KernelError(TOO_MANY_CROSSINGS_TO_PICK);
   return data as SketchOutputData;
 }
 

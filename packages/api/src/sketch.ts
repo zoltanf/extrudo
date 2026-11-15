@@ -58,7 +58,13 @@ import {
   slotShape,
   type TextContent,
 } from '@extrudo/sketch/build';
-import { detectProfiles, insidePolygon, type Profile, profileAt } from '@extrudo/sketch/profiles';
+import {
+  detectProfiles,
+  insidePolygon,
+  type Profile,
+  profileAt,
+  TooManyCrossingsError,
+} from '@extrudo/sketch/profiles';
 import type { FeatureOptions } from './design';
 import { ApiError } from './error';
 import { FeatureHandle, ParameterHandle } from './handles';
@@ -450,9 +456,19 @@ export class SketchHandle extends FeatureHandle<'sketch'> {
     return feature ? readSketch(feature)?.plane : undefined;
   }
 
-  /** The regions this sketch holds, with their holes (ADR-0020). */
+  /**
+   * The regions this sketch holds, with their holes (ADR-0020). Throws an
+   * `ApiError` (its `cause` a `TooManyCrossingsError`) when the curves
+   * cross too often for them to be found (`MAX_PROFILE_CUTS`).
+   */
   get regions(): Profile[] {
-    return detectProfiles(this.data);
+    try {
+      return detectProfiles(this.data);
+    } catch (error) {
+      if (error instanceof TooManyCrossingsError)
+        throw new ApiError(error.message, { cause: error });
+      throw error;
+    }
   }
 
   /** Every region this sketch holds, as `profile` references. */

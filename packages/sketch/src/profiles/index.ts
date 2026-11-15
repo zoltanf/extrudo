@@ -7,6 +7,8 @@ export { interiorPoint, windingNumber } from './ink';
 export {
   detectProfiles,
   insidePolygon,
+  isTooManyCrossings,
+  MAX_PROFILE_CUTS,
   PROFILE_TOLERANCE,
   type Profile,
   type ProfileEdge,
@@ -15,5 +17,7 @@ export {
   profileCentroid,
   profileIds,
   profileKey,
+  TOO_MANY_CROSSINGS,
+  TooManyCrossingsError,
   textInkOf,
 } from './profiles';
