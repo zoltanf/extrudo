@@ -15,6 +15,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ENTITIES_PER_UNIT,
   FULL_THREAD_TURNS,
+  TEXT_UNITS,
+  THREAD_UNITS,
   hiddenSketchesNote,
   IMPORT_WORK,
   MAX_IMPORT_ENTITIES,
@@ -254,6 +256,7 @@ describe('the design-wide import budget', () => {
   it('is what one pattern may make, and a full thread is charged the most turns the kernel allows', () => {
     expect(IMPORT_WORK).toBe(1000);
     expect(FULL_THREAD_TURNS).toBe(MAX_TURNS);
+    expect([THREAD_UNITS, TEXT_UNITS]).toEqual([2, 3]);
   });
 
   it('charges a pattern its copies of what it repeats; past the budget the pattern comes in suppressed', () => {
@@ -375,11 +378,12 @@ describe('the design-wide import budget', () => {
       problems: [],
       unreadParameters: 0,
     });
-    // 6 full threads of unknown length (6 × 150), 15 of 4 turns (0.6 cm over 0.15), 4 full ones of 1.5 cm (10 turns): 1000.
+    // Two units a turn: 3 full threads of unknown length (3 × 150 turns), 10 of 4 turns (0.6 cm
+    // over 0.15) and a full one of 1.5 cm (10 turns): 1000.
     const threads = (extra: number): F3dFeature[] => [
-      ...Array.from({ length: 6 }, (_, i) => thread(10 + i, `Full${i}`, true)),
-      ...Array.from({ length: 15 }, (_, i) => thread(30 + i, `Short${i}`, false)),
-      ...Array.from({ length: 4 }, (_, i) => thread(50 + i, `Known${i}`, true, [0.15 * 10])),
+      ...Array.from({ length: 3 }, (_, i) => thread(10 + i, `Full${i}`, true)),
+      ...Array.from({ length: 10 }, (_, i) => thread(30 + i, `Short${i}`, false)),
+      thread(50, 'Known0', true, [0.15 * 10]),
       ...(extra ? [thread(60, 'OneMore', true, [0.15 * extra])] : []),
     ];
     const below = rod();
@@ -407,19 +411,20 @@ describe('the design-wide import budget', () => {
       at: [3, 3],
       width: 0.07 * n,
     });
-    // 900 characters, then `last` more; no feature uses the two sketches, so each costs a unit for its points.
+    // Three units a character: 300 characters, then `last` more; no feature uses the two
+    // sketches, so each costs a unit more for its points.
     const texts = (last: number): F3dFeature[] => [
-      sketch(20, 70, 'Text1', [], { texts: [text(71, 500), text(72, 400)] }),
+      sketch(20, 70, 'Text1', [], { texts: [text(71, 250), text(72, 50)] }),
       sketch(21, 73, 'Text2', [], { texts: [text(74, last)] }),
     ];
     const below = washerWithHole();
-    below.features.push(...texts(98));
+    below.features.push(...texts(32));
     tail(below);
     const a = mapped(below);
     expect(a.suppressed).toEqual([]);
     expect(a.hidden).toEqual([]);
     const past = washerWithHole();
-    past.features.push(...texts(101));
+    past.features.push(...texts(34));
     tail(past);
     const m = mapped(past);
     expect(m.suppressed).toEqual(['Text2']);

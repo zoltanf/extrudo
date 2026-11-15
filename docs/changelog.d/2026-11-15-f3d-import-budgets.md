@@ -1,0 +1,1 @@
+- 2026-11-15 · **Very large f3d designs**: features past the import's limit on repeated work (pattern copies, hole centres, thread turns, text and sketch copies) come in suppressed, with a note, and sketches no feature uses come in hidden past it; you can unsuppress or show them.

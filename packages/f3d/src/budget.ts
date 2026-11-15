@@ -10,15 +10,22 @@ import { type Feature, MAX_PATTERN_INSTANCES } from '@extrudo/core';
 
 /**
  * The units one design's import may spend: as much repeated work as one
- * pattern may make by itself (`MAX_PATTERN_INSTANCES`). A unit is one
- * repeated or made piece of work: one copy of one feature a pattern or mirror
- * repeats (or one body it copies; a pattern costs at least one), one hole
- * centre, one thread turn on one face, one text character, or
- * `ENTITIES_PER_UNIT` points and curves of a sketch copy or of a sketch no
- * feature uses (with the edges of its profiles). The corpus's dearest design
- * spends 173 (a pattern of 160 and two threads), so the margin is about 5.8.
+ * pattern may make by itself (`MAX_PATTERN_INSTANCES`). A unit is about what
+ * the kernel does for one copy of one small feature: one copy of one feature
+ * a pattern or mirror repeats (or one body it copies; a pattern costs at
+ * least one), one hole centre, `THREAD_UNITS` a thread turn on one face,
+ * `TEXT_UNITS` a text character, and one per `ENTITIES_PER_UNIT` points and
+ * curves of a sketch copy or of a sketch no feature uses (with the edges of
+ * its profiles). The corpus's dearest design spends 192 (a pattern of 160,
+ * two threads and a text), so the margin is about 5.2.
  */
 export const IMPORT_WORK = MAX_PATTERN_INSTANCES;
+
+/** The units of one thread turn on one face (a turn costs the kernel about two copies). */
+export const THREAD_UNITS = 2;
+
+/** The units of one text character (a glyph costs the kernel about three copies). */
+export const TEXT_UNITS = 3;
 
 /** Points and curves per unit, for sketch copies and sketches no feature uses. */
 export const ENTITIES_PER_UNIT = 25;
@@ -134,11 +141,11 @@ export class ImportBudget {
         own = refsOf(f, 'points').length;
         worth = Math.max(1, own);
       } else if (f.type === 'thread') {
-        own = refsOf(f, 'faces').length * turns(f, value, fullTurns);
+        own = THREAD_UNITS * refsOf(f, 'faces').length * turns(f, value, fullTurns);
         worth = Math.max(1, own);
       } else if (f.type === 'sketch') {
         own =
-          textCharacters(f) +
+          TEXT_UNITS * textCharacters(f) +
           (copies.has(f.id) ? Math.ceil(sketchEntities(f) / ENTITIES_PER_UNIT) : 0);
       }
       this.#units.set(f.id, worth);
