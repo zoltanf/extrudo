@@ -337,12 +337,20 @@ interface CutCount {
  * Throws `ProfilesRefusedError('size')` when a segment's box reaches past
  * `MAX_PROFILE_COORDINATE` (infinite too), before any pair is tested. A NaN
  * box (a degenerate curve) is no reason: it meets nothing (`overlap` is
- * false for it) and stays out of the pair search.
+ * false for it) and stays out of the pair search. Whether there is one.
  */
-function checkSize(segments: readonly Segment[]): void {
-  for (const s of segments)
-    for (const v of s.box)
-      if (Math.abs(v) > MAX_PROFILE_COORDINATE) throw new ProfilesRefusedError('size');
+function checkSize(segments: readonly Segment[]): boolean {
+  let nan = false;
+  for (let i = 0; i < segments.length; i++) {
+    const b = (segments[i] as Segment).box;
+    for (let k = 0; k < 4; k++) {
+      const v = b[k] as number;
+      if (v > MAX_PROFILE_COORDINATE || v < -MAX_PROFILE_COORDINATE)
+        throw new ProfilesRefusedError('size');
+      if (Number.isNaN(v)) nan = true;
+    }
+  }
+  return nan;
 }
 
 /**
@@ -352,7 +360,7 @@ function checkSize(segments: readonly Segment[]): void {
  * `PROFILE_CUTS_PER_SEGMENT` per segment: their totals don't depend on the
  * order of the pairs, so neither does the refusal.
  */
-function cutSegments(segments: readonly Segment[], allPairs: boolean): void {
+function cutSegments(segments: readonly Segment[], allPairs: boolean, nan: boolean): void {
   const n = segments.length;
   const count: CutCount = {
     inside: 0,
@@ -364,7 +372,7 @@ function cutSegments(segments: readonly Segment[], allPairs: boolean): void {
     // grid (it needs finite boxes), and the others keep their order.
     const index: number[] = [];
     for (let i = 0; i < n; i++)
-      if ((segments[i] as Segment).box.every((v) => !Number.isNaN(v))) index.push(i);
+      if (!nan || !(segments[i] as Segment).box.some(Number.isNaN)) index.push(i);
     // The grid's boxes are wider than `overlap`'s tolerance: it may only
     // pass over pairs that `overlap` refuses too.
     const boxes = new Float64Array(4 * index.length);
@@ -848,8 +856,7 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
     for (const segment of segmentsOf(data, id, e)) segments.push(segment);
   }
   if (segments.length === 0) return [];
-  checkSize(segments);
-  cutSegments(segments, allPairs);
+  cutSegments(segments, allPairs, checkSize(segments));
   const vertices = new Vertices();
   const pieces = piecesOf(segments, vertices);
   const vertexCount = vertices.points.length;
