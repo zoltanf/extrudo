@@ -25,8 +25,8 @@ import { heightOf, type Node, parse, references, type Span } from './parser';
 /**
  * How deep evaluation may go through parameters: the summed nesting of a
  * chain of parameters, each one's own levels counted (`a + 1` is 2, `a` is 1).
- * Far beyond any design, and well inside the stack, so a long chain gets an
- * expression error rather than a stack overflow (ADR-0004 amendment 2026-11-15).
+ * Far beyond any design; past it the parameter is an error like any other
+ * (ADR-0004, amendment of 2026-11-15).
  */
 export const MAX_PARAMETER_DEPTH = 512;
 
@@ -242,8 +242,8 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
 
   /**
    * Evaluates `name`. A chain too deep to follow in one go is evaluated from
-   * where it went past the limit first, so the stack stays short however long
-   * the chain is.
+   * where it went past the limit first, so evaluation never goes deeper than
+   * the limit, however long the chain.
    */
   function evaluateFromTop(name: string): EvaluateResult {
     const order = [name];

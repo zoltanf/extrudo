@@ -352,7 +352,7 @@ function numberExpression(value: number, unit: string): string {
 
 /**
  * The limit an expression from the file goes past, if any: its length or the
- * values in one call (ADR-0004 amendment 2026-11-15). The import keeps its
+ * values in one call (ADR-0004, amendment of 2026-11-15). The import keeps its
  * value instead.
  */
 function pastLimit(expression: string): ExprError | undefined {

@@ -114,3 +114,62 @@ and unitless (§4.3), rather than mathjs, which is too big.
   turn into the create flow.
 - **Scrubbing a value** (dragging a manipulator) creates one command per
   commit, not per frame; coalescing is still open (ADR-0003).
+
+## Amendment, 2026-11-15: limits on length, values per call and depth through parameters
+
+**Decision.** Three limits join the nesting limit (`MAX_DEPTH`, 256 levels, ADR-0083's
+amendment of 2026-10-15). Past any of them the expression is an error like any other,
+with code `limit` on its `ExprError`:
+
+1. **Length.** `parse` reads at most `MAX_EXPRESSION_LENGTH` = 10,000 characters and refuses a
+   longer source before reading it: "Longer than 10000 characters: split it into
+   parameters." The underline marks the part past the limit.
+2. **Values per call.** A call takes at most `MAX_CALL_ARGUMENTS` = 1,000 values: "`min` takes
+   at most 1000 values." with the function's name underlined. A node's height is computed
+   with a loop over its children, never by spreading them into a call.
+3. **Depth through parameters.** `MAX_PARAMETER_DEPTH` = 512 levels, counted as the summed
+   height of the expressions along a chain of parameters (`a + 1 mm` is 2 levels, a bare
+   `a` is 1): `p0 = p1` … `p511 = 1 mm` is 512 deep and evaluates. The first parameter past
+   the limit says "Nested more than 512 levels deep through the parameters it uses.",
+   underlining its reference to the next one, and those that use it say "Uses `p…`, which
+   has an error." like any other dependent. A real cycle keeps its message.
+
+**How the depth is kept.** Each evaluated parameter records its deepest chain (its own height
+plus the deepest of the parameters it uses); a parameter that evaluates has evaluated
+every reference, so the number is exact and the error doesn't depend on the order of the
+list. When the evaluation stack itself would go past the limit (a chain listed from its
+near end), it unwinds uncached and `evaluateFromTop` evaluates the parameter where it went
+past first, then tries again: work stays linear in the chain's length. A parameter reached
+again while one waits for it is in a cycle longer than the limit and gets the depth error.
+
+**Importers.** The f3d import keeps a user parameter's value, with its usual note
+(`Parameter x: "…" kept as its value (<message>).`, the expression quoted up to 80
+characters), when its expression is past the length or values limit, and, when the file's
+parameters go past the depth limit through each other, every one of them with an error
+(found on a scratch document before any is made), so the rest evaluate. A feature input
+whose expression from the file is past a limit takes its value.
+
+**Census behind the numbers** (2026-11-15, every expression in the repository's fixtures,
+66 designs and 616 expressions, and in the 252 designs of the private import corpus as
+imported, 8,474 expressions):
+
+| | repository | corpus | limit | factor |
+|---|---|---|---|---|
+| Longest expression | 31 characters | 73 | 10,000 | 137× |
+| Most values in one call | 0 (no calls) | 1 | 1,000 | 1,000× |
+| Tallest expression | 4 levels | 6 | 256 (`MAX_DEPTH`) | 43× |
+| Deepest chain of parameters | 3 parameters, 7 levels | 4 parameters, 7 levels | 512 levels | 73× |
+
+No fixture or corpus design comes near a limit, so no saved design changes.
+
+**Rejected:**
+- **Counting parameters, not levels.** Each parameter of a chain can nest 255 levels, so a
+  count of parameters says little about how deep evaluation goes; levels count both.
+- **Marking every parameter on the stack when it gets too deep.** Simple, but it gives the
+  error to parameters whose own chain is within the limit and depends on the list order.
+- **Marking only those whose chain to the stack's top is past the limit, and evaluating the
+  rest later.** Exact, but each parameter of a long chain then walks the whole limit again:
+  quadratic in the chain's length.
+- **A smaller length limit (1,000).** Still 13× the longest real expression, but a
+  hand-written formula with long names gets close; 10,000 costs little, since reading is
+  linear in the length.

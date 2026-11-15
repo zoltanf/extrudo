@@ -53,9 +53,9 @@ describe('expression limits: length', () => {
 
   it('refuses a very long expression without reading it', () => {
     const source = `${'1 + '.repeat(250_000)}1`;
-    const t = performance.now();
+    const t = Date.now();
     expect(() => parse(source)).toThrow(`Longer than ${MAX_EXPRESSION_LENGTH} characters`);
-    expect(performance.now() - t).toBeLessThan(50);
+    expect(Date.now() - t).toBeLessThan(50);
   });
 });
 
@@ -82,12 +82,12 @@ describe('expression limits: values per call', () => {
     }
   });
 
-  it('evaluates many long expressions in bounded time', () => {
+  it('refuses many long expressions before reading them', () => {
     // Each is far past the length limit: refused before it is read.
     const d = doc(Array(20).fill(`min(${Array(60_000).fill('1 mm').join(',')})`));
-    const t = performance.now();
+    const t = Date.now();
     const all = results(d);
-    expect(performance.now() - t).toBeLessThan(500);
+    expect(Date.now() - t).toBeLessThan(500);
     expect(all.every((r) => !r.ok)).toBe(true);
   });
 });
@@ -114,13 +114,13 @@ describe('expression limits: depth through parameters', () => {
     expect(pastReversed.slice(0, -1).every((r) => r.ok)).toBe(true);
   });
 
-  it('ends a chain of any length in an expression error, in time linear in its length', () => {
+  it('ends a chain of any length in an expression error', () => {
     // `pk = p(k+1) + 1 mm` nests two levels each.
     const within = MAX_PARAMETER_DEPTH / 2;
     for (const n of [1000, 5000, 20_000]) {
-      const t = performance.now();
+      const t = Date.now();
       const all = results(doc(chain(n)));
-      expect(performance.now() - t).toBeLessThan(n / 2);
+      expect(Date.now() - t).toBeLessThan(n / 2);
       // The far end of the chain keeps its values; the first one past the
       // limit says so, and those that use it have an error from it.
       expect(all.slice(n - within).map((r) => r.ok && r.value)).toEqual(
@@ -160,9 +160,9 @@ describe('expression limits: depth through parameters', () => {
     const n = 5000;
     const ring = chain(n);
     ring[n - 1] = 'p0';
-    const t = performance.now();
+    const t = Date.now();
     const all = results(doc(ring));
-    expect(performance.now() - t).toBeLessThan(2000);
+    expect(Date.now() - t).toBeLessThan(2000);
     expect(all.every((r) => !r.ok)).toBe(true);
     expect(all.some((r) => message(r) === DEEP)).toBe(true);
   });

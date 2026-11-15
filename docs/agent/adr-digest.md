@@ -64,7 +64,15 @@ commands with Immer patches, nested undo transactions, vanilla Zustand stores.
 ADR-0004 (P0-07) set the expression language: Pratt parser in
 `packages/core/src/expr/`, length/angle dimensions, plain numbers take the
 context unit, parameter graph with cycle paths; `<ExpressionInput>` and the
-Parameters dialog live in `apps/web/src/parameters/`. ADR-0007 (P0-04) set the
+Parameters dialog live in `apps/web/src/parameters/`. **Amendment of 2026-11-15
+(limits):** `parse` refuses a source over `MAX_EXPRESSION_LENGTH` (10,000) before
+reading it and a call over `MAX_CALL_ARGUMENTS` (1,000) values; evaluation through
+parameters stops at `MAX_PARAMETER_DEPTH` (512 levels, the summed `heightOf` of the
+chain), exact and order-independent (`chains`), the stack unwinding to
+`evaluateFromTop` when it would go deeper. All three are `ExprError`s with code
+`limit`. Never spread a node's children into a call; a new evaluation path keeps the
+depth counted. The f3d import keeps the value of a file expression past a limit
+(`pastLimit`, `tooDeep` in `map.ts`). ADR-0007 (P0-04) set the
 design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
 wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the

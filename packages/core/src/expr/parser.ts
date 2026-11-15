@@ -97,7 +97,7 @@ export const MAX_DEPTH = 256;
 /**
  * The longest source read, in characters, and the most values one call
  * takes. Typed and imported expressions stay far below both; past them the
- * expression is an error like any other (ADR-0004 amendment 2026-11-15).
+ * expression is an error like any other (ADR-0004, amendment of 2026-11-15).
  */
 export const MAX_EXPRESSION_LENGTH = 10_000;
 export const MAX_CALL_ARGUMENTS = 1000;

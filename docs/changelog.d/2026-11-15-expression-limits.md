@@ -1,0 +1,1 @@
+- 2026-11-15 · **Limits on expressions**: an expression can be at most 10,000 characters long, a call takes at most 1,000 values, and parameters can use each other at most 512 levels deep; past a limit the expression is an error like any other, and an imported f3d file keeps the value instead.
