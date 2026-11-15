@@ -60,13 +60,13 @@ const MIN_CIRCLE_SAMPLES = 96;
  * The most cuts inside curves a sketch may have for its regions to be
  * found: each crossing of two curves cuts both (two cuts), the end of one
  * curve on another cuts that one (one cut); curves that meet end to end
- * cut nothing. So about 50,000 crossings. The regions, and the time and
+ * cut nothing. So about 10,000 crossings. The regions, and the time and
  * memory they take, grow with the cuts: n lines that all cross make n²/2
  * regions. A sketch with more is refused while it is being cut, before
  * the work that grows with them (ADR-0020's amendment of 2026-11-15). The
  * kernel asks the same before it makes the sketch's faces.
  */
-export const MAX_PROFILE_CUTS = 100_000;
+export const MAX_PROFILE_CUTS = 20_000;
 
 /**
  * Every cut a pair of segments makes counts too, ends included: two

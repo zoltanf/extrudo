@@ -85,8 +85,8 @@ function chords(n: number): SketchData {
 }
 
 describe('the crossing limit', () => {
-  it('is 100,000 cuts: about 50,000 crossings', () => {
-    expect(MAX_PROFILE_CUTS).toBe(100_000);
+  it('is 20,000 cuts: about 10,000 crossings', () => {
+    expect(MAX_PROFILE_CUTS).toBe(20_000);
   });
 
   it('accepts a sketch with exactly the limit and refuses one cut more', () => {
