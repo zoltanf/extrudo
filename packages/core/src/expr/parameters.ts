@@ -20,7 +20,15 @@ import {
   type Quantity,
   type Scope,
 } from './evaluate';
-import { type Node, parse, references, type Span } from './parser';
+import { heightOf, type Node, parse, references, type Span } from './parser';
+
+/**
+ * How deep evaluation may go through parameters: the summed nesting of a
+ * chain of parameters, each one's own levels counted (`a + 1` is 2, `a` is 1).
+ * Far beyond any design, and well inside the stack, so a long chain gets an
+ * expression error rather than a stack overflow (ADR-0004 amendment 2026-11-15).
+ */
+export const MAX_PARAMETER_DEPTH = 512;
 
 export type ParameterOwner =
   | { type: 'user'; id: ParameterId }
@@ -134,6 +142,24 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   const results = new Map<string, EvaluateResult>();
   const cycleErrors = new Map<string, ExprError>();
   const stack: string[] = [];
+  const onStack = new Set<string>();
+  /** The summed height of the stack. */
+  let depth = 0;
+  /** Each evaluated parameter's deepest chain through the parameters it uses, its own height included. */
+  const chains = new Map<string, number>();
+  /** Parameters waiting for one deeper down to be evaluated first (see `evaluateFromTop`). */
+  const waiting = new Set<string>();
+  /** Where `member`'s expression refers to `next`, or all of it. */
+  const spanTo = (member: string, next: string): Span => {
+    const own = parsedOf(member);
+    return own.ok ? (findRef(own.node, next) ?? own.node.span) : { start: 0, end: 0 };
+  };
+  const deepError = (member: string, next: string) =>
+    new ExprError(
+      `Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.`,
+      spanTo(member, next),
+      'limit',
+    );
 
   const scope: Scope = {
     lookup(name, span) {
@@ -149,14 +175,12 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   function evaluateParameter(name: string): EvaluateResult {
     const done = results.get(name);
     if (done) return done;
-    const at = stack.indexOf(name);
+    const at = onStack.has(name) ? stack.indexOf(name) : -1;
     if (at >= 0) {
       const cycle = stack.slice(at);
       cycle.forEach((member, i) => {
         const path = [...cycle.slice(i), ...cycle.slice(0, i), member];
-        const next = path[1] as string;
-        const own = parsedOf(member);
-        const span = own.ok ? (findRef(own.node, next) ?? own.node.span) : { start: 0, end: 0 };
+        const span = spanTo(member, path[1] as string);
         cycleErrors.set(
           member,
           new ExprError(
@@ -171,6 +195,9 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
       // Unwinds to the members, which then report their cycle error.
       throw new ExprError('cycle', { start: 0, end: 0 });
     }
+    // One waiting for this evaluation: a cycle too long to follow.
+    const top = stack[stack.length - 1];
+    if (top !== undefined && waiting.has(name)) throw deepError(top, name);
     // biome-ignore lint/style/noNonNullAssertion: only called for known names.
     const source = sources.get(name)!;
     const p = parsedOf(name);
@@ -178,9 +205,34 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     if (!p.ok) {
       result = { ok: false, error: p.error };
     } else {
+      const height = heightOf(p.node);
+      // Past the limit, the stack unwinds uncached and this one is evaluated first.
+      if (depth + height > MAX_PARAMETER_DEPTH) throw new TooDeep(name);
       stack.push(name);
-      result = run(() => coerce(evaluateNode(p.node, scope), source.unit, p.node.span, scope));
-      stack.pop();
+      onStack.add(name);
+      depth += height;
+      try {
+        result = run(() => coerce(evaluateNode(p.node, scope), source.unit, p.node.span, scope));
+      } finally {
+        stack.pop();
+        onStack.delete(name);
+        depth -= height;
+      }
+      // The deepest chain, from those of the parameters it uses: exact when
+      // it evaluates, since then it has evaluated every one of them.
+      let chain = height;
+      let deepest = '';
+      for (const ref of p.refs) {
+        const under = chains.get(ref);
+        if (under !== undefined && height + under > chain) {
+          chain = height + under;
+          deepest = ref;
+        }
+      }
+      chains.set(name, chain);
+      if (result.ok && chain > MAX_PARAMETER_DEPTH) {
+        result = { ok: false, error: deepError(name, deepest) };
+      }
     }
     const cycleError = cycleErrors.get(name);
     if (cycleError) result = { ok: false, error: cycleError };
@@ -188,12 +240,36 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     return result;
   }
 
+  /**
+   * Evaluates `name`. A chain too deep to follow in one go is evaluated from
+   * where it went past the limit first, so the stack stays short however long
+   * the chain is.
+   */
+  function evaluateFromTop(name: string): EvaluateResult {
+    const order = [name];
+    waiting.add(name);
+    while (order.length > 0) {
+      const next = order[order.length - 1] as string;
+      try {
+        evaluateParameter(next);
+        order.pop();
+        waiting.delete(next);
+      } catch (error) {
+        if (!(error instanceof TooDeep)) throw error;
+        order.push(error.name);
+        waiting.add(error.name);
+      }
+    }
+    // biome-ignore lint/style/noNonNullAssertion: just evaluated.
+    return results.get(name)!;
+  }
+
   const parameters = new Map<string, EvaluatedParameter>();
   for (const source of sources.values()) {
     const p = parsedOf(source.name);
     parameters.set(source.name, {
       ...source,
-      result: evaluateParameter(source.name),
+      result: evaluateFromTop(source.name),
       refs: p.ok ? p.refs : [],
     });
   }
@@ -293,6 +369,14 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     },
     evaluate: evaluateExtra,
   };
+}
+
+/** Unwinds an evaluation that went past the depth limit, from the parameter where it did. */
+class TooDeep {
+  readonly name: string;
+  constructor(name: string) {
+    this.name = name;
+  }
 }
 
 function run(fn: () => Quantity): EvaluateResult {
