@@ -52,6 +52,14 @@ export function overBudgetNote(name: string): string {
   return `${name} is suppressed: it would take the design past the import's limit on repeated work (pattern copies, hole centres, thread turns, text and sketch copies). Unsuppress it to build it.`;
 }
 
+/**
+ * The note on an extrude suppressed past `IMPORT_WORK` whose start offset
+ * needed a copy of its sketch: the copy is not made, so it starts on its sketch.
+ */
+export function offsetDroppedNote(name: string): string {
+  return `${name} starts on its sketch's plane, not at its start offset: the copy of its sketch it would start on is not made past the import's limit.`;
+}
+
 /** The one note on the sketches no feature uses that are hidden past `IMPORT_WORK`. */
 export function hiddenSketchesNote(names: readonly string[]): string {
   const shown = names.slice(0, 3).join(', ');
@@ -78,6 +86,14 @@ function textCharacters(feature: Feature): number {
   let n = 0;
   for (const e of Object.values(sketch.sketch.entities)) if (e.type === 'text') n += e.text.length;
   return n;
+}
+
+/** A sketch's units: its text characters, and its size when it is a sketch copy. */
+export function sketchUnits(feature: Feature, copy: boolean): number {
+  return (
+    TEXT_UNITS * textCharacters(feature) +
+    (copy ? Math.ceil(sketchEntities(feature) / ENTITIES_PER_UNIT) : 0)
+  );
 }
 
 /** The ids an input refers to (`feature`, `body`, … references), or none. */
@@ -143,11 +159,7 @@ export class ImportBudget {
       } else if (f.type === 'thread') {
         own = THREAD_UNITS * refsOf(f, 'faces').length * turns(f, value, fullTurns);
         worth = Math.max(1, own);
-      } else if (f.type === 'sketch') {
-        own =
-          TEXT_UNITS * textCharacters(f) +
-          (copies.has(f.id) ? Math.ceil(sketchEntities(f) / ENTITIES_PER_UNIT) : 0);
-      }
+      } else if (f.type === 'sketch') own = sketchUnits(f, copies.has(f.id));
       this.#units.set(f.id, worth);
       total += own;
     }

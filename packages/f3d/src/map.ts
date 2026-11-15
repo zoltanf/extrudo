@@ -56,8 +56,10 @@ import {
   ImportBudget,
   type InputValue,
   MAX_IMPORT_ENTITIES,
+  offsetDroppedNote,
   overBudgetNote,
   sketchEntities,
+  sketchUnits,
   TOO_MANY_ENTITIES,
 } from './budget';
 import { F3dFormatError } from './bytes';
@@ -740,9 +742,20 @@ export function f3dToDesign(
   const moved = new Map<string, SketchEntry | undefined>();
   /** The sketch copies `movedSketch` made (the import's budget charges their size). */
   const copies = new Set<string>();
+  /**
+   * Set when a copy would pass the budget: it is not made, and the feature
+   * asking for it comes in on its own sketch, suppressed (`charge`).
+   */
+  let copyRefused = false;
   const movedSketch = (entry: SketchEntry, cm: number, name: string): SketchEntry | undefined => {
     const key = `${entry.source.id}@${cm}`;
     if (moved.has(key)) return moved.get(key);
+    // The copy is the sketch drawn again, so it costs what a copy of the sketch would.
+    const original = d.doc.features.find((x) => x.id === entry.handle.id);
+    if (original && sketchUnits(original, true) > budget.left) {
+      copyRefused = true;
+      return entry;
+    }
     const m = [...entry.source.frame];
     m[3] = (m[3] as number) + cm * (m[2] as number);
     m[7] = (m[7] as number) + cm * (m[6] as number);
@@ -794,6 +807,8 @@ export function f3dToDesign(
    * size, past `MAX_IMPORT_ENTITIES` the import is refused.
    */
   const charge = (feature: F3dFeature, from: number) => {
+    const refused = copyRefused;
+    copyRefused = false;
     const added = d.doc.features.slice(from);
     if (added.length === 0) return;
     // A full-length thread runs its longest face's length (unknown: the most turns).
@@ -805,7 +820,7 @@ export function f3dToDesign(
     // Once the budget is spent, nothing is evaluated: a count is taken as the most.
     const value: InputValue = budget.left > 0 ? inputValue : () => undefined;
     const units = budget.cost(added, value, copies, fullTurns);
-    if (units > 0 && !budget.spend(units)) {
+    if (refused || (units > 0 && !budget.spend(units))) {
       // Construction planes stay: later sketches on the same plane share them.
       for (const f of added) {
         if (isConstructionType(f.type)) continue;
@@ -813,6 +828,7 @@ export function f3dToDesign(
         d.suppress(f.id);
       }
       report.notes.push(overBudgetNote(feature.name));
+      if (refused) report.notes.push(offsetDroppedNote(feature.name));
     }
     for (const f of added) entities += sketchEntities(f);
     if (entities > MAX_IMPORT_ENTITIES) throw new F3dFormatError(TOO_MANY_ENTITIES);
