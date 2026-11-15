@@ -15,12 +15,12 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ENTITIES_PER_UNIT,
   FULL_THREAD_TURNS,
-  TEXT_UNITS,
-  THREAD_UNITS,
   hiddenSketchesNote,
   IMPORT_WORK,
   MAX_IMPORT_ENTITIES,
   overBudgetNote,
+  TEXT_UNITS,
+  THREAD_UNITS,
   TOO_MANY_ENTITIES,
 } from './budget';
 import type { ParameterValue } from './decode/parameters';

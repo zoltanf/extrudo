@@ -2178,3 +2178,92 @@ design keeping about 50 times what the corpus's largest keeps. The corpus gate
 design by design, timings aside; no `RuntimeError`. A new reader keeps to
 this: a record a file can name many times is decoded once, and what it keeps
 draws on `KEEP_BUDGET`.
+
+## Amendment, 2026-11-15: one budget per design for what an import asks of the app
+
+A file's counts were bounded feature by feature (a pattern's instances by the
+kernel, a hole's centres, a thread's turns, a text's length), but not across
+the design: a file could ask for many patterns, holes, threads, texts and
+sketch copies, and the design would rebuild them each time it opens. Sketches
+no feature uses came in visible, so the app found their profiles at every open,
+work the import never measured. Now one budget per design bounds that work,
+and the import also keeps the design's size and its STEP text within the
+storage's limits. The rules (`budget.ts`, `map.ts`, `brep-step.ts`, `asm.ts`,
+`segment.ts`):
+
+- **One budget per design** (`IMPORT_WORK` = 1,000 units, as much repeated work
+  as one pattern may make by itself, `MAX_PATTERN_INSTANCES`). The mapper
+  charges what each file feature added to the design, in timeline order, from
+  the inputs as the kernel reads them (a count that names a parameter is
+  evaluated; one that doesn't evaluate is charged the most): a pattern or
+  mirror its copies times the units of what it repeats (a feature's own units,
+  at least one; a body one; a pattern at least one unit), a hole one unit a
+  centre, a thread `THREAD_UNITS` (2) a turn a face (its length over its pitch;
+  a full-length thread its longest face's length along its axis, read from the
+  B-rep face's vertices, `F3dThread.lengths`; unknown: the kernel's
+  `MAX_TURNS`, 150), a text `TEXT_UNITS` (3) a character, and a sketch copy an
+  extrude with a start offset begins on one unit per `ENTITIES_PER_UNIT` (25)
+  points and curves. The weights follow the kernel's cost on the Ubuntu dev
+  machine: a small cut's pattern copy 20–110 ms, a hole centre 19 ms, a thread
+  turn 0.22 s, a character 70–300 ms. The corpus's dearest design spends 192
+  (a pattern of 160, two threads, a text), so the margin is about 5.2; no
+  corpus design comes in differently.
+- **Past the budget, suppressed with a note.** A file feature whose charge would
+  pass what is left comes in as mapped, suppressed (every feature it added but
+  construction planes, which later sketches may share), and the import report
+  says "`Name` is suppressed: it would take the design past the import's limit
+  on repeated work (pattern copies, hole centres, thread turns, text and sketch
+  copies). Unsuppress it to build it." A suppressed feature costs the kernel
+  nothing at open and its sketch no profile work in the app. Features after it
+  still import; one that names it (a pattern repeating it, a fillet on its
+  faces, an extrude of its text) errors at recompute as with any suppressed
+  parent. Once the budget is spent nothing more is evaluated: a count is taken
+  as the most, so a pattern, hole, thread or text after that is suppressed too.
+- **Sketches no feature uses** stay visible while they fit what the features
+  left: each is charged its points and curves, then its profiles are found
+  once, in the worker, and charged their edges (one unit per 25 of both). A
+  sketch with text is charged its points and curves only (its characters were
+  charged with it; finding a text's profiles grows faster than its length).
+  Past the budget a sketch comes in hidden (the app finds no profiles for a
+  hidden sketch), with one note: "`Sketch5, Sketch6, Sketch7 and 2 more`: no
+  feature uses these sketches, and finding their profiles would take the design
+  past the import's limit on repeated work, so they are hidden. Show them to
+  see them." A sketch a feature uses is never hidden. The corpus has up to 26
+  such sketches in one design (737 points and curves, 296 profile edges).
+- **The design's size** (`MAX_IMPORT_ENTITIES` = 100,000 sketch points and
+  curves, copies included; the corpus's largest design has 8,090, 5,474 in one
+  sketch): past it the import is refused, before the design is posted from the
+  worker: "This .f3d file is too large to import (its sketches have more than
+  100,000 points and curves)."
+- **STEP text** (`bodiesStep`): one body at most `MAX_STEP_BYTES` =
+  `MAX_ATTACHMENT_BYTES` (25 MB, the storage's limit on one file; was 64 MB),
+  all of a design's bodies together at most `MAX_ATTACHMENTS_BYTES` (100 MB,
+  `stepWithin`); a body past what is left is refused like one past the cap,
+  "unsupported geometry (the bodies' STEP would pass 104857600 bytes)". The
+  corpus's largest body is 4.0 MB, its largest design 23.5 MB. A B-spline is
+  shared within a body already; a body is one solid, so there is nothing
+  further to share.
+- **One value budget per pass over the B-rep streams** (`AsmBudget`,
+  `asmBudget()`, 16 million values, one stream's most): the faces' lookup
+  (`brepFaces`) and each writer (`bodiesStep`, `baseBodiesStep`, which keep the
+  streams they read until they return) spend one budget across their streams;
+  a stream past it stays unread ("ASM: the design's B-rep streams have more
+  than 16000000 values."). The corpus's dearest design reads 4.2 million
+  values in one pass.
+- **Record indexes** (`Segment`): the type table's records (each counted once)
+  and each index may list at most one record per 19 bytes of the bulk stream
+  (the least a record takes: its class tag, id and name length); more is "Bad
+  type table." or "Bad record index.". The corpus's records take 118 bytes or
+  more on average.
+- **User parameters** come in in one step (core's `addParameters`, which reads
+  the names in use once; `parameterNameProblem` gives `addParameter`'s
+  refusals): one at a time, each read every name before it. Same names, IDs,
+  units and notes as before.
+- **Fillet and chamfer edges** find a face once per recipe tag list, and the
+  edges between two B-rep faces once per pair (`readEdgeSets`); a circular
+  pattern reads each record reference once.
+
+Not done here: a recompute watchdog and Cancel while a design first opens, and
+finding profiles off the UI thread (later tasks); the profiles of sketches a
+feature uses are not charged (the mapper's own region search has its budget,
+`MAX_PIECE_WORK`).
