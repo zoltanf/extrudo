@@ -325,8 +325,10 @@ describe('Part trees with the file’s own shapes below a live boolean', () => {
       'import Import Imported',
       'cylinder Cylinder',
       'combine Cut',
-      'box Box',
+      // The file's own shapes come first in a tree: one that can't come in is known before
+      // anything is built on the way to it.
       'import Import Tool',
+      'box Box',
       'combine Cut001',
     ]);
     expect(r.files.size).toBe(2);

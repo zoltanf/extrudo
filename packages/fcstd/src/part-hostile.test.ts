@@ -462,7 +462,9 @@ describe.skipIf(!process.env.BENCH)('a long chain, measured (BENCH=1)', () => {
         maxTreeNodes: 1_000,
       });
       const ms = Date.now() - t0;
-      console.log(`BENCH chain ${n}: ${ms} ms, ${calls} kernel calls, ${r.trees[`F${n}`]}`);
+      process.stderr.write(
+        `S11TIME chain of ${n} fuses: ${ms} ms, ${calls} kernel calls, ${r.trees[`F${n}`]}\n`,
+      );
       expect(r.trees[`F${n}`]).toBe('history');
     });
 });

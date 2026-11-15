@@ -592,24 +592,50 @@ export async function importTrees(
       return !fates.has(name) && n.kind !== 'leaf' && n.kind !== 'body';
     };
     // What the live tops reach through nodes that are built as features.
-    const reached = new Set<string>();
-    const order: string[] = [];
-    for (const t of live) {
-      reached.add(t.top.object.name);
-      for (let i = t.order.length - 1; i >= 0; i--) {
-        const name = t.order[i] as string;
-        if (!reached.has(name)) continue;
-        if (isMapped(name))
-          for (const op of (plan.nodes.get(name) as PlannedNode).operands) reached.add(op);
-      }
-    }
-    const seen = new Set<string>();
-    for (const t of live)
-      for (const name of t.order)
-        if (reached.has(name) && !seen.has(name)) {
-          seen.add(name);
-          order.push(name);
+    /** What the live tops reach through nodes built as features (again whenever a fate changes). */
+    const reach = () => {
+      const out = new Set<string>();
+      for (const t of live) {
+        if (today.has(t.top.object.name)) continue;
+        out.add(t.top.object.name);
+        for (let i = t.order.length - 1; i >= 0; i--) {
+          const name = t.order[i] as string;
+          if (!out.has(name)) continue;
+          if (isMapped(name))
+            for (const op of (plan.nodes.get(name) as PlannedNode).operands) out.add(op);
         }
+      }
+      return out;
+    };
+    let reached = reach();
+    const order: string[] = [];
+    const seen = new Set<string>();
+    // The file's own shapes first (they need nothing): one that can't come in is known before
+    // anything is built on the way to it.
+    const isLeaf = (name: string) => !isMapped(name);
+    for (const first of [true, false])
+      for (const t of live)
+        for (const name of t.order)
+          if (reached.has(name) && !seen.has(name) && isLeaf(name) === first) {
+            seen.add(name);
+            order.push(name);
+          }
+    /** Operands copied for a later use: a pass ends with waste if a copy was never used. */
+    const copied = new Set<string>();
+    /** A node that can't come in: what uses it can't be built either, from now on. */
+    const lose = (name: string) => {
+      lost.add(name);
+      for (const t of live)
+        for (const user of t.order) {
+          const u = plan.nodes.get(user) as PlannedNode;
+          if (!isMapped(user) || !u.operands.includes(name) || today.has(user)) continue;
+          const detail = `its operand ${cleanName(plan.nodes.get(name)?.object.label ?? name, name)} can't come in`;
+          if (tops.has(user)) today.set(user, { kind: 'today', reason: 'operand', detail });
+          else fates.set(user, { kind: 'leaf', reason: 'operand', detail });
+          // What was built for it is no longer needed.
+          if (u.operands.some((op) => built.has(op))) waste = true;
+        }
+    };
     const uses = usesOf(plan, live, (n) => reached.has(n) && isMapped(n));
     const tops = new Set(live.map((t) => t.top.object.name));
     const built = new Map<string, string[]>();
@@ -620,6 +646,8 @@ export async function importTrees(
     let restartsAtRebuild = budget.restarts;
     /** Bodies from before the unit: never measured again (S5's `skip`). */
     const settled = [...known];
+    /** The last rebuild's measures, by body. */
+    let lastBodies: ReadonlyMap<string, ShapeMeasure> = new Map();
 
     const topFrame = (name: string) =>
       live.find((t) => t.top.object.name === name)?.top.chain ?? [];
@@ -644,7 +672,14 @@ export async function importTrees(
       return out;
     };
 
+    let fatesSeen = fates.size + today.size;
     for (const name of order) {
+      // A node no live top needs any more (a fate learnt this pass) is not built.
+      if (fates.size + today.size !== fatesSeen) {
+        fatesSeen = fates.size + today.size;
+        reached = reach();
+      }
+      if (!reached.has(name)) continue;
       const n = plan.nodes.get(name) as PlannedNode;
       const o = n.object;
       const label = cleanName(o.label, o.name);
@@ -723,7 +758,7 @@ export async function importTrees(
         }
         const out = await leaf(o);
         if ('stop' in out) {
-          lost.add(name);
+          lose(name);
           record({
             outcome: 'leaf',
             features: [],
@@ -793,14 +828,21 @@ export async function importTrees(
         continue;
       }
       // A feature: its operands' bodies, copied where they are used again later.
-      let tried = await feature(n, label);
-      // A fuse Extrudo refuses because its shapes don't touch: FreeCAD keeps them apart (S11).
-      const apart =
+      // A fuse of shapes that don't touch: FreeCAD keeps them apart, Extrudo's join refuses them
+      // (S11). Tried first when the stored shape already says so (as many solids as the operands,
+      // their volumes added up): Extrudo takes long to find that large shapes don't touch.
+      const firstApart = n.kind === 'join' && (await looksApart(n));
+      let tried = await feature(n, label, firstApart);
+      let apart = firstApart && !('stop' in tried);
+      if (
         'stop' in tried &&
         n.kind === 'join' &&
-        tried.stop === 'failed' &&
-        /doesn't touch|don't touch/.test(tried.detail ?? '');
-      if (apart) tried = await feature(n, label, true);
+        (firstApart ||
+          (tried.stop === 'failed' && /doesn't touch|don't touch/.test(tried.detail ?? '')))
+      ) {
+        tried = await feature(n, label, !firstApart);
+        apart = !firstApart && !('stop' in tried);
+      }
       if ('stop' in tried) {
         await fail({
           reason: tried.stop,
@@ -829,6 +871,12 @@ export async function importTrees(
       }
     }
 
+    // Anything built that no live top needs now, or a copy nobody used, is waste.
+    {
+      const needed = reach();
+      if ([...built.keys()].some((x) => !needed.has(x))) waste = true;
+      if ([...copied].some((x) => (uses.get(x) ?? 0) > 0)) waste = true;
+    }
     // The tops: their containers' placements, then the file's name, colour and visibility.
     const trees = new Map<string, TreeImport>();
     for (const t of live) {
@@ -909,6 +957,7 @@ export async function importTrees(
               op,
               bodies.map((_, i) => `${c.id}:${i}`),
             );
+            copied.add(op);
             features.push(c.id);
           }
           uses.set(op, left - 1);
@@ -1142,6 +1191,26 @@ export async function importTrees(
       });
     }
 
+    /** Whether a fuse's stored shape is its operands' bodies side by side: their solids and volumes added up. */
+    async function looksApart(n: PlannedNode): Promise<boolean> {
+      const bodies = n.operands.flatMap((op) => built.get(op) ?? []);
+      const ms = bodies.map((b) => lastBodies.get(b));
+      if (bodies.length < 2 || ms.some((m) => m === undefined)) return false;
+      const stored = storedText(doc, n.object);
+      const chain = relChain(n.object);
+      if (!('text' in stored) || !chain) return false;
+      const m = await budget.call(
+        () => budget.kernel.measureStoredShape(stored.text, chain),
+        saneMeasure,
+      );
+      if (m.kind !== 'done') return false;
+      const sum = combined(ms as ShapeMeasure[]);
+      return (
+        m.value.solids === sum.solids &&
+        Math.abs(m.value.volume - sum.volume) <= 1e-6 * Math.max(1, Math.abs(m.value.volume))
+      );
+    }
+
     /** S10's binder on a Part object's feature; the inputs bound (kept). */
     function bindPart(o: FcObject, featureId: string, sources: Record<string, string>): string[] {
       const b = options.binder;
@@ -1207,7 +1276,9 @@ export async function importTrees(
         return { stop: f.reason, ...(f.detail ? { detail: f.detail } : {}) };
       }
       restartsAtRebuild = budget.restarts;
-      return { r: saneRebuild(out.value, sent) as SaneRebuild };
+      const r = saneRebuild(out.value, sent) as SaneRebuild;
+      lastBodies = r.bodies;
+      return { r };
     }
 
     /** The box centre of some bodies (a move turns about it), from a rebuild. */
@@ -1302,6 +1373,7 @@ export async function importTrees(
         }
         restartsAtRebuild = budget.restarts;
         const r = saneRebuild(rebuilt.value, sent) as SaneRebuild;
+        lastBodies = r.bodies;
         const fresh = new Set(design.doc.features.map((x) => x.id).filter((id) => !before.has(id)));
         const failure = r.failed.find((x) => fresh.has(x.feature as FeatureId));
         if (failure) return { stop: 'failed', detail: failure.message };

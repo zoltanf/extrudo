@@ -1238,6 +1238,15 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `50 mm` and reading an STL export back (`exportModel`, `meshOfStl`, `solidFacts`, polled: the
   project's kernel recomputes) gives a box of 50 × 20 × 10 (from 40 × 20 × 10) with three half
   holes still in it.
+- **S11:** the sixth test imports S11's `box_cyl_cut` document (`partFile` from
+  `packages/fcstd/src/part-parts.ts`, FreeCAD's own shapes, its B-rep texts inflated with `fflate`
+  in Node) as `Holed.FCStd`. Notice: "…: 1 of 1 shape, with its history (primitives and
+  booleans)." Chips by `aria-label`: Box, Cylinder, Cut, none in error. The viewport's
+  `data-bodies` reads `Cut:<faces>:30,20,10` (match the faces with `\d+`); the box's chip
+  (`getByRole('button', { name: /^Box/ })` in the Features list) double-clicked opens the region
+  "Edit Box dialog" with the textbox "Length" at "30 mm"; "40 mm", a preview `ok`, Enter, and
+  `data-bodies` becomes `Cut:<faces>:40,20,10` (Extrudo's box grows about its centre: the size
+  is what to assert, not the corner).
 
 ### `e2e/import-mesh.spec.ts`
 

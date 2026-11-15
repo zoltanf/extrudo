@@ -5101,7 +5101,8 @@ against its own stored shape** (S5's check, its own transaction); one that can't
 (S8's `convertStored` + `import`, placed in its top's frame) and the tree carries on above it; **nothing of its operands
 stays**: trees that share an object are one unit inside one outer transaction, and a pass with waste (a failed node with
 built operands, a failed top) is cancelled and built again with what it learnt, at most `MAX_TREE_PASSES` (4); a top that
-can't come in this way is S3's final shape (`outcome: 'shape'`, with the reason). Mapped: whole upright `Part::Box`,
+can't come in this way is S3's final shape (`outcome: 'shape'`, with the reason); a pass builds the stored leaves first and
+stops building what no live top needs; a fuse whose stored shape is its operands side by side is tried `apart` first. Mapped: whole upright `Part::Box`,
 `Cylinder`, `Sphere`, `Torus` (sizes as diameters: `double`), `Cut`/`Common` (one combine per base body, `keepTools` on all
 but the last), `Fuse`/`MultiFuse` (one join; shapes that don't touch: no feature, `apart`), `MultiCommon` (a chain of
 intersects: Extrudo's intersect with several tools is the target with their union), `Fillet`/`Chamfer` (S6's `addDressUp`,
