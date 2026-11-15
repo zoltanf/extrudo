@@ -110,7 +110,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `4BD53E5A…` | Sketch-profile operand | the sketch's record number as decimal UTF-16; record N + 3, when it is `0D57BD2F…`, selects regions. The number can name a record the file no longer holds: the sketch was deleted after the extrude (seen in one outside user's file, 2026-10-22: three extrudes of a body the user hid, their sketch gone) |
 | `0D57BD2F…` | Profile regions | see below |
 | `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`) whose letters are the profile |
-| `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front. A record can be missing from the file (seen: one of 41). Over the corpus (2026-10-15) every table is the first form, starts 2 to 2,306 bytes into its record, has at most 188 entries, and is found by the offset search in at most 1,280 entry reads |
+| `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front. A record can be missing from the file (seen once). Over the corpus (2026-10-15) every table is the first form, starts 2 to 2,306 bytes into its record, has at most 188 entries, and is found by the offset search in at most 1,280 entry reads |
 | `E3849A15…` | Revolve | op u32 (as an extrude's) then u32 2, at payload offset 6 (after an empty property block) or 2; a sketch-profile operand; a geometry operand for the axis; the angles are parameters it owns (`AlongAngle`, …) |
 | `5A1BF548…` | Geometry operand | refers to what it names: a sketch curve (`E2CEFD18…`: u64 0, u64 sketch record, u64 curve tag), an origin axis (`90055C05…`: u64 record), and its geometry in model space (`50AEE8B4…`: a line as start and displacement; `994C518A…`: a point; `CC54ECAD…`: a plane) |
 | `50AEE8B4…` | Model line | 2 zero bytes, start (3 f64), displacement (3 f64) |
@@ -122,9 +122,9 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `FCBB1707…` | Sweep | op u32 at payload offset 6 (after an empty property block; as an extrude's: 1 join, 2 cut, 3 intersect, 4 new body); an operand group with the sketch-profile operand; an operand group of geometry operands, the path, each naming a sketch curve (`E2CEFD18…`) beside the curve in model space; a body operand per body it joins or cuts. Parameters it owns: `AlongDistance` and `AgainstDistance` (how much of the path it follows from the profile, one way and back, as fractions), `TwistAngle`, `TaperAngle`, and `AlongRailDistance`/`AgainstRailDistance` for a guide rail. The profile need not touch the path |
 | `B0B3D9E5…` | Path pattern | what it copies as a mirror's; a count record (`countU`); the distance a parameter it owns (`PathPatternDelta`); the path an operand group of geometry operands, each naming a sketch curve. Its data record (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), the count record, 4 zero bytes, the distance's parameter owner, 5 zero bytes, the original's reference point (3 f64, cm), four flag bytes (`01 00 01 00` in both files: the first is 1 where the copies turn with the path, which the copied faces in the B-rep confirm), the path group, the distance again (f64, cm), the start group and the instance list. The start group (`69EE2FA7…`, an operand-group subtype): 19 bytes, the start point on the path (3 f64, cm), a geometry operand naming the path's first curve. A copy is the original moved by the way the path went from the start point to the point the distance along it, and turned with it about the start point; its instance code is 1 |
 | `65CA3206…` | Split body | an operand group with a body operand per body it splits; an operand group with the splitting tool: a geometry operand naming a plane (record reference) beside the plane in model space (`CC54ECAD…`), as a mirror's. Both sides are kept |
-| `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. The resize spans the whole face, not only the thread's length (verified on the reference STEPs: a 12 mm hole 49 mm long threaded G 1/2 over 16 mm has its bore at the thread's minor, Ø18.9015, along all of it, and a later sketch projects that circle; a Ø51 shaft threaded M50 over 20 of its 30 mm is at the thread's major beyond the thread too). Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
-| `12D00AC0…` | A feature's records in several components | u32 n, n × (wstr GUID, reference: the feature's first record, the one the timeline names); u32 n, n × (wstr GUID, u32 m, m references: every record of the feature, the first among them); a closing reference. A feature acting on bodies of several components (an extrude cutting through two components' bodies, a hole drilled through both) keeps a record per component; the further ones are not on the timeline, are numbered in their own component's count (the timeline's `Extrude5` has an `Extrude3` there), have their own operations (which tag the faces they made in that component's bodies) and a body operand for that component's body, and the same sketch profile and parameter values (checked on one extrude and one hole). Seen in 4 designs (3 extrudes, 1 hole); the record's other instances hold two empty lists |
-| `13BE0EF0…` | Torus primitive (v0) | u32 operation (as an extrude's; 1 join the one seen), a byte, four references (the parameter owners of `MajorDiameter` and `MinorDiameter`, the plane operand `7B6C3C2D…`, a `36D375CD…`), a byte, then a 4 × 4 row-major matrix (cm) in the frame of the plane it was made on; a body operand group for the bodies it joins, then a GUID string. The plane is a geometry operand among its references (`5A1BF548…`, naming an origin plane by `90055C05…`) holding the plane in model space (`CC54ECAD…`): the torus's centre is the matrix's origin and its axis the matrix's Z, taken from that frame (origin, x, y, x × y) into the model. Seen once (the plane YZ, the matrix a move of 7.5 cm along the plane's y): the file's B-rep torus is at (0, 0, 7.5) cm about +X, which the matrix read in model axes, (0, 7.5, 0), is not; the reference STEP agrees (one solid, 91 mm high) |
+| `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. The resize spans the whole face, not only the thread's length (verified on the reference STEPs: a hole threaded over part of its length has its bore at the thread's minor diameter along all of it, and a later sketch projects that circle; a shaft threaded over part of its length is at the thread's major beyond the thread too). Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
+| `12D00AC0…` | A feature's records in several components | u32 n, n × (wstr GUID, reference: the feature's first record, the one the timeline names); u32 n, n × (wstr GUID, u32 m, m references: every record of the feature, the first among them); a closing reference. A feature acting on bodies of several components (an extrude cutting through two components' bodies, a hole drilled through both) keeps a record per component; the further ones are not on the timeline, are numbered in their own component's count (the timeline's `ExtrudeN` can have an `ExtrudeM` there), have their own operations (which tag the faces they made in that component's bodies) and a body operand for that component's body, and the same sketch profile and parameter values (checked on one extrude and one hole). Seen in 4 designs (3 extrudes, 1 hole); the record's other instances hold two empty lists |
+| `13BE0EF0…` | Torus primitive (v0) | u32 operation (as an extrude's; 1 join the one seen), a byte, four references (the parameter owners of `MajorDiameter` and `MinorDiameter`, the plane operand `7B6C3C2D…`, a `36D375CD…`), a byte, then a 4 × 4 row-major matrix (cm) in the frame of the plane it was made on; a body operand group for the bodies it joins, then a GUID string. The plane is a geometry operand among its references (`5A1BF548…`, naming an origin plane by `90055C05…`) holding the plane in model space (`CC54ECAD…`): the torus's centre is the matrix's origin and its axis the matrix's Z, taken from that frame (origin, x, y, x × y) into the model. Seen once (the plane YZ, the matrix a move of d along the plane's y): the file's B-rep torus is at (0, 0, d) about +X, which the matrix read in model axes, (0, d, 0), is not; the reference STEP agrees |
 | `11F1A5CE…` | Circular pattern | the total angle is a parameter it owns (`TotalAngle`); a count record; an operand group of what it repeats; the axis as a geometry operand with a model line |
 | `A085449A…` | Pattern count | refers to the count's parameter value (`countU`) |
 | `D1728651…` | Mirror | shares the circular pattern's base type. An operand group of what it copies: per feature a geometry operand with a record reference and a body link, per body a body operand, per face a face operand; the plane is a geometry operand holding a record reference to the plane it names (origin or construction plane) and that plane in model space (`CC54ECAD…`). Its count record says 2 |
@@ -137,7 +137,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands (or face or body operands, for other features) |
 | `2A94257F…` | Combine (v1) | after the prologue, 14 zero bytes; u32 1 and a reference to its state record (`2E3AC990…`); u64 operation id; u32 n and n references to the tool bodies' operand groups; 8 zero bytes; u32 n and the tools' body links (`D26351F0…`); u32 1 and a reference to the target body's operand group; a wide GUID string (all zeros). Each group holds a body operand (`9716F783…`). Read from two joins whose tools were consumed (one in the corpus with two tools, one in an outside user's file): where a cut, an intersect or "keep tools" goes is unknown, so the import takes a combine as a join only when those zero bytes are zero |
 | `64E40C8E…` | Move (v0) | references its transform (`84E6245F…`) and an operand group of body operands, one per body it moves. The members before them differ between generations (a u32 more in the 2026 file) |
-| `84E6245F…` | Move transform (v2, v3) | 24 zero bytes, u32 kind (5: a free move, in three files; 1: a turn about an axis, with references to the axis and an angle parameter it owns, `RotateAngle`, in one), a byte (0), then a 4 × 4 row-major matrix (16 f64, cm): the bodies' rigid motion, the translation in the last column. Checked against the files' own exports: a move of −2.8 cm in y and one of −7 cm in y (corpus), +0.05 cm in z (an outside user's file, where the moved body then sits where the file's B-rep has it) |
+| `84E6245F…` | Move transform (v2, v3) | 24 zero bytes, u32 kind (5: a free move, in three files; 1: a turn about an axis, with references to the axis and an angle parameter it owns, `RotateAngle`, in one), a byte (0), then a 4 × 4 row-major matrix (16 f64, cm): the bodies' rigid motion, the translation in the last column. Checked against the files' own exports: two moves along one model axis (corpus), +0.05 cm in z (an outside user's file, where the moved body then sits where the file's B-rep has it) |
 | `5662F619…` | Edge or face operand | refers to its recipe; an extrude's face operands name its start face and the face it goes up to |
 | `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face often has the token k of the k-th edge in that feature's list, but the tokens count other faces too (a one-edge fillet's face can be 4; a four-edge chamfer's 1, 2, 5, 6); an extrude's start cap 1, end cap 2, sides from 3. A first face with a negative token (`-1@301`, `-143@304`) names no face of the body: in the 11 such edge recipes of the corpus (all closed edges: a circle where a cylinder meets a cap or a plane) exactly one face follows the second, and the edge runs between the second face and that one (the B-rep holds an edge between those two where the stream kept it) |
 
@@ -153,7 +153,7 @@ STEP (2026-10-16):
   construction plane: then the scope holds no face operand but a geometry
   operand (`5A1BF548…`) with the plane in model space (`CC54ECAD…`; normal
   x × y). 6 such extrudes in 4 designs, none going up to a face; in one the
-  body starts 2 mm off the sketch, where that plane is. None of the 6 has a
+  body starts off the sketch, where that plane is. None of the 6 has a
   `ProfileOffset`, so which way a plane's offset runs is not known (the
   import takes the sketch normal: a plane's stored x × y may face either way).
 - `ProfileOffset` from a start face runs along the face's normal, so against
@@ -168,15 +168,15 @@ STEP (2026-10-16):
 - An up-to-face offset (`Side1Offset`) of a one-sided extrude that starts
   from a face counts the other way: positive ends short of the face (no
   two-sided extrude in the corpus starts from a face). The 5 such extrudes
-  with an offset (4 designs) end short (a body's end face 1 mm before the
-  target in the file's own B-rep); the 6 designs whose extrudes start on the
+  with an offset (4 designs) end short (a body's end face the offset before
+  the target in the file's own B-rep); the 6 designs whose extrudes start on the
   profile plane with an offset match with positive past the face.
 
 Bodies a feature makes several of (an extrude of separate region groups) are
 numbered (`Body<n>`, ascending) in the order of its profile's region groups
 (`group`, from 0), not in any order of where they are: on 22 bodies of 10
 such extrudes (5 designs) whose shape no later feature changed, each body
-paired by its box with the replayed solid of its group, a 5-body extrude among
+paired by its box with the replayed solid of its group, an extrude among
 them whose bodies are numbered out of order in x, y and z alike.
 
 A symmetric extrude's `AlongDistance` is each side's length, not the whole
@@ -190,11 +190,12 @@ flag for one, if there is one, is not known: the head block is the same in all
 version 8, one u32 that is 0, 5 or 10) split them in ways the caps don't.
 
 An up-to-face offset (`Side1Offset`, `Side2Offset`) is measured along the
-target face's normal. Seen on a face slanted to the sketch in one design
-(three extrudes, cosine 0.946, −9.5 mm): taken along the extrude direction the
-replayed end face lies 0.5104 mm (= 9.5 × (1 − 0.946)) off the file's own end
-face (the B-rep face tagged by the extrude, on the target's normal); divided by
-the cosine it lies on it (0.0000 mm, both extrudes whose end face survives).
+target face's normal. Seen on a face slanted to the sketch in one design (an
+offset d, the cosine c between the extrude direction and the target's
+normal): taken along the extrude direction the replayed end face lies
+|d| · (1 − c) off the file's own end face (the B-rep face tagged by the
+extrude, on the target's normal); divided by the cosine it lies on it (to the
+fourth decimal in mm, every extrude whose end face survives).
 The other 13 offsets of the corpus are to faces parallel to the sketch.
 
 A hole's sizes are parameters it owns: `HoleDiameter`, `HoleDepth`,
@@ -205,7 +206,7 @@ per centre (`994C518A…`, model space). A hole placed by its distances to two
 edges (parameters `RefDim1`, `RefDim2`) stores no centre point: its centre is
 where the axis of the cylinder it made (the B-rep faces tagged by its
 operations, of radius `HoleDiameter`/2) meets the start face (the one such hole of
-the corpus: 3.9 mm and 3.8 mm, centre at y 3.9 mm, z 3.8 mm on the plane x = 0). It drills against the plane's normal
+the corpus: distances a and b, its centre at y = a, z = b on the plane x = 0). It drills against the plane's normal
 (x × y). Its own members open with `01 01` (payload offset 10 after a
 property block, 6 without, 2 in version 4); 28 bytes on, a byte is 1 where it
 drills along the normal instead — seen once, on the only hole in the corpus
@@ -248,16 +249,16 @@ designs' records name curve ids no record of the file carries any more (the
 curves were deleted and redrawn under new ids), two name primary ids whose
 secondaries have changed (a curve trimmed in two); in each, the body the
 replay makes agrees with the file's (volume, box) only with the region whose
-boundary follows the pieces still listed. A sixth counts lines in 2
-pieces that the sketch now cuts in 3: the lines run 0.5 mm past the circle
+boundary follows the pieces still listed. A sixth counts lines in fewer
+pieces than the sketch now cuts them in: the lines run a little past the circle
 they would end on (inferred: they were lengthened after the pick).
 
 Two copies of one circle (same centre and radius) cut each other where each
 one starts: a full circle's seam counts as a cut where the other circle
 touches it, and that cut is the **first** of the turn (piece 1 ends there),
 unlike a crossing at the start, which counts at 2π. Inferred from one design
-(two identical circles and three radial lines; all three of its records
-rebuild exactly by this rule and by no other tried).
+(two identical circles crossed by radial lines; every one of its records
+rebuilds exactly by this rule and by no other tried).
 
 A line tangent to an arc (a rounded corner) touches it once: the arc is not
 cut there (verified on a design whose corner arcs are piece 1 of 1).
@@ -329,7 +330,7 @@ generations.
 
 | Type GUID | What | How it is read |
 |---|---|---|
-| `E03784ED…` | Component | its most-derived level references its occurrence list (`904F885E…`), body containers (`CD57BC48…`) and history (`C3423E04…`); its base level references the occurrence list again, then a few bytes, a wstr GUID and the wstr name (the root's is the design's name and version, "Bracket v3") |
+| `E03784ED…` | Component | its most-derived level references its occurrence list (`904F885E…`), body containers (`CD57BC48…`) and history (`C3423E04…`); its base level references the occurrence list again, then a few bytes, a wstr GUID and the wstr name (the root's is the design's name and version, "<name> v<n>") |
 | `C3423E04…` | Component history | references the component's feature list (`3A6D1E62…`) and its own timeline (only the root's lists items: the file keeps one timeline for all components) |
 | `3A6D1E62…` | Feature list | its base level lists the records the component owns; every timeline feature's base level ends with a reference to the feature list of its component |
 | `CD57BC48…` | Body container | its last component reference is its component; a body (`D3937028…`) references the container of the component it is in |
@@ -361,17 +362,17 @@ containers name, then writing the kept solid as STEP and measuring it:
   pastes of bodies, each referenced back, and 10 Body to Component); 7 on the
   timeline, of which 6 hold no body.
 - The kept stream is the body as the base feature left it: in a phone case, the
-  kept body (3,448 faces, operations {178, 301}, 301 the base feature's) is the
-  final body (3,750 faces, {178, 301, 302, 303}) before its two chamfers (302,
-  303), 7,190.8 mm³ against the final 6,994.9 mm³ (the reference export's); where
+  kept body (its faces carry operations {a, b}, b the base feature's) is the
+  final body ({a, b, c, d}) before the chamfers after it (c, d), with fewer faces
+  and more volume than the final one (the reference export's); where
   no feature follows (four designs of boxes and lids) the kept bodies measure as
   the reference export, exactly (their volumes sum to its volume).
 - A face of the kept body keeps the tags of the operation that first made it,
   with the base feature as a later change: a chamfer after it names a face
-  `2439@[178, -301]`, 178 being no record of the operation table.
+  `t@[a, -b]`, a being no record of the operation table.
 - Written as STEP in the kept solid's face order, the faces come back from a
-  STEP reader in that order (3,448 of 3,448 in the phone case, each face's
-  surface type and plane checked).
+  STEP reader in that order (every face of the phone case's kept body, each
+  face's surface type and plane checked).
 - A cut and paste whose source body no record names any more (the body was cut
   out of a base feature, which is then empty) is the case of three designs of
   one power-supply family.
@@ -450,8 +451,8 @@ An offset-faces recipe's face carries two surfaces (`F3dFace` in `model.ts`):
 the face in the solved body (the file's last state), which is the face after
 the offset when nothing moves it again. Verified with the stored planes and
 cones (2026-10-29): in three designs of one family the offset's face is the
-plane z = 0 in `surface` and z = 0.15 cm in `solved`, the body's bottom moved
-1.5 mm inward by a distance of −1.5 mm; in the issue-93 bumper's six offsets
+plane z = 0 in `surface` and z = |d| in `solved`, the body's bottom moved
+inward by a negative distance d; in the issue-93 bumper's six offsets
 the planes of a +1 mm offset lie 0.1 cm apart along their normal, a face
 offset twice shows each offset its own `surface` (the cone's radius 0.60 cm
 before the first, 0.69 cm before the second) and the same `solved` (0.68 cm,
@@ -546,7 +547,7 @@ way than the surface STEP gets, which reverses the face's same-sense but not
 the loop the file wound. A kernel reorients a face whose single loop winds the
 wrong way, but on a torus face bounded by two parallel circles the winding is
 what picks the band between them: such faces on inward tori came out as the
-rest of the torus (473.6 mm² for an export's 101.2) until the loop followed the
+rest of the torus (several times the export's area) until the loop followed the
 file's own flag.
 
 A stream is one or more solids, grouped `body` → `lump` → `shell` → face chain.
@@ -555,8 +556,8 @@ lump's faces; the stream's earlier shells (history) carry no faces. A lump
 can hold more than one shell: a shell's first pointer to another shell is the
 lump's next shell. Together they bound the solid: one is its outside, the others
 voids inside it (27 lumps in the corpus; in a body checked against its STEP
-export, the first shell's 59 faces plus the other shells' 24 made the export's
-83, and the first shell alone had 1.3 % more volume). The chain's order does not
+export, the first shell's faces plus the other shells' made the export's
+faces, and the first shell alone had 1.3 % more volume). The chain's order does not
 say which shell is the outside: it is the first in 21 of the 27 lumps and the
 second in 6, and in all 27 it is the only shell whose box (from its vertices)
 holds every other shell's. A void's faces keep the file's sense (their normals
@@ -584,7 +585,7 @@ solids as the bodies naming them, the creator's operations are on exactly one
 solid for 280 bodies, the container's position for 278 of them; the other two
 are one design whose two bodies the container lists the other way round (the
 reference export names the solids, and its face counts confirm the creators').
-In one stream of nine panels the container lists the bodies #1, #4, #2, #3…
+In one stream of panels the container lists the bodies #1, #4, #2, #3…
 while the creators' operations put the solids in #1, #2, #3, #4 order. A
 feature that made several bodies tags all of them alike, so its bodies cannot
 be told apart by tags. Every body link in the corpus (449) is the only one for
@@ -687,9 +688,9 @@ ends; they cannot be compared knot by knot.
 
 A sweep's own faces carry tokens of its operations: the start cap (on the
 profile's plane) 1, the end cap 2, and the sides numbered on from there, piece
-by piece of the path (one design, a profile of 26 curves along a line, an arc
-and a line: 114–139 along the line, 140–156 round the arc, 157–173 along the
-last line; not every number is a face). A side the profile sweeps in the
+by piece of the path (one design, a profile along a line, an arc and a line:
+a run of numbers along the line, the next run round the arc and the next along
+the last line; not every number is a face). A side the profile sweeps in the
 path's own plane is one face carrying a tag per piece (`119 120 121`). The
 tokens are not read: the importer tells a sweep's faces by geometry, against
 each piece of a flat path of lines, arcs and splines (along a line a profile
