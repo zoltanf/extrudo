@@ -131,7 +131,7 @@ export function parse(source: string): Node {
   // nests the tree without nesting the parser.
   let nesting = 0;
   const tooDeep = (span: Span): never => {
-    throw new ExprError(`Nested more than ${MAX_DEPTH} levels deep.`, span);
+    throw new ExprError(`Nested more than ${MAX_DEPTH} levels deep.`, span, 'limit');
   };
   const grown = <T extends Node>(node: T, children: readonly Node[]): T => {
     let height = 1;

@@ -7,11 +7,14 @@ import {
   createDocument,
   evaluateExpression,
   evaluateParameters,
+  MAX_CALL_ARGUMENTS,
+  MAX_EXPRESSION_LENGTH,
+  MAX_PARAMETER_DEPTH,
   type Parameter,
   type ParameterId,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { CORE_DEPENDENT, CORE_TOO_DEEP, coreReason, sameOrNeg } from './bind';
+import { CORE_DEPENDENT, coreReason, sameOrNeg } from './bind';
 
 describe('core’s errors, as bind.ts tells them apart', () => {
   it('an expression that reads one with an error says "Uses `…`"', () => {
@@ -28,12 +31,30 @@ describe('core’s errors, as bind.ts tells them apart', () => {
     expect(b && !b.ok && CORE_DEPENDENT.test(b.error.message)).toBe(false);
   });
 
-  it('a tree too tall for core’s parser is a limit', () => {
-    const r = evaluateExpression(Array(300).fill('1').join(' + '));
-    expect(r.ok).toBe(false);
-    if (r.ok) return;
-    expect(r.error.message).toMatch(CORE_TOO_DEEP);
-    expect(coreReason(r.error)).toBe('limit');
+  it('core’s limits are limits, by their code', () => {
+    const long = `1${' '.repeat(MAX_EXPRESSION_LENGTH)}`;
+    const many = `max(${Array(MAX_CALL_ARGUMENTS + 1)
+      .fill('1')
+      .join(', ')})`;
+    const tall = Array(300).fill('1').join(' + ');
+    for (const source of [long, many, tall]) {
+      const r = evaluateExpression(source);
+      expect(r.ok).toBe(false);
+      if (r.ok) return;
+      expect(r.error.code).toBe('limit');
+      expect(coreReason(r.error)).toBe('limit');
+    }
+    // Depth through parameters: `p0 = p1`, … `p10000 = 1`.
+    const doc = createDocument({ name: 'x' });
+    const n = MAX_PARAMETER_DEPTH + 1;
+    const parameters = Array.from({ length: n }, (_, i) => ({
+      id: `q${i}` as ParameterId,
+      name: `p${i}`,
+      expression: i === n - 1 ? '1' : `p${i + 1}`,
+      unit: 'unitless' as const,
+    }));
+    const deep = evaluateParameters({ ...doc, parameters }).parameters.get('p0')?.result;
+    expect(deep && !deep.ok && coreReason(deep.error)).toBe('limit');
   });
 
   it('a cycle by its code', () => {

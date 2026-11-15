@@ -295,16 +295,37 @@ describe('f3dToDesign', () => {
       [...evaluated.values()].filter((p) => !p.result.ok).map((p) => [p.name, p.expression]),
     ).toEqual([]);
     expect(evaluated.get('p0')?.result).toMatchObject({ value: n });
-    // The far end keeps its expressions; those past the limit keep their values.
+    // Only the first one past the limit keeps its value; the rest keep their expressions.
     const within = Math.floor((MAX_PARAMETER_DEPTH - 1) / 50) + 1;
+    const cut = n - within - 1;
     const exprs = new Map(doc.parameters.map((p) => [p.name, p.expression]));
-    expect(exprs.get(`p${n - within}`)).toBe(nested(`p${n - within + 1}`));
-    expect(exprs.get(`p${n - within - 1}`)).toBe(`${within + 1} mm`);
-    expect(exprs.get('p0')).toBe(`${n} mm`);
-    expect(report.notes).toContain(
-      `Parameter p0: "${nested('p1').slice(0, 80)}…" kept as its value (Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.).`,
-    );
-    expect(report.notes).toHaveLength(n - within);
+    expect(exprs.get(`p${cut}`)).toBe(`${within + 1} mm`);
+    expect(exprs.get(`p${cut + 1}`)).toBe(nested(`p${cut + 2}`));
+    expect(exprs.get('p0')).toBe(nested('p1'));
+    expect(report.notes).toEqual([
+      `Parameter p${cut}: "${nested(`p${cut + 1}`).slice(0, 80)}…" kept as its value (Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.).`,
+    ]);
+  });
+
+  it('keeps the value of only the parameter past a limit, with its own note', () => {
+    const f3d = washer();
+    const long = `0.8 mm${' + 0 mm'.repeat(2000)}`;
+    f3d.userParameters = [
+      parameter({ name: 'thick', expression: long, user: true, value: 0.08 }),
+      parameter({ name: 'twice', number: 2, expression: 'thick * 2', user: true, value: 0.16 }),
+      parameter({ name: 'odd', number: 3, expression: '1 mm + 1 deg', user: true, value: 0.1 }),
+    ];
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    expect(doc.parameters.map((p) => [p.name, p.expression])).toEqual([
+      ['thick', '0.8 mm'],
+      ['twice', 'thick * 2'],
+      ['odd', '1 mm + 1 deg'],
+    ]);
+    expect(evaluateParameters(doc).parameters.get('twice')?.result).toMatchObject({ value: 1.6 });
+    expect(report.notes.filter((n) => n.startsWith('Parameter '))).toEqual([
+      `Parameter thick: "${long.slice(0, 80)}…" kept as its value (Longer than 10000 characters: split it into parameters.).`,
+    ]);
   });
 
   it('builds the ring between the selected circles', async () => {

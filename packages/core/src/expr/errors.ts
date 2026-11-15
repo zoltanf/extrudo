@@ -4,7 +4,7 @@ import type { Span } from './parser';
  * What kind of error, for callers that act on it: completion leaves out names
  * the field doesn't know (`unknown-name`) or that would refer back to it
  * (`cycle`); an importer keeps a value in place of an expression past a limit
- * on length, values per call or depth through parameters (`limit`).
+ * on length, values per call, nesting or depth through parameters (`limit`).
  */
 export type ExprErrorCode = 'unknown-name' | 'cycle' | 'limit';
 

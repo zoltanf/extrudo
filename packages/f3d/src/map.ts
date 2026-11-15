@@ -366,29 +366,38 @@ function pastLimit(expression: string): ExprError | undefined {
 }
 
 /**
- * The user parameters nested past the depth limit through each other, with
- * the error to note: when one is, every one with an error keeps its value, so
- * the chain is cut and the rest evaluate.
+ * The user parameters nested past the depth limit through the others, each
+ * with its own error. Each keeps its value (as one past the length or values
+ * limit does), so the chain is cut there and those that use it evaluate
+ * against that value; a longer chain is cut again further up.
  */
 function tooDeep(
   parameters: readonly ParameterValue[],
   empty: ExtrudoDocument,
 ): Map<string, ExprError> {
-  const numbers = parameters.filter((p) => p.text === undefined);
-  const evaluated = evaluateParameters({
-    ...empty,
-    parameters: numbers.map((p, i) => ({
-      id: `${i}` as ParameterId,
-      name: p.name,
-      expression: p.expression,
-      unit: unitKind(p.unit) ?? 'length',
-    })),
-  }).parameters;
   const found = new Map<string, ExprError>();
-  const results = [...evaluated.values()].map((p) => p.result);
-  const limit = results.find((r) => !r.ok && r.error.code === 'limit');
-  if (!limit || limit.ok) return found;
-  for (const [name, p] of evaluated) if (!p.result.ok) found.set(name, limit.error);
+  const numbers = parameters.filter((p) => p.text === undefined);
+  const kept = (p: ParameterValue) =>
+    pastLimit(p.expression) || found.has(p.name) ? numberExpression(p.value, p.unit) : p.expression;
+  // Each round cuts every chain at least once, so it ends.
+  for (let round = 0; round <= numbers.length; round++) {
+    const evaluated = evaluateParameters({
+      ...empty,
+      parameters: numbers.map((p, i) => ({
+        id: `${i}` as ParameterId,
+        name: p.name,
+        expression: kept(p),
+        unit: unitKind(p.unit) ?? 'length',
+      })),
+    }).parameters;
+    let cut = false;
+    for (const [name, p] of evaluated) {
+      if (p.result.ok || p.result.error.code !== 'limit' || found.has(name)) continue;
+      found.set(name, p.result.error);
+      cut = true;
+    }
+    if (!cut) break;
+  }
   return found;
 }
 

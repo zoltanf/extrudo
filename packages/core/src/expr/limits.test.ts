@@ -190,3 +190,76 @@ describe('expression limits: depth through parameters', () => {
     }
   });
 });
+
+describe('cycle messages', () => {
+  const named = (names: string[], next = (i: number) => names[(i + 1) % names.length] as string) =>
+    doc(names.map((_, i) => next(i))).parameters.map((p, i) => ({
+      ...p,
+      name: names[i] as string,
+    }));
+
+  it('lists the path of a short cycle, however tall its expressions', () => {
+    // Three members, each nested 200 levels around the next.
+    const names = ['a', 'b', 'c'];
+    const tall = (ref: string) => `${'abs('.repeat(200)}${ref}${')'.repeat(200)}`;
+    const d = { ...doc([]), parameters: named(names, (i) => tall(names[(i + 1) % 3] as string)) };
+    expect(results(d).map(message)).toEqual([
+      '`a` refers to itself: a → b → c → a.',
+      '`b` refers to itself: b → c → a → b.',
+      '`c` refers to itself: c → a → b → c.',
+    ]);
+  });
+
+  it('lists the path of up to 20 members and counts a longer cycle', () => {
+    const cycle = (n: number) => Array.from({ length: n }, (_, i) => `q${i}`);
+    const twenty = results({ ...doc([]), parameters: named(cycle(20)) });
+    expect(message(twenty[0])).toBe(
+      `\`q0\` refers to itself: ${[...cycle(20), 'q0'].join(' → ')}.`,
+    );
+    const more = results({ ...doc([]), parameters: named(cycle(21)) });
+    expect(message(more[0])).toBe('`q0` refers to itself through 21 parameters.');
+  });
+
+  it('counts the members of a cycle of long names, in text linear in its size', () => {
+    const names = Array.from({ length: 300 }, (_, i) => `${'n'.repeat(9000)}${i}`);
+    const all = results({ ...doc([]), parameters: named(names) });
+    const text = all.reduce((n, r) => n + message(r).length, 0);
+    expect(text).toBeLessThan(300 * 9100);
+    expect(message(all[0])).toBe(`\`${names[0]}\` refers to itself through 300 parameters.`);
+    // Two long names: the path would pass 500 characters.
+    const two = results({ ...doc([]), parameters: named(names.slice(0, 2)) });
+    expect(message(two[0])).toBe(`\`${names[0]}\` refers to itself through 2 parameters.`);
+  });
+});
+
+describe('did you mean', () => {
+  it('suggests the same names as before', () => {
+    const d = doc(['wdith + 1 mm', '2 mm', 'hieght', 'lenght * 2', 'qqqq']);
+    d.parameters[1] = { ...(d.parameters[1] as Parameter), name: 'width' };
+    d.parameters[2] = { ...(d.parameters[2] as Parameter), name: 'height' };
+    d.parameters.push({ ...(d.parameters[1] as Parameter), id: pid('id-l'), name: 'length' });
+    expect(results(d).map(message)).toEqual([
+      'Unknown name `wdith`. Did you mean `width`?',
+      'ok',
+      'Unknown name `hieght`. Did you mean `height`?',
+      // Two edits from both: the first in the list, as before.
+      'Unknown name `lenght`. Did you mean `height`?',
+      'Unknown name `qqqq`.',
+      'ok',
+    ]);
+  });
+
+  it('stops suggesting once a budget of work is spent, in many unknown names', () => {
+    const n = 4000;
+    const names = Array.from({ length: n }, (_, i) => `xxxxxxxx${i}`);
+    const d = doc(names.map((name) => `q${name} + 1 mm`));
+    d.parameters = d.parameters.map((p, i) => ({ ...p, name: names[i] as string }));
+    const t = Date.now();
+    const all = results(d);
+    expect(Date.now() - t).toBeLessThan(2000);
+    expect(message(all[0])).toBe('Unknown name `qxxxxxxxx0`. Did you mean `xxxxxxxx0`?');
+    const suggested = all.filter((r) => message(r).includes('Did you mean')).length;
+    expect(suggested).toBeGreaterThan(100);
+    expect(suggested).toBeLessThan(n);
+  });
+});

@@ -78,9 +78,6 @@ const dimKind = (d: FcDim): ParameterKind | undefined =>
           ? 'angle'
           : undefined;
 
-/** Core's parser refusing a tree's height (`bind.ts`'s `CORE_TOO_DEEP`, pinned by its test). */
-const TOO_DEEP = /^Nested more than \d+ levels deep/;
-
 /** The rule's tolerance (`bind.ts`'s `within`, which this module can't import). */
 const within = (got: number, want: number) =>
   Math.abs(got - want) <= 1e-9 * Math.max(1, Math.abs(want));
@@ -859,7 +856,7 @@ export function prepareParameters(
                 ? 'reference'
                 : r.error.code === 'cycle'
                   ? 'cycle'
-                  : TOO_DEEP.test(r.error.message)
+                  : r.error.code === 'limit'
                     ? 'limit'
                     : s.from === 'formula'
                       ? 'differs'
