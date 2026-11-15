@@ -2203,9 +2203,8 @@ storage's limits. The rules (`budget.ts`, `map.ts`, `brep-step.ts`, `asm.ts`,
   B-rep face's vertices, `F3dThread.lengths`; unknown: the kernel's
   `MAX_TURNS`, 150), a text `TEXT_UNITS` (3) a character, and a sketch copy an
   extrude with a start offset begins on one unit per `ENTITIES_PER_UNIT` (25)
-  points and curves. The weights follow the kernel's cost on the Ubuntu dev
-  machine: a small cut's pattern copy 20–110 ms, a hole centre 19 ms, a thread
-  turn 0.22 s, a character 70–300 ms. The corpus's dearest design spends 192
+  points and curves. The weights follow what each costs the kernel, measured
+  on the Ubuntu dev machine. The corpus's dearest design spends 192
   (a pattern of 160, two threads, a text), so the margin is about 5.2; no
   corpus design comes in differently.
 - **Past the budget, suppressed with a note.** A file feature whose charge would
@@ -2263,7 +2262,19 @@ storage's limits. The rules (`budget.ts`, `map.ts`, `brep-step.ts`, `asm.ts`,
   edges between two B-rep faces once per pair (`readEdgeSets`); a circular
   pattern reads each record reference once.
 
+Measured on synthetic designs built like the package's test builders (Node,
+main and this change on the same machine): a design past the budget now asks
+the kernel and the app for what the budget allows, where before the work grew
+with the file's counts; the user parameters map in linear time. On the corpus
+no design comes near a bound, so none imports differently: the gate (replay
+and body check, all 252 designs, against main 72367300) is unchanged design by
+design, timings aside, no design has a suppressed or hidden feature, no
+`RuntimeError`, and decode, map and the B-rep writer take the same time over
+the corpus.
+
 Not done here: a recompute watchdog and Cancel while a design first opens, and
 finding profiles off the UI thread (later tasks); the profiles of sketches a
 feature uses are not charged (the mapper's own region search has its budget,
-`MAX_PIECE_WORK`).
+`MAX_PIECE_WORK`); a sketch copy is still the whole sketch (its regions name
+curve pieces split by every other curve, so a copy of the profile's curves
+alone would find other regions).
