@@ -171,7 +171,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **Parallel worktrees**: `E2E_PORT` sets Playwright's port (default
   4173); give each checkout its own, or `reuseExistingServer` tests
   another checkout's build. A new worktree needs the WASM `dist` folders
-  (copy them, or `pnpm wasm` once CI has published the release).
+  (copy them, or `pnpm wasm` once CI has published the release and
+  `scripts/wasm-pins.json` pins it).
 
 - **Tutorials e2e** (`e2e/tutorials/<name>.spec.ts`, ADR-0080 §4, P6-06 S5): a page
   in `docs/guide/tutorials/<name>.md` has a `<!-- step: <slug> -->` marker, a `###`

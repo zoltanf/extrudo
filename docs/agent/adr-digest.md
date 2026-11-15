@@ -1955,8 +1955,8 @@ and then takes ADR-0066's mesh path unchanged. `packages/openscad`
 (`@extrudo/openscad`, nothing internal) holds OpenSCAD's own WebAssembly
 **snapshot**, pinned by date and sha256 in `openscad.mjs` (a `wasmRelease` whose
 "build" downloads, checks and patches; CI's `openscad` job mirrors it as
-`openscad-<hash>`, `pnpm wasm` fetches it, `ensure` builds when the mirror is
-missing; `dist/` is not in git). Rules a change must keep: **OpenSCAD never runs
+`openscad-<hash>`, `pnpm wasm` fetches it against its pin in
+`scripts/wasm-pins.json`, `ensure` builds when the mirror or its pin is missing; `dist/` is not in git). Rules a change must keep: **OpenSCAD never runs
 in the kernel's thread** — `createNodeCompiler` (`worker_threads`) and
 `createBrowserCompiler` (a nested module worker) run it in a worker of its own,
 **one fresh instance per compile** from the compiled module (no state or cache
