@@ -404,10 +404,16 @@ splines of 20,000 poles: 640,000 segments, 11.7 s, 2.4 GB).
 
 ## Amendment 2026-11-15 (second): work linear in the sketch, and bounded
 
-**What.** Detection's work is now linear in the sketch wherever it has no
-cuts to make, and what stays costly is counted while detecting and refused
-through `ProfilesRefusedError` with a third reason, `curves`. Five rules,
-each keeping the output the same to the last bit:
+**What.** Detection's work without cuts is linear in the segments in the
+steps below (a text's ink, the pair search's grids for boxes of every size,
+a fit spline's system, the hole search, the vertex grid), and everything
+that can still grow faster, or that grows with the sketch at all, is
+charged while detecting against three limits and refused through
+`ProfilesRefusedError` with a third reason, `curves`: the segments and
+sample points (charged before a curve's polyline is made), and the tests of
+curves near each other (the pair search's own work included, charged before
+the cells it stands for are made). Each rule keeps the output the same to
+the last bit:
 
 **A text's outline is laid out once per detection.** The text's polylines
 are sampled once per detection and shared by its segments and its ink
@@ -425,22 +431,36 @@ are keyed by column and row (`Cells`: one number while columns × rows is an
 exact integer, a map per column beyond), never by a grid side capped by the
 extent, so the cell is the median side wherever the curves are.
 
-**A box meets only the boxes near it, whatever its length.** Each box has a
-level `(a, b)`: the fewest doublings of the base side (the median of the
-larger sides, as before) along x and along y after which it spans at most
-4 cells of each. Boxes of one level meet in its grid; a box and one of a
-level wider and taller (or equal in one axis) meet in the wider one's grid,
-where the other spans fewer cells; a box and one wider but lower meet in
-the grid `(wider a, own b)`, where the narrower box is kept too (only when
-such a level exists). Each pair is found once, from the finer box; pairs
-across levels are kept by the lower index, and the pairs still come out
-**in the order of the all-pairs loop** (`i`, then `j`), so the cuts,
-regions, IDs and points stay the same. A sketch whose boxes are all alike
-has one level and no second pass. `pairs.test.ts` compares the search with
-every pair on box sets of several levels (long and tall boxes of many
-lengths, far outliers) and counts its box tests (`PairSearchStats`) for one
-curve at the coordinate limit and for long boxes among short ones: a few
-per box.
+**A box meets only the boxes near it, whatever its size.** Each box has a
+level `(a, b)` (`levelsOf`): the fewest doublings of the base side (the
+median of the larger sides, as before) along x and along y after which it
+spans at most 4 cells of each; a box whose larger side is an eighth of that
+or less goes to a finer level instead, the base side halved the same along
+both axes until it spans at most 4 cells (no finer than 2⁵⁰ cells over the
+extent, so cell numbers stay exact). Boxes of one level meet in its grid; a
+box and one of a level wider and taller (or equal in one axis) meet in the
+wider one's grid, where the other spans fewer cells; a box and one wider
+but lower meet in the grid `(wider a, own b)`, where the wider box is kept
+too (in each such grid of the heights of narrower levels). Each box looks
+only in the levels that can hold a partner (worked out once per level).
+Each pair is found once, from one side; pairs across levels are kept by the
+lower index, and the pairs still come out **in the order of the all-pairs
+loop** (`i`, then `j`), so the cuts, regions, IDs and points stay the same.
+A sketch whose boxes are all alike has one level and no second pass.
+
+The search's own work is charged (`PairSearchStats`, `PairSearchBudget`):
+every cell a box is put in or looked up in, every box looked at there, the
+levels' look lists, and the wider boxes kept in other grids, which are
+counted for all boxes before any is kept. Detection charges it with the
+pairs' tests against `MAX_PROFILE_TESTS` (below), checked as it counts.
+Linear in the boxes for boxes of one level, small boxes among large ones,
+and long boxes among short ones; what is not (many thin boxes side by side
+in one cell, many levels, many wide boxes kept in many grids) is bounded by
+that charge. `pairs.test.ts` compares the search with every pair on box
+sets of several levels (long, tall and small boxes of many sizes, far
+outliers), counts its work for one curve at the coordinate limit, long boxes
+among short ones and small boxes in one large cell (a few tests per box),
+and checks that the budget refuses as soon as it is passed.
 
 **The hole search asks a grid.** From 4,096 outline–region pairs on, a grid
 of the regions' boxes widened sideways by the margin (`BoxesAt`, the same
@@ -458,29 +478,38 @@ while detecting (`Work`, `detectProfilesWork` for tests and censuses), each
 against its own limit, and past one the sketch is refused with the reason
 `curves`:
 
-- **Segments**, `MAX_PROFILE_SEGMENTS` = 200,000 (a line, arc or circle is
-  one; an ellipse, spline or text one per piece of its polyline), and
-  **sample points**, `MAX_PROFILE_POINTS` = 2,000,000 (a line one, an arc
-  or circle its samples, up to 2,048), counted curve by curve before any
-  pair is tested. Every later step is linear in them.
+- **Segments**, `MAX_PROFILE_SEGMENTS` = 200,000, and **sample points**,
+  `MAX_PROFILE_POINTS` = 2,000,000, counted curve by curve before any pair
+  is tested. A line, arc or circle is one segment (an arc or circle its
+  samples in points, up to 2,048). An ellipse, spline or text is charged
+  one segment and one point per piece of its polyline **before the
+  polyline is made**: an ellipse's 96, a spline's from its knots (its spans
+  × the samples per span, `splineSampling`, `splinePolylinePieces`: the
+  curve itself is made first, linear in its points), a text's from its
+  placed curves (a line one, a glyph curve 16; a text has at most 1,000
+  characters). So no curve's polyline or segments are made past the limits.
 - **Tests of curves near each other**, `MAX_PROFILE_TESTS` = 10,000,000:
-  every pair of segments whose boxes meet (counted in `cutPair` after the
-  same `overlap` on either path, so the count depends neither on the order
-  nor on the grid), and in the hole search every region looked at and every
-  point of every polygon a probe is tested against. Checked as they are
-  made.
+  the pair search's own work (above), every pair of segments whose boxes
+  meet (counted in `cutPair` after the same `overlap` on either path), and
+  in the hole search every level and region looked at and every point of
+  every polygon a probe is tested against. None of these depends on the
+  order of the pairs. Checked as they are counted.
 - **Why these.** Segments and points are known before any of the work, the
-  tests as they are made; the regions only after it. A time or memory
+  tests as they are made; the regions only after it. The pair search's
+  charge shares the tests limit because its total stays far under it for
+  every real sketch (below). A time or memory
   budget stays out (the same sketch must give the same answer everywhere).
   The first amendment dropped a limit on segments while other steps were
   not linear in them; now they are, and it bounds what is left.
 - **Real sketches** (counted with the limits lifted): the 1,047 sketches
   of the 252 designs of an f3d corpus (imported) and of the repository's
   fixtures, examples and template reach at most 11,562 segments (99th
-  percentile 5,300), 12,516 points and 401,498 tests; the 39 text sketches
-  at most 6,023 segments. The Vitest suite's own stress sketches reach
-  159,953 segments, 1,019,073 points and 2.4 million tests. So the limits
-  are 17, 160 and 25 times the largest real sketch. Text comes nearest:
+  percentile 5,300), 12,516 points and 963,675 tests (the pair search's
+  work included; 99th percentile 395,981); the 39 text sketches at most
+  6,023 segments. The Vitest suite's own sketches, stress tests included,
+  reach 159,953 segments, 1,019,073 points and 7.7 million tests, all
+  accepted. So the limits are 17, 160 and 10 times the largest real
+  sketch. Text comes nearest:
   every glyph curve is 16 segments, about 200 to 500 a letter by font, so
   the texts of one sketch together may have some 480 (Fredoka) to 1,170
   (JetBrains Mono) characters of ordinary prose.
@@ -500,7 +529,15 @@ with hundreds of separate and nested loops): 1,545 distinct sketches went
 through the code before and after. The whole output's digest is the same
 for all 1,534 the code before accepted; the 11 it refused (the limits'
 own tests) are refused the same way, and none is newly refused. Per
-sketch, interleaved, median of 9 runs: the median time went 0.052 →
-0.038 ms, the median ratio 0.74 (10th–90th percentile 0.56–0.98), and
-1.30 the other way round (mostly the vertex grid's number keys). The six
-digests of `limit.test.ts` are unchanged.
+sketch, interleaved, median of 9 runs: the median ratio is 0.79 (10th–90th
+percentile 0.57–1.11; mostly the vertex grid's number keys). The six
+digests of `limit.test.ts` are unchanged. Seeded random runs besides:
+5,000 box sets (241 million pairs; on cell borders, of no size, of 3 to 16
+base sides, far out, of sizes from 10⁻⁷ to 10⁷ mixed, duplicated, hatched)
+give the same pairs in the same order as the code before and as a test of
+every pair, and `BoxesAt` the same boxes as a test of every box; 6,000
+random sketches (lattice lines, nested and separate squares, circles and
+arcs, texts in every bundled font, fit, control and closed splines,
+ellipses, degenerate curves, at scales from 10⁻³ to 10⁴ and near the
+coordinate limit) give the same output, 149 refused by both and none newly
+refused; 9,000 fit splines the same poles and knots.

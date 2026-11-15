@@ -684,7 +684,16 @@ fits recorded before (400 points, 400 with both tangents, 33 with a start
 tangent) and fits 20,000 points through every one. Closed fit splines were
 already sparse (`solveCyclic`).
 
+**A spline's polyline size before it is sampled** (same day). `splineSampling(entity,
+points)` gives a spline entity's curve and how many segments `curvePolyline`
+samples each span with (16, a conic its own count), and
+`splinePolylinePieces(spline, perSpan)` how many pieces that polyline has,
+from the distinct knots, without sampling it. `curvePolyline` uses the first
+(the same points as before); profile detection uses both to charge a spline
+against its limits before making its polyline (ADR-0020's second amendment
+of 2026-11-15).
+
 | File | What |
 |---|---|
-| `packages/core/src/sketch/curves.ts` | `SparseRow`, `denseRow`; `fitSpline` and `tangentFit` build sparse rows; `solveBanded(rows, rhs)` |
+| `packages/core/src/sketch/curves.ts` | `SparseRow`, `denseRow`; `fitSpline` and `tangentFit` build sparse rows; `solveBanded(rows, rhs)`; `splineSampling`, `splinePolylinePieces` (below) |
 | `packages/core/src/sketch/curves.test.ts` | the digests and the 20,000-point fit |
