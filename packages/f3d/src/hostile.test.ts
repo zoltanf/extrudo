@@ -72,6 +72,34 @@ describe('hostile segments', () => {
     expect(seg.typeOf(7)?.guid).toBe(OTHER);
   });
 
+  it('refuses a record index or type table listing more records than the stream holds', () => {
+    // A bulk stream of `n` minimal records (19 bytes each) and a meta stream listing `n + extra`.
+    const build = (n: number, extra: { table?: number; index?: number }) => {
+      const bulk = new Bytes();
+      const at: number[] = [];
+      for (let i = 0; i < n; i++) {
+        at.push(bulk.out.length);
+        bulk
+          .str8('256')
+          .u64(i + 1)
+          .str8('');
+      }
+      const table = n + (extra.table ?? 0);
+      const index = n + (extra.index ?? 0);
+      const meta = new Bytes().str8('Design1').u32(1).u32(0).u32(0).u32(0).str8('').str8('');
+      meta.u32(0).u32(0).u32(1);
+      meta.str8(OTHER).str8('').u32(0).str8('M').u32(table);
+      for (let i = 0; i < table; i++) meta.u64(i + 1);
+      meta.u32(0).u32(index);
+      for (let i = 0; i < index; i++) meta.u64(i + 1).u64(at[i] ?? 0);
+      meta.u32(0);
+      return () => new Segment(new Uint8Array(meta.out), new Uint8Array(bulk.out));
+    };
+    expect(build(1000, {})().primary.size).toBe(1000);
+    expect(build(1000, { table: 1 })).toThrow('Bad type table.');
+    expect(build(1000, { index: 1 })).toThrow('Bad record index.');
+  });
+
   it('leaves out a record that cannot be framed instead of aborting the import', () => {
     const seg = segment([
       { guid: PARAMETER_OWNER, id: 1, body: [0] },

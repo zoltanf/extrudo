@@ -147,6 +147,19 @@ describe('each referenced record decoded once', () => {
     expect(decodes.recipes).toBe(1);
   });
 
+  it('finds the faces of a recipe once however many edge sets name it, and the sets share them', () => {
+    const d = withOperands(FILLET, 'Fillet', [20, 21], [[30], [30]]);
+    const f = feature(d);
+    expect(f?.type).toBe('fillet');
+    if (f?.type !== 'fillet') return;
+    expect(f.sets).toHaveLength(2);
+    const [a, b] = f.sets.map((s) => s.edges[0]);
+    expect(a?.faces[0]).toBeDefined();
+    expect(b?.faces[0]).toBe(a?.faces[0]);
+    expect(b?.faces[1]).toBe(a?.faces[1]);
+    expect(decodes.recipes).toBe(1);
+  });
+
   it('keeps each of a hole’s centre points once', () => {
     const point = (x: number) => {
       const b = new Bytes().u8(0).u8(0);

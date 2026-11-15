@@ -323,6 +323,13 @@ describe('f3dToDesign', () => {
       ['odd', '1 mm + 1 deg'],
     ]);
     expect(evaluateParameters(doc).parameters.get('twice')?.result).toMatchObject({ value: 1.6 });
+    // The one-step add is otherwise as if the file had the value: same IDs, names and units.
+    const plain = washer();
+    plain.userParameters = f3d.userParameters.map((p) =>
+      p.name === 'thick' ? { ...p, expression: '0.8 mm' } : p,
+    );
+    const same = f3dToDesign(plain, 'Washer').design.toJSON();
+    expect(doc.parameters).toEqual(same.parameters);
     expect(report.notes.filter((n) => n.startsWith('Parameter '))).toEqual([
       `Parameter thick: "${long.slice(0, 80)}…" kept as its value (Longer than 10000 characters: split it into parameters.).`,
     ]);

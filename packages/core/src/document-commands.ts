@@ -145,6 +145,30 @@ export const addParameter = defineCommand<{ parameter: Parameter }>(
   },
 );
 
+/**
+ * Adds parameters in one step, each with `addParameter`'s checks, in order;
+ * the names in use are read once, so many parameters cost what they are
+ * (an importer's: a file may bring thousands). Refuses all of them on the
+ * first that `addParameter` would refuse.
+ */
+export const addParameters = defineCommand<{ parameters: readonly Parameter[] }>(
+  'parameter.addMany',
+  'Add parameters',
+  (draft, { parameters }) => {
+    const taken = parameterNames(draft);
+    const ids = new Set(draft.parameters.map((p) => p.id));
+    for (const parameter of parameters) {
+      const problem = parameterNameProblem(parameter.name, taken);
+      if (problem) throw new CommandError(problem);
+      if (ids.has(parameter.id))
+        throw new CommandError(`Parameter ${parameter.id} already exists.`);
+      taken.add(parameter.name);
+      ids.add(parameter.id);
+      draft.parameters.push(parameter);
+    }
+  },
+);
+
 export const updateParameter = defineCommand<{
   id: ParameterId;
   changes: Partial<Omit<Parameter, 'id'>>;
@@ -670,14 +694,24 @@ function findParameter(draft: DocumentDraft, id: ParameterId) {
   return parameter;
 }
 
+/**
+ * Why `name` can't name a new parameter, with `taken` the names in use (user
+ * and model parameters); undefined when it can.
+ */
+export function parameterNameProblem(
+  name: string,
+  taken: { has(name: string): boolean },
+): string | undefined {
+  if (!PARAMETER_NAME.test(name))
+    return `"${name}" isn't a valid parameter name: use a letter or _ followed by letters, digits or _.`;
+  if (isReservedName(name)) return `"${name}" is a unit, function or constant; pick another name.`;
+  if (taken.has(name)) return `A parameter named "${name}" already exists.`;
+  return undefined;
+}
+
 function checkParameterName(draft: DocumentDraft, name: string): void {
-  if (!PARAMETER_NAME.test(name)) {
-    throw new CommandError(
-      `"${name}" isn't a valid parameter name: use a letter or _ followed by letters, digits or _.`,
-    );
-  }
-  if (isReservedName(name)) {
-    throw new CommandError(`"${name}" is a unit, function or constant; pick another name.`);
+  if (!PARAMETER_NAME.test(name) || isReservedName(name)) {
+    throw new CommandError(parameterNameProblem(name, new Set()) as string);
   }
   if (parameterNames(draft).has(name)) {
     throw new CommandError(`A parameter named "${name}" already exists.`);
