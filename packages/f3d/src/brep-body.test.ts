@@ -4,12 +4,22 @@
  * an unsupported surface, and hostile cycles. Bytes are synthetic, built like
  * `asm.test.ts` does; no real file is used.
  */
+
+import { MAX_ATTACHMENT_BYTES } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
-import { readAsm } from './asm';
+import { asmBudget, readAsm } from './asm';
 import { type AsmBodySolid, asmBodies } from './asm-body';
 import { splinePoint } from './asm-spline';
 import { fileBodies } from './body-check';
-import { keptBody, keptSolidIndex, solidStep, torusSpline, utf16StreamName } from './brep-step';
+import {
+  keptBody,
+  keptSolidIndex,
+  MAX_STEP_BYTES,
+  solidStep,
+  stepWithin,
+  torusSpline,
+  utf16StreamName,
+} from './brep-step';
 import { F3dFormatError } from './bytes';
 
 type V = [number, number, number];
@@ -605,6 +615,37 @@ function cavity(at: number): FaceIn[] {
     ),
   }));
 }
+
+describe("the STEP a design's bodies come to", () => {
+  it('is at most the storage limits: one file each, and one total for them all', () => {
+    expect(MAX_STEP_BYTES).toBe(MAX_ATTACHMENT_BYTES);
+    const box = asmBodies(readAsm(solidStream(boxFaces())))[0] as AsmBodySolid;
+    const size = (solidStep(box).step as string).length;
+    // Room for two and a half: the third is refused, the way a body past the cap is.
+    const write = stepWithin(Math.floor(2.5 * size));
+    expect(write(box).step).toHaveLength(size);
+    expect(write(box).step).toHaveLength(size);
+    expect(write(box)).toEqual({
+      reason: `unsupported geometry (the bodies' STEP would pass ${Math.floor(2.5 * size)} bytes)`,
+    });
+    // Within the total, each body still has the per-body cap only.
+    expect(stepWithin(10 * size)(box).step).toHaveLength(size);
+  });
+
+  it('reads the streams of one pass within one value budget', () => {
+    const stream = solidStream(boxFaces());
+    const values = asmBudget();
+    readAsm(stream, values);
+    const one = asmBudget().values - values.values;
+    expect(one).toBeGreaterThan(0);
+    // Room for one and a half streams: the second is refused, with a plain reason.
+    const pass = { values: Math.floor(1.5 * one) };
+    expect(readAsm(stream, pass)).toHaveLength(readAsm(stream).length);
+    expect(() => readAsm(stream, pass)).toThrow(/the design's B-rep streams have more than/);
+    // Without a budget, each stream has its own caps only.
+    expect(readAsm(stream)).toHaveLength(readAsm(stream).length);
+  });
+});
 
 describe('asmBodies', () => {
   it('reads a box as one solid with six faces, loops and edges', () => {

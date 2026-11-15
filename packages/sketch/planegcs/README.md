@@ -42,7 +42,9 @@ You normally don't build it. `pnpm check`, `pnpm dev` and `pnpm build` run
 `pnpm wasm`, which runs `pnpm planegcs ensure`: it compares
 `dist/.inputs-hash` with a hash of `build.sh`, `Dockerfile` and
 `planegcs.patch` and, if they differ, downloads the matching build from the
-GitHub release `planegcs-<hash>` (with `gh` while the repo is private).
+GitHub release `planegcs-<hash>` (with `gh` when installed). The download must
+have the SHA-256 pinned for it in `scripts/wasm-pins.json` (after a change to
+the inputs: `pnpm wasm:pin` once CI has published, then commit the file).
 
 CI publishes that release: the `planegcs` job in `.github/workflows/ci.yml`
 builds each new input hash once. The shared logic is `scripts/wasm-release.mjs`

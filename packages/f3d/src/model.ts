@@ -5,7 +5,7 @@
  * the file's internal centimetres here; the mapper converts.
  */
 import { designSegments, type Entries, type SegmentFiles, unzip } from './archive';
-import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
+import { type AsmCurve, type AsmFace, type AsmSurface, asmBudget, asmFaces, readAsm } from './asm';
 import { F3dFormatError, finite, Reader } from './bytes';
 import { BASE_FEATURE, type F3dBase, readBase } from './decode/base';
 import { BODY, type BodyFlags, readBody } from './decode/body';
@@ -363,6 +363,11 @@ export interface F3dThread extends FeatureBase {
   spec: ThreadSpec;
   /** The faces it threads, each named by its recipe's first face. */
   faces: F3dFace[];
+  /**
+   * Each face's length along its axis (cm), from its edges' vertices, where
+   * the B-rep tells (`axialLength`): what a full-length thread runs.
+   */
+  lengths?: (number | undefined)[];
 }
 
 export interface F3dTorus extends FeatureBase {
@@ -519,9 +524,11 @@ export function brepFaces(entries: Entries, folder: string): Map<string, AsmFace
   const names = [...entries.keys()]
     .filter((n) => n.startsWith(`${asset}/Breps.BlobParts/`) && /\.smbh?$/.test(n))
     .sort((a, b) => Number(a.endsWith('h')) - Number(b.endsWith('h')));
+  // One budget for the pass: a stream past it stays unread (`AsmBudget`).
+  const budget = asmBudget();
   for (const name of names) {
     try {
-      for (const face of asmFaces(readAsm(entries.get(name) as Uint8Array))) {
+      for (const face of asmFaces(readAsm(entries.get(name) as Uint8Array, budget))) {
         for (const tag of face.tags) {
           const key = `${tag.token}@${tag.design}`;
           const list = out.get(key) ?? [];
@@ -995,6 +1002,9 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     } else if (FEATURE_TYPES[type.guid] === 'CircularPattern') {
       const inside = refsOf;
       const repeated: number[] = [];
+      // Each record reference read once, however many operands name it.
+      const read = new Set<number>();
+      const listed = new Set<number>();
       let objects: F3dCircularPattern['objects'] = 'features';
       let axis: RevolveAxis | undefined;
       let count: ParameterValue | undefined;
@@ -1005,9 +1015,13 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           // A feature it repeats names the body it acted on; the axis does not.
           if (refs.some((r) => seg.typeOf(r)?.guid === BODY_LINK)) {
             for (const r of refs)
-              if (seg.typeOf(r)?.guid === RECORD_REF) {
+              if (seg.typeOf(r)?.guid === RECORD_REF && !read.has(r)) {
+                read.add(r);
                 const record = tryDecode(`record #${r}`, () => readRecordRef(seg, r));
-                if (record !== undefined && !repeated.includes(record)) repeated.push(record);
+                if (record !== undefined && !listed.has(record)) {
+                  listed.add(record);
+                  repeated.push(record);
+                }
               }
           } else axis ??= tryDecode(`axis #${ref}`, () => readAxis(seg, refs));
         } else if (t === PATTERN_COUNT) {
@@ -1070,7 +1084,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           if (face) threaded.push(face);
         }
       }
-      if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
+      if (spec)
+        features.push({
+          type: 'thread',
+          ...base,
+          spec,
+          faces: threaded,
+          lengths: threaded.map((face) => axialLength(face, faces)),
+        });
       else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'PathPattern') {
       const inside = insideOnce;
@@ -1478,6 +1499,34 @@ function faceOf(
 }
 
 /**
+ * A cylinder's or cone's length along its axis (cm): the spread of its edges'
+ * vertices along the axis, on the B-rep face `faceOf` found for it. Undefined
+ * for a copy, another surface, or a face without vertices.
+ */
+function axialLength(face: F3dFace, faces: Map<string, AsmFace[]>): number | undefined {
+  const s = face.surface;
+  const first = face.tags[0];
+  if (s?.kind !== 'cone' || face.instance || !first) return undefined;
+  const design = Math.abs(first.designs[0] ?? -1);
+  const found = statesOf(face.tags, faces.get(`${first.token}@${design}`) ?? [])[0];
+  const norm = Math.hypot(...s.axis);
+  if (found?.surface !== s || !(norm > 0)) return undefined;
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  for (const edge of found.edges)
+    for (const p of edge.points) {
+      const t =
+        ((p[0] - s.center[0]) * s.axis[0] +
+          (p[1] - s.center[1]) * s.axis[1] +
+          (p[2] - s.center[2]) * s.axis[2]) /
+        norm;
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+  return hi > lo && Number.isFinite(hi - lo) ? hi - lo : undefined;
+}
+
+/**
  * A face's states the B-rep streams hold, the one a reference means first. A
  * face keeps a tag per operation that made or later changed it (an offset, a
  * deletion beside it); a recipe's tags list those the face had when the
@@ -1531,7 +1580,17 @@ function readEdgeSets(
   const sizes = [...parameters]
     .sort((a, b) => a.number - b.number)
     .filter((p) => (kind === 'fillet' ? p.kind === 'Radius' : p.kind !== 'TangencyWeight'));
-  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf, instances);
+  // A recipe's tags are decoded once (`recipeOf`), so a face is found once
+  // per tag list however many edges name it; the edges share it.
+  const found = new Map<FaceTag[], F3dFace>();
+  const face = (tags: FaceTag[]) => {
+    let out = found.get(tags);
+    if (!out) {
+      out = faceOf(tags, faces, featureOf, instances);
+      found.set(tags, out);
+    }
+    return out;
+  };
   /** The B-rep key of the face a recipe's tags name: a copy's own face, else the face itself. */
   const keyOf = (tags: FaceTag[]): string | undefined => {
     const t = tags[0];
@@ -1541,10 +1600,15 @@ function readEdgeSets(
       ? `${t.token}@${instance}`
       : `${t.token}@${Math.abs(design)}`;
   };
+  // Once per pair of B-rep keys: the edges between two faces don't depend on which recipe asks.
+  const between = new Map<string, KnownEdge[]>();
   const knownBetween = (a: FaceTag[], b: FaceTag[]): KnownEdge[] => {
     const ka = keyOf(a);
     const kb = keyOf(b);
     if (!ka || !kb) return [];
+    const pair = `${ka} ${kb}`;
+    const done = between.get(pair);
+    if (done) return done;
     const out = new Map<string, KnownEdge>();
     for (const f of faces.get(ka) ?? [])
       for (const e of f.edges) {
@@ -1555,7 +1619,9 @@ function readEdgeSets(
           .join(' ')}`;
         if (!out.has(key)) out.set(key, { curve: e.curve, points: e.points });
       }
-    return [...out.values()];
+    const list = [...out.values()];
+    between.set(pair, list);
+    return list;
   };
   const perSet = kind === 'chamfer' && sizes.length >= 2 * groups.length ? 2 : 1;
   return groups.map((group, i) => {
