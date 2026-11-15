@@ -248,13 +248,18 @@ sketches (random sketches up to 784, a 10,000-pole spline across a line
 none worth counting (a glyph's outline meets itself end to end: 1,223
 segments, 0 cuts inside curves). At the limit a sketch has up to about
 50,000 regions, a hundred times the largest real one. Low enough: right at
-it `detectProfiles` takes about a second and 300–450 MB (318 chords:
-99,870 cuts, 49,622 regions, 1.0 s); one chord more is refused in 50 ms.
+it `detectProfiles` takes about a second and 300 MB more than before the
+call (318 chords: 49,622 regions, 1.0 s; a 223 × 223 grid: 99,456 cuts,
+49,284 regions, 0.92 s, 283 MB; 224 crossing circles: 99,904 cuts, 0.93 s,
+313 MB); one chord, line or circle more is refused in 40–65 ms.
 
 **Early and the same everywhere.** The count is checked after each pair, so
 a refused sketch costs the pairs up to the limit and no more: 100,000 lines
-that all cross (5 billion pairs, 5 billion crossings) are refused after
-about 50,000 pairs (`limit.test.ts` counts the `intersectCurves` calls). The
+that all cross (5 billion pairs and crossings) are refused after about
+50,000 pairs (`limit.test.ts` counts the `intersectCurves` calls), in
+0.43 s and 215 MB, most of both for the 100,000 segments and their grid;
+2,000 lines in 84 ms. What is left is linear in the curves: 1,000 weaving
+splines (112,000 segments) are refused in 0.47 s, 5,000 (560,000) in 1.3 s. The
 total doesn't depend on the order the pairs come in, so the grid's pairs
 and every pair agree. The one constant serves the app and the kernel, so
 they never disagree on whether a sketch has regions:
