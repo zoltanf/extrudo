@@ -242,6 +242,11 @@ right. **Show profiles** in the palette turns the shading off. Select a profile 
 the selection panel shows its area. Curves that don't close, and construction geometry, make no
 profile.
 
+A sketch whose curves cross each other a great many times (about 50,000 crossings, far more than
+a part needs) has no profiles: finding them would take too long. The palette says so under the
+DOF counter, and features that use one of its profiles say why they fail. The curves stay;
+delete or simplify some of them and the profiles come back.
+
 ```widget profiles
 Click regions to select them; flip a switch to open the slot or make the hole construction.
 ```

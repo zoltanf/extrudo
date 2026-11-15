@@ -99,6 +99,8 @@ export const MAX_FILE_FEATURES = 2_000;
  * 250 holes) need hundreds. Measured unloaded at 500 (ADR-0144's S5
  * amendment): a grid of crossing lines 1.1 s and 485 MB, concentric circles
  * 2.1 s and 410 MB; at 1,000 both pass 5 s, the grid in the region detection.
+ * Since ADR-0020's amendment of 2026-11-15 that grid (125,000 cuts) is
+ * refused early by the detection's own crossing limit (`MAX_PROFILE_CUTS`).
  */
 export const MAX_PROFILE_CURVES = 500;
 /** The most closed regions a profile sketch may have for its faces to be picked (each pick tests every region). */

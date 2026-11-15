@@ -190,6 +190,139 @@ put about a thousand candidates in each cell (two 20,000-pole splines spent
 outline, and charges the import's work budget, whose verdicts must not
 move. A sweep on x: quadratic on a hatch of parallel lines.
 
-**Open.** A limit for sketches whose regions run into the millions (refuse
+**Open.** (Done in the amendment of 2026-11-15.) A limit for sketches whose regions run into the millions (refuse
 past a number of pieces, with a message on the sketch, and the kernel
 refusing the same way).
+
+## Amendment 2026-11-15: the crossing limit
+
+**What.** The amendment of 2026-11-10 left the output unbounded: n lines
+that all cross make about n²/2 regions, and a design, a pasted sketch or an
+import with some thousand of them froze the tab or ran it out of memory
+(1,000 lines: 494,000 regions, 10.8 s, 1.6 GB; 2,000 lines: 2 million
+regions, 66 s, 6.5 GB), and the kernel's face build after it took longer
+still. Now `detectProfiles` counts the **cuts inside curves** while it cuts
+(`cutPair`) and throws `TooManyCrossingsError` as soon as there are more
+than **`MAX_PROFILE_CUTS` = 100,000**. A crossing of two curves makes two
+such cuts (one in each), an end of one curve on another makes one, and
+curves that meet end to end make none (a cut within `PROFILE_TOLERANCE` of
+a segment's end doesn't count; on a circle every cut counts). In plain
+words: **about 50,000 crossings**.
+
+**Why this quantity.** It is known before the work that grows with the
+output (pieces, vertices, faces, loops, IDs) and predicts it: every piece
+of the arrangement is a segment or a piece cut off by one of these cuts, so
+there are at most segments + cuts pieces, and the regions are fewer still.
+Measured on the Ubuntu machine (Node 24, `detectProfiles` alone, peak RSS
+of the process, which starts at about 115 MB), the cost per cut is the
+same whatever crosses:
+
+| sketch | cuts inside curves | regions | time | peak RSS |
+|---|---|---|---|---|
+| 300 chords all crossing | 88,888 | 44,145 | 0.82 s | 415 MB |
+| 450 chords | 200,244 | 99,673 | 1.9 s | 497 MB |
+| 1,000 chords | 989,880 | 493,941 | 10.8 s | 1.6 GB |
+| 2,000 chords | 3,961,710 | 1,970,928 | 66 s | 6.5 GB |
+| grid of 200 × 200 lines | 79,998 | 39,601 | 0.85 s | 371 MB |
+| grid of 300 × 300 | 179,998 | 89,401 | 2.0 s | 492 MB |
+| 200 circles all crossing | 79,600 | 39,801 | 0.80 s | 403 MB |
+| 300 circles | 179,400 | 89,701 | 1.8 s | 598 MB |
+| 200 fit splines weaving (22,400 segments) | 102,874 | 51,192 | 1.6 s | 460 MB |
+| 400 such splines | 413,204 | 205,989 | 6.2 s | 1.2 GB |
+
+The alternatives: the crossing points `intersectCurves` finds count the
+joints of every spline's and text's polyline too (two crossing splines of
+20,000 poles find 680,000 and have 84 cuts inside curves); the pieces are
+known only after all the cutting, too late to stop early; the regions
+later still. Time or memory measurements were never an option: the same
+sketch must give the same answer on every machine, in the worker and in
+the app.
+
+**Why 100,000.** Far above real use: the largest real sketch seen (1,045
+sketches of imported and example designs) has 456 regions. Counted in this
+repository: its fixture designs have no cut inside a curve at all; the
+8,959 detections of the whole Vitest suite (templates, examples, imports,
+fuzzing) have at most 40, apart from the profile tests' own stress
+sketches (random sketches up to 784, a 10,000-pole spline across a line
+6,730) and the FreeCAD import's worst case (125,000, below); text has
+none worth counting (a glyph's outline meets itself end to end: 1,223
+segments, 0 cuts inside curves). At the limit a sketch has up to about
+50,000 regions, a hundred times the largest real one. Low enough: right at
+it `detectProfiles` takes about a second and 300–450 MB (318 chords:
+99,870 cuts, 49,622 regions, 1.0 s); one chord more is refused in 50 ms.
+
+**Early and the same everywhere.** The count is checked after each pair, so
+a refused sketch costs the pairs up to the limit and no more: 100,000 lines
+that all cross (5 billion pairs, 5 billion crossings) are refused after
+about 50,000 pairs (`limit.test.ts` counts the `intersectCurves` calls). The
+total doesn't depend on the order the pairs come in, so the grid's pairs
+and every pair agree. The one constant serves the app and the kernel, so
+they never disagree on whether a sketch has regions:
+
+- **The app** (`apps/web/src/sketch/profiles.ts`): `sketchProfiles` gives
+  no profiles for such a sketch (no fills, nothing to pick) and
+  `sketchProfilesRefused` says so; the sketch palette shows
+  `TOO_MANY_CROSSINGS` ("This sketch has too many curve crossings to find
+  its profiles. Remove or simplify curves.") under the DOF counter, the way
+  the counter shows an over-constrained sketch. It is asked only while
+  **Show profiles** is on: then the fills' cached detection answers it.
+- **The kernel's sketch feature** detects the regions *before* its face
+  build (`planarFaces`) and on a refusal makes no faces at all: the sketch
+  ends with a warning (the same text, in the timeline), no `profiles`, and
+  `tooManyCrossings: true` in its output; its curves, points and lines are
+  there as before (paths, holes, revolve axes, projections still work). A
+  feature that picked one of its profiles (`profilePart`, a whole text in
+  `textParts`, the OpenSCAD export's `sketchOutput`) fails with
+  `TOO_MANY_CROSSINGS_TO_PICK` ("Its sketch has too many curve crossings to
+  find its profiles. Remove or simplify curves in the sketch.") instead of
+  "Can't find one of its profiles any more".
+- **The API**: `SketchHandle.regions` (and so `profiles()`, `profileAt`,
+  `profilesInside`) throws an `ApiError` with the same message, its `cause`
+  the `TooManyCrossingsError`, as its other refusals do; the script emitter
+  names such a sketch's profiles by ID (`design.ref`) instead of by a point
+  inside.
+- **The importers**: the f3d import's `selectProfiles` gives its own
+  `TOO_MANY_CROSSINGS` reason (its work budget `MAX_PIECE_WORK` is
+  unchanged), the FreeCAD import's `profileRefs` the same words; both skip
+  the feature with that reason, as before for their own budgets
+  (`isTooManyCrossings` knows the error behind an `ApiError`). The FreeCAD
+  import's worst case at its curve cap, a grid of 250 × 250 lines
+  (125,000 cuts), was refused after the detection by its region cap; it is
+  now refused while it is cut.
+- **Templates** call `detectProfiles` on sketches of their own, far below
+  the limit; a refusal there would be a bug and throws.
+
+No file-format change: the sketch is stored as before and stays editable;
+deleting curves until it is under the limit brings its regions and the
+features on them back.
+
+**Under the limit nothing changes.** The cuts are pushed exactly as before
+(the parameters computed once, then pushed in the same order); only the
+count is new. `limit.test.ts` holds a digest of the whole output of six
+sketches (plate, gear, grid, chords, crossing circles, weaving splines)
+recorded on the code before the limit; the whole Vitest suite's sketches
+were run through the code before and after (below).
+
+**The kernel at the limit.** Its face build costs more per region than the
+detection (`planarFaces` + `profileFaceIds` in Node, same machine): 300
+chords (44,145 faces) 13.6 s and 600 MB; a 200 × 200 grid (39,601) 11.6 s;
+100 crossing circles (9,901) 9.6 s; 100 weaving splines (12,657) 41 s,
+1,990 regions found only in the finer second run. So a sketch right under
+the limit can keep the worker busy for tens of seconds to minutes (it is
+in the worker: the app stays responsive, and the recompute can be
+cancelled). A lower limit would bound that too; 100,000 was kept for the
+detection's budget of about a second (an open question for the owner).
+
+**Considered and dropped.** A time or memory budget (not deterministic).
+Counting the pieces after the cutting (too late: the cutting itself is the
+quadratic part on a refused sketch). A limit on the curves or segments
+(refuses a long spline or a line of text that costs little). A separate
+cheap check before `detectProfiles` (it would repeat the cutting; the
+detection's own cutting stops just as early). A result with a reason
+instead of a throw (every caller would change; with a typed error only the
+callers that must go on catch it, and the rest fail loudly).
+
+**Still not bounded.** Work that grows without crossings: boxes that
+overlap without crossing (10,000 concentric circles: 50 million pairs,
+16.5 s, no cut inside a curve), and the linear work of a huge polyline (two
+crossing splines of 20,000 poles: 640,000 segments, 11.7 s, 2.4 GB).
