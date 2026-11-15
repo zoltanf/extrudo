@@ -28,7 +28,15 @@
  * (`profileKey`, `profileIds`; P2-02).
  */
 import type { SketchData, SketchEntity, SketchEntityId, TextCurveId, Vec2 } from '@extrudo/core';
-import { curvePolyline, placeText, textPolylines } from '@extrudo/core';
+import {
+  curvePolyline,
+  placeText,
+  SPLINE_SEGMENTS_PER_SPAN,
+  splinePolyline,
+  splinePolylinePieces,
+  splineSampling,
+  textPolylines,
+} from '@extrudo/core';
 import {
   type Curve,
   dist,
@@ -317,15 +325,38 @@ function textLinesOf(lines: TextLines, data: SketchData, id: SketchEntityId) {
   return out;
 }
 
+/**
+ * Counts `pieces` more segments and points of one curve's polyline before
+ * it is sampled, and refuses the sketch if they don't fit under the limits:
+ * no polyline is built past them.
+ */
+function chargePolyline(work: Work, pieces: number): void {
+  work.segments += pieces;
+  work.points += pieces;
+  if (tooMuch(work)) throw new ProfilesRefusedError('curves');
+}
+
+/**
+ * The segments of one curve. A polyline curve (ellipse, spline, text) is
+ * charged its pieces before it is sampled (`chargePolyline`); a line, arc or
+ * circle is one segment, charged by the caller.
+ */
 function segmentsOf(
   data: SketchData,
   id: SketchEntityId,
   e: SketchEntity,
   lines: TextLines,
+  work: Work,
 ): Segment[] {
   const point = (ref: SketchEntityId): Vec2 | undefined => {
     const p = data.entities[ref];
     return p?.type === 'point' ? [p.x, p.y] : undefined;
+  };
+  const chain = (curve: SketchEntityId, line: readonly Vec2[], out: Segment[]) => {
+    for (let i = 1; i < line.length; i++) {
+      const s = lineSegment(curve, line[i - 1] as Vec2, line[i] as Vec2);
+      if (s) out.push(s);
+    }
   };
   const one = (s: Segment | undefined) => (s ? [s] : []);
   switch (e.type) {
@@ -350,27 +381,39 @@ function segmentsOf(
       if (sweep <= 1e-12) sweep = TAU;
       return one(arcSegment(id, c, dist(c, s), from, sweep, false));
     }
-    case 'ellipse':
-    case 'spline': {
+    case 'ellipse': {
+      // `curvePolyline`'s fixed number of pieces.
       const line = curvePolyline(data, e);
       if (!line) return [];
+      chargePolyline(work, line.length - 1);
       const out: Segment[] = [];
-      for (let i = 1; i < line.length; i++) {
-        const s = lineSegment(id, line[i - 1] as Vec2, line[i] as Vec2);
-        if (s) out.push(s);
-      }
+      chain(id, line, out);
+      return out;
+    }
+    case 'spline': {
+      // The curve first (linear in its points), its pieces from its knots,
+      // and only then its polyline (`curvePolyline`'s, the same samples).
+      const points = e.points.map(point);
+      if (!points.every((p) => p !== undefined)) return [];
+      const { spline, perSpan } = splineSampling(e, points as Vec2[]);
+      chargePolyline(work, splinePolylinePieces(spline, perSpan));
+      const out: Segment[] = [];
+      chain(id, splinePolyline(spline, perSpan), out);
       return out;
     }
     case 'text': {
       // One chain of line segments per placed sub-curve; the sub-curve ID
       // (`<text>.<k>`) is the segment's curve, so region IDs hash sub-IDs.
-      const out: Segment[] = [];
-      for (const [cid, poly] of textLinesOf(lines, data, id)) {
-        for (let i = 1; i < poly.length; i++) {
-          const s = lineSegment(cid as SketchEntityId, poly[i - 1] as Vec2, poly[i] as Vec2);
-          if (s) out.push(s);
-        }
+      // Its pieces from the placed curves, before they are sampled.
+      if (!lines.has(id)) {
+        let pieces = 0;
+        for (const c of placeText(data, id).curves)
+          pieces += c.kind === 'line' ? 1 : splinePolylinePieces(c, SPLINE_SEGMENTS_PER_SPAN);
+        chargePolyline(work, pieces);
       }
+      const out: Segment[] = [];
+      for (const [cid, poly] of textLinesOf(lines, data, id))
+        chain(cid as SketchEntityId, poly, out);
       return out;
     }
   }
@@ -979,13 +1022,16 @@ function detect(
     const e = data.entities[id] as SketchEntity;
     if (e.type === 'point' || e.construction) continue;
     // A loop, not a spread: a long spline has more segments than a call takes arguments.
-    for (const segment of segmentsOf(data, id, e, lines)) {
-      segments.push(segment);
-      work.segments++;
-      work.points += segment.points;
+    const made = segmentsOf(data, id, e, lines, work);
+    for (const segment of made) segments.push(segment);
+    // A line, arc or circle: one segment, its points from its samples.
+    if (e.type === 'line' || e.type === 'circle' || e.type === 'arc') {
+      for (const segment of made) {
+        work.segments++;
+        work.points += segment.points;
+      }
+      if (tooMuch(work)) throw new ProfilesRefusedError('curves');
     }
-    // Curve by curve: no more than one curve's segments past the limits.
-    if (tooMuch(work)) throw new ProfilesRefusedError('curves');
   }
   if (segments.length === 0) return [];
   cutSegments(segments, allPairs, checkSize(segments), work);

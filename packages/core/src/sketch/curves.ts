@@ -995,6 +995,28 @@ export function splineCurve(entity: SketchSpline, points: Vec2[]): BSpline {
 
 // Polylines --------------------------------------------------------------------
 
+/**
+ * A spline entity's curve and how many segments `curvePolyline` samples each
+ * of its spans with: `SPLINE_SEGMENTS_PER_SPAN`, a conic's own count.
+ */
+export function splineSampling(
+  entity: SketchSpline,
+  points: Vec2[],
+): { spline: BSpline; perSpan: number } {
+  const spline = splineCurve(entity, points);
+  if (entity.mode !== 'conic') return { spline, perSpan: SPLINE_SEGMENTS_PER_SPAN };
+  const spans = new Set(spline.knots).size - 1;
+  return {
+    spline,
+    perSpan: Math.max(CONIC_SEGMENTS_PER_SPAN, Math.ceil(CONIC_MIN_SEGMENTS / spans)),
+  };
+}
+
+/** How many pieces `splinePolyline(spline, perSpan)` has (one point fewer), without sampling it. */
+export function splinePolylinePieces(spline: BSpline, perSpan = SPLINE_SEGMENTS_PER_SPAN): number {
+  return (new Set(spline.knots).size - 1) * perSpan;
+}
+
 /** Segments for a full circle or ellipse; arcs use a share of these. */
 export const CIRCLE_SEGMENTS = 96;
 
@@ -1048,13 +1070,8 @@ export function curvePolyline(data: SketchData, entity: SketchEntity): Vec2[] | 
     case 'spline': {
       const points = entity.points.map(at);
       if (!points.every((p) => p !== undefined)) return undefined;
-      const spline = splineCurve(entity, points as Vec2[]);
-      if (entity.mode !== 'conic') return splinePolyline(spline);
-      const spans = new Set(spline.knots).size - 1;
-      return splinePolyline(
-        spline,
-        Math.max(CONIC_SEGMENTS_PER_SPAN, Math.ceil(CONIC_MIN_SEGMENTS / spans)),
-      );
+      const { spline, perSpan } = splineSampling(entity, points as Vec2[]);
+      return splinePolyline(spline, perSpan);
     }
     case 'text':
       // A text is many curves: its callers that must see text use `textPolylines`.
