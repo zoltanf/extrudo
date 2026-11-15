@@ -2084,3 +2084,40 @@ tooth moves out to the hole by `tolerance` instead of the hole being filled in
 get a thin sleeve that a later cut left as a loose body). Corpus: a pipe
 adapter 1.505 % → 1.604 % (still a mismatch; its knurl pattern also leaves
 loose slivers, a separate cause), nothing else changes.
+
+## Amendment, 2026-11-15: STEP reals with a decimal point; component loops in linear time
+
+- **STEP reals** (`brep-step.ts` `stepReal`, the writer's numbers). The writer
+  printed a real as JavaScript's shortest form of it rounded to nine digits,
+  which below 1e-6 and from 1e21 up is an exponent form with no decimal point:
+  `1e-7`, `1e+21`. The exchange syntax wants a point in a real, and the kernel's
+  STEP reader, tried on a box with one coordinate replaced, took an unsigned
+  `1e-7`, `2e-7` or `2e-1` as 0, built nothing from `1e+21` (an empty shape)
+  and threw on `1e1`; with a sign or a point (`-1e-7`, `1.5e-10`, `1.E21`) it
+  read the value. The exponent form now gets the point and a capital `E`
+  (`1.E-7`, `1.5E-10`, `1.E21`, `5.E-324`); every other number prints as before,
+  integers included (the reader takes `10` as it takes `10.`, and knot
+  multiplicities and entity numbers go through the same function). On the
+  corpus every exponent form already had its point (a direction's float noise
+  such as `6.123234e-17`: 42,694 of them in 324 of the 382 bodies written), so
+  only their `e` became `E`: the rest of each text is byte for byte the same,
+  body by body, and the gate (replay and body check, 252 designs) measures
+  every design as before, no `RuntimeError`. A number that is not finite
+  used to print as 0; the B-rep stream's doubles are not checked when the
+  stream is read and a product of finite ones can overflow, so one can reach
+  the writer, and the body is now refused ("unsupported geometry (a number that
+  is not finite)"). Test: `brep-step-real.test.ts` (the forms, 60,000 seeded
+  values against the old form, and a box 1e-7 mm off the origin read back
+  through the kernel).
+- **Component loops** (`decode/component.ts` `setParents`, `components.ts`
+  `uniqueName`). The parent of each component placed in another's occurrence
+  list was found by scanning every component's occurrences per entry, and a
+  unique component name by trying `name (2)`, `name (3)`, … from 2 each time,
+  so k components of one name cost k². Both are linear now with the same output
+  for every input: an occurrence goes to the first component that has it,
+  through one map, and the name search goes on per lower-cased name from where
+  it last stopped (every name below that is taken and stays taken). 20,000
+  components of one name took 81 s and take 20 ms; 20,000 occurrences in one
+  list took 6.0 s and take 9 ms (synthetic, the Ubuntu dev machine under
+  load). Test: `component-loops.test.ts` (the old functions as the reference
+  on seeded inputs with heavy collisions, and the steps counted at 20,000).
