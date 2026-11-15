@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   type BSpline,
@@ -123,6 +124,40 @@ describe('fitSpline', () => {
     // Five points of a cubic: one inner knot, so two spans.
     expect(polyline).toHaveLength(21);
     close(polyline[20] as Vec2, [12, 30], 1e-7);
+  });
+});
+
+describe('fitSpline in its band (ADR-0063, amendment of 2026-11-15)', () => {
+  const wave = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i): Vec2 => [i * 0.7 + Math.sin(i * 1.3), 10 * Math.sin(i * 0.37) + (i % 3) * 0.2],
+    );
+  const digest = (spline: BSpline) =>
+    createHash('sha256').update(JSON.stringify(spline)).digest('hex').slice(0, 16);
+
+  it('builds only the band, and the same spline to the last bit', () => {
+    // Digests of the splines from before, when the whole matrix was built.
+    expect(digest(fitSpline(wave(400)))).toBe('b26acf52280a2da3');
+    expect(digest(fitSpline(wave(400), { start: [1, 2], end: [-1, 0.5] }))).toBe(
+      '8a0b0d6f384e0ea8',
+    );
+    expect(digest(fitSpline(wave(33), { start: [0, 1] }))).toBe('51034feccafb6bad');
+  });
+
+  it('fits 20,000 points, through every one', () => {
+    // Its whole matrix would be 400 million numbers.
+    const points = wave(20_000);
+    const spline = fitSpline(points);
+    expect(spline.poles).toHaveLength(20_000);
+    const lengths = points.slice(1).map((p, i) => dist(p, points[i] as Vec2));
+    const total = lengths.reduce((s, l) => s + l, 0);
+    let u = 0;
+    points.forEach((p, i) => {
+      if (i > 0) u += (lengths[i - 1] as number) / total;
+      if (i % 97 === 0 || i === points.length - 1)
+        close(splinePoint(spline, Math.min(1, u)), p, 1e-6);
+    });
   });
 });
 

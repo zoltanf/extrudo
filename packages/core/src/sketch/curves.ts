@@ -100,24 +100,41 @@ export function fitSpline(points: readonly Vec2[], tangents?: SplineTangents): B
   }
   for (let i = 0; i <= degree; i++) knots.push(1);
 
-  // N · P = Q, one row per fit point.
-  const matrix = params.map((u) => {
-    const row = new Array<number>(n + 1).fill(0);
+  // N · P = Q, one row per fit point: `degree + 1` basis values from its span.
+  const matrix = params.map((u): SparseRow => {
     const span = findSpan(n, degree, u, knots);
-    basis(span, u, degree, knots).forEach((value, k) => {
-      row[span - degree + k] = value;
-    });
-    return row;
+    return { first: span - degree, values: basis(span, u, degree, knots) };
   });
   const rhs = points.map((p) => [p[0], p[1]]);
   // Above `BANDED_FIT` points the dense solve's n³ shows (an offset's fit spline
   // has hundreds, ADR-0063's P4-12 amendment); the collocation matrix is banded
   // and totally positive, so elimination inside the band without pivoting is
   // stable (de Boor). Below it the dense solve stays, so every spline drawn
-  // before computes the same curve to the last bit.
-  const solved = points.length > BANDED_FIT ? solveBanded(matrix, rhs) : solve(matrix, rhs);
+  // before computes the same curve to the last bit. Only the band is ever
+  // built: a dense matrix of a long fit spline's rows grows with its square.
+  const solved =
+    points.length > BANDED_FIT
+      ? solveBanded(matrix, rhs)
+      : solve(
+          matrix.map((row) => denseRow(row, n + 1)),
+          rhs,
+        );
   const poles = solved.map((r) => [r[0], r[1]] as Vec2);
   return { degree, poles, knots };
+}
+
+/** A row of a fit spline's system: its values from column `first` on, zero elsewhere. */
+interface SparseRow {
+  first: number;
+  values: number[];
+}
+
+function denseRow(row: SparseRow, size: number): number[] {
+  const out = new Array<number>(size).fill(0);
+  row.values.forEach((value, k) => {
+    out[row.first + k] = value;
+  });
+  return out;
 }
 
 /** Fit splines with more points than this are solved in their band (ADR-0063's P4-12 amendment). */
@@ -162,37 +179,33 @@ function tangentFit(points: readonly Vec2[], tangents: SplineTangents): BSpline 
   }
   for (let i = 0; i <= degree; i++) knots.push(1);
 
-  const pointRow = (u: number) => {
-    const row = new Array<number>(last + 1).fill(0);
+  const pointRow = (u: number): SparseRow => {
     const span = findSpan(last, degree, u, knots);
-    basis(span, u, degree, knots).forEach((value, k) => {
-      row[span - degree + k] = value;
-    });
-    return row;
+    return { first: span - degree, values: basis(span, u, degree, knots) };
   };
-  const matrix: number[][] = [];
+  const matrix: SparseRow[] = [];
   const rhs: number[][] = [];
   points.forEach((p, k) => {
     if (k === n && end) {
-      const row = new Array<number>(last + 1).fill(0);
-      row[last - 1] = -1;
-      row[last] = 1;
       const f = (1 - (knots[last] as number)) / degree;
-      matrix.push(row);
+      matrix.push({ first: last - 1, values: [-1, 1] });
       rhs.push([f * end[0], f * end[1]]);
     }
     matrix.push(pointRow(params[k] as number));
     rhs.push([p[0], p[1]]);
     if (k === 0 && start) {
-      const row = new Array<number>(last + 1).fill(0);
-      row[0] = -1;
-      row[1] = 1;
       const f = (knots[degree + 1] as number) / degree;
-      matrix.push(row);
+      matrix.push({ first: 0, values: [-1, 1] });
       rhs.push([f * start[0], f * start[1]]);
     }
   });
-  const solved = matrix.length > BANDED_FIT ? solveBanded(matrix, rhs) : solve(matrix, rhs);
+  const solved =
+    matrix.length > BANDED_FIT
+      ? solveBanded(matrix, rhs)
+      : solve(
+          matrix.map((row) => denseRow(row, last + 1)),
+          rhs,
+        );
   return { degree, poles: solved.map((r) => [r[0], r[1]] as Vec2), knots };
 }
 
@@ -1135,20 +1148,22 @@ function solve(a: number[][], b: number[][]): number[][] {
  * Solves A · X = B for a banded A (a fit spline's collocation matrix):
  * elimination without pivoting, which is stable for it (totally positive).
  */
-function solveBanded(a: number[][], b: number[][]): number[][] {
+function solveBanded(a: readonly SparseRow[], b: number[][]): number[][] {
   const n = a.length;
-  // The band's half-width, read from the matrix itself.
+  // The band's half-width, read from the rows' non-zero values.
   let w = 1;
   a.forEach((row, r) => {
-    row.forEach((v, c) => {
-      if (v !== 0) w = Math.max(w, Math.abs(c - r));
+    row.values.forEach((v, k) => {
+      if (v !== 0) w = Math.max(w, Math.abs(row.first + k - r));
     });
   });
-  // Each row kept from column r − w to r + w.
+  // Each row kept from column r − w to r + w (zero where it has no value).
   const band = a.map((row, r) => {
     const out = new Array<number>(2 * w + 1).fill(0);
-    for (let c = Math.max(0, r - w); c <= Math.min(n - 1, r + w); c++)
-      out[c - r + w] = row[c] as number;
+    row.values.forEach((v, k) => {
+      const c = row.first + k;
+      if (c >= Math.max(0, r - w) && c <= Math.min(n - 1, r + w)) out[c - r + w] = v;
+    });
     return out;
   });
   const x = b.map((row) => [...row]);
