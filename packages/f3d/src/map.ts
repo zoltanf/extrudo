@@ -11,15 +11,18 @@
  * normals point opposite ways.
  */
 import {
+  CounterIds,
   Design,
   edgeName,
   type GeomRef,
+  inferUnit,
   type SketchBuilder,
   type SketchHandle,
 } from '@extrudo/api';
 import {
   type AttachmentId,
   addAttachment,
+  addParameters,
   type BodyId,
   type ComponentId,
   evaluateParameters,
@@ -29,6 +32,9 @@ import {
   isConstructionType,
   newId,
   ORIGIN_PLANES,
+  type Parameter,
+  type ParameterId,
+  parameterNameProblem,
   type SketchData,
   setFeatureVisibility,
   updateBody,
@@ -481,40 +487,42 @@ export function f3dToDesign(
     notes: [],
     problems: [...f3d.problems],
   };
+  const ids = new CounterIds().next;
   const d = Design.create({
     name,
     units: 'mm',
+    ids,
     ...(options.id ? { id: options.id as never } : {}),
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   });
   const userNames = new Set<string>();
   const components = new ComponentMapping(d, f3d, report);
 
-  // User parameters, in the order they were made.
+  // User parameters, in the order they were made, all in one step: one at a
+  // time, each would read every name before it. A name Extrudo refuses
+  // (taken, reserved, not a name) leaves its parameter out, with a note.
+  const userParameters: Parameter[] = [];
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
     const unit = p.text === undefined ? unitKind(p.unit) : undefined;
-    try {
-      d.parameter(p.name, p.text !== undefined ? `'${p.text}'` : p.expression, {
-        ...(p.comment ? { comment: p.comment } : {}),
-        ...(unit ? { unit } : {}),
-      });
-      userNames.add(p.name);
-    } catch (error) {
-      // An expression Extrudo does not read: keep the value.
-      try {
-        d.parameter(p.name, numberExpression(p.value, p.unit), {
-          ...(p.comment ? { comment: p.comment } : {}),
-          ...(unit ? { unit } : {}),
-        });
-        userNames.add(p.name);
-        report.notes.push(
-          `Parameter ${p.name}: "${p.expression}" kept as its value (${(error as Error).message}).`,
-        );
-      } catch (inner) {
-        report.notes.push(`Parameter ${p.name} skipped: ${(inner as Error).message}`);
-      }
+    const expression = p.text !== undefined ? `'${p.text}'` : p.expression;
+    const id = ids('parameter') as ParameterId;
+    const problem = parameterNameProblem(p.name, userNames);
+    if (problem) {
+      // The ID a second try with the value took (the IDs stay as they were).
+      ids('parameter');
+      report.notes.push(`Parameter ${p.name} skipped: ${problem}`);
+      continue;
     }
+    userNames.add(p.name);
+    userParameters.push({
+      id,
+      name: p.name,
+      expression,
+      unit: unit ?? inferUnit(expression),
+      ...(p.comment ? { comment: p.comment } : {}),
+    });
   }
+  if (userParameters.length > 0) d.state.dispatch(addParameters({ parameters: userParameters }));
 
   // The file's sketch constraints and dimensions, vetted by the solver.
   let constraints: ConstraintContext | undefined;

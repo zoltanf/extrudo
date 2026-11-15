@@ -7,10 +7,11 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { Design } from '@extrudo/api';
 import type { Feature } from '@extrudo/core';
 import { MAX_TURNS } from '@extrudo/kernel';
 import { loadFont } from '@extrudo/sketch/text';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ENTITIES_PER_UNIT,
   FULL_THREAD_TURNS,
@@ -524,5 +525,39 @@ describe('the sketches of one import', () => {
     const fill = 40_000 + MAX_IMPORT_ENTITIES - first;
     expect(count(mapped(f3d(fill)).doc)).toBe(MAX_IMPORT_ENTITIES);
     expect(() => f3dToDesign(f3d(fill + 1), 'Budget')).toThrow(TOO_MANY_ENTITIES);
+  });
+});
+
+describe("the file's user parameters", () => {
+  it('come in all in one step, as one at a time would bring them', () => {
+    const f3d = washerWithHole();
+    f3d.userParameters = Array.from({ length: 5000 }, (_, i) =>
+      parameter({ name: `p${i}`, number: i + 1, expression: `${i} mm`, user: true, value: i / 10 }),
+    );
+    // A taken name and a unit's name are left out with a note, as before.
+    f3d.userParameters.push(
+      parameter({ name: 'p7', number: 6000, expression: '1 mm', user: true }),
+      parameter({ name: 'mm', number: 6001, expression: '1 mm', user: true }),
+      parameter({ name: 'last', number: 6002, expression: '2', unit: '', user: true }),
+    );
+    const one = vi.spyOn(Design.prototype, 'parameter');
+    const { doc, report } = mapped(f3d);
+    expect(one).not.toHaveBeenCalled();
+    one.mockRestore();
+    expect(doc.parameters).toHaveLength(5001);
+    expect(doc.parameters[0]).toMatchObject({
+      id: 'p1',
+      name: 'p0',
+      expression: '0 mm',
+      unit: 'length',
+    });
+    // The IDs follow on as one at a time gave them: two for each one left out.
+    expect(doc.parameters.at(-1)).toMatchObject({ id: 'p5005', name: 'last', unit: 'unitless' });
+    expect(report.notes).toEqual(
+      expect.arrayContaining([
+        'Parameter p7 skipped: A parameter named "p7" already exists.',
+        'Parameter mm skipped: "mm" is a unit, function or constant; pick another name.',
+      ]),
+    );
   });
 });

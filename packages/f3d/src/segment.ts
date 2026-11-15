@@ -36,6 +36,15 @@ export interface RecordFrame {
   base?: { tag: number; start: number; end: number };
 }
 
+/**
+ * The fewest bytes a record takes in BulkStream: its class tag (a length and
+ * at least three digits), its id and its name's length. A record index or type
+ * table naming more records than the stream has room for is refused, so the
+ * maps built from them stay within a few times the stream's size. The files'
+ * records take 118 bytes or more on average.
+ */
+const MIN_RECORD_BYTES = 19;
+
 export class Segment {
   readonly types: TypeEntry[] = [];
   readonly #typeOf = new Map<number, TypeEntry>();
@@ -62,6 +71,8 @@ export class Segment {
     r.str8(256); // add-in name
     r.skip(8); // segment type code, reserved
     const count = r.u32();
+    const room = Math.floor(bulk.length / MIN_RECORD_BYTES);
+    let listed = 0;
     for (let i = 0; i < count; i++) {
       const guid = r.str8(64).toUpperCase();
       const base = r.str8(64).toUpperCase();
@@ -74,7 +85,10 @@ export class Segment {
       const ids = new Set<number>();
       for (let k = 0; k < n; k++) {
         const id = r.u64();
-        if (!this.#typeOf.has(id)) ids.add(id);
+        if (this.#typeOf.has(id) || ids.has(id)) continue;
+        // Each record listed once has to fit in the stream.
+        if (++listed > room) throw new F3dFormatError('Bad type table.');
+        ids.add(id);
       }
       const entry: TypeEntry = { index: i, guid, base, version, module, ids: [...ids] };
       this.types.push(entry);
@@ -85,7 +99,7 @@ export class Segment {
     r.skip(8 * named);
     for (const index of [this.primary, this.secondary]) {
       const n = r.u32();
-      if (n > r.remaining / 16) throw new F3dFormatError('Bad record index.');
+      if (n > r.remaining / 16 || n > room) throw new F3dFormatError('Bad record index.');
       for (let k = 0; k < n; k++) {
         const id = r.u64();
         index.set(id, r.u64());
