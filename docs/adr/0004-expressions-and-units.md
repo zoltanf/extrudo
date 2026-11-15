@@ -178,7 +178,7 @@ imported, 8,474 expressions):
 | Most values in one call | 0 (no calls) | 1 | 1,000 | 1,000× |
 | Tallest expression | 4 levels | 6 | 256 (`MAX_DEPTH`) | 43× |
 | Deepest chain of parameters | 3 parameters, 7 levels | 4 parameters, 7 levels | 10,000 levels | 1,400× |
-| Longest parameter name | 10 characters | NAMES_CORPUS | none | |
+| Longest parameter name | 10 characters | 29 | none | |
 
 No fixture or corpus design comes near a limit, so no saved design changes. A spreadsheet
 imported from FreeCAD, where each row uses the one before, is the longest chain an import
