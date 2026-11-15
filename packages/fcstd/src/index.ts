@@ -22,6 +22,7 @@ export {
   MAX_TOTAL_BYTES,
   unzipFcstd,
 } from './archive';
+export { BIND_TOLERANCE, Binder, MAX_BIND_ROUNDS } from './bind';
 export {
   type BodyHistory,
   type BodyWalkOptions,
@@ -50,6 +51,19 @@ export {
   historyDisagreement,
 } from './check';
 export { FcstdFormatError, finite } from './errors';
+export {
+  EXPRESSION_REASONS,
+  type ExpressionReason,
+  emitExtrudo,
+  MAX_EMITTED_LENGTH,
+} from './fc-emit';
+export {
+  FcSyntaxError,
+  MAX_EXPRESSION_DEPTH,
+  MAX_EXPRESSION_LENGTH,
+  MAX_EXPRESSION_TOKENS,
+  parseFcExpression,
+} from './fc-expr';
 export {
   type DecodedAxis,
   type DecodedFeature,
@@ -114,6 +128,26 @@ export {
   versionAtLeast,
 } from './model';
 export { cleanName, clip, MAX_DETAIL_LENGTH, MAX_NAME_LENGTH, stepFileName } from './names';
+export {
+  type ExpressionOutcome,
+  type ParametersReport,
+  parameterCounts,
+} from './parameters-report';
+export {
+  type ImportedParameter,
+  MAX_COMMENT_LENGTH,
+  MAX_GROUP_LENGTH,
+  MAX_IMPORT_EXPRESSIONS,
+  MAX_IMPORT_PARAMETERS,
+  MAX_OBJECT_EXPRESSIONS,
+  MAX_PARAMETER_NAME,
+  MAX_RENAME_TRIES,
+  MAX_SHEET_CELLS,
+  type NameChange,
+  type ParameterKind,
+  type ParameterLeftOut,
+  prepareParameters,
+} from './params';
 export {
   BOX_TOLERANCE,
   disagreement,

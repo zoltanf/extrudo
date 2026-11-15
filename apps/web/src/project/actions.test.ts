@@ -23,6 +23,7 @@ import {
   NEW_DESIGN_UNITS_KEY,
   newDesignUnits,
   openExternalFile,
+  parameterNotices,
   READING_TEXT,
   saveF3dImport,
   takeOpenNotices,
@@ -456,6 +457,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             linkArrays: [],
             restarts: 0,
             bodies: [],
+            parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
           },
         };
       },
@@ -715,5 +717,140 @@ describe('fcstdNotices', () => {
       bodies: [{ ...body('Plate', 'history'), mapped: [feature('edge')] }],
     });
     expect(none.some((n) => n.includes('came in fixed'))).toBe(false);
+  });
+});
+
+describe('parameterNotices (ADR-0144 S10)', () => {
+  type Report = NonNullable<Parameters<typeof parameterNotices>[0]>;
+  const param = (source: 'sheet' | 'variable-set', object: string) => ({
+    name: 'x',
+    source,
+    object,
+    at: 'A1',
+    kind: 'length' as const,
+    expression: '1 mm',
+    from: 'value' as const,
+  });
+  /** An expression of the file; `number`: what it sets came in holding the file's number. */
+  const expr = (
+    outcome: Report['expressions'][number]['outcome'],
+    number = outcome !== 'kept' && outcome !== 'unmapped',
+  ) => ({
+    object: 'Pad',
+    path: 'Length',
+    expression: 'x',
+    target: 'input' as const,
+    outcome,
+    ...(number ? { number: true as const } : {}),
+  });
+  /** One on something that came in as a shape only, or on a property Extrudo has none of. */
+  const other = () => ({
+    object: 'Window',
+    path: 'OverallHeight',
+    expression: '.Height.Value',
+    target: 'other' as const,
+    outcome: 'target' as const,
+  });
+  const report = (r: Partial<Report>): Report => ({
+    parameters: [],
+    leftOut: [],
+    expressions: [],
+    renames: [],
+    rounds: 0,
+    ...r,
+  });
+
+  it('says nothing for a file without parameters or expressions', () => {
+    expect(parameterNotices(undefined)).toEqual([]);
+    expect(parameterNotices(report({ expressions: [expr('unmapped')] }))).toEqual([]);
+  });
+
+  it('counts the parameters by where they came from and the expressions by how', () => {
+    expect(
+      parameterNotices(
+        report({
+          parameters: [param('sheet', 'S'), param('sheet', 'S'), param('sheet', 'T')],
+          expressions: [expr('kept'), expr('kept'), expr('differs'), expr('unmapped')],
+        }),
+      ),
+    ).toEqual([
+      "3 parameters came in from the file's spreadsheets; 2 of its 3 expressions came in live and 1 as a plain number.",
+    ]);
+    expect(
+      parameterNotices(
+        report({
+          parameters: [param('variable-set', 'V')],
+          expressions: [expr('kept')],
+        }),
+      ),
+    ).toEqual([
+      "1 parameter came in from the file's variable set; its one expression came in live.",
+    ]);
+    expect(
+      parameterNotices(
+        report({
+          parameters: [param('sheet', 'S'), param('variable-set', 'V')],
+          expressions: [expr('kept'), expr('kept')],
+        }),
+      ),
+    ).toEqual([
+      "2 parameters came in from the file's spreadsheet and variable set; both of its expressions came in live.",
+    ]);
+    expect(
+      parameterNotices(report({ expressions: [expr('function'), expr('reference')] })),
+    ).toEqual(["The file's 2 expressions came in as plain numbers."]);
+    expect(parameterNotices(report({ parameters: [param('sheet', 'S')] }))).toEqual([
+      "1 parameter came in from the file's spreadsheet.",
+    ]);
+  });
+
+  it('counts as plain numbers only what came in as a number of the design', () => {
+    const others = Array.from({ length: 85 }, other);
+    expect(parameterNotices(report({ expressions: others }))).toEqual([]);
+    expect(
+      parameterNotices(report({ parameters: [param('sheet', 'S')], expressions: others })),
+    ).toEqual(["1 parameter came in from the file's spreadsheet."]);
+    expect(
+      parameterNotices(
+        report({
+          parameters: [param('sheet', 'S'), param('sheet', 'S')],
+          expressions: [...others, expr('kept'), expr('differs'), expr('target', false)],
+        }),
+      ),
+    ).toEqual([
+      "2 parameters came in from the file's spreadsheet; 1 of its 2 expressions came in live and 1 as a plain number.",
+    ]);
+  });
+
+  it('shows a long name cut', () => {
+    const long = 'w'.repeat(5_000);
+    const out = parameterNotices(
+      report({
+        parameters: [param('sheet', 'S')],
+        renames: [{ from: long, to: `${'w'.repeat(64)}`, what: 'alias', why: 'long' }],
+      }),
+    );
+    expect(out[1]).toBe(
+      `One name changed to fit Extrudo's rules: ${'w'.repeat(40)}… to ${'w'.repeat(40)}….`,
+    );
+    expect((out[1] as string).length).toBeLessThan(200);
+  });
+
+  it('says which names changed, three of them at most', () => {
+    const renames = [
+      { from: 'cos', to: 'cos_1', what: 'alias' as const, why: 'reserved' as const },
+      { from: 'max', to: 'max_1', what: 'alias' as const, why: 'reserved' as const },
+      { from: 'round', to: 'round_1', what: 'alias' as const, why: 'reserved' as const },
+      { from: 'width', to: 'width_1', what: 'constraint' as const, why: 'taken' as const },
+    ];
+    const out = parameterNotices(report({ parameters: [param('sheet', 'S')], renames }));
+    expect(out[1]).toBe(
+      "4 names changed to fit Extrudo's rules: cos to cos_1, max to max_1 and round to round_1, and 1 more.",
+    );
+    expect(
+      parameterNotices(
+        report({ parameters: [param('sheet', 'S')], renames: [renames[0] as (typeof renames)[0]] }),
+      )[1],
+    ).toBe("One name changed to fit Extrudo's rules: cos to cos_1.");
   });
 });

@@ -135,7 +135,7 @@ number is NaN, infinite or not a number is left out with a problem.
 | `ConstraintList` + `Constrain` | a sketch's `Constraints` | `constraints`: raw records, not interpreted |
 | `Part file` | part shapes | `shape`: the entry name (`''` for a null shape) |
 | `Mesh file` | meshes | `mesh`: the entry name |
-| `Cells` + `Cell address content [alias]` | a spreadsheet | `sheet` |
+| `Cells` + `Cell address content [alias] [displayUnit]` | a spreadsheet | `sheet` |
 | `Python module class value encoded` | a scripted object's proxy | `python`: module and class only; the value (pickled or JSON state) is never decoded |
 | `PropertyMaterial uuid` / `PropertyMaterial diffuseColor … transparency` | a 1.0+ library material / a display material | `material` / `appearance` |
 | any other element with a `file` attribute | lists and files saved as entries (`VectorList`, `FloatList`, `ColorList`, `MaterialList`, `FilletEdges`, `FileIncluded` …) | `file`: the element and the entry name |
@@ -540,7 +540,92 @@ edge's curve from its first parameter to its last.
   projects the linked element again on every recompute.
 - **What a projection is:** the element projected onto the sketch plane along
   its normal: a line or circle parallel to the plane comes through as itself,
-  a line square to it becomes a point.
+  a line square to it becomes a point. An arc of a circle parallel to the
+  plane is stored as a `Part::GeomArcOfCircle` like a sketch's own arc
+  (centre, radius, `AngleXU`, `StartAngle` < `EndAngle` in the arc's frame,
+  so counter-clockwise from its start about the stored normal); FreeCAD 1.1.4
+  turns the frame rather than the angles (a quarter arc from +X to +Y about
+  its centre is stored with `AngleXU` −π/2 and angles π/2 to π). An arc seen
+  edge-on (its circle square to the plane) is stored as a line segment.
+
+## Expressions, spreadsheets and variable sets (S10)
+
+Facts from FreeCAD's grammar read as a description and from the parts our
+script made with FreeCAD 1.1.4 (`parameter-fixtures.ts`, the truth table
+`PARAM_TRUTH`).
+
+### `ExpressionEngine`
+
+- One `Expression path="…" expression="…"` per bound property, on any
+  object (an optional `comment` attribute; an empty engine on nearly every
+  object). The property **keeps its last computed value** beside it, so a file
+  never needs its expressions to be evaluated.
+- `path` is the bound property relative to its owner: `Length`,
+  `Constraints[11]` (0-based index), `.Constraints.Wide` (by name; a leading
+  `.` when the path has more than one part), `.AttachmentOffset.Base.z`,
+  `Reversed`.
+- `expression` is FreeCAD's own printing of it: operators spaced
+  (`a / 2`), function arguments separated by `; `, `<<…>>` for a quoted label
+  or text (XML-escaped as `&lt;&lt;…&gt;&gt;`). `1' 2"` is stored as
+  `1 ' + 2 "`, `5 mm^2` as `5 (mm ^ 2)`.
+- FreeCAD drops an expression it can't parse, or one that closes a cycle,
+  when it loads a file, and keeps the stored value (`<<Sheet>>.H`: `H` is a
+  unit, so not a name).
+
+### The grammar, as the truth table settles it
+
+| | FreeCAD |
+|---|---|
+| `^` | left to right: `2 ^ 3 ^ 2 / 10` is 6.4 |
+| unary minus | tighter than `^`: `-2 ^ 2 + 10` is 14 |
+| a unit | only right after a number: `1 / 2 in` is 1 / (2 in); `(4 + 6) mm` and `Spreadsheet.n mm` don't parse |
+| a plain number | has no unit; added to a quantity it is refused when evaluated (`Spreadsheet.len_mm + 1`); given to a length or an angle property it takes that property's unit |
+| a sketch constraint | takes the computed number whatever its unit (`1 / 2 in` on a length gives 0.0197 mm; an angle in degrees, stored in radians) |
+| `sin cos tan` | an angle, or a plain number read as **degrees**, also when it is a cell's value (`10 * sin(Spreadsheet.n)` with n = 30 is 5; `10 * sin(pi / 6)` is 0.0914) |
+| `asin acos atan atan2` | an angle in degrees |
+| `%`, `mod` | `17 % 5` and `mod(17; 5)` are 2; `%` is the floored remainder, also for quantities (`-7.5 % 3` is 1.5), `mod` is C's `fmod`, the dividend's sign (`mod(-7.5; 3)` is −1.5) |
+| `round`, `trunc`, `cbrt` | `round` rounds halves away from zero (`round(-2.5)` is −3), `trunc(-7.5)` is −7, `cbrt(-27)` is −3 (the sweep, `sweep-fixtures.ts`) |
+| names | a unit or constant token (`mm`, `pi`, `e`, `deg`, `H`, `W` …) is never a name: such an alias is refused, and a constraint named `W` can be neither set nor read by an expression |
+| `1,5` | 1.5 (a comma between digits); `;` or `,` with a space between arguments |
+
+The units FreeCAD has: lengths `nm um µm mm cm dm m km in " ft ' thou mil yd mi`
+(mm, ×1e-6 … ×1,609,344), angles `deg ° rad gon M ′ AS ″` (degrees), and
+units of other dimensions (mass, time, force …).
+
+### References
+
+`Name.prop` names an object by its internal name first, then by its label;
+`<<Label>>.prop` by its label only; two objects with that label, or a name of
+one object that is another's label, leave it unresolved. `prop` alone and
+`.prop` are the owner's own property. In a cell's formula a bare name is the
+sheet's own alias or address (`B5`, `$B$5`). `Sketch.Constraints.Name` and
+`Sketch.Constraints[i]` read a constraint's value (a length in mm, an angle in
+degrees).
+
+### `Spreadsheet::Sheet`
+
+- `cells` holds `Cell address content [alias] [displayUnit] …` for every
+  cell with something in it. `content` is a number (`40`), a quantity (`6 mm`),
+  a formula (`=width / 4`, `=B5 - 1`, `=<<Params>>.depth / 2`) or text
+  (a leading `'`, or anything that isn't a number).
+- **A cell's value is not in the file**: FreeCAD computes it when the file
+  opens. A plain number has no unit; `displayUnit` only says how the sheet
+  shows it.
+- An alias is a letter then letters, digits or `_`, not a cell address and
+  not a unit or constant token (FreeCAD 1.1 refuses `mm`, `pi`, `deg`, `H`, a
+  leading `_`, a letter outside ASCII; older files may hold such aliases).
+  Aliases differ by case (`Width`, `width`). A cell address is upper case:
+  FreeCAD 1.1 takes `e1` and `x1` as aliases. A name a formula or a reference
+  reads is looked up as an alias first, then as an address. A sheet's own
+  `ExpressionEngine` may bind a row to another (`.cells.Bind.B7.ZZ7`).
+
+### `App::VarSet`
+
+Its variables are dynamic properties (`status` bit 21) with `group` and `doc`
+(the description) attributes and the type's usual value element:
+`App::PropertyLength`, `…Distance`, `…Angle`, `…Float`, `…Integer`,
+`…Bool`, `…String`, links. A variable may have an expression of its own in
+the set's `ExpressionEngine`.
 
 ## Not read yet
 

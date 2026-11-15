@@ -1785,7 +1785,9 @@ end to end, faster than in established desktop CAD.
     amendment).
   - [x] S9 Projected geometry in sketches, up-to-face, reference axes; datums and tilted
     sketch planes (2026-11-14; ADR-0144's S9 amendment).
-  - [ ] S10 Parameters and expressions.
+  - [x] S10 Parameters and expressions: spreadsheet cells and variable-set numbers as
+    user parameters, expressions on dimensions, inputs and plane offsets kept where Extrudo
+    computes the file's value (2026-11-15; ADR-0144's S10 amendment).
   - [ ] S11 Part workbench: primitives and booleans as a timeline.
   - [ ] S12 Structure: part containers, links as copies, files from before bodies, meshes.
   - [ ] S13 User guide page; a second hostile-file pass.

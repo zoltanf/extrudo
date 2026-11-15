@@ -31,6 +31,7 @@ import {
 import type { SketchSolver } from '@extrudo/sketch';
 import { insidePolygon, isTooManyCrossings } from '@extrudo/sketch/profiles';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
+import { type Binder, namingFor } from './bind';
 import { type CallOutcome, type KernelBudget, NONSENSE_REPLY } from './budget';
 import {
   combined,
@@ -289,6 +290,8 @@ export interface BodyWalkOptions {
   readonly maxAttachmentsBytes?: number;
   /** Receives the bytes of the attachments the steps add (S8): the caller writes them with the design. */
   readonly files?: Map<AttachmentId, Uint8Array>;
+  /** Binds the file's expressions as each feature comes in (S10). */
+  readonly binder?: Binder;
 }
 
 /** Reasons that end a body however its features go on: its chain, the walk's limits, the budget (S8). */
@@ -475,7 +478,7 @@ export function datumDisagreement(c: DatumCheck, report: unknown): string | 'non
 
 /**
  * How many times a feature is tried again for its sketch's projections (S9):
- * a line drawn the way the report has it, turned back once if the next report
+ * a line or an arc drawn the way the report has it, turned back once if the next report
  * disagrees, then left out; a curve elsewhere left out.
  */
 export const MAX_PROJECTION_REPEATS = 3;
@@ -484,7 +487,7 @@ export const PROJECTION_TOLERANCE = 1e-6;
 
 /**
  * The kernel's projections of a sketch against where the importer drew them
- * (S9): the geometry indices whose line came in the other way round
+ * (S9): the geometry indices whose line or arc came in the other way round
  * (`reversed`), and those that came in elsewhere, as another kind, or lost
  * (`off`). `'nonsense'` for a report that isn't a sketch's.
  */
@@ -521,12 +524,31 @@ export function projectionVerdict(
           center?: unknown;
           radius?: unknown;
           at?: unknown;
+          start?: unknown;
+          end?: unknown;
         }
       | undefined;
     if (e.kind === 'line' && curve?.type === 'line' && vec2(curve.a) && vec2(curve.b)) {
       const [s0, s1] = e.points as [Vec2, Vec2];
       if (near(curve.a, s0) && near(curve.b, s1)) continue;
       if (near(curve.a, s1) && near(curve.b, s0)) reversed.push(e.geo);
+      else off.push(e.geo);
+    } else if (
+      e.kind === 'arc' &&
+      curve?.type === 'arc' &&
+      vec2(curve.center) &&
+      vec2(curve.start) &&
+      vec2(curve.end)
+    ) {
+      // The same centre and radius, the same two ends; the ends the other way round is the
+      // other arc between them, which the next try draws the kernel's way (as a line's).
+      const [s0, s1, c0] = e.points as [Vec2, Vec2, Vec2];
+      const [cx, cy] = curve.center;
+      const radius = ([x, y]: [number, number]) =>
+        Math.abs(Math.hypot(x - cx, y - cy) - (e.radius as number)) <= PROJECTION_TOLERANCE;
+      if (!near(curve.center, c0) || !radius(curve.start) || !radius(curve.end)) off.push(e.geo);
+      else if (near(curve.start, s0) && near(curve.end, s1)) continue;
+      else if (near(curve.start, s1) && near(curve.end, s0)) reversed.push(e.geo);
       else off.push(e.geo);
     } else if (
       e.kind === 'circle' &&
@@ -1449,7 +1471,28 @@ export async function importBodies(
           detail: "it came after features whose stored shape couldn't come in",
         });
       const makesBody = mine.length === 0 && taken.length === 0;
-      return check(f, chain, add, others, (added, d) => {
+      const binder = options.binder;
+      // S10: the file's expressions on what the try adds, bound before the rebuild checks it.
+      const bound = binder
+        ? async (): Promise<Added> => {
+            binder.begin();
+            const a = await add();
+            if (!('stop' in a)) {
+              const sketchObject = a.newSketch
+                ? doc.byName.get(a.newSketch.outcome.sketch)
+                : undefined;
+              const made = (a.datums ?? []).flatMap((d) => {
+                const name = [...datums].find(([, x]) => x === d)?.[0];
+                const object = name !== undefined ? doc.byName.get(name) : undefined;
+                return object ? [{ object, how: d.how, features: d.features }] : [];
+              });
+              binder.bind(f, feature, a, sketchObject, made);
+            }
+            return a;
+          }
+        : add;
+      return check(f, chain, bound, others, (added, d) => {
+        binder?.commit();
         // A feature held: the run before it (if any) is over, its step stays.
         run = undefined;
         if (makesBody) bodyMaker ??= added.feature;
@@ -1484,7 +1527,17 @@ export async function importBodies(
             : {}),
           ...(second ? { secondAttempt: true as const } : {}),
         });
-      });
+      }).then(
+        (failure) => {
+          // A try that didn't hold gives back the names it took (S10's fix round).
+          if (failure) binder?.discard();
+          return failure;
+        },
+        (error: unknown) => {
+          binder?.discard();
+          throw error;
+        },
+      );
     };
 
     /**
@@ -2163,7 +2216,14 @@ function sketchFor(
   const object = doc.byName.get(name) as FcObject;
   const axes = new Set(wanted.get(name) ?? []);
   if (wantsAxis) axes.add(wantsAxis);
+  const naming = namingFor(design);
   const result = addSketch(design, doc, object, {
+    ...(naming
+      ? {
+          freeName: naming.freeName,
+          ...(naming.names(object.name) ? { names: naming.names(object.name) } : {}),
+        }
+      : {}),
     ...(solver ? { solver } : {}),
     ...(decoded ? { decoded } : {}),
     name: cleanName(object.label, object.name),

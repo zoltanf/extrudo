@@ -48,8 +48,11 @@ export interface FcExpression {
 
 export interface FcCell {
   readonly address: string;
+  /** As stored: a number, a quantity, `=formula`, or text (a leading `'`). */
   readonly content: string;
   readonly alias?: string;
+  /** The unit the sheet shows it in (`mm`): display only, it gives the value no unit. */
+  readonly displayUnit?: string;
 }
 
 /** The colour of a packed `0xRRGGBBAA` value; channel bytes as stored (the alpha byte's meaning depends on the version). */
@@ -128,6 +131,8 @@ export interface FcProperty {
   readonly status?: number;
   /** A dynamic property's group (VarSet entries, scripted objects). */
   readonly group?: string;
+  /** A dynamic property's description (`doc`, the tooltip FreeCAD shows). */
+  readonly doc?: string;
 }
 
 export interface FcGui {
@@ -393,6 +398,7 @@ function propertyValue(p: XmlElement, type: string, what: string, ctx: Context):
           address: c.attrs.address ?? '',
           content: c.attrs.content ?? '',
           ...(c.attrs.alias ? { alias: c.attrs.alias } : {}),
+          ...(c.attrs.displayUnit ? { displayUnit: c.attrs.displayUnit } : {}),
         })),
       };
     case 'Python':
@@ -452,6 +458,7 @@ function propertiesOf(
         value: propertyValue(p, type, what, ctx),
         ...(status !== undefined ? { status } : {}),
         ...(p.attrs.group !== undefined ? { group: p.attrs.group } : {}),
+        ...(p.attrs.doc !== undefined && p.attrs.doc !== '' ? { doc: p.attrs.doc } : {}),
       };
     } catch (error) {
       if (!(error instanceof FcstdFormatError)) throw error;

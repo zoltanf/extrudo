@@ -350,6 +350,11 @@ describe('projected geometry', () => {
     external_circle: { sketch: 'CounterboreSketch', projected: 1, kinds: ['edge'] },
     external_sketch: { sketch: 'PocketSketch', projected: 1, kinds: ['sketchEntity'] },
     face_sketch_external: { sketch: 'FaceSketch', projected: 2, kinds: ['edge', 'edge'] },
+    external_arc_concentric: { sketch: 'PocketSketch', projected: 1, kinds: ['edge'] },
+    external_arc_below: { sketch: 'PocketSketch', projected: 1, kinds: ['edge'] },
+    external_arc_ends: { sketch: 'NotchSketch', projected: 1, kinds: ['edge'] },
+    external_arc_tangent: { sketch: 'PocketSketch', projected: 1, kinds: ['edge'] },
+    external_arc_edge_on: { sketch: 'SideSketch', projected: 1, kinds: ['edge'] },
   };
 
   const projectionsOf = (r: Awaited<ReturnType<typeof runRef>>, sketch: string) => {
@@ -438,6 +443,81 @@ describe('projected geometry', () => {
     expect(r.body?.stop).toBeUndefined();
     expect(r.body?.sketches.find((s) => s.sketch === 'PocketSketch')?.external?.projected).toBe(0);
   });
+});
+
+describe('projected arcs', () => {
+  const ARCS: Record<string, { sketch: string; constraints: number; through: number }> = {
+    external_arc_concentric: { sketch: 'PocketSketch', constraints: 2, through: 1 },
+    external_arc_below: { sketch: 'PocketSketch', constraints: 2, through: 1 },
+    external_arc_ends: { sketch: 'NotchSketch', constraints: 6, through: 3 },
+    external_arc_tangent: { sketch: 'PocketSketch', constraints: 3, through: 1 },
+  };
+  /** The projected curve of a sketch, its points where the design has them. */
+  const arcOf = (r: Awaited<ReturnType<typeof runRef>>, sketch: string) => {
+    const f = r.design.doc.features.find((x) => x.name === sketch);
+    if (!f) throw new Error(`no ${sketch}`);
+    const data = (
+      f.inputs as unknown as {
+        sketch: {
+          sketch: {
+            entities: Record<string, Record<string, unknown>>;
+            projections: Record<string, { curves: Record<string, string> }>;
+          };
+        };
+      }
+    ).sketch.sketch;
+    const [p] = Object.values(data.projections);
+    const e = data.entities[p?.curves.edge as string] as Record<string, string>;
+    const at = (id = '') => [data.entities[id]?.x, data.entities[id]?.y] as number[];
+    return { type: e.type, start: at(e.start), end: at(e.end), center: at(e.center) };
+  };
+  const close = (a: number[], b: number[]) =>
+    expect(Math.hypot((a[0] ?? 0) - (b[0] ?? 0), (a[1] ?? 0) - (b[1] ?? 0))).toBeLessThan(1e-9);
+
+  // Before 1.0 a file stores no projection: the arc comes from the edge's centre, radius, ends and middle.
+  it.each(
+    Object.entries(ARCS).flatMap(([name, want]) => [
+      [name, 'stored', want] as const,
+      [name, 'from the edge', want] as const,
+    ]),
+  )(
+    '%s, %s: the arc comes in and every constraint through it',
+    async (name, how, want) => {
+      const r = await runRef(
+        name,
+        how === 'stored' ? {} : { [want.sketch]: { externalGeo: undefined } },
+      );
+      expect(r.body?.stop).toBeUndefined();
+      expect(r.body?.outcome).toBe('history');
+      expect(r.body?.mapped.length).toBe(r.body?.features);
+      const s = r.body?.sketches.find((x) => x.sketch === want.sketch);
+      expect(s?.constraints).toMatchObject({ total: want.constraints, mapped: want.constraints });
+      expect(s?.external).toEqual({ named: 1, projected: 1, constraints: want.through, out: {} });
+      // The rounded corner's arc: counter-clockwise from (20, 4) to (14, 10) about (14, 4).
+      const a = arcOf(r, want.sketch);
+      expect(a.type).toBe('arc');
+      close(a.start, [20, 4]);
+      close(a.end, [14, 10]);
+      close(a.center, [14, 4]);
+    },
+    60_000,
+  );
+
+  it('external_arc_edge_on: the stored projection is a line and comes in; without it the arc seen edge-on stays out', async () => {
+    const stored = await runRef('external_arc_edge_on');
+    expect(stored.body?.sketches.find((x) => x.sketch === 'SideSketch')?.external).toEqual({
+      named: 1,
+      projected: 1,
+      constraints: 1,
+      out: {},
+    });
+    const before = await runRef('external_arc_edge_on', { SideSketch: { externalGeo: undefined } });
+    expect(before.body?.stop).toBeUndefined();
+    expect(before.body?.outcome).toBe('history');
+    const s = before.body?.sketches.find((x) => x.sketch === 'SideSketch');
+    expect(s?.external).toEqual({ named: 1, projected: 0, constraints: 0, out: { kind: 1 } });
+    expect(s?.constraints).toMatchObject({ total: 2, mapped: 1, leftOut: { external: 1 } });
+  }, 60_000);
 });
 
 describe('the fix round', () => {
