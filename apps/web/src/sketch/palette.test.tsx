@@ -18,6 +18,7 @@ import docsAnchors from '../shell/docsAnchors.json';
 import { anchorFor } from '../shell/helpTarget';
 import { createViewportStore } from '../viewport/store';
 import { SketchPalette } from './panels';
+import { TOO_MANY_CROSSINGS } from './profiles';
 import type { ToolHost, ToolHostState } from './tools/host';
 
 /** The palette's rows, in the order they render, named by their own label. */
@@ -58,7 +59,7 @@ const host = {
   toggleConstruction: () => {},
 } as unknown as ToolHost;
 
-const palette = () =>
+const palette = (problem?: string) =>
   renderToStaticMarkup(
     <TooltipProvider>
       <SketchPalette
@@ -72,6 +73,7 @@ const palette = () =>
         onOutline={() => {}}
         onLookAt={() => {}}
         onFinish={() => {}}
+        problem={problem}
       />
     </TooltipProvider>,
   );
@@ -91,5 +93,14 @@ describe('the sketch palette docs anchors', () => {
     for (const row of ROWS) {
       expect(anchors, `${row} has no sketching docs section`).toContain(anchorFor(row));
     }
+  });
+});
+
+describe('the sketch palette’s problem line', () => {
+  it('says why the sketch has no profiles under the DOF counter, and nothing otherwise', () => {
+    expect(palette()).not.toContain('data-sketch-problem');
+    const html = palette(TOO_MANY_CROSSINGS);
+    expect(html).toContain('data-sketch-problem');
+    expect(html).toContain(TOO_MANY_CROSSINGS);
   });
 });

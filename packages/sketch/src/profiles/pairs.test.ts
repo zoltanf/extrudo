@@ -113,7 +113,8 @@ describe('detectProfiles with the pair search', () => {
       regions += found.length;
     }
     expect(regions).toBeGreaterThan(1000);
-  });
+    // 3.7–5.5 s on CI's runners for the same code: past Vitest's default 5 s.
+  }, 20_000);
 });
 
 /** Two splines of `n` control points zig-zagging across each other along x. */
