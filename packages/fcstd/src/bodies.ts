@@ -290,6 +290,12 @@ export interface BodyWalkOptions {
   readonly files?: Map<AttachmentId, Uint8Array>;
   /** Binds the file's expressions as each feature comes in (S10). */
   readonly binder?: Binder;
+  /**
+   * The design's bodies when the walk starts (none by default), and where it
+   * leaves them: S11 walks a body a Part tree uses part way through the
+   * import, after other bodies came in.
+   */
+  readonly known?: { ids: string[] };
 }
 
 /** Reasons that end a body however its features go on: its chain, the walk's limits, the budget (S8). */
@@ -349,7 +355,7 @@ export function bodyChain(
 }
 
 /** The B-rep text a feature stores, or why there is none (the reader's problems as the detail). */
-function storedText(doc: FcDocument, o: FcObject): { text: string } | { detail: string } {
+export function storedText(doc: FcDocument, o: FcObject): { text: string } | { detail: string } {
   const before = doc.problems.length;
   const text = storedShapeText(doc, o);
   const said = doc.problems.splice(before);
@@ -362,7 +368,7 @@ function storedText(doc: FcDocument, o: FcObject): { text: string } | { detail: 
 }
 
 /** A rebuild's reply once checked: body IDs of the document's features, measures by ID. */
-interface SaneRebuild {
+export interface SaneRebuild {
   readonly ids: readonly string[];
   readonly bodies: ReadonlyMap<string, ShapeMeasure>;
   readonly failed: readonly { readonly feature: string; readonly message: string }[];
@@ -725,7 +731,7 @@ export async function importBodies(
   let designFull = false;
   const histories: BodyHistory[] = [];
   /** Every Extrudo body the last rebuild had. */
-  let known: string[] = [];
+  let known: string[] = [...(options.known?.ids ?? [])];
   let walked = 0;
   /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
   const owner = new Map<string, string>();
@@ -2016,6 +2022,7 @@ export async function importBodies(
     });
     if (!stopped && mine.length > 0) setBodies(design, mine, shape, name);
   }
+  if (options.known) options.known.ids = known;
   return histories;
 }
 
