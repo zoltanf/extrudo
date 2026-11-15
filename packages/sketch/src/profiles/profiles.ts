@@ -339,6 +339,14 @@ function chargePolyline(work: Work, pieces: number): void {
   if (tooMuch(work)) throw new ProfilesRefusedError('curves');
 }
 
+/** The line segments of a polyline, its pieces shorter than the tolerance left out. */
+function chain(curve: SketchEntityId, line: readonly Vec2[], out: Segment[]): void {
+  for (let i = 1; i < line.length; i++) {
+    const s = lineSegment(curve, line[i - 1] as Vec2, line[i] as Vec2);
+    if (s) out.push(s);
+  }
+}
+
 /**
  * The segments of one curve. A polyline curve (ellipse, spline, text) is
  * charged its pieces before it is sampled (`chargePolyline`); a line, arc or
@@ -354,12 +362,6 @@ function segmentsOf(
   const point = (ref: SketchEntityId): Vec2 | undefined => {
     const p = data.entities[ref];
     return p?.type === 'point' ? [p.x, p.y] : undefined;
-  };
-  const chain = (curve: SketchEntityId, line: readonly Vec2[], out: Segment[]) => {
-    for (let i = 1; i < line.length; i++) {
-      const s = lineSegment(curve, line[i - 1] as Vec2, line[i] as Vec2);
-      if (s) out.push(s);
-    }
   };
   const one = (s: Segment | undefined) => (s ? [s] : []);
   switch (e.type) {
