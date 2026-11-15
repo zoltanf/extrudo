@@ -396,7 +396,111 @@ the API and the importers:
   the tolerance of a segment's end counts as inside (`inside` fails
   closed; for any number the answer is as before).
 
-**Still not bounded.** Work that grows without crossings: boxes that
-overlap without crossing (10,000 concentric circles: 50 million pairs,
-16.5 s, no cut inside a curve), and the linear work of a huge polyline (two
-crossing splines of 20,000 poles: 640,000 segments, 11.7 s, 2.4 GB).
+**Still not bounded** (bounded since the second amendment of 2026-11-15,
+below). Work that grows without crossings: boxes that overlap without
+crossing (10,000 concentric circles: 50 million pairs, 16.5 s, no cut
+inside a curve), and the linear work of a huge polyline (two crossing
+splines of 20,000 poles: 640,000 segments, 11.7 s, 2.4 GB).
+
+## Amendment 2026-11-15 (second): work linear in the sketch, and bounded
+
+**What.** Detection's work is now linear in the sketch wherever it has no
+cuts to make, and what stays costly is counted while detecting and refused
+through `ProfilesRefusedError` with a third reason, `curves`. Five rules,
+each keeping the output the same to the last bit:
+
+**A text's outline is laid out once per detection.** The text's polylines
+are sampled once per detection and shared by its segments and its ink
+(`TextLines`); the ink is made once per text, its rings are prepared once
+(`windingRings`), and `windingNumberOf` walks only the rings whose box holds
+the point's row (exact: no edge of another ring counts) and column (by more
+than 1e-9 × the box's coordinates sideways: a ring wholly left or right of
+the point has as many edges counting up as down). `ink.test.ts` checks
+`windingNumberOf` against `windingNumber` on random rings, with points on
+vertices and box sides; `text-ink-once.test.ts` counts one `textPolylines`
+per text and detection.
+
+**The pair search keeps its cell size whatever the sketch's extent.** Cells
+are keyed by column and row (`Cells`: one number while columns × rows is an
+exact integer, a map per column beyond), never by a grid side capped by the
+extent, so the cell is the median side wherever the curves are.
+
+**A box meets only the boxes near it, whatever its length.** Each box has a
+level `(a, b)`: the fewest doublings of the base side (the median of the
+larger sides, as before) along x and along y after which it spans at most
+4 cells of each. Boxes of one level meet in its grid; a box and one of a
+level wider and taller (or equal in one axis) meet in the wider one's grid,
+where the other spans fewer cells; a box and one wider but lower meet in
+the grid `(wider a, own b)`, where the narrower box is kept too (only when
+such a level exists). Each pair is found once, from the finer box; pairs
+across levels are kept by the lower index, and the pairs still come out
+**in the order of the all-pairs loop** (`i`, then `j`), so the cuts,
+regions, IDs and points stay the same. A sketch whose boxes are all alike
+has one level and no second pass. `pairs.test.ts` compares the search with
+every pair on box sets of several levels (long and tall boxes of many
+lengths, far outliers) and counts its box tests (`PairSearchStats`) for one
+curve at the coordinate limit and for long boxes among short ones: a few
+per box.
+
+**The hole search asks a grid.** From 4,096 outline–region pairs on, a grid
+of the regions' boxes widened sideways by the margin (`BoxesAt`, the same
+levels) gives each probe the regions whose box holds it; those are tested
+in ascending order with the same rules, so the chosen region is the one the
+loop over all of them chose (a box with a NaN is always a candidate).
+`pairs.test.ts` checks `BoxesAt` against a test of every box.
+
+**The vertex grid's cells are keyed by numbers.** `Vertices` keeps a map
+per column of maps per row instead of string keys: the same cells, scanned
+in the same order, so every vertex is the one it was.
+
+**Refused: too many curves.** What a sketch costs without cuts is counted
+while detecting (`Work`, `detectProfilesWork` for tests and censuses), each
+against its own limit, and past one the sketch is refused with the reason
+`curves`:
+
+- **Segments**, `MAX_PROFILE_SEGMENTS` = 200,000 (a line, arc or circle is
+  one; an ellipse, spline or text one per piece of its polyline), and
+  **sample points**, `MAX_PROFILE_POINTS` = 2,000,000 (a line one, an arc
+  or circle its samples, up to 2,048), counted curve by curve before any
+  pair is tested. Every later step is linear in them.
+- **Tests of curves near each other**, `MAX_PROFILE_TESTS` = 10,000,000:
+  every pair of segments whose boxes meet (counted in `cutPair` after the
+  same `overlap` on either path, so the count depends neither on the order
+  nor on the grid), and in the hole search every region looked at and every
+  point of every polygon a probe is tested against. Checked as they are
+  made.
+- **Why these.** Segments and points are known before any of the work, the
+  tests as they are made; the regions only after it. A time or memory
+  budget stays out (the same sketch must give the same answer everywhere).
+  The first amendment dropped a limit on segments while other steps were
+  not linear in them; now they are, and it bounds what is left.
+- **Real sketches** (counted with the limits lifted): the 1,047 sketches
+  of the 252 designs of an f3d corpus (imported) and of the repository's
+  fixtures, examples and template reach at most 11,562 segments (99th
+  percentile 5,300), 12,516 points and 401,498 tests; the 39 text sketches
+  at most 6,023 segments. The Vitest suite's own stress sketches reach
+  159,953 segments, 1,019,073 points and 2.4 million tests. So the limits
+  are 17, 160 and 25 times the largest real sketch. Text comes nearest:
+  every glyph curve is 16 segments, about 200 to 500 a letter by font, so
+  the texts of one sketch together may have some 480 (Fredoka) to 1,170
+  (JetBrains Mono) characters of ordinary prose.
+- **Messages.** "This sketch has too many curves to find its profiles.
+  Remove or simplify curves." (`TOO_MANY_CURVES`: the palette line and the
+  sketch's warning); features: "Its sketch has too many curves to find its
+  profiles. Remove or simplify curves in the sketch."
+  (`TOO_MANY_CURVES_TO_PICK`); the importers' reason "its sketch has too
+  many curves to find its profile(s)". The API, the emitter and the agent
+  tools pass the error on as they do the others.
+
+**The proof that nothing else moved.** Every sketch the Vitest suite
+detects (saved while it ran on the code before the crossing limit, and
+again on the code before this amendment) and 51 made for it (texts in
+every bundled font, fit splines of 3 to 300 points across a line, plates
+with hundreds of separate and nested loops): 1,545 distinct sketches went
+through the code before and after. The whole output's digest is the same
+for all 1,534 the code before accepted; the 11 it refused (the limits'
+own tests) are refused the same way, and none is newly refused. Per
+sketch, interleaved, median of 9 runs: the median time went 0.052 →
+0.038 ms, the median ratio 0.74 (10th–90th percentile 0.56–0.98), and
+1.30 the other way round (mostly the vertex grid's number keys). The six
+digests of `limit.test.ts` are unchanged.

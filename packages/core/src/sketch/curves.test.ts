@@ -148,7 +148,6 @@ describe('fitSpline in its band (ADR-0063, amendment of 2026-11-15)', () => {
   });
 
   it('fits 20,000 points, through every one', () => {
-    // Its whole matrix would be 400 million numbers.
     const points = wave(20_000);
     const spline = fitSpline(points);
     expect(spline.poles).toHaveLength(20_000);

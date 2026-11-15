@@ -659,3 +659,32 @@ Free ends is one `clearSplineTangents` command (one label for one step); a
 press on a grip without a move stores nothing and keeps the selection;
 `data-tangent-grips` on the viewport and `data-spline-tangents` /
 `data-spline-degree` in the panel let e2e read the document.
+
+## Amendment, 2026-11-15 — a fit spline's system is built banded
+
+**What.** Above `BANDED_FIT` (32) points `fitSpline` solves its collocation
+system in its band (the P4-12 amendment); now it also builds only the band.
+Each row is its span's `degree + 1` basis values and the column they start
+at (`SparseRow`; the end-derivative rows of `tangentFit` are the two values
+−1, 1), and `solveBanded` reads its half-width and its band from them. The
+dense solve (32 points and fewer) gets the rows filled out with zeros as
+before. Memory and time are linear in the points.
+
+**The same numbers to the last bit.** Spline shapes are stored designs'
+geometry, so nothing may move: the half-width is the largest distance from
+the diagonal of a non-zero value, as before; the band holds the same values
+at the same places and zeros elsewhere; the elimination is untouched.
+Checked: every `fitSpline` and `closedFitSpline` call of the whole Vitest
+suite (501 distinct inputs recorded on the code before: 385 open, 116
+closed, 8 with end tangents, 2 above 32 points) gives the same poles and
+knots before and after, compared as JSON; so do 276 random fit splines of
+2 to 3,000 points with and without end tangents, coincident points among
+them, most of them banded. `curves.test.ts` keeps three digests of banded
+fits recorded before (400 points, 400 with both tangents, 33 with a start
+tangent) and fits 20,000 points through every one. Closed fit splines were
+already sparse (`solveCyclic`).
+
+| File | What |
+|---|---|
+| `packages/core/src/sketch/curves.ts` | `SparseRow`, `denseRow`; `fitSpline` and `tangentFit` build sparse rows; `solveBanded(rows, rhs)` |
+| `packages/core/src/sketch/curves.test.ts` | the digests and the 20,000-point fit |

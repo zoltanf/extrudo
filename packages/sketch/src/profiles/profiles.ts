@@ -99,17 +99,16 @@ export const MAX_PROFILE_SEGMENTS = 200_000;
 /**
  * The most sample points the segments may have (a line one, an arc or
  * circle up to 2,048): what the regions' loops are drawn with. Counted
- * with the segments.
+ * with the segments. Real sketches reach about 12,500.
  */
 export const MAX_PROFILE_POINTS = 2_000_000;
 
 /**
- * The most tests detection may make of things that are near without
- * cutting each other: pairs of segments whose boxes meet, and the regions
+ * The most tests detection may make of curves near each other, cutting
+ * each other or not: pairs of segments whose boxes meet, and the regions
  * (and their polygons' points) an outline is tested against to find the
- * region it is a hole of. Many curves nested in each other, or lying over
- * each other's boxes, make these grow with the square of their number
- * (ADR-0020's amendment of 2026-11-15, second).
+ * region it is a hole of. Checked as they are made. Real sketches reach
+ * about 400,000 (ADR-0020's amendment of 2026-11-15, second).
  */
 export const MAX_PROFILE_TESTS = 10_000_000;
 
