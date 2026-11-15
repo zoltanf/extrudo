@@ -57,7 +57,7 @@ toolchain 3.1.0 since 2026-10-16 (ADR-0001's addendum of that day): `delete()`
 frees for real, so never delete a handle OCCT still references. The facade
 stays the only binding (ADR-0037); the only OCCT `delete()` in
 `packages/kernel/src` is the facade's own in `Kernel.dispose()`, after
-`releaseAll()`. `pnpm wasm` (`scripts/wasm-release.mjs`) unpacks a release only when its tarball has the SHA-256 the releases API reports (`checkDigest`, fails closed; 2026-11-10). ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
+`releaseAll()`. `pnpm wasm` (`scripts/wasm-release.mjs`) unpacks a release only when its tarball has the SHA-256 pinned for its exact tag in `scripts/wasm-pins.json` (`pinFor`, `checkDigest`; no pin or another tag refuses; amendment 2026-11-15), and `ensure` rehashes `dist/` against `dist/.sha256` and refuses a changed file. A change to a build's inputs needs its pin committed: after CI publishes, `pnpm wasm:pin` (never hand-edit a digest; `pin` refuses to re-pin a tag with other bytes). `publish` writes the pin; `dist/.inputs-hash` and `dist/.sha256` are never packed. ADR-0002 chose planegcs from our own WASM build, one solver system per independent sketch component
 (`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
 `packages/core`: strict zod schema, migrations on raw JSON, deterministic
 commands with Immer patches, nested undo transactions, vanilla Zustand stores.
