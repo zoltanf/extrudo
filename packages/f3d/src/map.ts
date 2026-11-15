@@ -36,6 +36,7 @@ import {
   insidePolygon,
   interiorPoint,
   type Profile,
+  profilesRefusal,
 } from '@extrudo/sketch/profiles';
 import { sha256Hex } from '@extrudo/storage';
 import type { AsmSurface } from './asm';
@@ -2010,11 +2011,30 @@ export function unmatchedRegion(
   return `profile region {${wanted.join('|')}} not found in ${sketch} (it has ${count}: ${have.map((k) => `{${k}}`).join(' ')})`;
 }
 
-/** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
+/**
+ * The Extrudo profiles a feature's profile operands select, and the sketch
+ * they are in. A sketch whose regions Extrudo refuses to find (its curves cut
+ * each other too often or lie too far out; ADR-0020's amendment of
+ * 2026-11-15) gives `TOO_MANY_CROSSINGS` or `TOO_LARGE_SKETCH`.
+ */
 export function selectProfiles(
   operands: ProfileOperand[],
   sketchOf: (operand: ProfileOperand) => SketchEntry | string,
   note: (text: string) => void = () => {},
+): { profiles: GeomRef[]; entry: SketchEntry } | string {
+  try {
+    return selectProfilesOf(operands, sketchOf, note);
+  } catch (error) {
+    const refusal = profilesRefusal(error);
+    if (refusal) return refusal.reason === 'size' ? TOO_LARGE_SKETCH : TOO_MANY_CROSSINGS;
+    throw error;
+  }
+}
+
+function selectProfilesOf(
+  operands: ProfileOperand[],
+  sketchOf: (operand: ProfileOperand) => SketchEntry | string,
+  note: (text: string) => void,
 ): { profiles: GeomRef[]; entry: SketchEntry } | string {
   const profiles: GeomRef[] = [];
   let entry: SketchEntry | undefined;
@@ -3263,6 +3283,8 @@ export const regionStats: Record<string, number> = {
 
 /** Why a feature's profile was not found when its sketch's region matching ran out of budget. */
 export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
+/** Why a feature's profile was not found when its sketch's curves lie too far out to find regions. */
+export const TOO_LARGE_SKETCH = 'its sketch has coordinates too large to find its profile';
 
 /**
  * The Extrudo regions inside an f3d region rebuilt from its pieces of

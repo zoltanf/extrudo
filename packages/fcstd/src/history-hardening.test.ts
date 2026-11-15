@@ -244,14 +244,16 @@ describe("a profile sketch's cost", () => {
     const refs = profileRefs(s, true);
     return { ms: performance.now() - t, refs };
   };
-  it('picks the faces of a grid of crossing lines at the cap in a few seconds', () => {
+  it('refuses a grid of crossing lines at the cap in a few seconds', () => {
     const half = MAX_PROFILE_CURVES / 2;
     const { ms, refs } = timed((k) => {
       for (let i = 0; i < half; i++) k.line([i, -1], [i, half]);
       for (let i = 0; i < half; i++) k.line([-1, i], [half, i]);
     });
-    // 249 × 249 cells: past the region cap, refused after the detection.
-    expect(refs).toMatch(/62001 closed regions/);
+    // 250 × 250 crossings: past the detection's own limit (125,000 cuts, more
+    // than MAX_PROFILE_CUTS; ADR-0020's amendment of 2026-11-15), refused
+    // while its curves are cut. Before that limit, past the region cap (62,001).
+    expect(refs).toBe('its sketch has too many curve crossings to find its profiles');
     console.log(`grid of ${MAX_PROFILE_CURVES} lines: ${Math.round(ms)} ms`);
     // About 1–2 s unloaded (the ADR's table); room for a loaded runner.
     expect(ms).toBeLessThan(10_000);

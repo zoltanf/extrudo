@@ -230,6 +230,8 @@ function sketchOutput(ctx: CsgContext, feature: FeatureId): SketchOutputData {
       id: feature,
     });
   }
+  // Its regions were never found (ADR-0020's amendment of 2026-11-15).
+  if (data.profilesRefused) throw new KernelError(data.profilesRefused);
   return data as SketchOutputData;
 }
 
