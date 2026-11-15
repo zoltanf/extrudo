@@ -449,6 +449,10 @@ export interface Work {
   tests: number;
 }
 
+const refuse = (): never => {
+  throw new ProfilesRefusedError('curves');
+};
+
 const tooMuch = (work: Work) =>
   work.segments > MAX_PROFILE_SEGMENTS ||
   work.points > MAX_PROFILE_POINTS ||
@@ -511,7 +515,8 @@ function cutSegments(
             ? (b[c] as number) - 2 * PROFILE_TOLERANCE
             : (b[c] as number) + 2 * PROFILE_TOLERANCE;
     });
-    for (const [i, j] of nearPairsWithin(boxes))
+    // The search's own work counts with the pairs' tests (`MAX_PROFILE_TESTS`).
+    for (const [i, j] of nearPairsWithin(boxes, work, { limit: MAX_PROFILE_TESTS, refuse }))
       cutPair(
         segments[index[i] as number] as Segment,
         segments[index[j] as number] as Segment,

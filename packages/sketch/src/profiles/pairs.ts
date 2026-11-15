@@ -7,9 +7,20 @@
 /** A box spans at most this many cells of its level's grid along each axis (one more after rounding). */
 const MAX_SPAN = 4;
 
-/** The pair search's work, for tests: how many pairs of boxes it compared. */
+/**
+ * The pair search's work: every cell a box is put in or looked up in, and
+ * every box looked at there (and each level a box looks in), added to
+ * `tests`. With a `limit`, the search calls `refuse` (which throws) as soon
+ * as `tests` passes it, before the work or the memory it stands for.
+ */
 export interface PairSearchStats {
   tests: number;
+}
+
+/** Past `limit` tests, `refuse` throws; without it the search only counts. */
+export interface PairSearchBudget {
+  limit: number;
+  refuse: () => never;
 }
 
 /**
@@ -53,14 +64,47 @@ class Cells {
   }
 }
 
-/** The fewest doublings of `base` after which `side` spans at most `MAX_SPAN` cells (0 for a NaN). */
-function doublingsOf(base: number): (side: number) => number {
+/** The finest level a box goes to: its cells are `base / 2^64`. */
+const FINEST = -64;
+
+/** A grid has at most 2^50 cells a side, so its cell numbers stay exact integers. */
+const MAX_CELLS_LOG2 = 50;
+
+/**
+ * A box's level `(a, b)` for a base side: along each axis the fewest
+ * doublings of the base side (0 or more) after which the box spans at most
+ * `MAX_SPAN` cells. A box whose larger side is an eighth of that or less
+ * goes to a finer level instead, the same along both axes (the base side
+ * halved until it spans at most `MAX_SPAN` cells of it, down to `FINEST`):
+ * small boxes never share a coarse cell. No level is finer than one of
+ * 2^`MAX_CELLS_LOG2` cells over `extent` (the larger side of all the
+ * boxes). A NaN side is level 0, or that finest.
+ */
+function levelsOf(base: number, extent: number): (w: number, h: number) => [number, number] {
   const fit = (MAX_SPAN - 1) * base;
-  return (side) => {
+  const finest = Math.max(
+    FINEST,
+    extent > base ? Math.ceil(Math.log2(extent / base)) - MAX_CELLS_LOG2 : FINEST,
+  );
+  const up = (side: number) => {
     let k = side > fit ? Math.ceil(Math.log2(side / fit)) : 0;
     while (side > fit * 2 ** k) k++;
     while (k > 0 && side <= fit * 2 ** (k - 1)) k--;
     return k;
+  };
+  const down = (side: number) => {
+    let k = side > 0 ? Math.max(FINEST, Math.ceil(Math.log2(side / fit))) : FINEST;
+    while (k < 0 && side > fit * 2 ** k) k++;
+    while (k > FINEST && side <= fit * 2 ** (k - 1)) k--;
+    return k;
+  };
+  return (w, h) => {
+    const m = Math.max(w, h);
+    if (m <= fit / 8) {
+      const k = Math.max(finest, down(m));
+      return [k, k];
+    }
+    return [Math.max(finest, up(w)), Math.max(finest, up(h))];
   };
 }
 
@@ -72,8 +116,11 @@ interface Level {
   h: number;
   /** The boxes whose level this is. */
   own: Cells;
-  /** Boxes of a narrower level (`a` smaller, same `b`), for the boxes here that are lower (`b` smaller) to find. */
-  promoted: Cells | undefined;
+  /**
+   * Boxes of this width (`a`) but lower (`b` smaller), kept here too for the
+   * narrower boxes of this height to find (they span few cells of it).
+   */
+  lower: Cells | undefined;
 }
 
 /**
@@ -81,27 +128,36 @@ interface Level {
  * per box, four numbers each; boxes that touch meet), each pair once, in the
  * order a test of every pair visits them: `i` ascending, then `j` ascending.
  *
- * Grids of levels: the base side is the median of the boxes' larger sides;
- * a box's level is `(a, b)`, the fewest doublings of the base side along x
- * and along y after which it spans at most `MAX_SPAN` cells of each. Most
- * boxes are at level (0, 0) whatever the sketch's extent, and the boxes
- * much longer than most (long lines among a spline's short segments, a
- * hatch of long lines) meet only the boxes near them in their own grid:
+ * Grids of levels (`levelsOf`): the base side is the median of the boxes'
+ * larger sides; a box's level is `(a, b)`, doublings of the base side along
+ * x and along y, or for a small box halvings along both. Most boxes are at
+ * level (0, 0) whatever the sketch's extent; boxes much longer than most
+ * (long lines among a spline's short segments, a hatch of long lines) and
+ * much smaller meet only the boxes near them:
  *
  * - boxes of one level, in its grid;
  * - a box and one of a level wider and taller (or equal in one axis), in
  *   the wider one's grid, where the other spans fewer cells;
  * - a box (a, b) and one wider in x only but lower in y, (a', b') with
- *   a' > a, b' < b: in the grid (a', b), where the first is kept too.
+ *   a' > a, b' < b: in the grid (a', b), where the second is kept too.
  *
- * The boxes must be finite (check before; a NaN box is never yielded).
+ * Every cell a box is put in or looked up in, every box looked at there and
+ * every level a box looks in counts in `stats.tests`, checked against the
+ * `budget` as it counts. The boxes must be finite (check before; a NaN box
+ * is never yielded).
  */
 export function* nearPairsWithin(
   boxes: Float64Array,
-  stats?: PairSearchStats,
+  stats: PairSearchStats = { tests: 0 },
+  budget?: PairSearchBudget,
 ): Generator<[number, number]> {
   const n = boxes.length / 4;
   if (n < 2) return;
+  const limit = budget?.limit ?? Number.POSITIVE_INFINITY;
+  const charge = (k: number) => {
+    stats.tests += k;
+    if (stats.tests > limit) (budget as PairSearchBudget).refuse();
+  };
   let ex0 = Number.POSITIVE_INFINITY;
   let ey0 = Number.POSITIVE_INFINITY;
   let ex1 = Number.NEGATIVE_INFINITY;
@@ -119,38 +175,37 @@ export function* nearPairsWithin(
     sides[i] = Math.max(x1 - x0, y1 - y0);
   }
   if (!(ex0 <= ex1 && ey0 <= ey1)) return;
-  const apart = (i: number, j: number) => {
-    if (stats) stats.tests++;
-    return (
-      (boxes[4 * i] as number) > (boxes[4 * j + 2] as number) ||
-      (boxes[4 * j] as number) > (boxes[4 * i + 2] as number) ||
-      (boxes[4 * i + 1] as number) > (boxes[4 * j + 3] as number) ||
-      (boxes[4 * j + 1] as number) > (boxes[4 * i + 3] as number)
-    );
-  };
+  const apart = (i: number, j: number) =>
+    (boxes[4 * i] as number) > (boxes[4 * j + 2] as number) ||
+    (boxes[4 * j] as number) > (boxes[4 * i + 2] as number) ||
+    (boxes[4 * i + 1] as number) > (boxes[4 * j + 3] as number) ||
+    (boxes[4 * j + 1] as number) > (boxes[4 * i + 3] as number);
   if (!Number.isFinite(ex1 - ex0) || !Number.isFinite(ey1 - ey0)) {
     // Boxes beyond half the doubles' range: no grid fits them. Unreachable
     // from detection, which refuses curves past `MAX_PROFILE_COORDINATE`.
-    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (!apart(i, j)) yield [i, j];
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        charge(1);
+        if (!apart(i, j)) yield [i, j];
+      }
     return;
   }
   sides.sort();
   const base = (sides[n >> 1] as number) || 1;
-  const doublings = doublingsOf(base);
+  const levelFor = levelsOf(base, Math.max(ex1 - ex0, ey1 - ey0));
 
   // Monotone in v: boxes that meet share a cell of every grid.
   const cell = (v: number, o: number, size: number) => Math.floor((v - o) / size);
   const levels = new Map<number, Level>();
-  const levelKey = (a: number, b: number) => a * 4096 + b;
   const levelAt = (a: number, b: number) => {
-    const key = levelKey(a, b);
+    const key = a * 4096 + b;
     let level = levels.get(key);
     if (!level) {
       const w = base * 2 ** a;
       const h = base * 2 ** b;
       const cols = cell(ex1, ex0, w) + 1;
       const rows = cell(ey1, ey0, h) + 1;
-      level = { a, b, w, h, own: new Cells(cols, rows), promoted: undefined };
+      level = { a, b, w, h, own: new Cells(cols, rows), lower: undefined };
       levels.set(key, level);
     }
     return level;
@@ -161,16 +216,24 @@ export function* nearPairsWithin(
     out[2] = cell(boxes[4 * i + 2] as number, ex0, level.w);
     out[3] = cell(boxes[4 * i + 3] as number, ey0, level.h);
   };
+  /** The cells of a span, charged before they are made or looked up. */
+  const cellsOf = (out: number[]) => {
+    const k =
+      ((out[2] as number) - (out[0] as number) + 1) * ((out[3] as number) - (out[1] as number) + 1);
+    charge(k);
+  };
   const s = [0, 0, 0, 0];
 
   const levelOf: Level[] = new Array(n);
   for (let i = 0; i < n; i++) {
-    const level = levelAt(
-      doublings((boxes[4 * i + 2] as number) - (boxes[4 * i] as number)),
-      doublings((boxes[4 * i + 3] as number) - (boxes[4 * i + 1] as number)),
+    const [a, b] = levelFor(
+      (boxes[4 * i + 2] as number) - (boxes[4 * i] as number),
+      (boxes[4 * i + 3] as number) - (boxes[4 * i + 1] as number),
     );
+    const level = levelAt(a, b);
     levelOf[i] = level;
     span(i, level, s);
+    cellsOf(s);
     for (let cy = s[1] as number; cy <= (s[3] as number); cy++)
       for (let cx = s[0] as number; cx <= (s[2] as number); cx++) level.own.add(cx, cy, i);
   }
@@ -178,24 +241,62 @@ export function* nearPairsWithin(
   const seen = new Int32Array(n).fill(-1);
   const across: (number[] | undefined)[] = new Array(n);
   if (levels.size > 1) {
-    // The lowest level (`b`) of each width (`a`): who may look for boxes kept higher up.
-    const lowest = new Map<number, number>();
-    for (const l of levels.values()) lowest.set(l.a, Math.min(lowest.get(l.a) ?? l.b, l.b));
-    for (let i = 0; i < n; i++) {
+    // For each width (`a`), the heights (`b`) of the narrower levels: the
+    // levels a box of that width is kept in too, where it is higher.
+    const all = [...levels.values()];
+    const heights = new Map<number, number[]>();
+    for (const l of all)
+      if (!heights.has(l.a)) {
+        charge(all.length);
+        heights.set(
+          l.a,
+          [...new Set(all.filter((m) => m.a < l.a).map((m) => m.b))].sort((p, q) => p - q),
+        );
+      }
+    // Counted for all boxes first, so a sketch past the budget is refused
+    // before any of them is kept again.
+    const keepLower = (i: number, insert: boolean) => {
       const own = levelOf[i] as Level;
-      for (const [a, b] of lowest)
-        if (a > own.a && b < own.b) {
-          const up = levelAt(a, own.b);
-          if (!up.promoted)
-            up.promoted = new Cells(cell(ex1, ex0, up.w) + 1, cell(ey1, ey0, up.h) + 1);
-          span(i, up, s);
-          for (let cy = s[1] as number; cy <= (s[3] as number); cy++)
-            for (let cx = s[0] as number; cx <= (s[2] as number); cx++) up.promoted.add(cx, cy, i);
+      for (const b of heights.get(own.a) as number[]) {
+        if (b <= own.b) continue;
+        const up = levelAt(own.a, b);
+        span(i, up, s);
+        cellsOf(s);
+        if (!insert) continue;
+        if (!up.lower) up.lower = new Cells(cell(ex1, ex0, up.w) + 1, cell(ey1, ey0, up.h) + 1);
+        for (let cy = s[1] as number; cy <= (s[3] as number); cy++)
+          for (let cx = s[0] as number; cx <= (s[2] as number); cx++) up.lower.add(cx, cy, i);
+      }
+    };
+    const counted = stats.tests;
+    for (let i = 0; i < n; i++) keepLower(i, false);
+    // Kept as counted: the same work again, charged once.
+    stats.tests = counted;
+    for (let i = 0; i < n; i++) keepLower(i, true);
+    // For each level, the levels its boxes look in: wider and taller ones
+    // (their own boxes), and the wider ones of its own height (the lower
+    // boxes kept there).
+    const every = [...levels.values()];
+    const looks = new Map<Level, { l: Level; wider: boolean; lower: boolean }[]>();
+    const looksOf = (own: Level) => {
+      let list = looks.get(own);
+      if (!list) {
+        charge(every.length);
+        list = [];
+        for (const l of every) {
+          const wider = l.a >= own.a && l.b >= own.b && l !== own;
+          const lower = l.a > own.a && l.b === own.b && l.lower !== undefined;
+          if (wider || lower) list.push({ l, wider, lower });
         }
-    }
+        looks.set(own, list);
+      }
+      return list;
+    };
     // Pairs across levels, kept by the lower index of the two.
     const keep = (i: number, list: number[] | undefined) => {
-      for (const j of list ?? []) {
+      if (!list) return;
+      charge(list.length);
+      for (const j of list) {
         if (seen[j] === i) continue;
         seen[j] = i;
         if (apart(i, j)) continue;
@@ -206,19 +307,14 @@ export function* nearPairsWithin(
         else across[lo] = [hi];
       }
     };
-    // With the levels only promoted boxes made.
-    const all = [...levels.values()];
     for (let i = 0; i < n; i++) {
-      const own = levelOf[i] as Level;
-      for (const l of all) {
-        const wider = l.a >= own.a && l.b >= own.b && l !== own;
-        const higher = l.a === own.a && l.b > own.b && l.promoted !== undefined;
-        if (!wider && !higher) continue;
+      for (const { l, wider, lower } of looksOf(levelOf[i] as Level)) {
         span(i, l, s);
+        cellsOf(s);
         for (let cy = s[1] as number; cy <= (s[3] as number); cy++)
           for (let cx = s[0] as number; cx <= (s[2] as number); cx++) {
             if (wider) keep(i, l.own.get(cx, cy));
-            if (higher) keep(i, l.promoted?.get(cx, cy));
+            if (lower) keep(i, l.lower?.get(cx, cy));
           }
       }
     }
@@ -230,6 +326,7 @@ export function* nearPairsWithin(
     found.length = 0;
     const own = levelOf[i] as Level;
     span(i, own, s);
+    cellsOf(s);
     for (let cy = s[1] as number; cy <= (s[3] as number); cy++)
       for (let cx = s[0] as number; cx <= (s[2] as number); cx++) {
         const list = own.own.get(cx, cy);
@@ -242,6 +339,7 @@ export function* nearPairsWithin(
           if ((list[mid] as number) <= i) lo = mid + 1;
           else hi = mid;
         }
+        charge(list.length - lo);
         for (let k = lo; k < list.length; k++) {
           const j = list[k] as number;
           if (seen[j] === i) continue;
@@ -309,11 +407,13 @@ export class BoxesAt {
       ),
     ).sort();
     const base = (sides[sides.length >> 1] as number) || 1;
-    const doublings = doublingsOf(base);
+    const levelFor = levelsOf(base, Math.max(ex1 - ex0, ey1 - ey0));
     const byKey = new Map<number, { w: number; h: number; cells: Cells }>();
     for (const i of finite) {
-      const a = doublings((boxes[4 * i + 2] as number) - (boxes[4 * i] as number));
-      const b = doublings((boxes[4 * i + 3] as number) - (boxes[4 * i + 1] as number));
+      const [a, b] = levelFor(
+        (boxes[4 * i + 2] as number) - (boxes[4 * i] as number),
+        (boxes[4 * i + 3] as number) - (boxes[4 * i + 1] as number),
+      );
       let level = byKey.get(a * 4096 + b);
       if (!level) {
         const w = base * 2 ** a;
@@ -335,7 +435,7 @@ export class BoxesAt {
     }
   }
 
-  /** The boxes holding `p`, ascending; `stats.tests` counts the boxes looked at. */
+  /** The boxes holding `p`, ascending; `stats.tests` counts the levels and the boxes looked at. */
   at(p: readonly [number, number], stats?: PairSearchStats): number[] {
     const boxes = this.#boxes;
     if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) {
@@ -343,6 +443,7 @@ export class BoxesAt {
       return Array.from({ length: boxes.length / 4 }, (_, i) => i);
     }
     const out = [...this.#always];
+    if (stats) stats.tests += this.#levels.length;
     for (const level of this.#levels) {
       const list = level.cells.get(
         Math.floor((p[0] - this.#origin[0]) / level.w),

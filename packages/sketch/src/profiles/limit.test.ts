@@ -283,14 +283,32 @@ describe('the curve limits', () => {
     // Apart, they cost a few tests each.
     const b = new SketchBuilder();
     for (let i = 0; i < 3000; i++) b.circle((i % 60) * 3, Math.floor(i / 60) * 3, 1);
-    expect(workOf(b.sketch).tests).toBeLessThan(10 * 3000);
+    expect(workOf(b.sketch).tests).toBeLessThan(20 * 3000);
+  });
+
+  it('charges the pair search, not only the pairs whose boxes meet', () => {
+    // Short lines packed in one cell of the longer lines: no two boxes meet.
+    const b = new SketchBuilder();
+    const n = 3000;
+    const side = Math.ceil(Math.sqrt(n));
+    for (let k = 0; k < n; k++) {
+      const x = (k % side) * 1e-3;
+      const y = Math.floor(k / side) * 1e-3;
+      b.line(x, y, x + 2e-4, y);
+    }
+    for (let k = 0; k < n + 2; k++) b.line(1000, 100 + k, 1010, 100 + k);
+    const work = workOf(b.sketch);
+    expect(work.tests).toBeGreaterThan(work.segments);
+    expect(work.tests).toBeLessThan(20 * work.segments);
   });
 
   it('refuses curves nested too deep once the tests pass the limit', () => {
     // About 4,500 circles make 10 million pairs whose boxes meet.
     const work = workOf(nested(4500));
     expect(work.reason).toBe('curves');
-    expect(work.tests).toBe(MAX_PROFILE_TESTS + 1);
+    // Refused as the tests pass the limit, one cell's boxes at most later.
+    expect(work.tests).toBeGreaterThan(MAX_PROFILE_TESTS);
+    expect(work.tests).toBeLessThan(MAX_PROFILE_TESTS + 4500);
     // Nested squares of lines: their boxes don't meet, the outlines' tests count.
     const squares = new SketchBuilder();
     for (let i = 0; i < 4000; i++) {

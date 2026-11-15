@@ -197,8 +197,9 @@ describe('nearPairsWithin compares a few boxes per box', () => {
       ]),
     );
     expect(far.pairs).toBe(near.pairs);
-    expect(near.tests).toBeLessThan(5 * n);
-    expect(far.tests).toBeLessThan(5 * n);
+    // Each box: its cells made and looked up, and the boxes there.
+    expect(near.tests).toBeLessThan(10 * n);
+    expect(far.tests).toBeLessThan(15 * n);
   });
 
   it('tests a box much longer than most only against the boxes near it', () => {
@@ -225,7 +226,57 @@ describe('nearPairsWithin compares a few boxes per box', () => {
     for (let i = 0; i <= 2 * n; i++) lines.push([i * 0.05, -10, i * 0.05 + 0.01, -10]);
     const { tests, pairs } = pairTests(lineBoxes(lines));
     expect(pairs).toBe(0);
-    expect(tests).toBeLessThan(10 * lines.length);
+    expect(tests).toBeLessThan(20 * lines.length);
+  });
+});
+
+describe('nearPairsWithin charges all its work', () => {
+  it('puts boxes much smaller than most in finer cells: a few tests per box', () => {
+    // n tiny boxes 0.001 mm apart in one 0.3 mm square, and n + 2 lines of
+    // 10 mm elsewhere that set the base cell: none meet.
+    const n = 4000;
+    const lines: [number, number, number, number][] = [];
+    const side = Math.ceil(Math.sqrt(n));
+    for (let k = 0; k < n; k++) {
+      const x = (k % side) * 1e-3;
+      const y = Math.floor(k / side) * 1e-3;
+      lines.push([x, y, x + 2e-4, y]);
+    }
+    for (let k = 0; k < n + 2; k++) lines.push([1000, 100 + k, 1010, 100 + k]);
+    const { tests, pairs } = pairTests(lineBoxes(lines));
+    expect(pairs).toBe(0);
+    expect(tests).toBeLessThan(20 * lines.length);
+  });
+
+  it('charges every level a box looks in, and every box kept in a wider level', () => {
+    // Long flat lines of many widths far off, and many short tall lines:
+    // each tall line looks in every wider level of its height.
+    const lines: [number, number, number, number][] = [];
+    const widths = 20;
+    for (let a = 1; a <= widths; a++) lines.push([-1e6, -1 - a, -1e6 + 2 ** a, -1 - a]);
+    const n = 2000;
+    for (let k = 0; k < n; k++) lines.push([k, 0, k, 50]);
+    for (let k = 0; k < n; k++) lines.push([k + 0.5, 60, k + 0.5 + 1e-3, 60]);
+    const { tests } = pairTests(lineBoxes(lines));
+    expect(tests).toBeGreaterThan(n * widths);
+  });
+
+  it('refuses through its budget as soon as the work passes it', () => {
+    const lines: [number, number, number, number][] = [];
+    for (let k = 0; k < 5000; k++) lines.push([k, 0, k + 0.5, 0]);
+    const stats: PairSearchStats = { tests: 0 };
+    let refused = 0;
+    expect(() => {
+      for (const _ of nearPairsWithin(lineBoxes(lines), stats, {
+        limit: 1000,
+        refuse: () => {
+          refused = stats.tests;
+          throw new Error('over');
+        },
+      }));
+    }).toThrow('over');
+    expect(refused).toBeGreaterThan(1000);
+    expect(refused).toBeLessThan(1100);
   });
 });
 
