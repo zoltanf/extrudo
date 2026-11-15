@@ -1,9 +1,11 @@
 # Authored fixtures for the FreeCAD import's S9: up-to extents, an edge or a datum line as an axis,
 # datum lines and planes as a pattern's reference, sketches on tilted planes, and sketches with
-# external (projected) geometry. Our own parts, made here with FreeCAD, so
+# external (projected) geometry, arcs among it. Our own parts, made here with FreeCAD, so
 # the stored shapes, the property grammar and the EdgeN / FaceN numbering are
 # FreeCAD's own. Writes fixtures.json (no file metadata: only the objects'
 # own XML from Document.xml, never the document's properties).
+# reference-fixtures-to-module.py beside this script turns fixtures.json into
+# packages/fcstd/src/reference-fixtures.ts (its header gives the commands).
 #
 # Run: freecadcmd make-reference-fixtures.py <output directory>   (FreeCAD 1.1)
 # Writes fixtures.json and log.txt into that directory, never beside the script
@@ -665,6 +667,91 @@ def face_sketch_external(doc, body):
     p = body.newObject('PartDesign::Pocket', 'Pocket')
     p.Profile = sk; p.Length = 3
 case('face_sketch_external', face_sketch_external, 'a sketch attached to a boss\'s top face, its circle dimensioned from two projected edges of that face')
+
+# --- arcs as projected edges (S9, arcs) -----------------------------------
+
+def rounded_plate(doc, body):
+    # The plate with its corner at (+20, +10) rounded with radius 6: its top and bottom faces get an arc.
+    sk0, pad = plate(doc, body, -20, -10, 20, 10, 10)
+    v = find_edge(pad.Shape, lambda e: near(mid_of(e).x, 20) and near(mid_of(e).y, 10))
+    f = body.newObject('PartDesign::Fillet', 'Fillet')
+    f.Base = (pad, v); f.Radius = 6
+    doc.recompute()
+    return pad, f
+
+def arc_edge(shape, z):
+    return find_edge(shape, lambda e: type(e.Curve).__name__ == 'Circle' and near(mid_of(e).z, z)
+                     and len(e.Vertexes) == 2)[0]
+
+def external_arc_concentric(doc, body):
+    pad, f = rounded_plate(doc, body)
+    sk = sketch(body, 'PocketSketch', 10)
+    sk.addExternal(f.Name, arc_edge(f.Shape, 10))
+    circle(sk, 13, 3, 2)
+    sk.addConstraint(Sketcher.Constraint('Coincident', 0, 3, -3, 3))
+    sk.addConstraint(Sketcher.Constraint('Radius', 0, 2))
+    doc.recompute()
+    p = body.newObject('PartDesign::Pocket', 'Pocket')
+    p.Profile = sk; p.Length = 4
+case('external_arc_concentric', external_arc_concentric, 'a pocket whose circle is concentric with the projected arc of a rounded corner (the arc on the sketch\'s plane)')
+
+def external_arc_below(doc, body):
+    pad, f = rounded_plate(doc, body)
+    sk = sketch(body, 'PocketSketch', 10)
+    sk.addExternal(f.Name, arc_edge(f.Shape, 0))
+    circle(sk, 13, 3, 2)
+    sk.addConstraint(Sketcher.Constraint('Coincident', 0, 3, -3, 3))
+    sk.addConstraint(Sketcher.Constraint('Radius', 0, 2))
+    doc.recompute()
+    p = body.newObject('PartDesign::Pocket', 'Pocket')
+    p.Profile = sk; p.Length = 4
+case('external_arc_below', external_arc_below, 'the same from the bottom face\'s arc, 10 below the sketch\'s plane')
+
+def external_arc_ends(doc, body):
+    pad, f = rounded_plate(doc, body)
+    sk = sketch(body, 'NotchSketch', 10)
+    sk.addExternal(f.Name, arc_edge(f.Shape, 10))
+    # A slot from the arc's two ends inward: its outer corners are held on the arc's end points.
+    sk.addGeometry(Part.LineSegment(App.Vector(14, 10, 0), App.Vector(14, 4, 0)), False)
+    sk.addGeometry(Part.LineSegment(App.Vector(14, 4, 0), App.Vector(20, 4, 0)), False)
+    sk.addGeometry(Part.LineSegment(App.Vector(20, 4, 0), App.Vector(14, 10, 0)), False)
+    sk.addConstraint(Sketcher.Constraint('Coincident', 0, 2, 1, 1))
+    sk.addConstraint(Sketcher.Constraint('Coincident', 1, 2, 2, 1))
+    sk.addConstraint(Sketcher.Constraint('Coincident', 2, 2, 0, 1))
+    sk.addConstraint(Sketcher.Constraint('Coincident', 0, 1, -3, 1))
+    sk.addConstraint(Sketcher.Constraint('Coincident', 1, 2, -3, 2))
+    sk.addConstraint(Sketcher.Constraint('Coincident', 0, 2, -3, 3))
+    doc.recompute()
+    p = body.newObject('PartDesign::Pocket', 'Notch')
+    p.Profile = sk; p.Length = 3
+case('external_arc_ends', external_arc_ends, 'a triangular notch with corners held on the projected arc\'s two ends and its centre')
+
+def external_arc_on_object(doc, body):
+    pad, f = rounded_plate(doc, body)
+    sk = sketch(body, 'PocketSketch', 10)
+    sk.addExternal(f.Name, arc_edge(f.Shape, 10))
+    r = 6 - 2.5
+    circle(sk, 14 + r * math.cos(math.radians(45)) - 2.5 * 0, 4 + r * math.sin(math.radians(45)), 2.5)
+    sk.addConstraint(Sketcher.Constraint('Radius', 0, 2.5))
+    sk.addConstraint(Sketcher.Constraint('Tangent', 0, -3))
+    sk.addConstraint(Sketcher.Constraint('DistanceX', -1, 1, 0, 3, 14 + r * math.cos(math.radians(45))))
+    doc.recompute()
+    p = body.newObject('PartDesign::Pocket', 'Pocket')
+    p.Profile = sk; p.Length = 4
+case('external_arc_tangent', external_arc_on_object, 'a pocket whose circle is tangent to the projected arc from inside')
+
+def external_arc_tilted(doc, body):
+    # An arc whose axis is not the sketch's normal: the rounded corner seen from the side (it projects to a line).
+    pad, f = rounded_plate(doc, body)
+    sk = sketch_yz(body, 'SideSketch', 20)
+    sk.addExternal(f.Name, arc_edge(f.Shape, 10))
+    circle(sk, 0, 5, 2)
+    sk.addConstraint(Sketcher.Constraint('Radius', 0, 2))
+    sk.addConstraint(Sketcher.Constraint('DistanceY', 0, 3, -3, 1, 5))
+    doc.recompute()
+    p = body.newObject('PartDesign::Pocket', 'Pocket')
+    p.Profile = sk; p.Length = 3
+case('external_arc_edge_on', external_arc_tilted, 'a side sketch that projects the corner\'s arc edge-on (FreeCAD projects it to a line); its circle is dimensioned from the projection\'s start')
 
 with open(os.path.join(OUT, 'fixtures.json'), 'w') as fh:
     json.dump({'freecad': '.'.join(App.Version()[:3]), 'cases': cases}, fh, indent=1)
