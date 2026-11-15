@@ -2121,3 +2121,60 @@ loose slivers, a separate cause), nothing else changes.
   list took 6.0 s and take 9 ms (synthetic, the Ubuntu dev machine under
   load). Test: `component-loops.test.ts` (the old functions as the reference
   on seeded inputs with heavy collisions, and the steps counted at 20,000).
+
+## Amendment, 2026-11-15: each referenced record decoded once; one budget for what an import keeps
+
+The design stream's references may name one record many times: a scope's
+reference table may list an operand group again, a group the same operand, a
+geometry operand the same point. Each repetition was decoded again and its
+result kept again, so the work and what was kept followed the references rather
+than the records. Now each referenced record is decoded once, and what the
+features keep is bounded across the import. The rules:
+
+- **Each once.** `readScope` takes each record of a reference table once (in
+  order, first place kept). An operand group's recipes are found once per
+  import (`recipesOf`, through `insideOnce`) and each once; an edge or face
+  recipe is decoded once per import however many operands name it
+  (`recipeOf`), and the face a face operand names is looked up once per
+  recipe (`firstFace`; offset faces, deleted faces, an extrude's named faces,
+  thread faces and a hole's placement face share it, so the features share
+  that face object). A profile or text-profile operand is decoded once
+  however many extrudes, revolves or sweeps name it (`profileOf`, `textOf`;
+  they share it). A hole takes each centre point record once.
+  `participantsOf` reads through `insideOnce` too.
+- **One budget for what an import keeps** (`KEEP_BUDGET` = 1,000,000 in
+  `model.ts`): a decoded recipe costs its tags plus their design references,
+  each face a feature keeps one (a face operand, an edge's two faces and each
+  face bounding it), each hole centre one. A feature whose decode would pass it
+  is left out (`LeftOut` in `readSegment`, an `other` feature with `leftOut`,
+  which `f3dToDesign` reports as skipped) with the reason "the import's limit on
+  the faces, edges and points features name was reached". The corpus's dearest
+  design keeps 19,729 (a gear's fillet), so the margin is about 50.
+- **A hole's centres** (`MAX_HOLE_CENTRES` = 1,000): a hole with more centre
+  points is left out: "it has more than 1000 centres". Five times the holes one
+  kernel hole feature makes (`MAX_HOLES`, 200; a test keeps it above), so the
+  cap never refuses a hole the kernel would make; the corpus's largest has 6.
+- **The operation table's lists form** counts each entry's records against
+  `OPERATION_TABLE_BUDGET`, not only its entries. The corpus's dearest design
+  spends 1,280 of the 1,000,000.
+- **The feature tail search** has one budget across a segment's records:
+  `SEGMENT_CANDIDATES` (4,096, one record's `MAX_CANDIDATES`) plus 16 for each
+  record read. Past it a scope fails with "the feature records take too long to
+  read". In the corpus every tail is found at the first position tried (119
+  in the largest design).
+- **`asmFaces`** reads a surface record once however many faces name it (they
+  share the surface object). Corpus streams have up to 456 faces on one
+  surface record.
+
+Measured on synthetic cases built from the package's own test builders (Node,
+main and this change on the same machine): a case that repeats a reference
+now costs what naming the record once costs, each well under a second, where
+the work before grew with the repetition count. In the corpus no reference table,
+operand group or hole repeats a record and no recipe is named by two operands,
+so the deduplication changes no design. A real file can only import
+differently past a bound above: a hole of more than 1,000 centre points, or a
+design keeping about 50 times what the corpus's largest keeps. The corpus gate
+(replay and body check, all 252 designs, against main 1e0bb5f8) is unchanged
+design by design, timings aside; no `RuntimeError`. A new reader keeps to
+this: a record a file can name many times is decoded once, and what it keeps
+draws on `KEEP_BUDGET`.

@@ -23,6 +23,13 @@ import type { Segment } from '../segment';
 const SCAN_WINDOW = 64 * 1024;
 /** The most name-like positions `tableEndingAt` is tried at (M3). */
 const MAX_CANDIDATES = 4096;
+/**
+ * The most it is tried at across a segment's records (ADR-0083 "Hostile files"): one
+ * record's worth, and `RECORD_CANDIDATES` more for each record read. The files' tails are
+ * found at the first position tried.
+ */
+export const SEGMENT_CANDIDATES = MAX_CANDIDATES;
+const RECORD_CANDIDATES = 16;
 
 export interface Scope {
   id: number;
@@ -93,7 +100,11 @@ function tableEndingAt(
   return best;
 }
 
-export function readScope(seg: Segment, id: number): Scope {
+/**
+ * `budget.left`: the candidates the segment's records may still try between them
+ * (`SEGMENT_CANDIDATES`); a call on its own gets a fresh one.
+ */
+export function readScope(seg: Segment, id: number, budget = { left: SEGMENT_CANDIDATES }): Scope {
   const f = seg.frame(id);
   const b = seg.bulk;
   // Scan backwards for `u32 L` + L UTF-16 letters preceded by a reference
@@ -105,6 +116,7 @@ export function readScope(seg: Segment, id: number): Scope {
   // otherwise call `tableEndingAt` (up to 1,026 tries) at every byte.
   const from = Math.max(f.start + 6, f.end - SCAN_WINDOW);
   let tried = 0;
+  budget.left += RECORD_CANDIDATES;
   for (let p = f.end - 8; p >= from; p--) {
     const n =
       (b[p] as number) |
@@ -114,6 +126,7 @@ export function readScope(seg: Segment, id: number): Scope {
     if (n < 3 || n > 40 || p + 4 + 2 * n > f.end) continue;
     if (!isKindAt(b, p + 4, n)) continue;
     if (++tried > MAX_CANDIDATES) break;
+    if (--budget.left < 0) throw new F3dFormatError('the feature records take too long to read');
     const table = tableEndingAt(seg, f.start, p - 4);
     if (!table) continue;
     const r = new Reader(b, p - 4, f.end);
@@ -134,7 +147,8 @@ export function readScope(seg: Segment, id: number): Scope {
       kind,
       ordinal,
       ...(label !== undefined ? { label } : {}),
-      refs: table.refs,
+      // Each once (ADR-0083 "Hostile files"): the table may name a record many times.
+      refs: [...new Set(table.refs)],
       state: rawState === 0xffffffff ? null : rawState,
       tableAt: table.at,
       start: f.start,

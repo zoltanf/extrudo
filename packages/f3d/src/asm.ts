@@ -585,13 +585,20 @@ export function asmFaceTags(records: AsmRecord[], face: number): Tag[] {
 export function asmFaces(records: AsmRecord[]): AsmFace[] {
   const faces: AsmFace[] = [];
   const tagsAt = new Map<number, { token: string; design: number }[]>();
+  // Each surface record read once: faces may share one (ADR-0083 "Hostile files").
+  const surfaces = new Map<number, AsmSurface>();
   records.forEach((r, index) => {
     if (r.type !== 'face') return;
     const ptrs = pointers(r);
     // face: attribute, (history id), next face, loop, shell, subshell, surface
     const surfacePtr = ptrs[ptrs.length - 1] ?? -1;
     const tags = asmFaceTags(records, index);
-    faces.push({ index, surface: surfaceOf(records[surfacePtr]), tags, edges: [] });
+    let surface = surfaces.get(surfacePtr);
+    if (!surface) {
+      surface = surfaceOf(records[surfacePtr]);
+      surfaces.set(surfacePtr, surface);
+    }
+    faces.push({ index, surface, tags, edges: [] });
     tagsAt.set(index, tags);
   });
   // Faces that share loops would walk them again: the walks together may take
