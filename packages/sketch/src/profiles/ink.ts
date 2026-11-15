@@ -45,17 +45,69 @@ function signedArea(ring: readonly Vec2[]): number {
  */
 export function windingNumber(p: Vec2, contours: readonly (readonly Vec2[])[]): number {
   let wn = 0;
-  for (const contour of contours) {
-    const ring = openRing(contour);
-    for (let i = 0; i < ring.length; i++) {
-      const a = ring[i] as Vec2;
-      const b = ring[(i + 1) % ring.length] as Vec2;
-      if (a[1] <= p[1]) {
-        if (b[1] > p[1] && isLeft(a, b, p) > 0) wn++;
-      } else {
-        if (b[1] <= p[1] && isLeft(a, b, p) < 0) wn--;
-      }
+  for (const contour of contours) wn += ringWinding(p, openRing(contour));
+  return wn;
+}
+
+function ringWinding(p: Vec2, ring: readonly Vec2[]): number {
+  let wn = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i] as Vec2;
+    const b = ring[(i + 1) % ring.length] as Vec2;
+    if (a[1] <= p[1]) {
+      if (b[1] > p[1] && isLeft(a, b, p) > 0) wn++;
+    } else {
+      if (b[1] <= p[1] && isLeft(a, b, p) < 0) wn--;
     }
+  }
+  return wn;
+}
+
+/** Closed polylines prepared for many `windingNumber` questions: each ring once, with its box. */
+export interface WindingRings {
+  rings: Vec2[][];
+  /** Per ring: x0, y0, x1, y1, and how far the side tests can round past its sides. */
+  boxes: Float64Array;
+}
+
+export function windingRings(contours: readonly (readonly Vec2[])[]): WindingRings {
+  const rings = contours.map(openRing);
+  const boxes = new Float64Array(5 * rings.length);
+  rings.forEach((ring, k) => {
+    let x0 = Number.POSITIVE_INFINITY;
+    let y0 = Number.POSITIVE_INFINITY;
+    let x1 = Number.NEGATIVE_INFINITY;
+    let y1 = Number.NEGATIVE_INFINITY;
+    for (const p of ring) {
+      x0 = Math.min(x0, p[0]);
+      y0 = Math.min(y0, p[1]);
+      x1 = Math.max(x1, p[0]);
+      y1 = Math.max(y1, p[1]);
+    }
+    boxes.set([x0, y0, x1, y1, 1e-9 * (1 + Math.abs(x0) + Math.abs(x1))], 5 * k);
+  });
+  return { rings, boxes };
+}
+
+/**
+ * `windingNumber` over prepared rings. A ring whose box `p`'s row misses
+ * has no edge that counts (an exact test); one wholly left or right of `p`
+ * by more than rounding has as many edges counting up as down. Either adds
+ * 0, so only the rings around `p`'s row and column are walked.
+ */
+export function windingNumberOf(p: Vec2, { rings, boxes }: WindingRings): number {
+  let wn = 0;
+  for (let k = 0; k < rings.length; k++) {
+    const o = 5 * k;
+    const m = boxes[o + 4] as number;
+    if (
+      p[1] < (boxes[o + 1] as number) ||
+      p[1] >= (boxes[o + 3] as number) ||
+      p[0] < (boxes[o] as number) - m ||
+      p[0] > (boxes[o + 2] as number) + m
+    )
+      continue;
+    wn += ringWinding(p, rings[k] as Vec2[]);
   }
   return wn;
 }

@@ -27,7 +27,7 @@
  * authoritative faces from the same curves and keys them the same way
  * (`profileKey`, `profileIds`; P2-02).
  */
-import type { SketchData, SketchEntity, SketchEntityId, Vec2 } from '@extrudo/core';
+import type { SketchData, SketchEntity, SketchEntityId, TextCurveId, Vec2 } from '@extrudo/core';
 import { curvePolyline, placeText, textPolylines } from '@extrudo/core';
 import {
   type Curve,
@@ -40,7 +40,7 @@ import {
   sub,
   TAU,
 } from '../inference/geometry';
-import { interiorPoint, windingNumber } from './ink';
+import { interiorPoint, type WindingRings, windingNumberOf, windingRings } from './ink';
 import { nearPairsWithin } from './pairs';
 
 /** Positions closer than this (mm) are the same vertex. */
@@ -258,7 +258,24 @@ function arcSegment(
   };
 }
 
-function segmentsOf(data: SketchData, id: SketchEntityId, e: SketchEntity): Segment[] {
+/** A text's polylines, sampled once per detection (`textPolylines`): its segments and its ink use the same. */
+type TextLines = Map<SketchEntityId, Map<TextCurveId, Vec2[]>>;
+
+function textLinesOf(lines: TextLines, data: SketchData, id: SketchEntityId) {
+  let out = lines.get(id);
+  if (!out) {
+    out = textPolylines(data, id);
+    lines.set(id, out);
+  }
+  return out;
+}
+
+function segmentsOf(
+  data: SketchData,
+  id: SketchEntityId,
+  e: SketchEntity,
+  lines: TextLines,
+): Segment[] {
   const point = (ref: SketchEntityId): Vec2 | undefined => {
     const p = data.entities[ref];
     return p?.type === 'point' ? [p.x, p.y] : undefined;
@@ -301,7 +318,7 @@ function segmentsOf(data: SketchData, id: SketchEntityId, e: SketchEntity): Segm
       // One chain of line segments per placed sub-curve; the sub-curve ID
       // (`<text>.<k>`) is the segment's curve, so region IDs hash sub-IDs.
       const out: Segment[] = [];
-      for (const [cid, poly] of textPolylines(data, id)) {
+      for (const [cid, poly] of textLinesOf(lines, data, id)) {
         for (let i = 1; i < poly.length; i++) {
           const s = lineSegment(cid as SketchEntityId, poly[i - 1] as Vec2, poly[i] as Vec2);
           if (s) out.push(s);
@@ -444,7 +461,8 @@ function cutPair(si: Segment, sj: Segment, count: CutCount): void {
 /** Merges positions within `PROFILE_TOLERANCE` into numbered vertices (a hash grid). */
 class Vertices {
   readonly points: Vec2[] = [];
-  readonly #cells = new Map<string, number[]>();
+  /** Cell column, then row: exact integers for any finite position, no key strings. */
+  readonly #cells = new Map<number, Map<number, number[]>>();
 
   id(p: Vec2): number {
     // A point at no finite position merges with nothing (every distance to
@@ -456,18 +474,24 @@ class Vertices {
     const cx = Math.floor(p[0] / PROFILE_TOLERANCE);
     const cy = Math.floor(p[1] / PROFILE_TOLERANCE);
     for (let dx = -1; dx <= 1; dx++) {
+      const column = this.#cells.get(cx + dx);
+      if (!column) continue;
       for (let dy = -1; dy <= 1; dy++) {
-        for (const v of this.#cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+        for (const v of column.get(cy + dy) ?? []) {
           if (dist(this.points[v] as Vec2, p) < PROFILE_TOLERANCE) return v;
         }
       }
     }
     const v = this.points.length;
     this.points.push(p);
-    const key = `${cx},${cy}`;
-    const cell = this.#cells.get(key);
+    let column = this.#cells.get(cx);
+    if (!column) {
+      column = new Map();
+      this.#cells.set(cx, column);
+    }
+    const cell = column.get(cy);
     if (cell) cell.push(v);
-    else this.#cells.set(key, [v]);
+    else column.set(cy, [v]);
     return v;
   }
 }
@@ -796,9 +820,16 @@ export function textInkOf(
   data: SketchData,
   id: SketchEntityId,
 ): readonly (readonly Vec2[])[] | undefined {
+  return inkOf(data, id, textPolylines(data, id));
+}
+
+function inkOf(
+  data: SketchData,
+  id: SketchEntityId,
+  polys: ReadonlyMap<TextCurveId, readonly Vec2[]>,
+): Vec2[][] | undefined {
   const placed = placeText(data, id);
   if (placed.curves.length === 0) return undefined;
-  const polys = textPolylines(data, id);
   const out: Vec2[][] = [];
   for (const contour of placed.contours) {
     const pts: Vec2[] = [];
@@ -849,11 +880,12 @@ export function detectProfilesAllPairs(data: SketchData): Profile[] {
 
 function detect(data: SketchData, allPairs: boolean): Profile[] {
   const segments: Segment[] = [];
+  const lines: TextLines = new Map();
   for (const id of Object.keys(data.entities).sort() as SketchEntityId[]) {
     const e = data.entities[id] as SketchEntity;
     if (e.type === 'point' || e.construction) continue;
     // A loop, not a spread: a long spline has more segments than a call takes arguments.
-    for (const segment of segmentsOf(data, id, e)) segments.push(segment);
+    for (const segment of segmentsOf(data, id, e, lines)) segments.push(segment);
   }
   if (segments.length === 0) return [];
   cutSegments(segments, allPairs, checkSize(segments));
@@ -936,6 +968,8 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
   // (outer loop and holes) belongs to sub-curves of that text and the
   // winding number at the region's interior point is non-zero (counters
   // wind to 0 and stay ordinary islands; overlapping contours are all ink).
+  // Each text's ink is laid out once, from the polylines its segments came from.
+  const inks = new Map<SketchEntityId, WindingRings | undefined>();
   for (const profile of out) {
     const curveIds = [
       ...profile.outer.edges.map((e) => e.curve),
@@ -943,12 +977,16 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
     ];
     const text = soleTextOf(curveIds, data);
     if (!text) continue;
-    const ink = textInkOf(data, text);
+    if (!inks.has(text)) {
+      const contours = inkOf(data, text, textLinesOf(lines, data, text));
+      inks.set(text, contours && windingRings(contours));
+    }
+    const ink = inks.get(text);
     const inner = interiorPoint(
       profile.outer.polygon,
       profile.holes.map((h) => h.polygon),
     );
-    if (ink && inner && windingNumber(inner, ink) !== 0) profile.text = text;
+    if (ink && inner && windingNumberOf(inner, ink) !== 0) profile.text = text;
   }
 
   return out.sort((a, b) => b.area - a.area || (a.id < b.id ? -1 : 1));
