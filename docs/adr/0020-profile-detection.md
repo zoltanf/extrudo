@@ -285,7 +285,8 @@ they never disagree on whether a sketch has regions:
   `profilesInside`) throws an `ApiError` with the same message, its `cause`
   the `TooManyCrossingsError`, as its other refusals do; the script emitter
   names such a sketch's profiles by ID (`design.ref`) instead of by a point
-  inside.
+  inside. The app's agent tools (`agent/tools.ts`) describe such a sketch
+  with no profiles or regions and the reason as `problem`.
 - **The importers**: the f3d import's `selectProfiles` gives its own
   `TOO_MANY_CROSSINGS` reason (its work budget `MAX_PIECE_WORK` is
   unchanged), the FreeCAD import's `profileRefs` the same words; both skip
@@ -305,8 +306,14 @@ features on them back.
 (the parameters computed once, then pushed in the same order); only the
 count is new. `limit.test.ts` holds a digest of the whole output of six
 sketches (plate, gear, grid, chords, crossing circles, weaving splines)
-recorded on the code before the limit; the whole Vitest suite's sketches
-were run through the code before and after (below).
+recorded on the code before the limit. The whole Vitest suite's sketches
+(1,349 distinct ones, saved while the suite ran on the code before the
+limit) went through the code before and after: a digest of the whole
+output is the same for all 1,348 under the limit, and the one refused is
+the FreeCAD grid above. The count costs nothing measurable: per sketch,
+interleaved, median of 7 runs, the median time went 0.061 → 0.063 ms, the
+median ratio 1.002 (10th–90th percentile 0.92–1.10), and 0.993 with the
+order swapped.
 
 **The kernel at the limit.** Its face build costs more per region than the
 detection (`planarFaces` + `profileFaceIds` in Node, same machine): 300
