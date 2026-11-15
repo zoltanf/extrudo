@@ -426,8 +426,11 @@ export function prepareParameters(
     const cellOf = (sheet: FcObject, name: string) => {
       const s = bySheet.get(sheet);
       if (!s) return undefined;
+      // An alias first, as FreeCAD's sheet looks a name up; then an address.
+      const alias = s.aliases.get(name);
+      if (alias) return alias;
       const address = cellAddress(name);
-      return address ? s.cells.get(address) : s.aliases.get(name);
+      return address ? s.cells.get(address) : undefined;
     };
     const first = c[0];
     if (!first || first.index !== undefined || first.key !== undefined || first.slice)

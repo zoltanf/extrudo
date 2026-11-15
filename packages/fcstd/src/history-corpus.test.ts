@@ -21,6 +21,7 @@ import type { ShapeElements } from './import-kernel';
 import { edgeDistance, toleranceAt } from './match';
 import { floatList, readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
+import { parameterCounts } from './parameters-report';
 import { containerChain, fitsOriginPlane, frameIsSound, sketchFrame } from './sketch-place';
 
 const PAD_TYPE_NAMES = ['Length', 'UpToLast', 'UpToFirst', 'UpToFace', 'TwoLengths', 'UpToShape'];
@@ -158,6 +159,16 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
     let otherDiffer = 0;
     const lines: string[] = [];
     const census: Record<string, number> = {};
+    // S10: the parameters and every expression's outcome, as counts.
+    const s10 = {
+      parameters: {} as Record<string, Record<string, number>>,
+      parametersLeftOut: {} as Record<string, number>,
+      expressions: {} as Record<string, Record<string, number>>,
+      renames: {} as Record<string, number>,
+      rounds: 0,
+      /** The expressions that came in as numbers on what came in, by reason and their shape. */
+      numbers: {} as Record<string, Record<string, number>>,
+    };
     // S7: how far another FreeCAD body's Extrudo body moved between two rebuilds it wasn't part of.
     const untouched = {
       checks: 0,
@@ -343,6 +354,42 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         },
       });
       times.push(performance.now() - t);
+      {
+        const p = parameterCounts(report.parameters);
+        for (const [source, kinds] of Object.entries(p.parameters))
+          for (const [kind, n] of Object.entries(kinds)) bump(of(s10.parameters, source), kind, n);
+        for (const x of report.parameters.leftOut) bump(s10.parametersLeftOut, x.reason);
+        for (const [target, outs] of Object.entries(p.expressions))
+          for (const [o, n] of Object.entries(outs)) bump(of(s10.expressions, target), o, n);
+        for (const c of report.parameters.renames) bump(s10.renames, `${c.what} ${c.why}`);
+        s10.rounds += report.parameters.rounds;
+        for (const e of report.parameters.expressions) {
+          if (e.outcome === 'kept' || e.outcome === 'unmapped') continue;
+          // The expression's shape only: names as X, quoted labels as <<L>>, numbers as N.
+          const shape = e.expression
+            .replace(/<<[^>]*>>/g, '<<L>>')
+            .replace(/[0-9]+(?:[.,][0-9]+)?(?:e-?[0-9]+)?/g, 'N')
+            .replace(/[A-Za-z_][A-Za-z0-9_]*/g, (w) =>
+              /^(sin|cos|tan|asin|acos|atan|atan2|sqrt|abs|min|max|round|floor|ceil|trunc|exp|log|log10|mod|pow|hypot|cath|sum|average|count|Constraints|Length|Length2|Value|Placement|Base|Shape|hiddenref|href|tuple|str|mm|deg|in|ft|cm|m|rad)$/.test(
+                w,
+              )
+                ? w
+                : 'X',
+            );
+          bump(of(s10.numbers, `${e.outcome} on ${e.target}`), shape);
+          lines.push(
+            JSON.stringify({
+              file,
+              s10: e.outcome,
+              target: e.target,
+              object: e.object,
+              path: e.path,
+              expression: e.expression,
+              detail: e.detail,
+            }),
+          );
+        }
+      }
       s8.bytes += bytesOf(design);
       restarts += report.restarts;
       importsS3 += s3.report.shapes.length;
@@ -577,6 +624,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       untouched,
       s8,
       s9,
+      s10,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

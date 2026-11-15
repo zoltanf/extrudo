@@ -300,14 +300,18 @@ function tokenize(text: string): Token[] {
   return tokens;
 }
 
-const CELL = /^\$?([A-Za-z]{1,2})\$?([0-9]{1,5})$/;
+const CELL = /^\$?([A-Z]{1,2})\$?([0-9]{1,5})$/;
 
-/** A cell address as FreeCAD names it (`B6`; `$B$6` is the same cell), or `undefined`. */
+/**
+ * A cell address as FreeCAD names it (`B6`; `$B$6` is the same cell), or
+ * `undefined`. Upper case only: FreeCAD 1.1 takes `e1` and `x1` as aliases
+ * (the `names` fixture), so they are not addresses.
+ */
 export function cellAddress(text: string): string | undefined {
   const m = CELL.exec(text);
   if (!m) return undefined;
   const row = Number(m[2]);
-  return row >= 1 ? `${(m[1] as string).toUpperCase()}${row}` : undefined;
+  return row >= 1 ? `${m[1] as string}${row}` : undefined;
 }
 
 /** Parses FreeCAD's expression text. Throws `FcSyntaxError`; never anything else for any text. */
