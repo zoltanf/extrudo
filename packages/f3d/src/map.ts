@@ -24,6 +24,7 @@ import {
   type ComponentId,
   ExprError,
   evaluateParameters,
+  type ExtrudoDocument,
   faceSketchFrame,
   importInputs,
   newId,
