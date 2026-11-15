@@ -9,7 +9,11 @@ import {
   sketchInputs,
 } from '../packages/core/src/index';
 import { SketchBuilder } from '../packages/sketch/src/fixtures';
-import { detectProfiles, TOO_MANY_CROSSINGS } from '../packages/sketch/src/profiles/index';
+import {
+  detectProfiles,
+  TOO_MANY_CROSSINGS,
+  TOO_MANY_CURVES,
+} from '../packages/sketch/src/profiles/index';
 import { writeArchive } from '../packages/storage/src/archive';
 import { kernelReady, mapping } from './helpers';
 
@@ -17,7 +21,8 @@ import { kernelReady, mapping } from './helpers';
 // (ADR-0020's amendment of 2026-11-15) shows its curves without fills and
 // says so in the palette; the extrude of one of its profiles fails with the
 // reason. Deleting the crossing curves brings the profile and the extrude
-// back. The design is built here, then imported.
+// back. A sketch of too many curves (the amendment's second) says so too.
+// The designs are built here, then imported.
 
 const viewportOf = (page: Page) => page.getByRole('region', { name: 'Viewport' });
 const chip = (page: Page, name: string) =>
@@ -49,6 +54,21 @@ function sketchOf(chords: number) {
 
 /** Sketch1 (330 chords: about 54,000 crossings) and Extrude1 of its rectangle. */
 function crossingsFile(chords = CHORDS.n): Buffer {
+  return designFile(sketchOf(chords));
+}
+
+/** The rectangle, and a thousand circles of 1 m beside it, apart: two million points. */
+function curvesFile(): Buffer {
+  const data = sketchOf(0);
+  const b = new SketchBuilder();
+  for (let i = 0; i < 1000; i++) b.circle(5000 + (i % 40) * 2100, Math.floor(i / 40) * 2100, 1000);
+  for (const [id, e] of Object.entries(b.sketch.entities))
+    (data.entities as Record<string, unknown>)[`many-${id}`] =
+      e.type === 'circle' ? { ...e, center: `many-${e.center}` } : e;
+  return designFile(data);
+}
+
+function designFile(data: ReturnType<typeof sketchOf>): Buffer {
   // The rectangle's region: the same ID with or without the chords (they come after it).
   const region = detectProfiles(sketchOf(0))[0]?.id ?? '';
   const sketch = 's1' as FeatureId;
@@ -59,7 +79,7 @@ function crossingsFile(chords = CHORDS.n): Buffer {
       type: 'sketch',
       name: 'Sketch1',
       suppressed: false,
-      inputs: sketchInputs(originPlaneRef('origin:xy'), sketchOf(chords)),
+      inputs: sketchInputs(originPlaneRef('origin:xy'), data),
     },
     {
       id: 'e1' as FeatureId,
@@ -74,10 +94,7 @@ function crossingsFile(chords = CHORDS.n): Buffer {
   return Buffer.from(writeArchive({ ...doc, features, timelineMarker: features.length }));
 }
 
-test('a sketch with too many crossings says so, and gets its profiles back without them', async ({
-  page,
-}) => {
-  test.setTimeout(90_000);
+async function importDesign(page: Page, buffer: Buffer): Promise<void> {
   await page.goto('./');
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
@@ -86,9 +103,16 @@ test('a sketch with too many crossings says so, and gets its profiles back witho
   await chooser.setFiles({
     name: 'Crossings.extrudo',
     mimeType: 'application/octet-stream',
-    buffer: crossingsFile(),
+    buffer,
   });
   await expect(page).toHaveURL(/#\/p\/[^/]+$/);
+}
+
+test('a sketch with too many crossings says so, and gets its profiles back without them', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await importDesign(page, crossingsFile());
   await kernelReady(page);
   await expect(chip(page, 'Sketch1')).toHaveAttribute('data-feature-status', 'warning');
   await expect(chip(page, 'Extrude1')).toHaveAttribute('data-feature-status', 'error');
@@ -133,4 +157,16 @@ test('a sketch with too many crossings says so, and gets its profiles back witho
   await expect(chip(page, 'Sketch1')).not.toHaveAttribute('data-feature-status', /./);
   await expect(chip(page, 'Extrude1')).not.toHaveAttribute('data-feature-status', /./);
   await expect(viewport).toHaveAttribute('data-bodies', /:40,20,5(\s|$)/);
+});
+
+test('a sketch with too many curves says so', async ({ page }) => {
+  test.setTimeout(90_000);
+  await importDesign(page, curvesFile());
+  await kernelReady(page);
+  await expect(chip(page, 'Sketch1')).toHaveAttribute('data-feature-status', 'warning');
+  await expect(chip(page, 'Extrude1')).toHaveAttribute('data-feature-status', 'error');
+  await chip(page, 'Sketch1').dblclick();
+  const palette = page.getByRole('region', { name: 'Sketch palette' });
+  await expect(palette.locator('[data-sketch-problem]')).toHaveText(TOO_MANY_CURVES);
+  await expect(viewportOf(page)).toHaveAttribute('data-sketch-profiles', 'profiles=0 holes=0');
 });

@@ -41,7 +41,7 @@ import {
   TAU,
 } from '../inference/geometry';
 import { interiorPoint, type WindingRings, windingNumberOf, windingRings } from './ink';
-import { nearPairsWithin } from './pairs';
+import { BoxesAt, nearPairsWithin, type PairSearchStats } from './pairs';
 
 /** Positions closer than this (mm) are the same vertex. */
 export const PROFILE_TOLERANCE = 1e-4;
@@ -87,6 +87,32 @@ export const PROFILE_CUTS_PER_SEGMENT = 8;
  */
 export const MAX_PROFILE_COORDINATE = 1e9;
 
+/**
+ * The most segments a sketch's curves may make for its regions to be found
+ * (a line is one, an arc or circle one, an ellipse, spline or text one per
+ * piece of its polyline): every segment costs a share of every step.
+ * Counted curve by curve, before any pair is tested. Real sketches reach
+ * about 12,000 (ADR-0020's amendment of 2026-11-15, second).
+ */
+export const MAX_PROFILE_SEGMENTS = 200_000;
+
+/**
+ * The most sample points the segments may have (a line one, an arc or
+ * circle up to 2,048): what the regions' loops are drawn with. Counted
+ * with the segments.
+ */
+export const MAX_PROFILE_POINTS = 2_000_000;
+
+/**
+ * The most tests detection may make of things that are near without
+ * cutting each other: pairs of segments whose boxes meet, and the regions
+ * (and their polygons' points) an outline is tested against to find the
+ * region it is a hole of. Many curves nested in each other, or lying over
+ * each other's boxes, make these grow with the square of their number
+ * (ADR-0020's amendment of 2026-11-15, second).
+ */
+export const MAX_PROFILE_TESTS = 10_000_000;
+
 /** Why a sketch has no regions when its curves cut each other too often (`MAX_PROFILE_CUTS`), in the user's words. */
 export const TOO_MANY_CROSSINGS =
   'This sketch has too many curve crossings to find its profiles. Remove or simplify curves.';
@@ -95,16 +121,34 @@ export const TOO_MANY_CROSSINGS =
 export const TOO_LARGE_COORDINATES = 'This sketch has coordinates too large to find its profiles.';
 
 /**
+ * Why a sketch has no regions when its curves are too many or too long
+ * (`MAX_PROFILE_SEGMENTS`, `MAX_PROFILE_POINTS`, `MAX_PROFILE_TESTS`), in
+ * the user's words.
+ */
+export const TOO_MANY_CURVES =
+  'This sketch has too many curves to find its profiles. Remove or simplify curves.';
+
+/** Why detection refused a sketch (`ProfilesRefusedError.reason`). */
+export type ProfilesRefusal = 'crossings' | 'size' | 'curves';
+
+const REFUSAL_MESSAGES: Record<ProfilesRefusal, string> = {
+  crossings: TOO_MANY_CROSSINGS,
+  size: TOO_LARGE_COORDINATES,
+  curves: TOO_MANY_CURVES,
+};
+
+/**
  * `detectProfiles` refuses a sketch whose curves cut each other too often
- * (`crossings`: `MAX_PROFILE_CUTS`, `PROFILE_CUTS_PER_SEGMENT`) or lie too
- * far out (`size`: `MAX_PROFILE_COORDINATE`). The sketch itself is fine: it
- * only has no regions.
+ * (`crossings`: `MAX_PROFILE_CUTS`, `PROFILE_CUTS_PER_SEGMENT`), lie too
+ * far out (`size`: `MAX_PROFILE_COORDINATE`) or are too many (`curves`:
+ * `MAX_PROFILE_SEGMENTS`, `MAX_PROFILE_POINTS`, `MAX_PROFILE_TESTS`). The
+ * sketch itself is fine: it only has no regions.
  */
 export class ProfilesRefusedError extends Error {
   override readonly name = 'ProfilesRefusedError';
-  readonly reason: 'crossings' | 'size';
-  constructor(reason: 'crossings' | 'size') {
-    super(reason === 'size' ? TOO_LARGE_COORDINATES : TOO_MANY_CROSSINGS);
+  readonly reason: ProfilesRefusal;
+  constructor(reason: ProfilesRefusal) {
+    super(REFUSAL_MESSAGES[reason]);
     this.reason = reason;
   }
 }
@@ -172,6 +216,8 @@ interface Segment {
   sweptArea(u0: number, u1: number): number;
   box: [number, number, number, number];
   cuts: number[];
+  /** How many points `sample` gives over the whole segment, less one. */
+  points: number;
 }
 
 function lineSegment(curve: SketchEntityId, a: Vec2, b: Vec2): Segment | undefined {
@@ -199,6 +245,7 @@ function lineSegment(curve: SketchEntityId, a: Vec2, b: Vec2): Segment | undefin
     },
     box: [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])],
     cuts: [0, 1],
+    points: 1,
   };
 }
 
@@ -255,6 +302,7 @@ function arcSegment(
     },
     box: [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius],
     cuts: closed ? [] : [0, sweep],
+    points: Math.max(1, Math.ceil(sweep * density)),
   };
 }
 
@@ -348,7 +396,21 @@ interface CutCount {
   inside: number;
   all: number;
   maxAll: number;
+  /** Detection's tests of things near each other (`MAX_PROFILE_TESTS`). */
+  work: Work;
 }
+
+/** What detection has done so far, against the limits that refuse a sketch with reason `curves`. */
+export interface Work {
+  segments: number;
+  points: number;
+  tests: number;
+}
+
+const tooMuch = (work: Work) =>
+  work.segments > MAX_PROFILE_SEGMENTS ||
+  work.points > MAX_PROFILE_POINTS ||
+  work.tests > MAX_PROFILE_TESTS;
 
 /**
  * Throws `ProfilesRefusedError('size')` when a segment's box reaches past
@@ -377,12 +439,18 @@ function checkSize(segments: readonly Segment[]): boolean {
  * `PROFILE_CUTS_PER_SEGMENT` per segment: their totals don't depend on the
  * order of the pairs, so neither does the refusal.
  */
-function cutSegments(segments: readonly Segment[], allPairs: boolean, nan: boolean): void {
+function cutSegments(
+  segments: readonly Segment[],
+  allPairs: boolean,
+  nan: boolean,
+  work: Work,
+): void {
   const n = segments.length;
   const count: CutCount = {
     inside: 0,
     all: 0,
     maxAll: MAX_PROFILE_CUTS + PROFILE_CUTS_PER_SEGMENT * n,
+    work,
   };
   if (n >= PAIR_GRID_MIN && !allPairs) {
     // Segments with a NaN in their box meet nothing: they stay out of the
@@ -429,6 +497,8 @@ const inside = (s: Segment, u: number): number =>
 /** Cuts two segments where they cross or touch, or where an end of one lies on the other. */
 function cutPair(si: Segment, sj: Segment, count: CutCount): void {
   if (!overlap(si.box, sj.box)) return;
+  // Every pair whose boxes meet costs a test, whether they cut or not.
+  if (++count.work.tests > MAX_PROFILE_TESTS) throw new ProfilesRefusedError('curves');
   const before = si.cuts.length + sj.cuts.length;
   for (const p of intersectCurves(si.shape, sj.shape)) {
     const ui = si.param(p);
@@ -729,6 +799,18 @@ function outsideBox(b: PolygonBox, p: Vec2): boolean {
   return p[1] < b[1] || p[1] > b[3] || p[0] < b[0] - b[4] || p[0] > b[2] + b[4];
 }
 
+/** From this many outline–region pairs on, the hole search asks a grid (`BoxesAt`) which regions to test. */
+const HOLE_GRID_MIN = 4096;
+
+/** The boxes `outsideBox` passes over nothing outside of: each widened sideways by its margin. */
+function sideways(boxes: readonly PolygonBox[]): Float64Array {
+  const out = new Float64Array(4 * boxes.length);
+  boxes.forEach((b, k) => {
+    out.set([b[0] - b[4], b[1], b[2] + b[4], b[3]], 4 * k);
+  });
+  return out;
+}
+
 /** Whether `p` is inside a polygon (even-odd). */
 export function insidePolygon(polygon: readonly Vec2[], p: Vec2): boolean {
   let inside = false;
@@ -878,17 +960,36 @@ export function detectProfilesAllPairs(data: SketchData): Profile[] {
   return detect(data, true);
 }
 
-function detect(data: SketchData, allPairs: boolean): Profile[] {
+/**
+ * `detectProfiles`, filling in `work` with what it did (segments, points,
+ * tests; `MAX_PROFILE_SEGMENTS` and the others), refused or not: for tests,
+ * and to measure real sketches against the limits.
+ */
+export function detectProfilesWork(data: SketchData, work: Work): Profile[] {
+  return detect(data, false, work);
+}
+
+function detect(
+  data: SketchData,
+  allPairs: boolean,
+  work: Work = { segments: 0, points: 0, tests: 0 },
+): Profile[] {
   const segments: Segment[] = [];
   const lines: TextLines = new Map();
   for (const id of Object.keys(data.entities).sort() as SketchEntityId[]) {
     const e = data.entities[id] as SketchEntity;
     if (e.type === 'point' || e.construction) continue;
     // A loop, not a spread: a long spline has more segments than a call takes arguments.
-    for (const segment of segmentsOf(data, id, e, lines)) segments.push(segment);
+    for (const segment of segmentsOf(data, id, e, lines)) {
+      segments.push(segment);
+      work.segments++;
+      work.points += segment.points;
+    }
+    // Curve by curve: no more than one curve's segments past the limits.
+    if (tooMuch(work)) throw new ProfilesRefusedError('curves');
   }
   if (segments.length === 0) return [];
-  cutSegments(segments, allPairs, checkSize(segments));
+  cutSegments(segments, allPairs, checkSize(segments), work);
   const vertices = new Vertices();
   const pieces = piecesOf(segments, vertices);
   const vertexCount = vertices.points.length;
@@ -936,17 +1037,33 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
   // Each group's outline is a hole in the smallest region of another group around it.
   // A probe outside a region's box (by more than rounding, sideways) is
   // outside its polygon: the box only passes over tests that answer no.
-  // Worth making only when there are several outlines to place.
+  // Worth making only when there are several outlines to place; with many
+  // outlines and regions, a grid of the boxes gives each probe the regions
+  // whose box holds it, tested in the same order as all of them. Each
+  // region looked at, and each point of a polygon a probe is tested
+  // against, counts a test.
   const boxes = outlines.length > 1 ? regions.map((r) => polygonBox(r.loop.polygon)) : undefined;
+  const near =
+    boxes && outlines.length * regions.length > HOLE_GRID_MIN
+      ? new BoxesAt(sideways(boxes))
+      : undefined;
+  const stats: PairSearchStats = { tests: 0 };
+  const all = near ? undefined : regions.map((_, k) => k);
   for (const outline of outlines) {
     const probe = outline.loop.polygon[0] as Vec2;
     let best: (typeof regions)[number] | undefined;
-    for (let k = 0; k < regions.length; k++) {
+    stats.tests = 0;
+    const candidates = near ? near.at(probe, stats) : (all as number[]);
+    work.tests += near ? stats.tests : candidates.length;
+    for (const k of candidates) {
       const r = regions[k] as (typeof regions)[number];
       if (r.group === outline.group || (best && r.loop.area >= best.loop.area)) continue;
       if (boxes && outsideBox(boxes[k] as PolygonBox, probe)) continue;
+      work.tests += r.loop.polygon.length;
+      if (work.tests > MAX_PROFILE_TESTS) throw new ProfilesRefusedError('curves');
       if (insidePolygon(r.loop.polygon, probe)) best = r;
     }
+    if (work.tests > MAX_PROFILE_TESTS) throw new ProfilesRefusedError('curves');
     best?.holes.push(outline.loop);
   }
 

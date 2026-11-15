@@ -2014,8 +2014,8 @@ export function unmatchedRegion(
 /**
  * The Extrudo profiles a feature's profile operands select, and the sketch
  * they are in. A sketch whose regions Extrudo refuses to find (its curves cut
- * each other too often or lie too far out; ADR-0020's amendment of
- * 2026-11-15) gives `TOO_MANY_CROSSINGS` or `TOO_LARGE_SKETCH`.
+ * each other too often, lie too far out or are too many; ADR-0020's amendment of
+ * 2026-11-15) gives `TOO_MANY_CROSSINGS`, `TOO_LARGE_SKETCH` or `TOO_MANY_CURVES`.
  */
 export function selectProfiles(
   operands: ProfileOperand[],
@@ -2026,7 +2026,12 @@ export function selectProfiles(
     return selectProfilesOf(operands, sketchOf, note);
   } catch (error) {
     const refusal = profilesRefusal(error);
-    if (refusal) return refusal.reason === 'size' ? TOO_LARGE_SKETCH : TOO_MANY_CROSSINGS;
+    if (refusal)
+      return refusal.reason === 'size'
+        ? TOO_LARGE_SKETCH
+        : refusal.reason === 'curves'
+          ? TOO_MANY_CURVES
+          : TOO_MANY_CROSSINGS;
     throw error;
   }
 }
@@ -3285,6 +3290,8 @@ export const regionStats: Record<string, number> = {
 export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
 /** Why a feature's profile was not found when its sketch's curves lie too far out to find regions. */
 export const TOO_LARGE_SKETCH = 'its sketch has coordinates too large to find its profile';
+/** Why a feature's profile was not found when its sketch has too many curves to find regions. */
+export const TOO_MANY_CURVES = 'its sketch has too many curves to find its profile';
 
 /**
  * The Extrudo regions inside an f3d region rebuilt from its pieces of

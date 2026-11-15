@@ -58,6 +58,16 @@ export const TOO_MANY_CROSSINGS_TO_PICK =
 /** The same when the sketch's curves lie too far out (`MAX_PROFILE_COORDINATE`). */
 export const TOO_LARGE_TO_PICK = 'Its sketch has coordinates too large to find its profiles.';
 
+/** The same when the sketch's curves are too many (`MAX_PROFILE_SEGMENTS` and the others). */
+export const TOO_MANY_CURVES_TO_PICK =
+  'Its sketch has too many curves to find its profiles. Remove or simplify curves in the sketch.';
+
+const PICK_REFUSALS: Record<ProfilesRefusedError['reason'], string> = {
+  crossings: TOO_MANY_CROSSINGS_TO_PICK,
+  size: TOO_LARGE_TO_PICK,
+  curves: TOO_MANY_CURVES_TO_PICK,
+};
+
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
 export interface SketchProfileInfo {
   /** The region ID, as `detectProfiles` gives it and a profile reference names it. */
@@ -100,7 +110,7 @@ export interface SketchOutputData {
    * Set when `detectProfiles` refused the sketch (its curves cut each other
    * too often or lie too far out; ADR-0020's amendment of 2026-11-15): it
    * has no faces and no `profiles`, and a feature that picked one fails
-   * with this message (`TOO_MANY_CROSSINGS_TO_PICK`, `TOO_LARGE_TO_PICK`).
+   * with this message (`TOO_MANY_CROSSINGS_TO_PICK`, `TOO_LARGE_TO_PICK`, `TOO_MANY_CURVES_TO_PICK`).
    */
   profilesRefused?: string;
   /**
@@ -220,7 +230,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       sketch: data,
       profiles,
       ...(refused && {
-        profilesRefused: refused.reason === 'size' ? TOO_LARGE_TO_PICK : TOO_MANY_CROSSINGS_TO_PICK,
+        profilesRefused: PICK_REFUSALS[refused.reason],
       }),
       lines: sketchLines(data),
       curves: sketchCurves(data),

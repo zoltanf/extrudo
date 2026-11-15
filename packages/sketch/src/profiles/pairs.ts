@@ -53,6 +53,17 @@ class Cells {
   }
 }
 
+/** The fewest doublings of `base` after which `side` spans at most `MAX_SPAN` cells (0 for a NaN). */
+function doublingsOf(base: number): (side: number) => number {
+  const fit = (MAX_SPAN - 1) * base;
+  return (side) => {
+    let k = side > fit ? Math.ceil(Math.log2(side / fit)) : 0;
+    while (side > fit * 2 ** k) k++;
+    while (k > 0 && side <= fit * 2 ** (k - 1)) k--;
+    return k;
+  };
+}
+
 /** A level's grid: cells `2^a` by `2^b` times the base side. */
 interface Level {
   a: number;
@@ -125,13 +136,7 @@ export function* nearPairsWithin(
   }
   sides.sort();
   const base = (sides[n >> 1] as number) || 1;
-  /** The fewest doublings of the base side after which `side` spans at most `MAX_SPAN` cells. */
-  const doublings = (side: number) => {
-    let k = side > (MAX_SPAN - 1) * base ? Math.ceil(Math.log2(side / ((MAX_SPAN - 1) * base))) : 0;
-    while (side > (MAX_SPAN - 1) * base * 2 ** k) k++;
-    while (k > 0 && side <= (MAX_SPAN - 1) * base * 2 ** (k - 1)) k--;
-    return k;
-  };
+  const doublings = doublingsOf(base);
 
   // Monotone in v: boxes that meet share a cell of every grid.
   const cell = (v: number, o: number, size: number) => Math.floor((v - o) / size);
@@ -251,5 +256,110 @@ export function* nearPairsWithin(
     }
     if (found.length > 1) found.sort((p, q) => p - q);
     for (const j of found) yield [i, j];
+  }
+}
+
+/**
+ * The boxes that hold a point (`x0, y0, x1, y1` per box, sides included), in
+ * grids of levels like `nearPairsWithin`'s: a point looks in one cell of
+ * each level. A box that isn't finite, or a point that isn't, is a
+ * candidate always: the caller tests what it gets.
+ */
+export class BoxesAt {
+  readonly #boxes: Float64Array;
+  readonly #always: number[] = [];
+  readonly #levels: { w: number; h: number; cells: Cells }[] = [];
+  readonly #origin: [number, number] = [0, 0];
+
+  constructor(boxes: Float64Array) {
+    this.#boxes = boxes;
+    const n = boxes.length / 4;
+    const finite: number[] = [];
+    let ex0 = Number.POSITIVE_INFINITY;
+    let ey0 = Number.POSITIVE_INFINITY;
+    let ex1 = Number.NEGATIVE_INFINITY;
+    let ey1 = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < n; i++) {
+      const x0 = boxes[4 * i] as number;
+      const y0 = boxes[4 * i + 1] as number;
+      const x1 = boxes[4 * i + 2] as number;
+      const y1 = boxes[4 * i + 3] as number;
+      if (![x0, y0, x1, y1].every(Number.isFinite) || !(x0 <= x1 && y0 <= y1)) {
+        this.#always.push(i);
+        continue;
+      }
+      finite.push(i);
+      ex0 = Math.min(ex0, x0);
+      ey0 = Math.min(ey0, y0);
+      ex1 = Math.max(ex1, x1);
+      ey1 = Math.max(ey1, y1);
+    }
+    if (finite.length === 0) return;
+    if (!Number.isFinite(ex1 - ex0) || !Number.isFinite(ey1 - ey0)) {
+      this.#always.push(...finite);
+      this.#always.sort((a, b) => a - b);
+      return;
+    }
+    this.#origin[0] = ex0;
+    this.#origin[1] = ey0;
+    const sides = Float64Array.from(finite, (i) =>
+      Math.max(
+        (boxes[4 * i + 2] as number) - (boxes[4 * i] as number),
+        (boxes[4 * i + 3] as number) - (boxes[4 * i + 1] as number),
+      ),
+    ).sort();
+    const base = (sides[sides.length >> 1] as number) || 1;
+    const doublings = doublingsOf(base);
+    const byKey = new Map<number, { w: number; h: number; cells: Cells }>();
+    for (const i of finite) {
+      const a = doublings((boxes[4 * i + 2] as number) - (boxes[4 * i] as number));
+      const b = doublings((boxes[4 * i + 3] as number) - (boxes[4 * i + 1] as number));
+      let level = byKey.get(a * 4096 + b);
+      if (!level) {
+        const w = base * 2 ** a;
+        const h = base * 2 ** b;
+        level = {
+          w,
+          h,
+          cells: new Cells(Math.floor((ex1 - ex0) / w) + 1, Math.floor((ey1 - ey0) / h) + 1),
+        };
+        byKey.set(a * 4096 + b, level);
+        this.#levels.push(level);
+      }
+      const cx0 = Math.floor(((boxes[4 * i] as number) - ex0) / level.w);
+      const cy0 = Math.floor(((boxes[4 * i + 1] as number) - ey0) / level.h);
+      const cx1 = Math.floor(((boxes[4 * i + 2] as number) - ex0) / level.w);
+      const cy1 = Math.floor(((boxes[4 * i + 3] as number) - ey0) / level.h);
+      for (let cy = cy0; cy <= cy1; cy++)
+        for (let cx = cx0; cx <= cx1; cx++) level.cells.add(cx, cy, i);
+    }
+  }
+
+  /** The boxes holding `p`, ascending; `stats.tests` counts the boxes looked at. */
+  at(p: readonly [number, number], stats?: PairSearchStats): number[] {
+    const boxes = this.#boxes;
+    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) {
+      if (stats) stats.tests += boxes.length / 4;
+      return Array.from({ length: boxes.length / 4 }, (_, i) => i);
+    }
+    const out = [...this.#always];
+    for (const level of this.#levels) {
+      const list = level.cells.get(
+        Math.floor((p[0] - this.#origin[0]) / level.w),
+        Math.floor((p[1] - this.#origin[1]) / level.h),
+      );
+      if (!list) continue;
+      if (stats) stats.tests += list.length;
+      for (const i of list)
+        if (
+          (boxes[4 * i] as number) <= p[0] &&
+          p[0] <= (boxes[4 * i + 2] as number) &&
+          (boxes[4 * i + 1] as number) <= p[1] &&
+          p[1] <= (boxes[4 * i + 3] as number)
+        )
+          out.push(i);
+    }
+    if (this.#levels.length > 1 || this.#always.length > 0) out.sort((a, b) => a - b);
+    return out;
   }
 }

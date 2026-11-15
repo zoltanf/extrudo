@@ -1,7 +1,7 @@
 import type { SketchData } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
-import { nearPairsWithin, type PairSearchStats } from './pairs';
+import { BoxesAt, nearPairsWithin, type PairSearchStats } from './pairs';
 import { detectProfiles, detectProfilesAllPairs, MAX_PROFILE_COORDINATE } from './profiles';
 
 /** mulberry32: a small seeded generator, so a failure repeats. */
@@ -81,6 +81,39 @@ describe('nearPairsWithin', () => {
         boxes.set([x, y, x + w, y + h], 4 * i);
       }
       expect([...nearPairsWithin(boxes)]).toStrictEqual(allPairs(boxes));
+    }
+  });
+});
+
+describe('BoxesAt', () => {
+  it('gives the boxes that hold a point, ascending, as a test of every box does', () => {
+    const rnd = random(11);
+    for (let round = 0; round < 200; round++) {
+      const n = 1 + Math.floor(rnd() * 300);
+      const lattice = (v: number) => Math.round(v * 4) / 4;
+      const boxes = new Float64Array(4 * n);
+      for (let i = 0; i < n; i++) {
+        const x = lattice(rnd() * 50);
+        const y = lattice(rnd() * 50);
+        const w = lattice(rnd() * (rnd() < 0.2 ? 60 : 3));
+        const h = lattice(rnd() * (rnd() < 0.2 ? 60 : 3));
+        boxes.set([x, y, x + w, y + h], 4 * i);
+        if (round % 5 === 0 && i === 0) boxes[0] = Number.NaN;
+      }
+      const index = new BoxesAt(boxes);
+      for (let k = 0; k < 50; k++) {
+        const p: [number, number] = [lattice(rnd() * 60 - 5), lattice(rnd() * 60 - 5)];
+        const every: number[] = [];
+        for (let i = 0; i < n; i++) {
+          const x0 = boxes[4 * i] as number;
+          const y0 = boxes[4 * i + 1] as number;
+          const x1 = boxes[4 * i + 2] as number;
+          const y1 = boxes[4 * i + 3] as number;
+          if (Number.isNaN(x0) || (x0 <= p[0] && p[0] <= x1 && y0 <= p[1] && p[1] <= y1))
+            every.push(i);
+        }
+        expect(index.at(p)).toStrictEqual(every);
+      }
     }
   });
 });
