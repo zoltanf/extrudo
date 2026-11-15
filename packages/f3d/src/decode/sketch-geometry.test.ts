@@ -181,6 +181,24 @@ describe('hostile numbers', () => {
     expect(() => sketchLine.decode(record(Number.NaN), 11)).toThrow(/isn't finite/);
   });
 
+  it('refuses a spline with fewer poles than its degree + 1', () => {
+    // Three poles; degree 2 (a conic) or 3 (too few poles), knots as many as poles + degree + 1.
+    const conic = (degree: number) => {
+      const b = f64s(new Bytes().u8(0).u8(0), 0.5).u8(1).u8(0).u32(degree);
+      const knots = Array.from({ length: 3 + degree + 1 }, (_, i) => i);
+      f64s(b, 0).u32(knots.length).u32(knots.length).u32(8);
+      f64s(b, ...knots)
+        .u32(3)
+        .u32(3)
+        .u32(8);
+      f64s(b, 1, 1, 1).u32(3).u32(3).u32(8);
+      f64s(b, 0, 0, 0, 1, 1, 0, 2, 0, 0);
+      return segment([...POINTS, { guid: SKETCH_CONIC, id: 13, body: b.ref(1).ref(2).ref(3).out }]);
+    };
+    expect(sketchConic.decode(conic(2), 13).degree).toBe(2);
+    expect(() => sketchConic.decode(conic(3), 13)).toThrow(/no conic/);
+  });
+
   it('refuses a spline whose poles, knots or weights are not finite', () => {
     const conic = (pole: number, weight = 1) => {
       const b = f64s(new Bytes().u8(0).u8(0), 0.5).u8(1).u8(0).u32(2);

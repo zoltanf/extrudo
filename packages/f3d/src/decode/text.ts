@@ -29,7 +29,7 @@
  * the text. Checked against the B-rep of the text's cut: (3, 3) centred in
  * its box, (3, 1) with the capitals' top on the box's.
  */
-import { F3dFormatError, Reader } from '../bytes';
+import { F3dFormatError, finite, Reader } from '../bytes';
 import { readPrologue, readProps, type Segment } from '../segment';
 import type { RecordDecoder } from './common';
 import { ownerAtEnd } from './sketch-geometry';
@@ -41,6 +41,19 @@ export const OLD_TEXT_BOX = '8B369926-123F-4F9D-878E-6D4C076128D3';
 /** An older text's box line (a sketch-line subclass). */
 const BOX_LINE = '16DEFC4D-1816-4FB0-8E39-9BDA23954248';
 export const TEXT_PROFILE_OPERAND = '92F9A5F4-09AA-4B1B-9EE6-DF574D1D183C';
+
+/**
+ * The tallest text this reader takes, cm (10 km, the bound the reader puts
+ * on an ellipse's radius): a height past it, or one not above 0, refuses the text.
+ */
+export const MAX_TEXT_HEIGHT = 1e6;
+
+/** Refuses a text whose numbers aren't finite or whose height isn't in (0, MAX_TEXT_HEIGHT]. */
+function checkText(id: number, height: number, numbers: number[]): void {
+  finite(`Sketch text #${id}`, [height, ...numbers]);
+  if (!(height > 0 && height <= MAX_TEXT_HEIGHT))
+    throw new F3dFormatError(`Sketch text #${id}: a height of ${height} cm.`);
+}
 
 export interface SketchText {
   id: number;
@@ -95,8 +108,10 @@ export const sketchText: RecordDecoder<SketchText> = {
     let width = 0;
     for (const line of box) {
       const d = displacement(seg, line);
-      if (d) width = Math.max(width, Math.abs(d[0] * base[0] + d[1] * base[1]));
+      if (d && Number.isFinite(d[0]) && Number.isFinite(d[1]))
+        width = Math.max(width, Math.abs(d[0] * base[0] + d[1] * base[1]));
     }
+    checkText(id, height, [angle, ...at, width]);
     const owner = ownerAtEnd(seg, r);
     return {
       id,
@@ -165,6 +180,7 @@ export const sketchTextOld: RecordDecoder<SketchText> = {
     const bold = (r.peekU32(4) ?? 0) >= 700;
     const m = matrixNear(r, end);
     if (!m) throw new F3dFormatError(`Sketch text #${id}: no frame.`);
+    checkText(id, height, m);
     const owner = ownerAtEnd(seg, r);
     return {
       id,
@@ -242,6 +258,8 @@ export function oldTextBoxes(
         const b = seg.baseReader(line);
         const p: [number, number, number] = [b.f64(), b.f64(), b.f64()];
         const d: [number, number] = [b.f64(), b.f64()];
+        const ends = [p[0], p[1], p[0] + d[0], p[1] + d[1]];
+        if (!ends.every(Number.isFinite)) continue;
         points.push([p[0], p[1]], [p[0] + d[0], p[1] + d[1]]);
       } catch {
         // a line this reader does not follow
