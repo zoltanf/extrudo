@@ -439,7 +439,8 @@ const CAP_HEIGHT = 0.716;
  */
 function fontFor(family: string, bold = false): TextFont {
   const f = family.trim().toLowerCase();
-  const standIn = STAND_INS[f];
+  // Own keys only: a family such as `constructor` has no stand-in.
+  const standIn = Object.hasOwn(STAND_INS, f) ? STAND_INS[f] : undefined;
   if (standIn) return bold ? standIn.bold : standIn.regular;
   if (/mono|courier|consol|menlo/.test(f)) return FONTS.mono;
   if (/stencil/.test(f)) return FONTS.stencil;
@@ -481,6 +482,8 @@ export function f3dToDesign(
   name: string,
   options: ImportOptions = {},
 ): ImportResult {
+  faceMisses.clear();
+  lastMiss = undefined;
   const report: ImportReport = {
     imported: [],
     skipped: [],
@@ -2564,8 +2567,11 @@ function toModel(m: Matrix, p: Vec3): Vec3 {
   ];
 }
 
-/** Why faces could not be named, counted (for the corpus tools). */
-export const faceMisses: Record<string, number> = {};
+/**
+ * Why faces could not be named in the last import, counted (for the corpus
+ * tools; reset by every `f3dToDesign`). A Map: a reason can carry a type name from the file.
+ */
+export const faceMisses = new Map<string, number>();
 /** For the corpus tools: called with every fillet or chamfer edge as it is named. */
 export const edgeTrace: {
   edge?: (row: {
@@ -2579,7 +2585,7 @@ export const edgeTrace: {
 } = {};
 let lastMiss: string | undefined;
 const miss = (why: string): undefined => {
-  faceMisses[why] = (faceMisses[why] ?? 0) + 1;
+  faceMisses.set(why, (faceMisses.get(why) ?? 0) + 1);
   lastMiss = why;
   return undefined;
 };
