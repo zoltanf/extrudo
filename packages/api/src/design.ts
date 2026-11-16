@@ -114,6 +114,7 @@ import {
 } from './handles';
 import { CounterIds, type IdFactory, type IdKind } from './ids';
 import { type FeatureInputValue, storedInputs } from './inputs';
+import { byNameThenId } from './lookup';
 import {
   findSheet,
   newApiSheet,
@@ -354,7 +355,7 @@ export class Design {
     return new ParameterHandle(this, id);
   }
 
-  /** The handle of a parameter that is already there, by its name or ID. */
+  /** The handle of a parameter that is already there, by its name (then its ID) or handle. */
   getParameter(parameter: ParameterLike): ParameterHandle {
     return new ParameterHandle(this, this.#parameterOf(parameter).id);
   }
@@ -628,11 +629,12 @@ export class Design {
     return (this.doc.components ?? []).map((c) => new ComponentHandle(this, c.id));
   }
 
-  /** A stored component, by handle, ID or (case-insensitive) name. */
+  /** A stored component, by handle (its ID) or by a string: its name (any case), then its ID. */
   #componentOf(component: ComponentHandle | string): Component | undefined {
-    const id = typeof component === 'string' ? component : component.id;
-    const wanted = id.toLowerCase();
-    return (this.doc.components ?? []).find((c) => c.id === id || c.name.toLowerCase() === wanted);
+    const all = this.doc.components ?? [];
+    return typeof component === 'string'
+      ? byNameThenId(all, component, true)
+      : all.find((c) => c.id === component.id);
   }
 
   /** A call's `component` option, or the component a `build` is inside, as an ID. */
@@ -906,7 +908,7 @@ export class Design {
     return (this.doc.sheets ?? []).map((s) => new SheetHandle(this.#sheetContext, s.id));
   }
 
-  /** A sheet by ID or (case-insensitive) name, or `undefined`. */
+  /** A sheet by handle (its ID) or by a string: its name (any case), then its ID; or `undefined`. */
   sheet(sheet: SheetLike): SheetHandle | undefined {
     const found = findSheet(this.doc, sheet);
     return found && new SheetHandle(this.#sheetContext, found.id);
@@ -1004,7 +1006,7 @@ export class Design {
     const all = this.doc.parameters;
     const found =
       typeof parameter === 'string'
-        ? (all.find((p) => p.name === parameter) ?? all.find((p) => p.id === parameter))
+        ? byNameThenId(all, parameter, false)
         : all.find((p) => p.id === parameter.id);
     if (!found)
       throw new ApiError(

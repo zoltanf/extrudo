@@ -2318,13 +2318,15 @@ readers make. Each now gets one (`decode/text.ts`, `decode/thread.ts`,
 - **`storedIds`** (`packages/api`) collects a sketch's IDs with a loop, not a
   spread: a sketch of more entities than a call takes arguments gave a raw
   `RangeError` in `Design.from`.
-- **Parameters by name** (`packages/api`, `Design.#parameterOf`): a string
-  names a parameter by its name first, then by its ID; a handle by its ID. Was:
-  ID or name in one test, so `setParameter('p12', …)` changed the parameter
-  whose ID is `p12` although another is named `p12`. The other lookups by name
-  or ID in the package (`#componentOf`, a sheet's `view`, `findSheet`) still
-  test both in one pass, case-insensitively for the name; `applyConfiguration`
-  already takes the name first.
+- **Lookups by name or ID** (`packages/api`, `lookup.ts` `byNameThenId`; run
+  2 of 2026-11-16): a string names a parameter, component, sheet or sheet view
+  by its name first, then by its ID; a handle by its ID. Was: ID or name in one
+  test, so `setParameter('p12', …)` changed the parameter whose ID is `p12`
+  although another is named `p12` (the same for the others). Names keep their
+  case rules: a parameter's exact case; a component's, sheet's or view's any
+  case, an exact-case name first (a valid document can't hold two that differ
+  only in case: the schema folds them). Configurations (`applyConfiguration`)
+  already took the name first, in exact case.
 - **Sketch copies past the budget:** a start-offset extrude's sketch copy is
   charged before it is made (`sketchUnits`, what `ImportBudget.cost` charges a
   copy); a copy past what is left is not made, and its extrude comes in on its
