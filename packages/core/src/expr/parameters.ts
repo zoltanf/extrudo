@@ -5,22 +5,47 @@
  * User parameters live in `doc.parameters`. Model parameters are feature
  * inputs of kind `expr` with a `paramName` (`d1`, `d2`…), and driving sketch
  * dimensions with one (P1-07). All share one namespace, and any expression
- * can refer to any of them. Evaluation walks the references depth-first,
- * detects cycles and reports them with their path.
+ * can refer to any of them. Evaluation walks the references depth-first, on
+ * a stack of its own, detects cycles and reports them with their path.
  */
 import type { DimensionId, FeatureId, ParameterId } from '../ids';
 import type { ExtrudoDocument, UnitKind } from '../schema';
 import { dimensionUnit } from '../sketch/dimensions';
 import { ExprError } from './errors';
 import {
+  CONSTANTS,
+  closest,
   coerce,
+  combine,
   type EvaluateResult,
   evaluateNode,
   isReservedName,
+  operands,
   type Quantity,
   type Scope,
 } from './evaluate';
-import { type Node, parse, references, type Span } from './parser';
+import { heightOf, type Node, parse, references, type Span } from './parser';
+
+/**
+ * How deep parameters may refer to each other: the summed nesting of a chain
+ * of parameters, each one's own levels counted (`a + 1` is 2, `a` is 1). Far
+ * beyond any design; past it the parameter is an error like any other
+ * (ADR-0004, amendment of 2026-11-15).
+ */
+export const MAX_PARAMETER_DEPTH = 10_000;
+
+/** A cycle's message lists its path while it has at most this many members… */
+const MAX_CYCLE_PATH = 20;
+/** …and its names take at most this many characters; past that it counts them. */
+const MAX_CYCLE_PATH_TEXT = 500;
+/**
+ * The work "did you mean" suggestions may take: once for the document's own
+ * parameters and inputs, and again for each `evaluate()` call.
+ */
+const SUGGESTION_CELLS = 1_000_000;
+
+/** What a parameter past `MAX_PARAMETER_DEPTH` says. */
+export const PARAMETER_DEPTH_MESSAGE = `Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.`;
 
 export type ParameterOwner =
   | { type: 'user'; id: ParameterId }
@@ -131,61 +156,151 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     return p;
   };
 
+  // Every expression is read before any is evaluated.
+  for (const name of sources.keys()) parsedOf(name);
+
   const results = new Map<string, EvaluateResult>();
   const cycleErrors = new Map<string, ExprError>();
+  /** The parameters being evaluated, outermost first. */
   const stack: string[] = [];
+  const onStack = new Set<string>();
+  /** Each evaluated parameter's deepest chain through the parameters it uses, its own height included. */
+  const chains = new Map<string, number>();
+  const budget = { cells: SUGGESTION_CELLS };
+  /** Where `member`'s expression refers to `next`, or all of it. */
+  const spanTo = (member: string, next: string): Span => {
+    const own = parsedOf(member);
+    return own.ok ? (findRef(own.node, next) ?? own.node.span) : { start: 0, end: 0 };
+  };
 
   const scope: Scope = {
     lookup(name, span) {
       if (!sources.has(name)) return undefined;
-      const result = evaluateParameter(name);
+      const result = results.get(name) ?? evaluateParameter(name);
       if (result.ok) return { value: result.value, dim: result.dim };
       throw new ExprError(`Uses \`${name}\`, which has an error.`, span);
     },
     names: () => sources.keys(),
+    has: (name) => sources.has(name),
+    suggest: (name) => closest(name, sources.keys(), budget),
     lengthUnit: doc.settings.units,
   };
+  /** A name that refers to a parameter (a constant's name never does). */
+  const isParameter = (name: string) => sources.has(name) && !Object.hasOwn(CONSTANTS, name);
 
-  function evaluateParameter(name: string): EvaluateResult {
-    const done = results.get(name);
-    if (done) return done;
-    const at = stack.indexOf(name);
-    if (at >= 0) {
-      const cycle = stack.slice(at);
-      cycle.forEach((member, i) => {
-        const path = [...cycle.slice(i), ...cycle.slice(0, i), member];
-        const next = path[1] as string;
-        const own = parsedOf(member);
-        const span = own.ok ? (findRef(own.node, next) ?? own.node.span) : { start: 0, end: 0 };
-        cycleErrors.set(
-          member,
-          new ExprError(
-            path.length === 2
-              ? `\`${member}\` refers to itself.`
-              : `\`${member}\` refers to itself: ${path.join(' → ')}.`,
-            span,
-            'cycle',
-          ),
-        );
-      });
-      // Unwinds to the members, which then report their cycle error.
-      throw new ExprError('cycle', { start: 0, end: 0 });
-    }
-    // biome-ignore lint/style/noNonNullAssertion: only called for known names.
-    const source = sources.get(name)!;
+  /** Every member of `cycle`, the end of the stack, gets its cycle error. */
+  function markCycle(cycle: string[]): void {
+    const listed =
+      cycle.length <= MAX_CYCLE_PATH &&
+      cycle.reduce((n, member) => n + member.length, 0) <= MAX_CYCLE_PATH_TEXT;
+    cycle.forEach((member, i) => {
+      const next = cycle[(i + 1) % cycle.length] as string;
+      const message =
+        cycle.length === 1
+          ? `\`${member}\` refers to itself.`
+          : listed
+            ? `\`${member}\` refers to itself: ${[...cycle.slice(i), ...cycle.slice(0, i), member].join(' → ')}.`
+            : `\`${member}\` refers to itself through ${cycle.length} parameters.`;
+      cycleErrors.set(member, new ExprError(message, spanTo(member, next), 'cycle'));
+    });
+  }
+
+  /** A parameter's result once its expression has given `result`: depth and cycle checked. */
+  function settle(name: string, result: EvaluateResult): EvaluateResult {
     const p = parsedOf(name);
-    let result: EvaluateResult;
-    if (!p.ok) {
-      result = { ok: false, error: p.error };
-    } else {
-      stack.push(name);
-      result = run(() => coerce(evaluateNode(p.node, scope), source.unit, p.node.span, scope));
-      stack.pop();
+    if (p.ok) {
+      // The deepest chain, from those of the parameters it uses: exact when
+      // it evaluates, since then it has evaluated every one of them.
+      const height = heightOf(p.node);
+      let chain = height;
+      let deepest = '';
+      for (const ref of p.refs) {
+        const under = chains.get(ref);
+        if (under !== undefined && height + under > chain) {
+          chain = height + under;
+          deepest = ref;
+        }
+      }
+      chains.set(name, chain);
+      if (result.ok && chain > MAX_PARAMETER_DEPTH) {
+        const message = PARAMETER_DEPTH_MESSAGE;
+        result = { ok: false, error: new ExprError(message, spanTo(name, deepest), 'limit') };
+      }
     }
     const cycleError = cycleErrors.get(name);
     if (cycleError) result = { ok: false, error: cycleError };
     results.set(name, result);
     return result;
+  }
+
+  /**
+   * Evaluates `name`, and each parameter it uses that has no result yet when
+   * it is reached, depth-first in the order its expression uses them. The
+   * walk keeps its own stack of expression nodes, so a chain of parameters,
+   * however long, needs no deeper call stack than one expression.
+   */
+  function evaluateParameter(name: string): EvaluateResult {
+    const done = results.get(name);
+    if (done) return done;
+    const tasks: { name: string; frames: Frame[] }[] = [];
+    /** Starts on `next`, or settles it at once when it doesn't parse; false then. */
+    const begin = (next: string): boolean => {
+      const p = parsedOf(next);
+      if (!p.ok) {
+        settle(next, { ok: false, error: p.error });
+        return false;
+      }
+      tasks.push({ name: next, frames: [{ node: p.node, values: [] }] });
+      stack.push(next);
+      onStack.add(next);
+      return true;
+    };
+    const end = (result: EvaluateResult): void => {
+      const task = tasks.pop() as { name: string };
+      stack.pop();
+      onStack.delete(task.name);
+      settle(task.name, result);
+    };
+    begin(name);
+    while (tasks.length > 0) {
+      const task = tasks[tasks.length - 1] as { name: string; frames: Frame[] };
+      const frame = task.frames[task.frames.length - 1] as Frame;
+      let value: Quantity;
+      try {
+        frame.operands ??= operands(frame.node, scope);
+        const next = frame.operands[frame.values.length];
+        if (next) {
+          task.frames.push({ node: next, values: [] });
+          continue;
+        }
+        const node = frame.node;
+        if (node.kind === 'ref' && isParameter(node.name) && !results.has(node.name)) {
+          if (onStack.has(node.name)) {
+            markCycle(stack.slice(stack.indexOf(node.name)));
+            // Unwinds to the members, which then report their cycle error.
+            throw new ExprError('cycle', { start: 0, end: 0 });
+          }
+          if (begin(node.name)) continue;
+        }
+        value = combine(node, frame.values, scope);
+      } catch (error) {
+        if (!(error instanceof ExprError)) throw error;
+        end({ ok: false, error });
+        continue;
+      }
+      task.frames.pop();
+      const parent = task.frames[task.frames.length - 1];
+      if (parent) {
+        parent.values.push(value);
+        continue;
+      }
+      // biome-ignore lint/style/noNonNullAssertion: only called for known names.
+      const source = sources.get(task.name)!;
+      const root = (parsedOf(task.name) as { node: Node }).node;
+      end(run(() => coerce(value, source.unit, root.span, scope)));
+    }
+    // biome-ignore lint/style/noNonNullAssertion: just evaluated.
+    return results.get(name)!;
   }
 
   const parameters = new Map<string, EvaluatedParameter>();
@@ -198,10 +313,22 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     });
   }
 
-  const evaluateExtra = (expression: string, unit: UnitKind = 'length'): EvaluateResult => {
+  const evaluateExtra = (
+    expression: string,
+    unit: UnitKind = 'length',
+    within: Scope = scope,
+  ): EvaluateResult => {
     const p = parseSafely(expression);
     if (!p.ok) return { ok: false, error: p.error };
-    return run(() => coerce(evaluateNode(p.node, scope), unit, p.node.span, scope));
+    return run(() => coerce(evaluateNode(p.node, within), unit, p.node.span, within));
+  };
+  /** An expression evaluated on its own (a field being edited), with suggestions of its own. */
+  const evaluateOwn = (expression: string, unit: UnitKind = 'length'): EvaluateResult => {
+    const own = { cells: SUGGESTION_CELLS };
+    return evaluateExtra(expression, unit, {
+      ...scope,
+      suggest: (name) => closest(name, sources.keys(), own),
+    });
   };
 
   const inputs = new Map<FeatureId, Map<string, EvaluateResult>>();
@@ -291,8 +418,15 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
         .filter((f) => [...(inputRefs.get(f.id) ?? [])].some((ref) => changed.has(ref)))
         .map((f) => f.id);
     },
-    evaluate: evaluateExtra,
+    evaluate: evaluateOwn,
   };
+}
+
+/** One expression node being evaluated: its operands and the values of those done. */
+interface Frame {
+  node: Node;
+  operands?: readonly Node[];
+  values: Quantity[];
 }
 
 function run(fn: () => Quantity): EvaluateResult {

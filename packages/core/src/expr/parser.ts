@@ -94,8 +94,30 @@ const PREFIX_POWER = 30;
  * `((((…))))` gets a clean error rather than a stack overflow.
  */
 export const MAX_DEPTH = 256;
+/**
+ * The longest source read, in characters, and the most values one call
+ * takes. Typed and imported expressions stay far below both; past them the
+ * expression is an error like any other (ADR-0004, amendment of 2026-11-15).
+ */
+export const MAX_EXPRESSION_LENGTH = 10_000;
+export const MAX_CALL_ARGUMENTS = 1000;
+
+/** Each parsed node's height, for evaluation through parameters (leaves are 1). */
+const heights = new WeakMap<Node, number>();
+
+/** How many levels `node` nests: 1 for a number or a name. */
+export function heightOf(node: Node): number {
+  return heights.get(node) ?? 1;
+}
 
 export function parse(source: string): Node {
+  if (source.length > MAX_EXPRESSION_LENGTH) {
+    throw new ExprError(
+      `Longer than ${MAX_EXPRESSION_LENGTH} characters: split it into parameters.`,
+      { start: MAX_EXPRESSION_LENGTH, end: source.length },
+      'limit',
+    );
+  }
   const tokens = tokenize(source);
   let index = 0;
   const peek = (): Token => tokens[index] as Token;
@@ -108,12 +130,12 @@ export function parse(source: string): Node {
   // The parser's own nesting, and each node's height: a long `1+1+…` chain
   // nests the tree without nesting the parser.
   let nesting = 0;
-  const heights = new WeakMap<Node, number>();
   const tooDeep = (span: Span): never => {
-    throw new ExprError(`Nested more than ${MAX_DEPTH} levels deep.`, span);
+    throw new ExprError(`Nested more than ${MAX_DEPTH} levels deep.`, span, 'limit');
   };
-  const grown = <T extends Node>(node: T, ...children: Node[]): T => {
-    const height = 1 + Math.max(0, ...children.map((c) => heights.get(c) ?? 1));
+  const grown = <T extends Node>(node: T, children: readonly Node[]): T => {
+    let height = 1;
+    for (const child of children) height = Math.max(height, heightOf(child) + 1);
     if (height > MAX_DEPTH) tooDeep(node.span);
     heights.set(node, height);
     return node;
@@ -150,8 +172,7 @@ export function parse(source: string): Node {
           right,
           span: { start: left.span.start, end: right.span.end },
         },
-        left,
-        right,
+        [left, right],
       );
     }
     return left;
@@ -170,13 +191,13 @@ export function parse(source: string): Node {
           end: close.kind === 'end' ? source.length : close.start,
         });
       }
-      return grown({ ...inner, span: { start: token.start, end: close.end } }, inner);
+      return grown({ ...inner, span: { start: token.start, end: close.end } }, [inner]);
     }
     if (token.text === '-' || token.text === '+') {
       const arg = expression(PREFIX_POWER);
       return grown(
         { kind: 'unary', op: token.text, arg, span: { start: token.start, end: arg.span.end } },
-        arg,
+        [arg],
       );
     }
     if (token.kind === 'end') {
@@ -346,6 +367,13 @@ export function parse(source: string): Node {
     const args: Node[] = [];
     if (peek().text !== ')') {
       for (;;) {
+        if (args.length === MAX_CALL_ARGUMENTS) {
+          throw new ExprError(
+            `\`${token.text}\` takes at most ${MAX_CALL_ARGUMENTS} values.`,
+            token,
+            'limit',
+          );
+        }
         args.push(expression(0));
         if (peek().text !== ',') break;
         next();
@@ -360,7 +388,7 @@ export function parse(source: string): Node {
     }
     return grown(
       { kind: 'call', name: token.text, args, span: { start: token.start, end: close.end } },
-      ...args,
+      args,
     );
   }
 

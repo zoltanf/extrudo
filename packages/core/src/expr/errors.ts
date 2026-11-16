@@ -1,11 +1,12 @@
 import type { Span } from './parser';
 
 /**
- * Why a name can't be used, for callers that act on it: completion leaves out
- * names the field doesn't know (`unknown-name`) or that would refer back to it
- * (`cycle`).
+ * What kind of error, for callers that act on it: completion leaves out names
+ * the field doesn't know (`unknown-name`) or that would refer back to it
+ * (`cycle`); an importer keeps a value in place of an expression past a limit
+ * on length, values per call, nesting or depth through parameters (`limit`).
  */
-export type ExprErrorCode = 'unknown-name' | 'cycle';
+export type ExprErrorCode = 'unknown-name' | 'cycle' | 'limit';
 
 /** An expression that doesn't parse or evaluate. `span` marks the part to underline. */
 export class ExprError extends Error {

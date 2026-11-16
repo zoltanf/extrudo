@@ -379,7 +379,8 @@ describe('syntax errors', () => {
 
 describe('nesting depth', () => {
   it('refuses an expression nested past the cap with an expression error, not a stack overflow', () => {
-    const deep = 100_000;
+    // Deep, but inside the length limit, which refuses anything longer first.
+    const deep = 1500;
     for (const source of [
       `${'('.repeat(deep)}1${')'.repeat(deep)}`,
       `${'-'.repeat(deep)}1`,
