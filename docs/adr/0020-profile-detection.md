@@ -615,7 +615,10 @@ both). Over the 252 designs of an f3d corpus, importing them asked 2,570
 times for the regions of 1,001 sketch objects and now does the work 1,035
 times (text sketches every time), and emitting each design's script asked
 5,199 times and now does the work 76 times (16.6 s → 4.0 s in all). The f3d
-corpus gate: GATE-NUMBERS.
+corpus gate (the 252 designs replayed and their bodies checked, before and
+after): no design's verdict or body outcome changed (170 match, 47
+mismatch, 18 partial; 248 bodies editable, 111 frozen, 26 unchecked), and
+no run failed.
 
 **Rejected.** A key by the sketch's content (a hash or serialisation per
 call costs about what detecting a small sketch costs, and nothing would
