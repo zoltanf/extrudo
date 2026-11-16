@@ -16,6 +16,20 @@ const env =
 
 const d = () => Design.create({ name: 'Test', ...FIXED });
 
+describe('components by name or ID', () => {
+  it("finds a component by its name before another's ID", () => {
+    const design = d();
+    const lid = design.component('Lid'); // ID cmp1
+    const named = design.component(lid.id); // named like the first's ID
+    const box = design.box({}, { component: lid.id });
+    expect(box.feature?.component).toBe(named.id);
+    expect(design.box({}, { component: 'CMP1' }).feature?.component).toBe(named.id);
+    // No component is named cmp2: by ID; a handle by its ID.
+    expect(design.box({}, { component: named.id }).feature?.component).toBe(named.id);
+    expect(design.box({}, { component: lid }).feature?.component).toBe(lid.id);
+  });
+});
+
 describe('components', () => {
   it('makes a component and puts bodies in it', () => {
     const design = d();

@@ -2278,3 +2278,66 @@ feature uses are not charged (the mapper's own region search has its budget,
 `MAX_PIECE_WORK`); a sketch copy is still the whole sketch (its regions name
 curve pieces split by every other curve, so a copy of the profile's curves
 alone would find other regions).
+
+## Amendment, 2026-11-15: small input checks
+
+A few numbers and keys from the file were taken without the checks the other
+readers make. Each now gets one (`decode/text.ts`, `decode/thread.ts`,
+`decode/copies.ts`, `decode/sketch-geometry.ts`, `map.ts`, `budget.ts`; in
+`packages/api` `ids.ts` and `design.ts`; in the app `sketch/fonts.ts`):
+
+- **Text numbers:** a sketch text's height, angle, corner and box width (an
+  older text's frame matrix too) go through `finite`, and its height must be
+  above 0 and at most `MAX_TEXT_HEIGHT` (10⁶ cm, the bound the reader puts on
+  an ellipse's radius); otherwise the text record is refused like any other
+  record a reader can't use (a problem in the report, the text left out). Was:
+  a NaN height reached the document as `null` coordinates and the app refused
+  the design as damaged; `1e300` was saved. An older text's box lines with a
+  number that is not finite are skipped.
+- **A thread's major diameter** must be finite (minor and pitch are below it,
+  so all three are); a **path pattern's start point** that is not finite is
+  left out, so the mapper gives its existing reason ("its start point was not
+  found").
+- **Splines:** `readNurbs` needs at least degree + 1 poles. A spline with fewer
+  is a record the reader can't use ("no curve found", the sketch maps without
+  it) instead of throwing a `TypeError` in the region code, which skipped the
+  whole sketch with a raw message.
+- **Profile regions:** every profile operand of a file lists its regions (the
+  corpus: 1,195 of 1,195). One whose regions record is missing, of another type
+  or with a back-reference to another operand no longer extrudes every profile
+  of its sketch: the feature is left out, "its profile's regions could not be
+  read" (`PROFILE_REGIONS_UNREAD`). Chosen over a note because the import can't
+  tell which profiles the file meant, and the corpus gate shows no design that
+  reaches it, so nothing that matched is lost.
+- **Keys from a file:** `fontFor` takes a stand-in font only for an own key of
+  its table (`Object.hasOwn`), so a family named `constructor` is drawn in the
+  default font instead of skipping the sketch; the app's `fontBytes` fetches a
+  bundled font only for an own key of `fontUrls`. `faceMisses` (the corpus
+  tools' count of faces not named) is a `Map`, its keys may carry a type name
+  from the file, and `f3dToDesign` clears it: it counts the last import.
+- **`storedIds`** (`packages/api`) collects a sketch's IDs with a loop, not a
+  spread: a sketch of more entities than a call takes arguments gave a raw
+  `RangeError` in `Design.from`.
+- **Lookups by name or ID** (`packages/api`, `lookup.ts` `byNameThenId`; run
+  2 of 2026-11-16): a string names a parameter, component, sheet or sheet view
+  by its name first, then by its ID; a handle by its ID. Was: ID or name in one
+  test, so `setParameter('p12', …)` changed the parameter whose ID is `p12`
+  although another is named `p12` (the same for the others). Names keep their
+  case rules: a parameter's exact case; a component's, sheet's or view's any
+  case, an exact-case name first (a valid document can't hold two that differ
+  only in case: the schema folds them). Configurations (`applyConfiguration`)
+  already took the name first, in exact case.
+- **Sketch copies past the budget:** a start-offset extrude's sketch copy is
+  charged before it is made (`sketchUnits`, what `ImportBudget.cost` charges a
+  copy); a copy past what is left is not made, and its extrude comes in on its
+  own sketch, suppressed, with `overBudgetNote` and `offsetDroppedNote` ("…
+  starts on its sketch's plane, not at its start offset …"). The design-size
+  cap (`MAX_IMPORT_ENTITIES`) then counts only the sketches the document holds:
+  a design whose suppressed copies alone passed it was refused although they
+  would never be built.
+
+Each has a synthetic test that fails on the code before. On the corpus nothing
+imports differently: the gate (replay and body check, all 252 designs, against
+main 7fcc5da5) is unchanged design by design, timings aside (170 matches and 4
+matches despite skips; bodies 248 editable, 111 frozen, 26 unchecked with the
+same reasons), with no `RuntimeError`.

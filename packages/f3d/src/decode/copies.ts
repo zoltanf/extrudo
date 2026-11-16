@@ -235,7 +235,9 @@ export function readPathPattern(seg: Segment, scope: Scope, inside: Inside): Pat
   if (startGroup !== undefined) {
     const r = seg.reader(startGroup);
     r.skip(19);
-    out.start = [r.f64(), r.f64(), r.f64()];
+    const start: [number, number, number] = [r.f64(), r.f64(), r.f64()];
+    // A start that isn't finite is left out: the mapper then says the start wasn't found.
+    if (start.every(Number.isFinite)) out.start = start;
   }
   const data = inside(scope.id).find((r) => seg.typeOf(r)?.guid === PATH_PATTERN_DATA);
   if (data !== undefined) {

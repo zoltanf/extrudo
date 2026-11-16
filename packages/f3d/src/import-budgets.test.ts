@@ -18,6 +18,7 @@ import {
   hiddenSketchesNote,
   IMPORT_WORK,
   MAX_IMPORT_ENTITIES,
+  offsetDroppedNote,
   overBudgetNote,
   TEXT_UNITS,
   THREAD_UNITS,
@@ -461,10 +462,47 @@ describe('the design-wide import budget', () => {
     const fit = Math.floor(IMPORT_WORK / units);
     const below = mapped(f3d(fit));
     expect(below.suppressed).toEqual([]);
+    // Past it the copy is not made: the extrude comes in on its own sketch, suppressed.
     const past = mapped(f3d(fit + 1));
-    expect(past.suppressed).toEqual([`E${fit} start`, `E${fit}`]);
-    expect(budgetNotes(past.report.notes)).toEqual([overBudgetNote(`E${fit}`)]);
+    expect(past.suppressed).toEqual([`E${fit}`]);
+    expect(past.doc.features.some((f) => f.name === `E${fit} start`)).toBe(false);
+    expect(budgetNotes(past.report.notes)).toEqual([
+      overBudgetNote(`E${fit}`),
+      offsetDroppedNote(`E${fit}`),
+    ]);
     expect(past.byName('ExtrudeLast').suppressed).toBe(false);
+  });
+
+  it('counts only the sketch copies it makes toward the design size', () => {
+    // A sketch of about 6,000 points and curves (240 units a copy): its copies
+    // for 16 extrudes would hold more than MAX_IMPORT_ENTITIES; past the
+    // budget they are not made, so the design imports.
+    const d = washerWithHole();
+    d.features[0] = sketch(1, 5, 'Sketch1', [circle(10, 101n, 0.55), circle(20, 102n, 0.21)], {
+      lines: 2000,
+    });
+    const ex = d.features[1] as F3dExtrude;
+    for (let k = 0; k < 16; k++)
+      d.features.push({
+        ...ex,
+        id: 200 + k,
+        name: `E${k}`,
+        parameters: [
+          ...ex.parameters,
+          parameter({ name: `o${k}`, kind: 'ProfileOffset', value: 0.01 * (k + 1) }),
+        ],
+      });
+    const m = mapped(d);
+    const made = m.doc.features.filter((f) => f.name.endsWith(' start')).length;
+    expect(made).toBeGreaterThan(0);
+    expect(made).toBeLessThan(16);
+    expect(m.suppressed).toEqual(Array.from({ length: 16 - made }, (_, k) => `E${made + k}`));
+    let entities = 0;
+    for (const f of m.doc.features)
+      if (f.inputs.sketch?.kind === 'sketchData')
+        entities += Object.keys(f.inputs.sketch.sketch.entities).length;
+    expect(entities).toBeLessThanOrEqual(MAX_IMPORT_ENTITIES);
+    expect(entities * (17 / (made + 1))).toBeGreaterThan(MAX_IMPORT_ENTITIES);
   });
 });
 

@@ -15,7 +15,7 @@ import type { AsmSurface } from './asm';
 import type { ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { Vec3 } from './decode/sketch-geometry';
-import { alongSweep, bodyOrder, f3dToDesign } from './map';
+import { alongSweep, bodyOrder, f3dToDesign, faceMisses, PROFILE_REGIONS_UNREAD } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
 
 /** A region of whole curves (each one piece of one), as the decoder gives it. */
@@ -1774,5 +1774,47 @@ describe('profile regions whose record the sketch has outgrown', () => {
       [pieces([[1n, 1, 1]])],
     );
     expect(await volumes(f3d)).toEqual([expect.closeTo(Math.PI * 17.5 ** 2 * 0.8, 0)]);
+  });
+});
+
+describe('profile regions', () => {
+  it("leaves out an extrude whose profile's regions were not read, instead of extruding every profile", () => {
+    const f3d = washer();
+    const extrude = f3d.features[1] as F3dExtrude;
+    extrude.profiles = [{ id: 30, sketch: 5 }];
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toContainEqual({
+      name: 'Extrude1',
+      kind: 'Extrude',
+      reason: PROFILE_REGIONS_UNREAD,
+    });
+    expect(design.toJSON().features.map((f) => f.type)).toEqual(['sketch']);
+  });
+});
+
+describe('font families', () => {
+  it('draws a text whose family is an object key such as `constructor` in the default font', () => {
+    for (const family of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const f3d = washer();
+      const sketch = f3d.features[0] as F3dSketchFeature;
+      sketch.sketch.texts = [
+        { id: 50, text: 'A', font: family, height: 0.5, angle: 0, at: [2, 0], width: 0.4 },
+      ];
+      const { design, report } = f3dToDesign(f3d, 'Washer');
+      expect(report.skipped, family).toEqual([]);
+      const input = design.toJSON().features[0]?.inputs.sketch as unknown as { sketch: SketchData };
+      const fonts = Object.values(input.sketch.entities).flatMap((e) =>
+        e.type === 'text' ? [e.font] : [],
+      );
+      expect(fonts, family).toEqual(['inter-regular@1']);
+    }
+  });
+});
+
+describe('face-name misses', () => {
+  it('counts the misses of one import at a time', () => {
+    faceMisses.set('surface constructor', 3);
+    f3dToDesign(washer(), 'Washer');
+    expect(faceMisses.has('surface constructor')).toBe(false);
   });
 });

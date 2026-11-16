@@ -100,6 +100,22 @@ describe('parameters', () => {
     expect(d.doc.parameters[1]?.expression).toBe('wall / 2');
   });
 
+  it("finds a parameter by its name before another's ID", () => {
+    const d = Design.create(FIXED);
+    const first = d.parameter('wall', '3 mm'); // ID p1
+    const second = d.parameter('p1', '5 mm'); // named like the first's ID
+    expect(first.id).toBe('p1');
+    d.setParameter('p1', '6 mm');
+    expect(second.expression).toBe('6 mm');
+    expect(first.expression).toBe('3 mm');
+    // An ID still finds its parameter when no name matches it, and a handle its own.
+    d.setParameter(second.id, '7 mm');
+    expect(second.expression).toBe('7 mm');
+    d.setParameter(first, '4 mm');
+    expect(first.expression).toBe('4 mm');
+    expect(d.getParameter('p1').id).toBe(second.id);
+  });
+
   it('refuses a name that is taken, a unit function, and an unknown one', () => {
     const d = Design.create(FIXED);
     d.parameter('wall', '3 mm');
