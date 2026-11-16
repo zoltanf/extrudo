@@ -26,18 +26,22 @@ import {
   type BodyId,
   type ComponentId,
   ExprError,
-  type ExtrudoDocument,
   evaluateParameters,
   type FeatureId,
   faceSketchFrame,
+  heightOf,
   importInputs,
   isConstructionType,
+  MAX_PARAMETER_DEPTH,
+  type Node,
   newId,
   ORIGIN_PLANES,
+  PARAMETER_DEPTH_MESSAGE,
   type Parameter,
   type ParameterId,
   parameterNameProblem,
   parse,
+  references,
   type SketchData,
   setFeatureVisibility,
   updateBody,
@@ -387,37 +391,59 @@ function pastLimit(expression: string): ExprError | undefined {
 }
 
 /**
- * The user parameters nested past the depth limit through the others, each
- * with its own error. Each keeps its value (as one past the length or values
- * limit does), so the chain is cut there and those that use it evaluate
- * against that value; a longer chain is cut again further up.
+ * The user parameters that keep their values for a limit (ADR-0004), each
+ * with its own error: one whose own expression is past a limit, and one whose
+ * chain through the others passes the depth limit, counted from the last one
+ * kept. A kept one counts as 1 level, so the chain counts again from there and
+ * those that use it keep their expressions. One walk over the references,
+ * deepest first; each expression is read once.
  */
-function tooDeep(
-  parameters: readonly ParameterValue[],
-  empty: ExtrudoDocument,
-): Map<string, ExprError> {
+function keptValues(parameters: readonly ParameterValue[]): Map<string, ExprError> {
   const found = new Map<string, ExprError>();
-  const numbers = parameters.filter((p) => p.text === undefined);
-  const kept = (p: ParameterValue) =>
-    pastLimit(p.expression) || found.has(p.name) ? numberExpression(p.value, p.unit) : p.expression;
-  // Each round cuts every chain at least once, so it ends.
-  for (let round = 0; round <= numbers.length; round++) {
-    const evaluated = evaluateParameters({
-      ...empty,
-      parameters: numbers.map((p, i) => ({
-        id: `${i}` as ParameterId,
-        name: p.name,
-        expression: kept(p),
-        unit: unitKind(p.unit) ?? 'length',
-      })),
-    }).parameters;
-    let cut = false;
-    for (const [name, p] of evaluated) {
-      if (p.result.ok || p.result.error.code !== 'limit' || found.has(name)) continue;
-      found.set(name, p.result.error);
-      cut = true;
+  const nodes = new Map<string, Node | undefined>();
+  for (const p of parameters) {
+    if (p.text !== undefined || nodes.has(p.name)) continue;
+    try {
+      nodes.set(p.name, parse(p.expression));
+    } catch (error) {
+      // An expression that doesn't read nests nothing; one past a limit keeps its value.
+      nodes.set(p.name, undefined);
+      if (error instanceof ExprError && error.code === 'limit') found.set(p.name, error);
     }
-    if (!cut) break;
+  }
+  const refsOf = (name: string): string[] => {
+    const node = nodes.get(name);
+    return node ? references(node).filter((ref) => nodes.has(ref)) : [];
+  };
+  const depth = new Map<string, number>();
+  for (const root of nodes.keys()) {
+    if (depth.has(root)) continue;
+    const stack = [{ name: root, refs: refsOf(root), next: 0 }];
+    const onPath = new Set([root]);
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1] as (typeof stack)[number];
+      const ref = top.refs[top.next++];
+      if (ref !== undefined) {
+        // A reference back along the path closes a cycle: it adds nothing.
+        if (!depth.has(ref) && !onPath.has(ref)) {
+          stack.push({ name: ref, refs: refsOf(ref), next: 0 });
+          onPath.add(ref);
+        }
+        continue;
+      }
+      stack.pop();
+      onPath.delete(top.name);
+      const node = nodes.get(top.name);
+      const own = node && !found.has(top.name) ? heightOf(node) : 1;
+      let chain = own;
+      if (!found.has(top.name))
+        for (const r of top.refs) chain = Math.max(chain, own + (depth.get(r) ?? 0));
+      if (chain > MAX_PARAMETER_DEPTH) {
+        found.set(top.name, new ExprError(PARAMETER_DEPTH_MESSAGE, { start: 0, end: 0 }, 'limit'));
+        chain = 1;
+      }
+      depth.set(top.name, chain);
+    }
   }
   return found;
 }
@@ -561,7 +587,7 @@ export function f3dToDesign(
   // (taken, reserved, not a name) leaves its parameter out, with a note. One
   // whose expression is past a limit (ADR-0004) comes in with its value, with
   // a note; those that use it keep their expressions.
-  const deep = tooDeep(f3d.userParameters, d.doc);
+  const kept = keptValues(f3d.userParameters);
   const userParameters: Parameter[] = [];
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
     const unit = p.text === undefined ? unitKind(p.unit) : undefined;
@@ -573,7 +599,7 @@ export function f3dToDesign(
       report.notes.push(`Parameter ${p.name} skipped: ${problem}`);
       continue;
     }
-    const limit = p.text === undefined ? (pastLimit(p.expression) ?? deep.get(p.name)) : undefined;
+    const limit = p.text === undefined ? kept.get(p.name) : undefined;
     const expression =
       p.text !== undefined
         ? `'${p.text}'`

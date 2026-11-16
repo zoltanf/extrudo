@@ -366,8 +366,9 @@ export function evaluateExpression(source: string, options: EvaluateOptions = {}
 
 /**
  * The candidate within a small edit distance of `name`, if one is clearly
- * closest. With a `budget`, at most `budget.cells` cells of edit-distance work
- * are spent across calls; once they are, there is no suggestion.
+ * closest. With a `budget`, at most `budget.cells` units of work are spent
+ * across calls (one a name looked at, one an edit-distance cell); once they
+ * are, there is no suggestion.
  */
 export function closest(
   name: string,
@@ -379,6 +380,7 @@ export function closest(
   let best: string | undefined;
   let bestDistance = limit + 1;
   for (const candidate of candidates) {
+    if (budget && --budget.cells < 0) return undefined;
     // Names are ASCII, so lower-casing keeps lengths: a longer or shorter one is farther.
     if (Math.abs(candidate.length - name.length) >= bestDistance) continue;
     const d = editDistance(lower, candidate.toLowerCase(), bestDistance - 1, budget);

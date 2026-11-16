@@ -38,8 +38,14 @@ export const MAX_PARAMETER_DEPTH = 10_000;
 const MAX_CYCLE_PATH = 20;
 /** …and its names take at most this many characters; past that it counts them. */
 const MAX_CYCLE_PATH_TEXT = 500;
-/** Edit-distance work one evaluation spends on "did you mean" suggestions. */
+/**
+ * The work "did you mean" suggestions may take: once for the document's own
+ * parameters and inputs, and again for each `evaluate()` call.
+ */
 const SUGGESTION_CELLS = 1_000_000;
+
+/** What a parameter past `MAX_PARAMETER_DEPTH` says. */
+export const PARAMETER_DEPTH_MESSAGE = `Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.`;
 
 export type ParameterOwner =
   | { type: 'user'; id: ParameterId }
@@ -217,7 +223,7 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
       }
       chains.set(name, chain);
       if (result.ok && chain > MAX_PARAMETER_DEPTH) {
-        const message = `Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.`;
+        const message = PARAMETER_DEPTH_MESSAGE;
         result = { ok: false, error: new ExprError(message, spanTo(name, deepest), 'limit') };
       }
     }
@@ -307,10 +313,22 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     });
   }
 
-  const evaluateExtra = (expression: string, unit: UnitKind = 'length'): EvaluateResult => {
+  const evaluateExtra = (
+    expression: string,
+    unit: UnitKind = 'length',
+    within: Scope = scope,
+  ): EvaluateResult => {
     const p = parseSafely(expression);
     if (!p.ok) return { ok: false, error: p.error };
-    return run(() => coerce(evaluateNode(p.node, scope), unit, p.node.span, scope));
+    return run(() => coerce(evaluateNode(p.node, within), unit, p.node.span, within));
+  };
+  /** An expression evaluated on its own (a field being edited), with suggestions of its own. */
+  const evaluateOwn = (expression: string, unit: UnitKind = 'length'): EvaluateResult => {
+    const own = { cells: SUGGESTION_CELLS };
+    return evaluateExtra(expression, unit, {
+      ...scope,
+      suggest: (name) => closest(name, sources.keys(), own),
+    });
   };
 
   const inputs = new Map<FeatureId, Map<string, EvaluateResult>>();
@@ -400,7 +418,7 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
         .filter((f) => [...(inputRefs.get(f.id) ?? [])].some((ref) => changed.has(ref)))
         .map((f) => f.id);
     },
-    evaluate: evaluateExtra,
+    evaluate: evaluateOwn,
   };
 }
 

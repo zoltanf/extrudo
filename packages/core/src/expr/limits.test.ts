@@ -261,6 +261,16 @@ describe('did you mean', () => {
     ]);
   });
 
+  it('suggests again in each evaluate() call of one evaluation', () => {
+    const d = doc(Array(300).fill('1 mm'));
+    d.parameters = d.parameters.map((p, i) => ({ ...p, name: `width${i}` }));
+    const evaluation = evaluateParameters(d);
+    for (let k = 0; k < 2000; k++) {
+      const r = evaluation.evaluate('widht0 + 1 mm');
+      expect(message(r)).toBe('Unknown name `widht0`. Did you mean `width0`?');
+    }
+  });
+
   it('stops suggesting once a budget of work is spent, in many unknown names', () => {
     const n = 4000;
     const names = Array.from({ length: n }, (_, i) => `xxxxxxxx${i}`);
