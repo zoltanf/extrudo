@@ -1628,7 +1628,7 @@ finds them, and OK adds the attachment record and the feature in one undo step
 through the dialog framework's `commitWith` hook (a transaction around both).
 The dialog grew a read-only `info` field kind and `shown(values, ctx)` (a
 mesh's `units` depends on the document). The fixture is B3's two bodies
-through our own `writeStep` (`fixtures/imports/b3.step`, `WRITE_FIXTURES=1`).
+through our own `writeStep` (`fixtures/imports/b3.step`, `WRITE_FIXTURES=1`). **Amendment of 2026-11-15 (STEP reals):** the `import` feature passes the file's text through `standardStepReals` (`kernel/src/step-reals.ts`) once, before `readStep` and the colour, name and hidden reads: every real written without a decimal point (`[sign] digits e|E [sign] digits`, after `(`, `,` or white space, ending at a delimiter) gets the standard form (`1e1` → `1.E1`; the reader takes one-digit unsigned mantissas as other numbers). Keep: never inside a string (`''` escapes), a binary or a comment, never in a name (`#12`, `.MILLI.`); one linear pass; a text with no such real comes back as the same string (every valid file byte-identical: the fixtures and the f3d corpus's STEP texts are checked); all such reals, not only the forms the reader gets wrong.
 ADR-0066 (P4-06, slice 3) added **mesh bodies**: a mesh is a `ShapeHandle` at
 `MESH_HANDLE_BASE` (2^30) kept in `Kernel.#meshes` as a manifold-3d 3.5.4
 `Manifold`, so the engine, the cache, `hold`, scopes and strict leaks are
