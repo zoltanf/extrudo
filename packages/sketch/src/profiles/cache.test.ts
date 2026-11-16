@@ -256,7 +256,7 @@ describe('the measuring entries', () => {
 });
 
 describe('what a caller gets', () => {
-  it("is its own list, of frozen profiles: the next caller's regions don't change", () => {
+  it("is its own list, of frozen profiles, loops and edges: the next caller's regions don't change", () => {
     const data = plate(plate(), 100).sketch;
     const first = detectProfiles(data);
     const ids = first.map((p) => p.id);
@@ -270,12 +270,15 @@ describe('what a caller gets', () => {
       (profile as { area: number }).area = 0;
     }).toThrow(TypeError);
     expect(() => profile.holes.push(profile.outer)).toThrow(TypeError);
+    expect(() => profile.outer.edges.pop()).toThrow(TypeError);
     expect(() => {
-      (profile.outer.polygon[0] as unknown as number[])[0] = 99;
+      (profile.outer as { polygon: unknown }).polygon = [];
     }).toThrow(TypeError);
     expect(() => {
-      profile.outer.edges[0]?.points.reverse();
+      (profile.outer.edges[0] as { reversed: boolean }).reversed = true;
     }).toThrow(TypeError);
+    // Not the points: frozen number arrays slow V8's readers of every array down.
+    expect(Object.isFrozen(profile.outer.polygon)).toBe(false);
     const again = detectProfiles(data);
     expect(again.map((p) => p.id)).toEqual(ids);
     expect(again[0]?.area).toBe(area);

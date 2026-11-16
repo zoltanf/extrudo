@@ -1007,7 +1007,8 @@ function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityI
  * a sketch's data is never changed in place (the document is frozen; edits
  * make new objects), so the same object gives the same regions, or the
  * same refusal, without the work again. Each call gets its own list; the
- * profiles in it are frozen and shared. A sketch with text is detected
+ * profiles in it are frozen (not their points) and shared: never write
+ * into a profile's points. A sketch with text is detected
  * every time: its ink depends on fonts loaded later.
  */
 export function detectProfiles(data: SketchData): Profile[] {
@@ -1038,16 +1039,17 @@ function hasText(data: SketchData): boolean {
   return false;
 }
 
-/** Freezes the profiles, their loops, edges and points: callers share them. */
+/**
+ * Freezes the profiles, their loops and edges and the lists of those:
+ * callers share them. Not the polygons and points: V8 keeps frozen number
+ * arrays in a slower form, and the geometry helpers that read them
+ * (`insidePolygon`, interior points) then slow down for every array they
+ * read, frozen or not (8 times for 500 rings, ADR-0020's amendment of
+ * 2026-11-16).
+ */
 function freezeProfiles(profiles: Profile[]): readonly Profile[] {
   const loop = (l: ProfileLoop) => {
-    for (const e of l.edges) {
-      for (const p of e.points) Object.freeze(p);
-      Object.freeze(e.points);
-      Object.freeze(e);
-    }
-    for (const p of l.polygon) Object.freeze(p);
-    Object.freeze(l.polygon);
+    for (const e of l.edges) Object.freeze(e);
     Object.freeze(l.edges);
     Object.freeze(l);
   };

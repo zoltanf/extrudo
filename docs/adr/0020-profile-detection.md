@@ -550,9 +550,11 @@ them (`ProfilesRefusedError.reason`). The same object again gets the same
 answer without the work: a new list of the same profiles, or a new
 `ProfilesRefusedError` with the same reason (callers test the class, the
 reason and the message, never the error's identity). Other errors are not
-kept. The profiles kept are frozen, with their loops, edges and points:
-callers share them, and a write into one throws; each call gets its own
-list, so sorting or filtering it is the caller's own. `detectProfilesWork`
+kept. The profiles kept are frozen, with their loops and edges and the
+lists of those: callers share them, and a write into one throws; each
+call gets its own list, so sorting or filtering it is the caller's own.
+The polygons and points are not frozen (below), so no caller may write
+into a profile's points. `detectProfilesWork`
 and `detectProfilesAllPairs` never use what is kept: they exist to do and
 measure the work.
 
@@ -604,8 +606,7 @@ regions about 23 MB.
 
 **Numbers.** That corpus sketch: 1.2 s the first time, 0.05 ms the
 second; a suite sketch refused for its size 118 ms, then 0.03 ms; one
-refused for its crossings 23 ms, then 0.01 ms. Freezing costs nothing
-measurable. The 1,545 sketches of the second amendment's proof, each
+refused for its crossings 23 ms, then 0.01 ms. The 1,545 sketches of the second amendment's proof, each
 detected on the code before and twice on the same object (and once on a
 new copy) on the code after: the same digest for all, the same 11
 refusals; the second calls of the 1,465 without text take 5 ms together
@@ -626,4 +627,11 @@ need it: an unchanged sketch keeps its object). A size or age bound (the
 entries already go with their sketches). Remembering text sketches by the
 fonts' version in this package (the version lives in the app; the kernel
 and the CLI load their fonts before they compute). Copying the profiles
-for every caller (as dear as freezing them once, on every call).
+for every caller (as dear as freezing them once, on every call). Freezing
+the points and polygons too: V8 keeps a frozen array of numbers in a
+slower form, and a geometry helper that has read frozen arrays stays slow
+for every array it reads afterwards, frozen or not. `insidePolygon` over
+the 500 rings of the FreeCAD importer's concentric-circles test went from
+0.6 s to 4.4 s, that test from 2.1 s to 19 s; frozen to the edges, it
+takes 2.2 s, and freezing costs nothing measurable. No caller writes into
+the points: the whole Vitest suite passed with them frozen.
