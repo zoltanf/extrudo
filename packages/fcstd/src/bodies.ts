@@ -683,7 +683,9 @@ export function profileRefs(handle: SketchHandle, multiFace: boolean): GeomRef[]
     if (!refusal) throw error;
     return refusal.reason === 'size'
       ? 'its sketch has coordinates too large to find its profiles'
-      : 'its sketch has too many curve crossings to find its profiles';
+      : refusal.reason === 'curves'
+        ? 'its sketch has too many curves to find its profiles'
+        : 'its sketch has too many curve crossings to find its profiles';
   }
   const regions = all.filter((r) => !r.text);
   if (regions.length > MAX_PROFILE_REGIONS)

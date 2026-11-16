@@ -5,7 +5,11 @@
  * profiles are back.
  */
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
-import { TOO_LARGE_COORDINATES, TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
+import {
+  TOO_LARGE_COORDINATES,
+  TOO_MANY_CROSSINGS,
+  TOO_MANY_CURVES,
+} from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import { sketchProfiles, sketchProfilesProblem } from './profiles';
 
@@ -48,5 +52,13 @@ describe('sketchProfiles', () => {
     b.line(0, 0, 2e9, 0);
     expect(sketchProfiles(b.sketch, 0)).toEqual([]);
     expect(sketchProfilesProblem(b.sketch, 0)).toBe(TOO_LARGE_COORDINATES);
+  });
+
+  it('gives no profiles for a sketch with too many curves, and says why', () => {
+    // A thousand circles of 1 m, apart: two million points.
+    const b = new SketchBuilder();
+    for (let i = 0; i < 1000; i++) b.circle((i % 40) * 2100, Math.floor(i / 40) * 2100, 1000);
+    expect(sketchProfiles(b.sketch, 0)).toEqual([]);
+    expect(sketchProfilesProblem(b.sketch, 0)).toBe(TOO_MANY_CURVES);
   });
 });

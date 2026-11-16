@@ -259,6 +259,17 @@ describe("a profile sketch's cost", () => {
     expect(ms).toBeLessThan(10_000);
   }, 60_000);
 
+  it('gives its reason for a sketch of too many curves', () => {
+    // One control spline of 13,000 poles: past detection's segment limit
+    // (MAX_PROFILE_SEGMENTS; ADR-0020's amendment of 2026-11-15, second).
+    const { refs } = timed((k) => {
+      k.splineControl(
+        Array.from({ length: 13_000 }, (_, i): [number, number] => [i * 0.1, (i % 2) * 0.5]),
+      );
+    });
+    expect(refs).toBe('its sketch has too many curves to find its profiles');
+  }, 60_000);
+
   it('picks the faces of concentric circles at the cap in a few seconds', () => {
     const { ms, refs } = timed((k) => {
       for (let i = 1; i <= MAX_PROFILE_CURVES; i++) k.circle([0, 0], i * 100);

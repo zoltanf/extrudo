@@ -238,7 +238,8 @@ export interface SketchPaletteProps {
   onFinish(): void;
   /**
    * Why the sketch shows no profiles, under the DOF counter: its curves
-   * cross too often (`TOO_MANY_CROSSINGS`, ADR-0020's amendment of 2026-11-15).
+   * cross too often, lie too far out or are too many (`ProfilesRefusedError`,
+   * ADR-0020's amendments of 2026-11-15).
    */
   problem?: string;
 }

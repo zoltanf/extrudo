@@ -1,0 +1,1 @@
+- 2026-11-15 · **Profiles of large sketches**: long texts, long fit splines, long curves among short ones and sketches with many separate loops find their profiles much faster, and a sketch with far too many curves (a very long spline, thousands of curves nested inside each other, texts of many hundreds of letters) shows its curves without profiles and says why.

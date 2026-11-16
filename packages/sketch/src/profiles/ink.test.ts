@@ -1,6 +1,6 @@
 import type { Vec2 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { interiorPoint, windingNumber } from './ink';
+import { interiorPoint, windingNumber, windingNumberOf, windingRings } from './ink';
 
 const squareCCW: Vec2[] = [
   [0, 0],
@@ -189,3 +189,28 @@ function inside(p: Vec2, polygon: readonly Vec2[]): boolean {
   }
   return insidePoly;
 }
+
+describe('windingNumberOf', () => {
+  it('agrees with windingNumber on random rings and points, vertices and box edges included', () => {
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed / 2 ** 31;
+    };
+    const grid = () => Math.round(random() * 40) / 4;
+    for (let trial = 0; trial < 200; trial++) {
+      const contours: Vec2[][] = [];
+      for (let c = 0; c < 1 + Math.floor(random() * 5); c++) {
+        const ox = grid() * 3;
+        contours.push(
+          Array.from({ length: 3 + Math.floor(random() * 6) }, (): Vec2 => [ox + grid(), grid()]),
+        );
+      }
+      const rings = windingRings(contours);
+      for (let k = 0; k < 40; k++) {
+        const p: Vec2 = [grid() * 3.5 - 2, grid() * 1.2 - 1];
+        expect(windingNumberOf(p, rings)).toBe(windingNumber(p, contours));
+      }
+    }
+  });
+});

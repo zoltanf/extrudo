@@ -208,8 +208,8 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000 + 0;
 
 /**
  * A sketch's profiles and regions (`regionsOf`); none, and `problem` saying
- * why, when its curves cross too often for them to be found (ADR-0020's
- * amendment of 2026-11-15). The sketch itself is described as ever.
+ * why, when its curves cross too often, lie too far out or are too many for
+ * them to be found (ADR-0020's amendments of 2026-11-15). The sketch itself is described as ever.
  */
 function profilesOf(sketch: SketchHandle, shapeCurves?: readonly (readonly string[])[]) {
   try {

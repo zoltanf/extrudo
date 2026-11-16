@@ -8,7 +8,13 @@ import { ProfilesRefusedError } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import type { ProfileOperand } from './decode/extrude';
 import type { SketchSpline, Vec3 } from './decode/sketch-geometry';
-import { type SketchEntry, selectProfiles, TOO_LARGE_SKETCH, TOO_MANY_CROSSINGS } from './map';
+import {
+  type SketchEntry,
+  selectProfiles,
+  TOO_LARGE_SKETCH,
+  TOO_MANY_CROSSINGS,
+  TOO_MANY_CURVES,
+} from './map';
 import { type F3dSketch, IDENTITY } from './model';
 import { MAX_PIECE_WORK, regionPieces, sketchPieces } from './regions';
 
@@ -109,7 +115,7 @@ describe("a sketch past Extrudo's own limits", () => {
   // `MAX_PROFILE_CUTS` and `MAX_PROFILE_COORDINATE` (ADR-0020's amendment of
   // 2026-11-15): the API refuses the sketch's regions, and the feature is
   // skipped with the reason.
-  const refusing = (reason: 'crossings' | 'size') => {
+  const refusing = (reason: ProfilesRefusedError['reason']) => {
     const refusal = new ApiError('refused', { cause: new ProfilesRefusedError(reason) });
     return {
       ...entryOf(10),
@@ -129,6 +135,7 @@ describe("a sketch past Extrudo's own limits", () => {
   it.each([
     ['crossings', TOO_MANY_CROSSINGS],
     ['size', TOO_LARGE_SKETCH],
+    ['curves', TOO_MANY_CURVES],
   ] as const)('gives the reason for %s', (reason, text) => {
     const entry = refusing(reason);
     expect(selectProfiles([operand()], () => entry)).toBe(text);
