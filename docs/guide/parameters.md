@@ -69,7 +69,7 @@ There is no hidden multiplication either, so write `2 * width`, not `2 width`.
 | `sin` `cos` `tan` | Take an angle. A plain number counts as degrees. |
 | `asin` `acos` `atan` | Give an angle back. |
 | `sqrt` `abs` | |
-| `min` `max` | Take any number of values of the same kind. |
+| `min` `max` | Take up to 1,000 values of the same kind. |
 | `round` `floor` `ceil` | Round in display units: a length to a whole millimetre, an angle to a whole degree. |
 
 ## The Parameters dialog

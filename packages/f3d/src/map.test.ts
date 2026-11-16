@@ -6,7 +6,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import type { SketchData } from '@extrudo/core';
+import { evaluateParameters, MAX_PARAMETER_DEPTH, type SketchData } from '@extrudo/core';
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { loadFont } from '@extrudo/sketch/text';
@@ -239,6 +239,100 @@ describe('f3dToDesign', () => {
     expect(extrude?.inputs.distance).toMatchObject({ expr: 'thick' });
     expect(report.imported).toEqual(['Sketch1', 'Extrude1']);
     expect(report.skipped).toEqual([]);
+  });
+
+  it('keeps the value of a user parameter whose expression is past a limit', () => {
+    const f3d = washer();
+    const long = `0.8 mm${' + 0 mm'.repeat(2000)}`;
+    const many = `max(${Array(1001).fill('0.8 mm').join(', ')})`;
+    f3d.userParameters = [
+      parameter({ name: 'thick', expression: long, user: true, value: 0.08 }),
+      parameter({ name: 'wide', number: 2, expression: many, user: true, value: 0.08 }),
+    ];
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(design.toJSON().parameters.map((p) => [p.name, p.expression])).toEqual([
+      ['thick', '0.8 mm'],
+      ['wide', '0.8 mm'],
+    ]);
+    expect(report.notes).toContain(
+      `Parameter thick: "${long.slice(0, 80)}…" kept as its value (Longer than 10000 characters: split it into parameters.).`,
+    );
+    expect(report.notes).toContain(
+      `Parameter wide: "${many.slice(0, 80)}…" kept as its value (\`max\` takes at most 1000 values.).`,
+    );
+  });
+
+  it('keeps a feature value whose expression from the file is past a limit', () => {
+    const f3d = washer();
+    const extrude = f3d.features[1] as F3dExtrude;
+    const along = extrude.parameters[0] as ParameterValue;
+    along.expression = `thick${' + 0 mm'.repeat(2000)}`;
+    const { design } = f3dToDesign(f3d, 'Washer');
+    const made = Object.values(design.toJSON().features).find((f) => f.type === 'extrude');
+    expect(made?.inputs.distance).toMatchObject({ expr: '0.8 mm' });
+  });
+
+  it('keeps the values of user parameters nested past the depth limit through each other', () => {
+    const f3d = washer();
+    const n = 300;
+    // `p0 = abs(…abs(p1)…) + 1 mm` with 48 calls (50 levels), … `p299 = 1 mm`, and `thick` as before.
+    const nested = (ref: string) => `${'abs('.repeat(48)}${ref}${')'.repeat(48)} + 1 mm`;
+    f3d.userParameters.push(
+      ...Array.from({ length: n }, (_, i) =>
+        parameter({
+          name: `p${i}`,
+          number: i + 2,
+          expression: i === n - 1 ? '1 mm' : nested(`p${i + 1}`),
+          user: true,
+          value: (n - i) / 10,
+        }),
+      ),
+    );
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    const evaluated = evaluateParameters(doc).parameters;
+    expect(
+      [...evaluated.values()].filter((p) => !p.result.ok).map((p) => [p.name, p.expression]),
+    ).toEqual([]);
+    expect(evaluated.get('p0')?.result).toMatchObject({ value: n });
+    // Only the first one past the limit keeps its value; the rest keep their expressions.
+    const within = Math.floor((MAX_PARAMETER_DEPTH - 1) / 50) + 1;
+    const cut = n - within - 1;
+    const exprs = new Map(doc.parameters.map((p) => [p.name, p.expression]));
+    expect(exprs.get(`p${cut}`)).toBe(`${within + 1} mm`);
+    expect(exprs.get(`p${cut + 1}`)).toBe(nested(`p${cut + 2}`));
+    expect(exprs.get('p0')).toBe(nested('p1'));
+    expect(report.notes).toEqual([
+      `Parameter p${cut}: "${nested(`p${cut + 1}`).slice(0, 80)}…" kept as its value (Nested more than ${MAX_PARAMETER_DEPTH} levels deep through the parameters it uses.).`,
+    ]);
+  });
+
+  it('keeps the value of only the parameter past a limit, with its own note', () => {
+    const f3d = washer();
+    const long = `0.8 mm${' + 0 mm'.repeat(2000)}`;
+    f3d.userParameters = [
+      parameter({ name: 'thick', expression: long, user: true, value: 0.08 }),
+      parameter({ name: 'twice', number: 2, expression: 'thick * 2', user: true, value: 0.16 }),
+      parameter({ name: 'odd', number: 3, expression: '1 mm + 1 deg', user: true, value: 0.1 }),
+    ];
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    const doc = design.toJSON();
+    expect(doc.parameters.map((p) => [p.name, p.expression])).toEqual([
+      ['thick', '0.8 mm'],
+      ['twice', 'thick * 2'],
+      ['odd', '1 mm + 1 deg'],
+    ]);
+    expect(evaluateParameters(doc).parameters.get('twice')?.result).toMatchObject({ value: 1.6 });
+    // The one-step add is otherwise as if the file had the value: same IDs, names and units.
+    const plain = washer();
+    plain.userParameters = f3d.userParameters.map((p) =>
+      p.name === 'thick' ? { ...p, expression: '0.8 mm' } : p,
+    );
+    const same = f3dToDesign(plain, 'Washer').design.toJSON();
+    expect(doc.parameters).toEqual(same.parameters);
+    expect(report.notes.filter((n) => n.startsWith('Parameter '))).toEqual([
+      `Parameter thick: "${long.slice(0, 80)}…" kept as its value (Longer than 10000 characters: split it into parameters.).`,
+    ]);
   });
 
   it('builds the ring between the selected circles', async () => {

@@ -111,6 +111,27 @@ describe('S10 limits, each a clean outcome', () => {
     expect(bad(r.design.doc)).toEqual([]);
   }, 120_000);
 
+  it('a chain of cells past the depth limit: only the cell past it keeps its value', async () => {
+    // `c0 = 1`, `ck = abs(…abs(c(k-1))…)` 20 calls deep (21 levels): `c477` is the first
+    // past the depth limit. The pad reads it (its value is proven); `after` and `c478 …`
+    // use it and keep their formulas.
+    const nest = (ref: string) => `=${'abs('.repeat(20)}${ref}${')'.repeat(20)}`;
+    const cells: [string, string, string?][] = [['A1', '1', 'c0']];
+    for (let k = 1; k < 600; k++) cells.push([`A${k + 1}`, nest(`c${k - 1}`), `c${k}`]);
+    cells.push(['B1', '=c477 + 1', 'after']);
+    const r = await run(
+      'sheet_plate',
+      withSheet(sheetObject('Chain', 'Chain', cells), '<<Chain>>.c477'),
+    );
+    expect(param(r, 'c477')?.expression).not.toContain('abs');
+    expect(param(r, 'c476')?.expression).toContain('abs(c475)');
+    expect(param(r, 'c478')?.expression).toContain('abs(c477)');
+    expect(param(r, 'c599')?.expression).toContain('abs(c598)');
+    expect(param(r, 'after')?.expression).toBe('c477 + 1 mm');
+    expect(r.report.parameters.leftOut.filter((x) => x.object === 'Chain')).toEqual([]);
+    expect(bad(r.design.doc)).toEqual([]);
+  }, 120_000);
+
   it('a sheet of more cells than it reads: the rest are not read', async () => {
     const cells: [string, string, string?][] = Array.from(
       { length: MAX_SHEET_CELLS + 10 },
