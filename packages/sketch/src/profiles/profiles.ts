@@ -1002,9 +1002,62 @@ function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityI
  * region of its own. Throws `ProfilesRefusedError` for a sketch whose
  * curves cut each other too often (`MAX_PROFILE_CUTS`) or lie too far out
  * (`MAX_PROFILE_COORDINATE`).
+ *
+ * Remembered per sketch data object (ADR-0020's amendment of 2026-11-16):
+ * a sketch's data is never changed in place (the document is frozen; edits
+ * make new objects), so the same object gives the same regions, or the
+ * same refusal, without the work again. Each call gets its own list; the
+ * profiles in it are frozen and shared. A sketch with text is detected
+ * every time: its ink depends on fonts loaded later.
  */
 export function detectProfiles(data: SketchData): Profile[] {
-  return detect(data, false);
+  const known = remembered.get(data);
+  if (typeof known === 'string') throw new ProfilesRefusedError(known);
+  if (known) return known.slice();
+  if (hasText(data)) return detect(data, false);
+  let found: Profile[];
+  try {
+    found = detect(data, false);
+  } catch (error) {
+    if (error instanceof ProfilesRefusedError) remembered.set(data, error.reason);
+    throw error;
+  }
+  remembered.set(data, freezeProfiles(found));
+  return found.slice();
+}
+
+/** Each sketch data object's regions, or why they were refused; entries go with their sketch. */
+const remembered = new WeakMap<SketchData, readonly Profile[] | ProfilesRefusal>();
+
+/** Whether a normal (not construction) text is in the sketch: its regions depend on the fonts. */
+function hasText(data: SketchData): boolean {
+  for (const id in data.entities) {
+    const e = data.entities[id as SketchEntityId] as SketchEntity;
+    if (e.type === 'text' && !e.construction) return true;
+  }
+  return false;
+}
+
+/** Freezes the profiles, their loops, edges and points: callers share them. */
+function freezeProfiles(profiles: Profile[]): readonly Profile[] {
+  const loop = (l: ProfileLoop) => {
+    for (const e of l.edges) {
+      for (const p of e.points) Object.freeze(p);
+      Object.freeze(e.points);
+      Object.freeze(e);
+    }
+    for (const p of l.polygon) Object.freeze(p);
+    Object.freeze(l.polygon);
+    Object.freeze(l.edges);
+    Object.freeze(l);
+  };
+  for (const p of profiles) {
+    loop(p.outer);
+    for (const h of p.holes) loop(h);
+    Object.freeze(p.holes);
+    Object.freeze(p);
+  }
+  return Object.freeze(profiles);
 }
 
 /** `detectProfiles` with every pair of segments tested: the reference of the pair search's tests. */
