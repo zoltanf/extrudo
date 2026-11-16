@@ -541,3 +541,86 @@ arcs, texts in every bundled font, fit, control and closed splines,
 ellipses, degenerate curves, at scales from 10⁻³ to 10⁴ and near the
 coordinate limit) give the same output, 149 refused by both and none newly
 refused; 9,000 fit splines the same poles and knots.
+
+## Amendment 2026-11-16: detection remembers its result per sketch
+
+**What.** `detectProfiles` keeps what it found for each sketch data object
+in a `WeakMap` keyed by that object: the regions, or the reason it refused
+them (`ProfilesRefusedError.reason`). The same object again gets the same
+answer without the work: a new list of the same profiles, or a new
+`ProfilesRefusedError` with the same reason (callers test the class, the
+reason and the message, never the error's identity). Other errors are not
+kept. The profiles kept are frozen, with their loops, edges and points:
+callers share them, and a write into one throws; each call gets its own
+list, so sorting or filtering it is the caller's own. `detectProfilesWork`
+and `detectProfilesAllPairs` never use what is kept: they exist to do and
+measure the work.
+
+**Why.** Many callers ask for the regions of the same unchanged sketch:
+the API (`regions`, `profiles()`, `profileAt`, `profilesInside`: each a
+whole detection, and the agent's tools call two of them per request), the
+emitter and the OpenSCAD export once per profile reference, the importers
+once per feature that uses the sketch, the kernel's sketch feature and the
+export in the same recompute. A large sketch, or one refused after seconds
+of work, costs that time on every call. The app's own cache
+(`apps/web/src/sketch/profiles.ts`, per data object and fonts' version)
+already answers the viewport, picking and panels: in the app a design
+open in model or sketch mode for half a minute, with the pointer moving
+over it, detects nothing again (wall bracket template: 2 detections per
+sketch on opening, the template's own and the viewport's, none while idle;
+a refused sketch: 1 on the main thread, 1 in the kernel).
+
+**A sketch's data is never changed in place**, which is what makes the
+object a sound key (checked, not assumed): the document store holds
+frozen documents (Immer's `produceWithPatches` and `applyPatches` freeze,
+`replaceDocument` freezes deeply), so every edit, solve, drag step, undo
+and redo makes a new data object for the sketch it touches and keeps the
+others. The solver and settling copy what they change and hand it back
+through a command. The builders whose maps grow while a sketch is built
+(the API's `SketchBuilder.data`, the tests' `SketchBuilder.sketch`) hand
+out a new object at every look, so a look during a build is never
+answered from an earlier one; the importers change builder entities only
+inside the build, before detection sees the document. The kernel worker
+gets a copy of the document with every recompute and changes nothing. The
+whole Vitest suite ran with every remembered answer detected again and
+compared: no difference. Rules: never change a `SketchData` after it may
+have been detected (make a new object), and never key this cache by
+`data.entities` (a builder's map grows under it).
+
+**Left out: a sketch with text** (any text entity that is not
+construction). Its ink depends on the fonts loaded, which can arrive after
+the first detection; the app's cache keys text sketches by the fonts'
+version instead. Construction geometry, construction text included, is
+never read by detection, so it doesn't matter.
+
+**No bound is needed.** An entry lives as long as its data object: the
+store's document (one object per sketch), the undo history (up to 500
+steps of patches, which can hold earlier objects) and, in the worker, the
+last recompute's outputs. The app's cache already held the same results
+for the same objects and now shares the frozen profiles. The largest
+sketch of the f3d corpus (11,562 segments) keeps about 3 MB (49,000
+points in its loops and edges); a stress test of the suite with 3,294
+regions about 23 MB.
+
+**Numbers.** That corpus sketch: 1.2 s the first time, 0.05 ms the
+second; a suite sketch refused for its size 118 ms, then 0.03 ms; one
+refused for its crossings 23 ms, then 0.01 ms. Freezing costs nothing
+measurable. The 1,545 sketches of the second amendment's proof, each
+detected on the code before and twice on the same object (and once on a
+new copy) on the code after: the same digest for all, the same 11
+refusals; the second calls of the 1,465 without text take 5 ms together
+against 6.2 s for the first. 6,000 seeded random sketches give the same
+output before and after, and the same on the second call (149 refused by
+both). Over the 252 designs of an f3d corpus, importing them asked 2,570
+times for the regions of 1,001 sketch objects and now does the work 1,035
+times (text sketches every time), and emitting each design's script asked
+5,199 times and now does the work 76 times (16.6 s → 4.0 s in all). The f3d
+corpus gate: GATE-NUMBERS.
+
+**Rejected.** A key by the sketch's content (a hash or serialisation per
+call costs about what detecting a small sketch costs, and nothing would
+need it: an unchanged sketch keeps its object). A size or age bound (the
+entries already go with their sketches). Remembering text sketches by the
+fonts' version in this package (the version lives in the app; the kernel
+and the CLI load their fonts before they compute). Copying the profiles
+for every caller (as dear as freezing them once, on every call).
