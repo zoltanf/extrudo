@@ -153,20 +153,26 @@ in its size. Parameter names keep no length limit: any name the schema takes tod
 a saved design, and every message names a parameter at most twice.
 
 **Suggestions.** "Did you mean" compares only names whose length is within the distance it
-accepts, stops a comparison once it can't be close enough, and spends at most 1,000,000
-cells of edit-distance work per evaluation; once that is spent, the rest of the unknown
-names get no suggestion. Suggestions are otherwise the same as before (ties go to the first
-name in the list). A call to an unknown function asks the scope whether the name is a
-parameter (`Scope.has`) instead of listing every name.
+accepts and stops a comparison once it can't be close enough. It spends a budget of
+1,000,000 units of work (one per name looked at, one per edit-distance cell): one budget
+for the document's own parameters and inputs, and a fresh one for each `evaluate()` call,
+so a field being edited always gets its suggestion. Once a budget is spent, the rest of
+the unknown names it covers get no suggestion. Suggestions are otherwise the same as
+before (ties go to the first name in the list). A call to an unknown function asks the
+scope whether the name is a parameter (`Scope.has`) instead of listing every name.
 
 **Importers.** The f3d import keeps a user parameter's value, with its usual note
 (`Parameter x: "…" kept as its value (<message>).`, the expression quoted up to 80
 characters, the message its own error), when its own expression is past a limit; those that
-use it keep their expressions and evaluate against that value. For depth, `tooDeep` cuts a
-scratch copy of the file's parameters at each one that carries the depth error, then looks
-again, until none does. A feature input whose expression from the file is past a limit
-takes its value. The FreeCAD import tells core's limits by `code === 'limit'`; its
-1,000-parameter cap keeps its chains far inside the depth limit.
+use it keep their expressions and evaluate against that value. For depth, `keptValues`
+reads each expression once and walks the references deepest first, summing heights as core
+does; where a chain passes the limit, that parameter keeps its value and counts as one
+level, so the chain counts again from there. A feature input whose expression from the file
+is past a limit takes its value. The FreeCAD import tells core's limits by
+`code === 'limit'`. Its 1,000-parameter cap does not keep chains inside the depth limit
+(an expression there may nest 64 levels, so a few hundred chained cells can pass it); in a
+round where a parameter is past a limit, only that one settles (its proven value, or out
+with reason `limit`) and those that use it are evaluated again in the next round.
 
 **Census behind the numbers** (2026-11-15, every expression in the repository's fixtures,
 66 designs and 616 expressions, and in the 252 designs of the private import corpus as
@@ -199,5 +205,10 @@ makes: at its 1,000-parameter cap, with rows like `=A1 + 1`, about 2,000 levels.
   error.
 - **A length limit on parameter names.** A saved design may have longer names today and
   would no longer open; bounded cycle messages make it unnecessary.
+- **Cutting an f3d chain past the depth limit by evaluating again after each cut.** Exact, but
+  one full evaluation per 10,000 levels of chain: quadratic in the chain's length.
 - **A smaller length limit (1,000).** Still 13× the longest real expression, but 10,000 costs
   little, since reading is linear in the length.
+
+**Not done:** `dependents()` and `featuresAffectedBy` still look through every parameter for
+each name they follow, as before this amendment: quadratic in a long chain's length.

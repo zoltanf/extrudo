@@ -73,10 +73,12 @@ code `limit`. `evaluateParameters` parses everything first, then runs the depth-
 on its own stack of nodes (`operands`/`combine`): each node once, results as the recursive
 walk's; keep it so (no recursion through parameters, no restart). A cycle lists its path up
 to 20 members and 500 characters of names, then counts them. "Did you mean" is banded and
-spends at most `SUGGESTION_CELLS` per evaluation; `Scope.has` answers "is it a parameter".
+spends at most `SUGGESTION_CELLS` (a unit per name looked at and per cell) for the
+document, and again for each `evaluate()` call; `Scope.has` answers "is it a parameter".
 Never spread a node's children into a call. The f3d import keeps the value of only the
-parameter past a limit, with its own error (`pastLimit`, `tooDeep` in `map.ts`); the FreeCAD
-import reads `code === 'limit'`. ADR-0007 (P0-04) set the
+parameter past a limit, with its own error (`pastLimit`; `keptValues` in `map.ts`, one walk
+with `heightOf` and `PARAMETER_DEPTH_MESSAGE`, no evaluation per cut); the FreeCAD import
+reads `code === 'limit'` and settles only the parameter past a limit in its round. ADR-0007 (P0-04) set the
 design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
 wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the
