@@ -4,7 +4,7 @@
  * viewport's fills, the tool host's picking and the properties panel share
  * one detection. Text (P4-03) needs its font before it has ink, so the loaded
  * fonts' version is part of the key: fonts that arrive later redraw it.
- * A sketch whose curves cross too often has no profiles
+ * A sketch whose curves cross too often, lie too far out or are too many has no profiles
  * (`sketchProfilesProblem` says why; ADR-0020's amendment of 2026-11-15).
  */
 import {
@@ -37,7 +37,7 @@ export function sketchProfiles(
 
 /**
  * Why the sketch has no profiles when `detectProfiles` refused it (its
- * curves cut each other too often or lie too far out), in the user's
+ * curves cut each other too often, lie too far out or are too many), in the user's
  * words; `undefined` when it found them.
  */
 export function sketchProfilesProblem(

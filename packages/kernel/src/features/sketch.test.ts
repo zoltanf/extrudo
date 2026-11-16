@@ -12,6 +12,7 @@ import {
   PROFILE_TOLERANCE,
   TOO_LARGE_COORDINATES,
   TOO_MANY_CROSSINGS,
+  TOO_MANY_CURVES,
 } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Kernel } from '../kernel';
@@ -25,6 +26,7 @@ import {
   type SketchOutputData,
   TOO_LARGE_TO_PICK,
   TOO_MANY_CROSSINGS_TO_PICK,
+  TOO_MANY_CURVES_TO_PICK,
 } from './sketch';
 
 let kernel: Kernel;
@@ -524,6 +526,25 @@ describe('a sketch with too many crossings', () => {
     expect(features).toEqual({
       s1: { status: 'warning', message: TOO_LARGE_COORDINATES },
       e1: { status: 'error', message: TOO_LARGE_TO_PICK },
+    });
+    expect(faceBuilds).toBe(0);
+  });
+
+  it('fails the extrude with its own reason for too many curves', async () => {
+    // Beside the rectangle, a thousand circles of 1 m, apart: two million points.
+    const data = sketchOf(false);
+    const b = new SketchBuilder();
+    for (let i = 0; i < 1000; i++)
+      b.circle(5000 + (i % 40) * 2100, Math.floor(i / 40) * 2100, 1000);
+    const many = { ...data, entities: { ...data.entities } };
+    for (const [id, e] of Object.entries(b.sketch.entities))
+      many.entities[`many-${id}` as SketchEntityId] = (
+        e.type === 'circle' ? { ...e, center: `many-${e.center}` } : e
+      ) as SketchData['entities'][SketchEntityId];
+    const { features, faceBuilds } = await extrudeOf(many, region());
+    expect(features).toEqual({
+      s1: { status: 'warning', message: TOO_MANY_CURVES },
+      e1: { status: 'error', message: TOO_MANY_CURVES_TO_PICK },
     });
     expect(faceBuilds).toBe(0);
   });

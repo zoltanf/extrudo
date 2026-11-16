@@ -2555,6 +2555,20 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   selection (`[data-selected-entities]`) stays. A line drawn with Ctrl held
   needs **two Esc** (next segment, then the tool) before `toolPrompt` is gone.
 
+### `e2e/sketch-crossings.spec.ts`
+
+- The designs are built in the spec (`SketchBuilder`, `writeArchive`) and
+  imported with **Import…** (`importDesign`); the extrude's profile is the
+  rectangle's region ID from `detectProfiles` of the rectangle alone.
+- A refused sketch: chips `data-feature-status` `warning` (Sketch1) and
+  `error` (Extrude1); in sketch mode the palette's `[data-sketch-problem]`
+  holds the message (`TOO_MANY_CROSSINGS`, `TOO_MANY_CURVES`, imported from
+  `packages/sketch/src/profiles/index`) and the viewport's
+  `data-sketch-profiles` reads `profiles=0 holes=0`.
+- The curves case is a thousand circles of 1 m beside the rectangle (two
+  million points, refused before any pair is tested): cheap to detect, so it
+  needs no deletion step.
+
 ### `e2e/sketch-dimensions.spec.ts`
 
 - P1-07: labels are `[data-dimension]`, the in-place editor

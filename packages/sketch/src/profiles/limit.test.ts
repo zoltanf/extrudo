@@ -3,8 +3,11 @@
  * sketch with more than `MAX_PROFILE_CUTS` cuts inside its curves, or more
  * cuts of any kind than that plus `PROFILE_CUTS_PER_SEGMENT` per segment, is
  * refused while it is being cut, cheaply; one with a curve past
- * `MAX_PROFILE_COORDINATE` before any pair is tested. A sketch under the
- * limits gives exactly the regions it gave before they existed.
+ * `MAX_PROFILE_COORDINATE` before any pair is tested; one with too many
+ * segments, sample points or tests of things near each other
+ * (`MAX_PROFILE_SEGMENTS`, `MAX_PROFILE_POINTS`, `MAX_PROFILE_TESTS`) as soon
+ * as it has them. A sketch under the limits gives exactly the regions it gave
+ * before they existed.
  */
 import { createHash } from 'node:crypto';
 import type { SketchData } from '@extrudo/core';
@@ -15,13 +18,19 @@ import * as pairs from './pairs';
 import {
   detectProfiles,
   detectProfilesAllPairs,
+  detectProfilesWork,
   MAX_PROFILE_COORDINATE,
   MAX_PROFILE_CUTS,
+  MAX_PROFILE_POINTS,
+  MAX_PROFILE_SEGMENTS,
+  MAX_PROFILE_TESTS,
   PROFILE_CUTS_PER_SEGMENT,
   ProfilesRefusedError,
   profilesRefusal,
   TOO_LARGE_COORDINATES,
   TOO_MANY_CROSSINGS,
+  TOO_MANY_CURVES,
+  type Work,
 } from './profiles';
 
 // Counts the crossing tests, the work the refusal must cut short, and the
@@ -201,6 +210,123 @@ describe('the coordinate limit', () => {
     expect(found).toHaveLength(1);
     expect(found).toStrictEqual(detectProfilesAllPairs(b.sketch));
   }, 60_000);
+});
+
+/** What detection did for `data`, refused or not. */
+function workOf(data: SketchData): Work & { reason?: string } {
+  const work: Work = { segments: 0, points: 0, tests: 0 };
+  try {
+    detectProfilesWork(data, work);
+  } catch (error) {
+    if (error instanceof ProfilesRefusedError) return { ...work, reason: error.reason };
+    throw error;
+  }
+  return work;
+}
+
+/** `n` circles of one centre, each inside the next: no curve cuts another. */
+function nested(n: number, step = 0.01): SketchData {
+  const b = new SketchBuilder();
+  for (let i = 0; i < n; i++) b.circle(0, 0, 1 + i * step);
+  return b.sketch;
+}
+
+describe('the curve limits', () => {
+  it('are 200,000 segments, 2 million points and 10 million tests', () => {
+    expect(MAX_PROFILE_SEGMENTS).toBe(200_000);
+    expect(MAX_PROFILE_POINTS).toBe(2_000_000);
+    expect(MAX_PROFILE_TESTS).toBe(10_000_000);
+  });
+
+  it('counts a line as one segment and one point, a circle by its samples', () => {
+    expect(workOf(polyline(new SketchBuilder(), 1000).sketch)).toMatchObject({
+      segments: 1000,
+      points: 1000,
+    });
+    const big = new SketchBuilder();
+    big.circle(0, 0, 1000);
+    const small = new SketchBuilder();
+    small.circle(0, 0, 1);
+    expect(workOf(big.sketch)).toMatchObject({ segments: 1, points: 2048 });
+    expect(workOf(small.sketch)).toMatchObject({ segments: 1, points: 96 });
+  });
+
+  it('refuses one segment more than the limit before testing any pair', () => {
+    const data = polyline(new SketchBuilder(), MAX_PROFILE_SEGMENTS + 1).sketch;
+    intersections.mockClear();
+    const refusal = refusalOf(data);
+    expect(refusal?.reason).toBe('curves');
+    expect(refusal?.message).toBe(TOO_MANY_CURVES);
+    expect(intersections).not.toHaveBeenCalled();
+  }, 60_000);
+
+  it('refuses circles of more points than the limit before testing any pair', () => {
+    // Circles of 1 m, apart: 2,048 points each.
+    const circles = (n: number) => {
+      const b = new SketchBuilder();
+      for (let i = 0; i < n; i++) b.circle((i % 40) * 2100, Math.floor(i / 40) * 2100, 1000);
+      return b.sketch;
+    };
+    const over = Math.floor(MAX_PROFILE_POINTS / 2048) + 1;
+    intersections.mockClear();
+    expect(refusalOf(circles(over))?.reason).toBe('curves');
+    expect(intersections).not.toHaveBeenCalled();
+    expect(workOf(circles(100))).toMatchObject({ points: 204_800 });
+  });
+
+  it('counts each pair of curves whose boxes meet, and each nesting test', () => {
+    // 100 nested circles: every pair's boxes meet, and each circle's
+    // outline is tested against the regions around it.
+    const work = workOf(nested(100));
+    expect(work.reason).toBeUndefined();
+    expect(work.tests).toBeGreaterThan((100 * 99) / 2);
+    // Apart, they cost a few tests each.
+    const b = new SketchBuilder();
+    for (let i = 0; i < 3000; i++) b.circle((i % 60) * 3, Math.floor(i / 60) * 3, 1);
+    expect(workOf(b.sketch).tests).toBeLessThan(20 * 3000);
+  });
+
+  it('charges the pair search, not only the pairs whose boxes meet', () => {
+    // Short lines packed in one cell of the longer lines: no two boxes meet.
+    const b = new SketchBuilder();
+    const n = 3000;
+    const side = Math.ceil(Math.sqrt(n));
+    for (let k = 0; k < n; k++) {
+      const x = (k % side) * 1e-3;
+      const y = Math.floor(k / side) * 1e-3;
+      b.line(x, y, x + 2e-4, y);
+    }
+    for (let k = 0; k < n + 2; k++) b.line(1000, 100 + k, 1010, 100 + k);
+    const work = workOf(b.sketch);
+    expect(work.tests).toBeGreaterThan(work.segments);
+    expect(work.tests).toBeLessThan(20 * work.segments);
+  });
+
+  it('refuses curves nested too deep once the tests pass the limit', () => {
+    // About 4,500 circles make 10 million pairs whose boxes meet.
+    const work = workOf(nested(4500));
+    expect(work.reason).toBe('curves');
+    // Refused as the tests pass the limit, one cell's boxes at most later.
+    expect(work.tests).toBeGreaterThan(MAX_PROFILE_TESTS);
+    expect(work.tests).toBeLessThan(MAX_PROFILE_TESTS + 4500);
+    // Nested squares of lines: their boxes don't meet, the outlines' tests count.
+    const squares = new SketchBuilder();
+    for (let i = 0; i < 4000; i++) {
+      const r = 1 + i * 0.01;
+      squares.line(-r, -r, r, -r);
+      squares.line(r, -r, r, r);
+      squares.line(r, r, -r, r);
+      squares.line(-r, r, -r, -r);
+    }
+    expect(workOf(squares.sketch).reason).toBe('curves');
+  }, 60_000);
+
+  it('says so in the user’s words', () => {
+    expect(TOO_MANY_CURVES).toBe(
+      'This sketch has too many curves to find its profiles. Remove or simplify curves.',
+    );
+    expect(new ProfilesRefusedError('curves').message).toBe(TOO_MANY_CURVES);
+  });
 });
 
 /** The whole output of `detectProfiles`, as a digest: IDs, areas, loops, edges and their points. */
