@@ -969,54 +969,6 @@ Rejected:
   it saves the second translation, but ties two calls together through state,
   and only a file with the entity pays for the second read.
 
-## Amendment, 2026-11-15: STEP reals without a decimal point
-
-ISO 10303-21 writes a real with a decimal point (`10.`, `1.E1`). The kernel's
-STEP reader takes a real without one, but reads those whose mantissa is one
-unsigned digit as other numbers: `1e1`, `1E1`, `2e-1`, `1e-7` and `1e+21` as
-0, `1e0` and `0e0` as numbers far off (measured on the pinned OCCT build through
-the `import` feature: a 10 mm box written with them came in as "The STEP file
-has no solids", or as another shape where only some numbers were). Signed or
-longer mantissas (`-1e1`, `10e0`, `99e5`) and every form with a point read
-right. A file from another writer could therefore import as the wrong shape
-without a word.
-
-Reals written without a decimal point are now read as the standard requires:
-the `import` feature passes the file's text through `standardStepReals`
-(`packages/kernel/src/step-reals.ts`) before the reader, once for the four
-reads it makes (shape, colours, names, hidden solids). It rewrites each real of
-the form `[sign] digits e|E [sign] digits` to the standard form (`1e1` →
-`1.E1`, `-2e-7` → `-2.E-7`, the exponent's sign kept), all of them, not only
-the ones the reader gets wrong, so the rule is the standard's and not the
-reader's. It looks only at numbers that follow `(`, `,` or white space and end
-at a delimiter, never inside a string (`'…'`, with `''`), a binary (`"…"`) or
-a comment, nor in a name (`#12`, `.MILLI.`, `X1E5`). One pass, left to right,
-its only state whether it is inside a string, binary or comment; a text with
-no such real is returned as the same string, after a regular-expression test
-that most files fail at once.
-
-Proof that valid files are untouched: the two STEP fixtures, and all 382 STEP
-texts the f3d corpus gate writes (95 MB, the f3d writer's bodies and base
-bodies), come back as the same string, all through the quick test. Timings on
-the Ubuntu dev machine (loaded): the quick test over 184 MB 0.2 s; the full
-pass with nothing to change 184 MB 1.6 s; every real rewritten, 42 MB 1.4 s and
-168 MB 5.4 s (linear; an attachment is at most 25 MB).
-
-Rejected:
-
-- **Refusing such a file** with a plain message: the reals are unambiguous, and
-  rewriting them keeps a file from another writer importable.
-- **A facade change** (a fix in the reader): the kernel builds go through CI,
-  and the pass in TypeScript is small, testable in Node and covers every
-  caller of the import feature (app, desktop, CLI, MCP).
-- **Rewriting only the forms the reader gets wrong:** a rule tied to one
-  reader's behaviour, which a kernel update may change.
-
-Tests: `step-reals.test.ts` (forms, what stays: strings, binaries, comments,
-names, integers, reals with a point; the fixtures; a large text) and
-`import.test.ts` (a 10 mm box written with `1e1`, `0e0` and `1e0` imports as
-the box; it fails without the pass).
-
 ## Deferred
 
 - Replacing an imported file (re-import keeping references), names and colours
