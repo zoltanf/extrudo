@@ -38,6 +38,10 @@ export interface Scope {
   lookup(name: string, span: Span): Quantity | undefined;
   /** Known names, for "did you mean" suggestions. */
   names(): Iterable<string>;
+  /** Whether `name` is a known name; `names()` is searched without it. */
+  has?(name: string): boolean;
+  /** The suggestion for an unknown name; `closest(name, names())` without it. */
+  suggest?(name: string): string | undefined;
   /** The document's length unit: plain numbers in a length context use it. */
   lengthUnit: LengthUnit;
 }
@@ -161,14 +165,43 @@ function matchDim(
 }
 
 export function evaluateNode(node: Node, scope: Scope): Quantity {
-  const result = evaluateUnchecked(node, scope);
+  return combine(
+    node,
+    operands(node, scope).map((operand) => evaluateNode(operand, scope)),
+    scope,
+  );
+}
+
+/**
+ * The nodes `node`'s value is made of, in the order they are evaluated: none
+ * for a number or a name. A call that can't be made throws here, before its
+ * values are evaluated.
+ */
+export function operands(node: Node, scope: Scope): readonly Node[] {
+  switch (node.kind) {
+    case 'num':
+    case 'ref':
+      return [];
+    case 'unary':
+      return [node.arg];
+    case 'binary':
+      return [node.left, node.right];
+    case 'call':
+      functionOf(node, scope);
+      return node.args;
+  }
+}
+
+/** `node`'s value from those of its `operands`, in their order. */
+export function combine(node: Node, values: readonly Quantity[], scope: Scope): Quantity {
+  const result = combineUnchecked(node, values, scope);
   if (!Number.isFinite(result.value)) {
     throw new ExprError('The result is too large to use.', node.span);
   }
   return result;
 }
 
-function evaluateUnchecked(node: Node, scope: Scope): Quantity {
+function combineUnchecked(node: Node, values: readonly Quantity[], scope: Scope): Quantity {
   switch (node.kind) {
     case 'num': {
       if (node.unit === undefined) return { value: node.value, dim: UNITLESS, bare: true };
@@ -179,13 +212,13 @@ function evaluateUnchecked(node: Node, scope: Scope): Quantity {
     case 'ref':
       return lookup(node.name, node.span, scope);
     case 'unary': {
-      const arg = evaluateNode(node.arg, scope);
+      const arg = values[0] as Quantity;
       return node.op === '-' ? { ...arg, value: -arg.value } : arg;
     }
     case 'binary':
-      return binary(node, scope);
+      return binary(node, values[0] as Quantity, values[1] as Quantity, scope);
     case 'call':
-      return call(node, scope);
+      return functionOf(node, scope).fn([...values], node, scope);
   }
 }
 
@@ -197,7 +230,7 @@ function lookup(name: string, span: Span, scope: Scope): Quantity {
   if (Object.hasOwn(FUNCTIONS, name)) {
     throw new ExprError(`\`${name}\` is a function: write \`${name}(…)\`.`, span);
   }
-  const suggestion = closest(name, scope.names());
+  const suggestion = scope.suggest ? scope.suggest(name) : closest(name, scope.names());
   throw new ExprError(
     `Unknown name \`${name}\`.${suggestion ? ` Did you mean \`${suggestion}\`?` : ''}`,
     span,
@@ -205,9 +238,12 @@ function lookup(name: string, span: Span, scope: Scope): Quantity {
   );
 }
 
-function binary(node: Extract<Node, { kind: 'binary' }>, scope: Scope): Quantity {
-  const a = evaluateNode(node.left, scope);
-  const b = evaluateNode(node.right, scope);
+function binary(
+  node: Extract<Node, { kind: 'binary' }>,
+  a: Quantity,
+  b: Quantity,
+  scope: Scope,
+): Quantity {
   const bare = a.bare && b.bare;
   switch (node.op) {
     case '+':
@@ -254,10 +290,13 @@ function binary(node: Extract<Node, { kind: 'binary' }>, scope: Scope): Quantity
   }
 }
 
-function call(node: Extract<Node, { kind: 'call' }>, scope: Scope): Quantity {
+/** The function a call names, checked against its values' count. */
+function functionOf(node: Extract<Node, { kind: 'call' }>, scope: Scope) {
   const fn = ownEntry(FUNCTIONS, node.name);
   if (!fn) {
-    const known = [...scope.names()].includes(node.name) || Object.hasOwn(CONSTANTS, node.name);
+    const known =
+      (scope.has ? scope.has(node.name) : [...scope.names()].includes(node.name)) ||
+      Object.hasOwn(CONSTANTS, node.name);
     const suggestion = known ? undefined : closest(node.name, FUNCTION_NAMES);
     throw new ExprError(
       known
@@ -274,11 +313,7 @@ function call(node: Extract<Node, { kind: 'call' }>, scope: Scope): Quantity {
       node.span,
     );
   }
-  return fn.fn(
-    node.args.map((arg) => evaluateNode(arg, scope)),
-    node,
-    scope,
-  );
+  return fn;
 }
 
 /**
@@ -329,13 +364,27 @@ export function evaluateExpression(source: string, options: EvaluateOptions = {}
   }
 }
 
-/** The candidate within a small edit distance of `name`, if one is clearly closest. */
-export function closest(name: string, candidates: Iterable<string>): string | undefined {
+/**
+ * The candidate within a small edit distance of `name`, if one is clearly
+ * closest. With a `budget`, at most `budget.cells` units of work are spent
+ * across calls (one a name looked at, one an edit-distance cell); once they
+ * are, there is no suggestion.
+ */
+export function closest(
+  name: string,
+  candidates: Iterable<string>,
+  budget?: { cells: number },
+): string | undefined {
   const limit = name.length <= 3 ? 1 : 2;
+  const lower = name.toLowerCase();
   let best: string | undefined;
   let bestDistance = limit + 1;
   for (const candidate of candidates) {
-    const d = editDistance(name.toLowerCase(), candidate.toLowerCase());
+    if (budget && --budget.cells < 0) return undefined;
+    // Names are ASCII, so lower-casing keeps lengths: a longer or shorter one is farther.
+    if (Math.abs(candidate.length - name.length) >= bestDistance) continue;
+    const d = editDistance(lower, candidate.toLowerCase(), bestDistance - 1, budget);
+    if (budget && budget.cells < 0) return undefined;
     if (d < bestDistance) {
       best = candidate;
       bestDistance = d;
@@ -344,18 +393,37 @@ export function closest(name: string, candidates: Iterable<string>): string | un
   return best;
 }
 
-function editDistance(a: string, b: string): number {
-  let previous = Array.from({ length: b.length + 1 }, (_, j) => j);
+/** The edit distance from `a` to `b`, or `max + 1` when it is more than `max`. */
+function editDistance(a: string, b: string, max: number, budget?: { cells: number }): number {
+  const far = max + 1;
+  if (Math.abs(a.length - b.length) > max) return far;
+  // Only cells within `max` of the diagonal can be `max` or less: row i keeps
+  // columns i - max … i + max, column j at index j - i + max.
+  const width = 2 * max + 1;
+  let previous = new Array<number>(width + 2).fill(far);
+  let current = new Array<number>(width + 2).fill(far);
+  // Index k + 1 holds column j = i + k - max; indexes 0 and width + 1 stay `far`.
+  for (let k = 0; k < width; k++) if (k - max >= 0) previous[k + 1] = k - max;
   for (let i = 1; i <= a.length; i++) {
-    const current = [i];
-    for (let j = 1; j <= b.length; j++) {
-      current[j] = Math.min(
-        (previous[j] as number) + 1,
-        (current[j - 1] as number) + 1,
-        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
+    if (budget) budget.cells -= width;
+    let least = far;
+    for (let k = 0; k < width; k++) {
+      const j = i + k - max;
+      let d = far;
+      if (j === 0) d = i;
+      else if (j > 0 && j <= b.length) {
+        d = Math.min(
+          (previous[k + 2] as number) + 1,
+          (current[k] as number) + 1,
+          (previous[k + 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+          far,
+        );
+      }
+      current[k + 1] = d;
+      if (d < least) least = d;
     }
-    previous = current;
+    if (least > max) return far;
+    [previous, current] = [current, previous];
   }
-  return previous[b.length] as number;
+  return previous[b.length - a.length + max + 1] as number;
 }

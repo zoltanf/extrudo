@@ -25,16 +25,23 @@ import {
   addParameters,
   type BodyId,
   type ComponentId,
+  ExprError,
   evaluateParameters,
   type FeatureId,
   faceSketchFrame,
+  heightOf,
   importInputs,
   isConstructionType,
+  MAX_PARAMETER_DEPTH,
+  type Node,
   newId,
   ORIGIN_PLANES,
+  PARAMETER_DEPTH_MESSAGE,
   type Parameter,
   type ParameterId,
   parameterNameProblem,
+  parse,
+  references,
   type SketchData,
   setFeatureVisibility,
   updateBody,
@@ -371,6 +378,83 @@ function numberExpression(value: number, unit: string): string {
   return `${Number((value * 10).toPrecision(12))} mm`;
 }
 
+/**
+ * The limit an expression from the file goes past, if any: its length or the
+ * values in one call (ADR-0004, amendment of 2026-11-15). The import keeps its
+ * value instead.
+ */
+function pastLimit(expression: string): ExprError | undefined {
+  try {
+    parse(expression);
+  } catch (error) {
+    if (error instanceof ExprError && error.code === 'limit') return error;
+  }
+  return undefined;
+}
+
+/**
+ * The user parameters that keep their values for a limit (ADR-0004), each
+ * with its own error: one whose own expression is past a limit, and one whose
+ * chain through the others passes the depth limit, counted from the last one
+ * kept. A kept one counts as 1 level, so the chain counts again from there and
+ * those that use it keep their expressions. One walk over the references,
+ * deepest first; each expression is read once.
+ */
+function keptValues(parameters: readonly ParameterValue[]): Map<string, ExprError> {
+  const found = new Map<string, ExprError>();
+  const nodes = new Map<string, Node | undefined>();
+  for (const p of parameters) {
+    if (p.text !== undefined || nodes.has(p.name)) continue;
+    try {
+      nodes.set(p.name, parse(p.expression));
+    } catch (error) {
+      // An expression that doesn't read nests nothing; one past a limit keeps its value.
+      nodes.set(p.name, undefined);
+      if (error instanceof ExprError && error.code === 'limit') found.set(p.name, error);
+    }
+  }
+  const refsOf = (name: string): string[] => {
+    const node = nodes.get(name);
+    return node ? references(node).filter((ref) => nodes.has(ref)) : [];
+  };
+  const depth = new Map<string, number>();
+  for (const root of nodes.keys()) {
+    if (depth.has(root)) continue;
+    const stack = [{ name: root, refs: refsOf(root), next: 0 }];
+    const onPath = new Set([root]);
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1] as (typeof stack)[number];
+      const ref = top.refs[top.next++];
+      if (ref !== undefined) {
+        // A reference back along the path closes a cycle: it adds nothing.
+        if (!depth.has(ref) && !onPath.has(ref)) {
+          stack.push({ name: ref, refs: refsOf(ref), next: 0 });
+          onPath.add(ref);
+        }
+        continue;
+      }
+      stack.pop();
+      onPath.delete(top.name);
+      const node = nodes.get(top.name);
+      const own = node && !found.has(top.name) ? heightOf(node) : 1;
+      let chain = own;
+      if (!found.has(top.name))
+        for (const r of top.refs) chain = Math.max(chain, own + (depth.get(r) ?? 0));
+      if (chain > MAX_PARAMETER_DEPTH) {
+        found.set(top.name, new ExprError(PARAMETER_DEPTH_MESSAGE, { start: 0, end: 0 }, 'limit'));
+        chain = 1;
+      }
+      depth.set(top.name, chain);
+    }
+  }
+  return found;
+}
+
+/** An expression to quote in a note: its start when it is long. */
+function quoted(expression: string): string {
+  return expression.length > 80 ? `${expression.slice(0, 80)}…` : expression;
+}
+
 /** A bundled font this import draws text in (`@extrudo/fonts`). */
 interface TextFont {
   id: string;
@@ -505,11 +589,13 @@ export function f3dToDesign(
 
   // User parameters, in the order they were made, all in one step: one at a
   // time, each would read every name before it. A name Extrudo refuses
-  // (taken, reserved, not a name) leaves its parameter out, with a note.
+  // (taken, reserved, not a name) leaves its parameter out, with a note. One
+  // whose expression is past a limit (ADR-0004) comes in with its value, with
+  // a note; those that use it keep their expressions.
+  const kept = keptValues(f3d.userParameters);
   const userParameters: Parameter[] = [];
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
     const unit = p.text === undefined ? unitKind(p.unit) : undefined;
-    const expression = p.text !== undefined ? `'${p.text}'` : p.expression;
     const id = ids('parameter') as ParameterId;
     const problem = parameterNameProblem(p.name, userNames);
     if (problem) {
@@ -517,6 +603,18 @@ export function f3dToDesign(
       ids('parameter');
       report.notes.push(`Parameter ${p.name} skipped: ${problem}`);
       continue;
+    }
+    const limit = p.text === undefined ? kept.get(p.name) : undefined;
+    const expression =
+      p.text !== undefined
+        ? `'${p.text}'`
+        : limit
+          ? numberExpression(p.value, p.unit)
+          : p.expression;
+    if (limit) {
+      report.notes.push(
+        `Parameter ${p.name}: "${quoted(p.expression)}" kept as its value (${limit.message}).`,
+      );
     }
     userNames.add(p.name);
     userParameters.push({
@@ -577,7 +675,10 @@ export function f3dToDesign(
     const names = p.expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
     const units = new Set(['mm', 'cm', 'm', 'in', 'ft', 'deg', 'rad', 'um', 'mil']);
     const own = names.every((n) => units.has(n) || known(n));
-    if (own && names.some((n) => known(n))) return negate ? `-(${p.expression})` : p.expression;
+    if (own && names.some((n) => known(n))) {
+      const expression = negate ? `-(${p.expression})` : p.expression;
+      if (!pastLimit(expression)) return expression;
+    }
     return numberExpression(negate ? -p.value : p.value, p.unit);
   };
 
