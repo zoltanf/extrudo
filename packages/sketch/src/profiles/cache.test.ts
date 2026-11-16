@@ -280,4 +280,28 @@ describe('what a caller gets', () => {
     expect(again.map((p) => p.id)).toEqual(ids);
     expect(again[0]?.area).toBe(area);
   });
+
+  it("shares nothing with the sketch: freezing leaves a builder's data as it was", () => {
+    const b = plate();
+    b.arc(60, 10, 5, 0, 180);
+    b.line(55, 10, 65, 10);
+    b.ellipse(80, 10, 6, 3, 30);
+    b.spline([
+      [90, 0],
+      [95, 10],
+      [100, 0],
+    ]);
+    const data = b.sketch;
+    const profiles = detectProfiles(data);
+    expect(profiles.length).toBeGreaterThan(3);
+    const isPart = (o: unknown): boolean =>
+      typeof o === 'object' &&
+      o !== null &&
+      (Object.isFrozen(o) || Object.values(o as object).some(isPart));
+    expect(isPart(b.entities)).toBe(false);
+    // The builder still writes into its maps and entities.
+    b.line(0, 30, 10, 30);
+    const first = Object.values(b.entities)[0] as { x: number };
+    first.x += 0;
+  });
 });
