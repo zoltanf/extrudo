@@ -90,7 +90,6 @@ import type {
   KernelFeatureDefinition,
   PrepareContext,
 } from '../recompute/types';
-import { standardStepReals } from '../step-reals';
 import { splitSolids } from './bodies';
 import { rotation, translation } from './matrix';
 
@@ -147,8 +146,7 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
       'This file is not a model Extrudo reads: it wants a STEP file (.step, .stp) or a mesh (.stl, .3mf, .obj).',
     );
   }
-  // Reals written without a decimal point are read as the standard requires (`step-reals.ts`).
-  const text = standardStepReals(new TextDecoder().decode(ctx.file(settings.file)));
+  const text = new TextDecoder().decode(ctx.file(settings.file));
   using scope = ctx.kernel.scope();
   const read = scope.track(ctx.kernel.readStep(text));
   // A surface model has solids to count, and we only want to know whether it
