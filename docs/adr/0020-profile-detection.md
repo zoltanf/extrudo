@@ -611,13 +611,13 @@ stress test of the suite with 3,294 regions about 23 MB.
 
 **Numbers.** That corpus sketch: 0.67 s the first time, 0.06 ms the
 second; a suite sketch refused for its size 118 ms, then 0.03 ms; one
-refused for its crossings 23 ms, then 0.01 ms. The 1,545 sketches of the second amendment's proof, each
-detected on the code before and twice on the same object (and once on a
-new copy) on the code after: the same digest for all, the same 11
-refusals; the second calls of the 1,465 without text take 5 ms together
-against 6.2 s for the first. 6,000 seeded random sketches give the same
-output before and after, and the same on the second call (149 refused by
-both). Over the 252 designs of an f3d corpus, importing them asked 2,570
+refused for its crossings 23 ms, then 0.01 ms. The 1,545 sketches of the
+second amendment's proof, each detected on the code before, and on the code
+after as an unfrozen copy, twice as one frozen copy and once as another: the
+same digest for all, the same 11 refusals; the second calls of the 1,465
+without text take 6 ms together against 6.3 s for the first. 6,000 seeded
+random sketches give the same output unfrozen and frozen, and the same on
+the second call (149 refused by all). Over the 252 designs of an f3d corpus, importing them asked 2,570
 times for the regions of 1,001 sketch objects and now does the work 1,035
 times (7.2 s → 4.4 s in all; text sketches every time), and emitting each
 design's script asked 5,199 times and now does the work 76 times (17.0 s →
