@@ -247,17 +247,63 @@ describe('shapeText', () => {
     );
   });
 
-  it('memoises a layout and shapes 1000 fresh characters quickly', () => {
+  it('memoises a layout and shapes 1000 fresh characters for what their glyphs cost', () => {
     const first = shape(INTER, 'memo', 'left');
     expect(shapeText(INTER, 'memo', 'left')).toBe(first);
-    let text = '';
-    while (text.length < 1000) text += 'The quick brown fox jumps over the lazy dog. ';
-    text = text.slice(0, 1000);
-    const start = performance.now();
-    const layout = shape(INTER, text, 'left');
-    const elapsed = performance.now() - start;
-    expect(layout.missing).toEqual([]);
-    expect(elapsed).toBeLessThan(100);
+    let pangrams = '';
+    while (pangrams.length < 1100) pangrams += 'The quick brown fox jumps over the lazy dog. ';
+    // A new text each time, or the memo would answer.
+    let texts = 0;
+    const fresh = (length: number) => {
+      texts++;
+      const from = texts % 45;
+      return String(texts).padStart(4, '0') + pangrams.slice(from, from + length - 4);
+    };
+    // The yardstick: the font's own work for a text, without any layout.
+    const font = parseFont('inter-regular.ttf');
+    let sum = 0;
+    const readGlyphs = (text: string) => {
+      const glyphs = font.stringToGlyphs(text);
+      for (let pass = 0; pass < 2; pass++) {
+        for (let i = 0; i + 1 < glyphs.length; i++) {
+          sum += font.getKerningValue(glyphs[i] as opentype.Glyph, glyphs[i + 1] as opentype.Glyph);
+        }
+      }
+      const points: number[][] = [];
+      for (const glyph of glyphs) {
+        for (const c of glyph.path.commands) if (c.type !== 'Z') points.push([c.x, c.y]);
+      }
+      sum += points.length;
+    };
+    // CPU time, which a busy machine doesn't inflate as it does the clock.
+    const cost = (work: () => void) => {
+      const before = process.cpuUsage();
+      work();
+      const { user, system } = process.cpuUsage(before);
+      return user + system;
+    };
+    let [shaped, read, short] = [Infinity, Infinity, Infinity];
+    for (let i = 0; i < 25; i++) {
+      const text = fresh(1000);
+      shaped = Math.min(
+        shaped,
+        cost(() => expect(shape(INTER, text, 'left').missing).toEqual([])),
+      );
+      read = Math.min(
+        read,
+        cost(() => readGlyphs(text)),
+      );
+      const tenth = fresh(100);
+      short = Math.min(
+        short,
+        cost(() => shape(INTER, tenth, 'left')),
+      );
+    }
+    expect(sum).toBeGreaterThan(0);
+    // Measured alone and beside four busy cores: 1.7 to 2.3 times the yardstick
+    // and 9.7 to 12.6 times the tenth of the text.
+    expect(shaped / read).toBeLessThan(4.5);
+    expect(shaped / short).toBeLessThan(20);
   });
 });
 
