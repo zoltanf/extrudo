@@ -247,7 +247,10 @@ describe('shapeText', () => {
     );
   });
 
-  it('memoises a layout and shapes 1000 fresh characters for what their glyphs cost', () => {
+  // 1.1 s at worst beside four busy cores: the timeout is a watchdog, 27 times that.
+  it('memoises a layout and shapes 1000 fresh characters for what their glyphs cost', {
+    timeout: 30_000,
+  }, () => {
     const first = shape(INTER, 'memo', 'left');
     expect(shapeText(INTER, 'memo', 'left')).toBe(first);
     let pangrams = '';

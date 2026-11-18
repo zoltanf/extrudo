@@ -509,7 +509,8 @@ describe('asmFaces on shared records', () => {
     expect(reads.n).toBeLessThanOrEqual(Math.floor(budget / tags) + 2);
   });
 
-  it('refuses a stream whose faces would walk one long loop each', () => {
+  // 1.4 s at worst beside four busy cores: the timeout is a watchdog, 20 times that.
+  it('refuses a stream whose faces would walk one long loop each', { timeout: 30_000 }, () => {
     // 3,000 faces on one loop of 3,000 coedges: 9 million steps.
     const n = 3000;
     const LOOP = n;
