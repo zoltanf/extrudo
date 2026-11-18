@@ -103,13 +103,14 @@ const edit = (name: string, change: (xml: string) => string): PartFileOptions =>
 
 describe('the planner (no kernel)', () => {
   it('a link to an object that is not in the file, to itself, to a sketch, sheet or container', () => {
-    for (const to of ['Nowhere', 'Cut', 'Sheet', 'Group']) {
+    for (const to of ['Nowhere', 'Cut', 'Sheet', 'Group', 'Sketch']) {
       const p = plan(
         rawFile(
           [
             box('Box'),
             object('Sheet', 'Spreadsheet::Sheet', []),
             object('Group', 'App::DocumentObjectGroup', []),
+            object('Sketch', 'Sketcher::SketchObject', []),
             object('Cut', 'Part::Cut', [
               link('Base', 'Box'),
               link('Tool', to),
@@ -353,6 +354,40 @@ describe('a Part fillet’s edge list', () => {
 });
 
 describe('the import with a kernel', () => {
+  it('two tops that share an object in different containers: the second comes in as today', {
+    timeout: T,
+  }, async () => {
+    // The unit is built in the first top's frame; the second, at the document's top, would stay
+    // there. The container turns the cut half a turn about the hole, so both hold in that frame.
+    const cut = partBrep('box_cyl_cut', 'Cut');
+    const r = await run(
+      partFile('box_cyl_cut', {
+        extra: [
+          object('Holder', 'App::Part', [
+            links('Group', ['Box', 'Cylinder', 'Cut']),
+            placed(30, 20, 0, '0" Q1="0" Q2="1" Q3="0'),
+          ]),
+          box('Box2'),
+          object('Other', 'Part::Cut', [
+            link('Base', 'Box2'),
+            link('Tool', 'Cylinder'),
+            placed(),
+            shape('Other'),
+          ]),
+        ],
+        entries: { 'Box2.Shape.brp': BOX(), 'Other.Shape.brp': cut },
+      }),
+    );
+    expect(r.trees).toEqual({ Cut: 'history', Other: 'shape:container' });
+    expect(r.features).toEqual([
+      'box Box',
+      'cylinder Cylinder',
+      'combine Cut',
+      'move Place Cut',
+      'import Import Other',
+    ]);
+  });
+
   it('an operand whose stored shape is missing or has no solid: its user and the top come in as today', {
     timeout: T,
   }, async () => {

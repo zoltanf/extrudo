@@ -27,6 +27,7 @@ import type { Design } from '@extrudo/api';
 import {
   type AttachmentId,
   combineInputs,
+  evaluateParameters,
   type FeatureId,
   importInputs,
   moveInputs,
@@ -38,7 +39,7 @@ import {
   updateFeatureInputs,
 } from '@extrudo/core';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
-import type { Binder } from './bind';
+import { type Binder, within } from './bind';
 import {
   type BodyHistory,
   type HistoryStop,
@@ -400,6 +401,8 @@ const callFailure = (o: Exclude<CallOutcome<unknown>, { kind: 'done' }>): Failur
   reason: o.kind,
   ...('detail' in o && o.detail ? { detail: o.detail } : {}),
 });
+
+const IDENTITY: FcPlacement = { position: [0, 0, 0], rotation: [0, 0, 0, 1] };
 
 /** A unit's fate for a node across passes. */
 type Fate =
@@ -864,8 +867,11 @@ export async function importTrees(
         ...(tried.added.references ? { references: tried.added.references } : {}),
         ...(tried.added.bound && tried.added.bound.length > 0 ? { bound: tried.added.bound } : {}),
       });
+      // Counted only now: an attempt that didn't hold used nothing up.
+      for (const op of n.operands) uses.set(op, (uses.get(op) ?? 0) - 1);
       for (const [op, copy] of tried.added.copies) {
         built.set(op, copy);
+        copied.add(op);
         const r = records.get(op);
         if (r) records.set(op, { ...r, copies: r.copies + 1, features: [...r.features] });
       }
@@ -885,7 +891,9 @@ export async function importTrees(
       let bodies = built.get(top) as string[];
       let containerMove: string | undefined;
       const whole = flatten(t.top.chain, { position: [0, 0, 0], rotation: [0, 0, 0, 1] });
-      if (!isIdentity(whole) && JSON.stringify(t.top.chain) !== JSON.stringify(frame)) {
+      // Every top of a unit is built in the first top's frame: one in another container (or in
+      // none) would stay in that frame, not where the file has it.
+      if (!isIdentity(compose(invert(flatten(frame, IDENTITY)), whole))) {
         // A unit's tops in different containers: only the first top's frame is the unit's.
         today.set(top, {
           kind: 'today',
@@ -957,10 +965,8 @@ export async function importTrees(
               op,
               bodies.map((_, i) => `${c.id}:${i}`),
             );
-            copied.add(op);
             features.push(c.id);
           }
-          uses.set(op, left - 1);
         }
         const own = o.properties.Placement?.value;
         const placement: FcPlacement =
@@ -994,23 +1000,7 @@ export async function importTrees(
               moves++;
             }
             const bound = bindPart(o, added.id, p.sources);
-            if (p.follows) {
-              // A bound length or width: the centre follows it, so the box grows from its corner.
-              const inputs = design.doc.features.find((x) => x.id === added.id)?.inputs as
-                | Record<string, { kind?: string; expr?: string; unit?: string }>
-                | undefined;
-              const length = inputs?.length?.expr ?? '0 mm';
-              const width = inputs?.width?.expr ?? '0 mm';
-              const changes: Record<string, unknown> = {};
-              for (const axis of ['x', 'y'] as const) {
-                const text = followText(p.follows[axis], length, width);
-                if (text) changes[axis] = { kind: 'expr', expr: text, unit: 'length' };
-              }
-              if (Object.keys(changes).length > 0)
-                design.state.dispatch(
-                  updateFeatureInputs({ id: added.id as FeatureId, inputs: changes as never }),
-                );
-            }
+            if (p.follows) followSizes(o, added.id, p.follows);
             return {
               features,
               keeps: [],
@@ -1209,6 +1199,45 @@ export async function importTrees(
         m.value.solids === sum.solids &&
         Math.abs(m.value.volume - sum.volume) <= 1e-6 * Math.max(1, Math.abs(m.value.volume))
       );
+    }
+
+    /**
+     * A bound length or width: the box's centre follows it, so the box grows from its corner.
+     * Kept only where Extrudo's own evaluation gives the centre the file's numbers give (S10's
+     * rule): twice a long expression can pass core's limits, and the coordinate stays a number.
+     */
+    function followSizes(
+      o: FcObject,
+      id: string,
+      follows: NonNullable<PrimitivePlan['follows']>,
+    ): void {
+      const feature = id as FeatureId;
+      const inputs = design.doc.features.find((x) => x.id === id)?.inputs as
+        | Record<string, { expr?: string }>
+        | undefined;
+      const length = inputs?.length?.expr ?? '0 mm';
+      const width = inputs?.width?.expr ?? '0 mm';
+      const write = (axis: 'x' | 'y', expr: string) =>
+        design.state.dispatch(
+          updateFeatureInputs({
+            id: feature,
+            inputs: { [axis]: { kind: 'expr', expr, unit: 'length' } } as never,
+          }),
+        );
+      const written = (['x', 'y'] as const).flatMap((axis) => {
+        const text = followText(follows[axis], length, width);
+        if (!text) return [];
+        write(axis, text);
+        return [axis];
+      });
+      if (written.length === 0) return;
+      const values = evaluateParameters(design.doc).inputs.get(feature);
+      for (const axis of written) {
+        const [base, kl, kw] = follows[axis];
+        const want = base + (kl * sizeOf(o, 'Length')) / 2 + (kw * sizeOf(o, 'Width')) / 2;
+        const got = values?.get(axis);
+        if (!got?.ok || !within(got.value, want)) write(axis, mm(want));
+      }
     }
 
     /** S10's binder on a Part object's feature; the inputs bound (kept). */
