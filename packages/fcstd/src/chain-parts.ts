@@ -152,6 +152,8 @@ export const OLD_PROPERTIES: Readonly<Record<string, readonly string[]>> = {
 /** The property types an old file declares where they differ from what FreeCAD 1.1 wrote. */
 const OLD_TYPES: Readonly<Record<string, string>> = {
   'PartDesign::LinearPattern.Length': 'App::PropertyFloat',
+  'PartDesign::LinearPattern.Occurrences': 'App::PropertyInteger',
+  'PartDesign::PolarPattern.Occurrences': 'App::PropertyInteger',
   'PartDesign::PolarPattern.Angle': 'App::PropertyFloat',
   'PartDesign::Fillet.Radius': 'App::PropertyFloatConstraint',
   'PartDesign::Chamfer.Size': 'App::PropertyFloatConstraint',

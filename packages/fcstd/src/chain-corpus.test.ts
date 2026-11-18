@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
 import { describe, expect, it } from 'vitest';
 import { MAX_BODY_FEATURES, MAX_FILE_FEATURES } from './bodies';
+import { asOldFile, chainDocuments, OLD_PROPERTIES } from './chain-parts';
 import { finalShapes } from './final-shapes';
 import { importFcstd } from './import';
 import { looseChains } from './loose-chains';
@@ -34,6 +35,45 @@ const bump = (r: Record<string, number>, k: string, by = 1) => {
 };
 
 describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
+  it('the old grammar the tests write is the one old files have', { timeout: 300_000 }, () => {
+    /** `type.property` → the declared types the library's files before 0.17 use for it. */
+    const library = new Map<string, Set<string>>();
+    const types = new Set<string>();
+    for (const path of walk(root as string)) {
+      const doc = readFcstd(new Uint8Array(readFileSync(path)));
+      const [major, minor] = doc.version ?? [1, 0];
+      if (major !== 0 || minor < 14 || minor > 16) continue;
+      for (const o of doc.objects) {
+        if (!Object.hasOwn(OLD_PROPERTIES, o.type)) continue;
+        types.add(o.type);
+        for (const p of Object.values(o.properties)) {
+          const key = `${o.type}.${p.name}`;
+          library.set(key, (library.get(key) ?? new Set()).add(p.type));
+        }
+      }
+    }
+    let written = 0;
+    const strange: string[] = [];
+    for (const name of chainDocuments())
+      for (const version of ['0.14', '0.16'] as const) {
+        const doc = readFcstd(asOldFile(name, version));
+        for (const o of doc.objects) {
+          // The library's old files hold no groove and no mirror: nothing to compare them with.
+          if (!types.has(o.type)) continue;
+          for (const p of Object.values(o.properties)) {
+            // Every object has one from 0.16; the library's 0.16 files just don't hold every type.
+            if (p.name === 'ExpressionEngine') continue;
+            written++;
+            if (!library.get(`${o.type}.${p.name}`)?.has(p.type))
+              strange.push(`${o.type}.${p.name}: ${p.type}`);
+          }
+        }
+      }
+    console.log(JSON.stringify({ libraryProperties: library.size, written }));
+    expect([...new Set(strange)].sort()).toEqual([]);
+    expect(written).toBeGreaterThan(0);
+  });
+
   it('reports, as numbers, how each chain came in', { timeout: 3_600_000 }, async () => {
     const solver = new SketchSolver(await loadPlanegcs());
     const kernel = nodeImportKernel();
