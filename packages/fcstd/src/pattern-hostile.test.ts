@@ -273,9 +273,13 @@ describe('a kernel that lies, throws or hangs in the calls a transform makes', (
       );
       expect(lies.body?.stop).toMatchObject({ reason: 'kernel', detail: NONSENSE_REPLY });
     },
+    // A 2 s hang and three imports with kernel restarts: past vitest's 5 s on a loaded runner.
+    30_000,
   );
 
-  it('two candidates for the edge: never the nearest, the history stops', async () => {
+  it('two candidates for the edge: never the nearest, the history stops', {
+    timeout: 30_000,
+  }, async () => {
     const twice: Lie = (k) => ({
       describeBodies: async (b, n) => {
         const reply = (await k.describeBodies(b, n)) as unknown as Record<

@@ -224,6 +224,26 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         out: {} as Record<string, number>,
       },
     };
+    const s11census: Record<string, number> = {};
+    // S11: the Part workbench's trees: tops by type and outcome, nodes by what they became.
+    const s11 = {
+      trees: {} as Record<string, Record<string, number>>,
+      nodes: {} as Record<string, Record<string, number>>,
+      leavesByReason: {} as Record<string, number>,
+      placed: {} as Record<string, number>,
+      moves: 0,
+      containerMoves: 0,
+      shared: 0,
+      copies: 0,
+      bound: 0,
+      faceCountsDiffer: 0,
+      references: 0,
+      passes: 0,
+      retried: 0,
+      worstDrift: 0,
+      treeImports: 0,
+      importsInDesign: 0,
+    };
     const verdict = (x: { reason?: string }) =>
       x.reason === undefined
         ? 'not tried'
@@ -243,6 +263,20 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       let walked = 0;
       for (const o of doc.objects) {
         if (FEATURE_TYPES[o.type]) bump(census, `${kindOf(o.type)} in the file`);
+        // S11's census: Part primitives and booleans, turned, or with a placement of their own.
+        if (
+          /^Part::(Box|Cylinder|Sphere|Torus|Cone|Cut|Fuse|Common|MultiFuse|MultiCommon|Fillet|Chamfer|Compound)$/.test(
+            o.type,
+          )
+        ) {
+          const pl = o.properties.Placement?.value;
+          const p = pl?.kind === 'placement' ? pl.value : undefined;
+          const turned = p
+            ? Math.hypot(p.rotation[0], p.rotation[1], p.rotation[2]) > 1e-12
+            : false;
+          const moved = p ? turned || p.position.some((v) => v !== 0) : false;
+          bump(s11census, `${o.type}${turned ? ' turned' : moved ? ' moved' : ''}`);
+        }
         // S9's census.
         if (o.type === 'PartDesign::Line' || o.type === 'PartDesign::Plane')
           bump(s9.datumsInFiles, `${o.type.slice('PartDesign::'.length)} ${mapModeOf(o)}`);
@@ -336,7 +370,11 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       }
       mostFeatures = Math.max(mostFeatures, walked);
       // S3's way first, for what is not a body.
-      const s3 = await importFcstd(bytes, 'X', { kernel, maxFileFeatures: 0 });
+      const s3 = await importFcstd(bytes, 'X', {
+        kernel,
+        maxFileFeatures: 0,
+        maxImportTreeNodes: 0,
+      });
       const withoutSteps = await importFcstd(bytes, 'X', { kernel, solver, maxSteps: 0 });
       s8.bytesWithoutSteps += bytesOf(withoutSteps.design);
       const t = performance.now();
@@ -411,6 +449,58 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       importsS3 += s3.report.shapes.length;
       importsS5 += report.shapes.length;
       const bodyNames = new Set(report.bodies.map((b) => b.object));
+      // S11: the Part trees, as counts.
+      for (const t of report.trees) {
+        bump(
+          of(s11.trees, t.type),
+          t.outcome === 'shape' || t.outcome === 'left-out'
+            ? `${t.outcome}: ${t.reason}`
+            : t.outcome,
+        );
+        s11.passes = Math.max(s11.passes, t.passes);
+        if (t.passes > 1) s11.retried++;
+        if (t.containerMove) s11.containerMoves++;
+        if (t.outcome === 'history' || t.outcome === 'leaves') {
+          bodyNames.add(t.object);
+          s11.treeImports += t.nodes.filter((n) => n.outcome === 'leaf').length;
+        } else
+          lines.push(
+            JSON.stringify({
+              file,
+              tree: t.object,
+              type: t.type,
+              reason: t.reason,
+              detail: t.detail,
+            }),
+          );
+        for (const n of t.nodes) {
+          bump(of(s11.nodes, n.type), n.outcome === 'leaf' ? `leaf: ${n.reason}` : n.outcome);
+          if (n.outcome === 'leaf') {
+            bump(s11.leavesByReason, `${n.reason}`);
+            lines.push(
+              JSON.stringify({
+                file,
+                tree: t.object,
+                leaf: n.object,
+                type: n.type,
+                reason: n.reason,
+                detail: n.detail,
+                drift: n.drift,
+              }),
+            );
+          }
+          s11.moves += n.moves;
+          if (n.placed) bump(s11.placed, `${n.type} ${n.placed}`);
+          if (n.copies > 0) s11.shared += 1;
+          s11.copies += n.copies;
+          s11.bound += n.bound?.length ?? 0;
+          if (n.faces) s11.faceCountsDiffer++;
+          if (n.references) s11.references += n.references.found;
+          if (n.drift && n.outcome === 'feature')
+            s11.worstDrift = Math.max(s11.worstDrift, n.drift.volume);
+        }
+      }
+      s11.importsInDesign += design.doc.features.filter((f) => f.type === 'import').length;
       const outcome = (r: typeof report) =>
         new Map([
           ...r.shapes.map((x) => [x.object, `in ${x.solids} ${x.drift.toPrecision(3)}`] as const),
@@ -641,6 +731,8 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       s8,
       s9,
       s10,
+      s11,
+      s11census,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

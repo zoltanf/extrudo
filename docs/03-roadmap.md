@@ -1788,7 +1788,9 @@ end to end, faster than in established desktop CAD.
   - [x] S10 Parameters and expressions: spreadsheet cells and variable-set numbers as
     user parameters, expressions on dimensions, inputs and plane offsets kept where Extrudo
     computes the file's value (2026-11-15; ADR-0144's S10 amendment).
-  - [ ] S11 Part workbench: primitives and booleans as a timeline.
+  - [x] S11 Part workbench: primitives and booleans as a timeline: each object checked against its own
+    stored shape, the file's shape where it can't be rebuilt, the booleans above it live (2026-11-15;
+    ADR-0144's S11 amendment).
   - [ ] S12 Structure: part containers, links as copies, files from before bodies, meshes.
   - [ ] S13 User guide page; a second hostile-file pass.
 

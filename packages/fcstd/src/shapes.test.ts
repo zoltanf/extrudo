@@ -58,8 +58,12 @@ describe('importFcstd with a kernel in Node', () => {
     const doc = design.toJSON();
     expect(doc.name).toBe('Shapes');
     expect(report.finalShapes).toBe(11);
-    // The body's one feature is walked first (S5), then the eleven shapes.
-    expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    // The body's one feature is walked first (S5), then the Part tree's three objects (S11),
+    // then the eleven shapes.
+    expect(progress).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    // The hand-written stored shapes aren't the box and cylinder their sizes make: the tree's
+    // top comes in as today.
+    expect(report.trees.map((t) => [t.name, t.outcome])).toEqual([['Holed box', 'shape']]);
     expect(report.shapes.map((s) => [s.name, s.solids])).toEqual([
       ['Bracket', 1],
       ['Holed box', 1],

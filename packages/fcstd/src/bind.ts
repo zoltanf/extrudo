@@ -41,6 +41,7 @@ import {
   modelRead,
   type PreparedParameters,
   pairKey,
+  partValue,
   propertyDim,
   storedValue,
 } from './params';
@@ -98,12 +99,13 @@ const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const applyTransform = (text: string, t: DimensionTransform) => {
   if (t === 'same') return text;
   if (t === 'half') return `(${text}) / 2`;
+  if (t === 'double') return `2 * (${text})`;
   // `-name` → `name`, `name` → `-name`: a name or its negation needs no brackets.
   if (text.startsWith('-') && NAME.test(text.slice(1))) return text.slice(1);
   return NAME.test(text) ? `-${text}` : `-(${text})`;
 };
 const transformValue = (v: number, t: DimensionTransform) =>
-  t === 'same' ? v : t === 'neg' ? -v : v / 2;
+  t === 'same' ? v : t === 'neg' ? -v : t === 'double' ? v * 2 : v / 2;
 
 /** Binds the expressions of what the walk adds, feature by feature. */
 export class Binder {
@@ -184,6 +186,132 @@ export class Binder {
           : { outcome: 'unmapped', detail: 'what it sets didn’t come in' };
   }
 
+  /**
+   * Everything the binder holds, for a tree whose whole transaction is taken
+   * back and tried again (S11): the names, the rounds, the model values and
+   * every entry's outcome.
+   */
+  mark(): () => void {
+    this.discard();
+    const names = this.#p.names.snapshot();
+    const rounds = this.rounds;
+    const values = new Map(this.#values);
+    const outcomes = this.#p.entries.map((e) => e.outcome);
+    return () => {
+      this.discard();
+      this.#p.names.restore(names);
+      this.rounds = rounds;
+      this.#values.clear();
+      for (const [k, v] of values) this.#values.set(k, v);
+      this.#p.entries.forEach((e, i) => {
+        e.outcome = outcomes[i];
+      });
+    };
+  }
+
+  /**
+   * Binds the inputs of a Part object's feature (S11): `sources` maps each
+   * Extrudo input to the FreeCAD property it holds (`diameter` → `Radius`,
+   * `x` → `Placement.Base.x`), written as it is, negated or doubled (read off
+   * the numbers, as `bind` does). Runs inside the node's transaction, before
+   * its rebuild; the rule decides. `because`: why what `sources` doesn't name
+   * isn't written as an input. An input left out because the file stores 0 has
+   * the reason for a stored 0.
+   */
+  bindPart(
+    f: FcObject,
+    featureId: string | undefined,
+    sources: Readonly<Record<string, string>>,
+    because?: string,
+  ): void {
+    const candidates: Candidate[] = [];
+    const outcome = (e: Entry, o: NonNullable<Entry['outcome']>): void => {
+      this.#pendingOutcomes.push([e, o]);
+    };
+    const fe = this.#design.doc.features.find((x) => x.id === featureId);
+    const byProperty = new Map<string, string>();
+    for (const [input, property] of Object.entries(sources)) byProperty.set(property, input);
+    const writtenAs = (property: string, expr: string) => {
+      const stored = partValue(f, property);
+      if (stored === undefined) return undefined;
+      const written = literalValue(expr);
+      const t = sameOrNeg(written, stored);
+      if (t !== undefined) return t;
+      return within(written, stored * 2) ? ('double' as const) : undefined;
+    };
+    if (fe)
+      for (const [property, input] of byProperty) {
+        const value = Object.hasOwn(fe.inputs, input)
+          ? (fe.inputs as FeatureInputs)[input]
+          : undefined;
+        if (value?.kind !== 'expr') continue;
+        const key = pairKey(f.name, property);
+        if (!this.#p.readInputs.has(key)) continue;
+        const t = writtenAs(property, value.expr);
+        if (!t || t === 'zero') continue;
+        const name = value.paramName ?? this.#p.names.auto();
+        if (value.paramName === undefined)
+          this.#design.state.dispatch(
+            updateFeatureInputs({ id: fe.id, inputs: { [input]: { ...value, paramName: name } } }),
+          );
+        const ex = dims(value.unit);
+        const d = propertyDim(f.properties[property], f.type);
+        this.#pending.set(key, { name, transform: t, fc: d?.dim ?? fcOf(ex), ex });
+      }
+    for (const e of this.#p.byOwner.get(f.name) ?? []) {
+      if (e.target !== 'input') continue;
+      const property = e.property as string;
+      const input = byProperty.get(property);
+      const value =
+        fe && input && Object.hasOwn(fe.inputs, input)
+          ? (fe.inputs as FeatureInputs)[input]
+          : undefined;
+      if (!fe || !input || value?.kind !== 'expr') {
+        const stored = partValue(f, property);
+        if (fe && input && value === undefined && stored !== undefined && within(stored, 0))
+          outcome(e, { outcome: 'target', detail: ZERO, number: true });
+        else
+          outcome(e, {
+            outcome: 'target',
+            detail:
+              because ??
+              (input
+                ? `${property} isn't an expression in Extrudo`
+                : `${property} isn't written as one input`),
+          });
+        continue;
+      }
+      if (e.failure) {
+        outcome(e, { outcome: e.failure.reason, detail: e.failure.detail, number: true });
+        continue;
+      }
+      const t = writtenAs(property, value.expr);
+      const stored = storedValue(e);
+      if (t === 'zero') {
+        outcome(e, { outcome: 'target', detail: ZERO, number: true });
+        continue;
+      }
+      if (!t || stored === undefined) {
+        outcome(e, {
+          outcome: 'target',
+          detail: `${property} came in as another value than the file stores`,
+          number: true,
+        });
+        continue;
+      }
+      candidates.push({
+        entry: e,
+        holder: { kind: 'input', feature: fe.id, input },
+        transform: t,
+        target: { mode: 'quantity', dim: dims(value.unit) },
+        expected: transformValue(stored, t),
+        count: false,
+        literal: value.expr,
+      });
+    }
+    this.#rule(candidates, outcome);
+  }
+
   #value(key: string): ModelValue | undefined {
     return this.#pending.get(key) ?? this.#values.get(key);
   }
@@ -216,7 +344,9 @@ export class Binder {
           ? v.name
           : v.transform === 'neg'
             ? `(-${v.name})`
-            : `(${v.name} * 2)`;
+            : v.transform === 'double'
+              ? `(${v.name} / 2)`
+              : `(${v.name} * 2)`;
       return { text, fc: v.fc, ex: v.ex };
     };
   }

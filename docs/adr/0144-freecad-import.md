@@ -2514,3 +2514,365 @@ name shown is cut to its first 40 characters and "…").
   the step's `sources` (`0.count1` …), not done here.
 - A configuration table (a sheet's row bound to another through
   `.cells.Bind…`) maps onto ADR-0059's configurations; 1 library file has one.
+
+## Amendment (S11, 2026-11-15): the Part workbench's primitives and booleans as a timeline
+
+A Part-workbench document is a graph of objects, each with its own stored shape, where a
+boolean names its operands by link. Until now (S3) only the top of each such tree came in, as
+the file's stored shape. Now the tree comes in as an Extrudo timeline: primitives, combines and
+moves the user can edit, **each object checked against the shape the file stores for it** with
+S5's check and tolerances (none loosened), in its own transaction, before the next is added.
+What can't be rebuilt, or doesn't hold, comes in as the file's own shape for that object (S8's
+stored-shape step: `convertStored`, a STEP attachment, an `import`), placed where the file has
+it, and the tree carries on above it. `packages/fcstd`: `part-tree.ts` (`partTrees`: the trees
+from the file alone), `part-import.ts` (`importTrees`: the build), `part-read.ts` (a Part
+fillet's edge list); `bind.ts` gains `bindPart`, `mark`; `params.ts` takes a Part object's sizes
+and placement members as inputs; `import.ts` runs the trees between the body walk and the shapes
+import. No facade change, no schema change, nothing in `packages/core`. Fixtures: 22 small
+documents we made with FreeCAD 1.1.4 through our own script
+(`packages/fcstd/scripts/make-part-fixtures.py`; `part-fixtures-to-module.py` turns its JSON into
+`part-fixtures.ts`, 250 KB: each object's own XML with the properties the importer never reads
+left out and FreeCAD's repeated markup as tokens; the 175 distinct stored shapes, 586 KB as
+plain text with runs of spaces made one, are joined and deflated, base64; `part-parts.ts` writes
+them back into files).
+
+### The rules
+
+1. **Every object that comes in as a feature is checked against its own stored shape**, inside
+   its own transaction, before the next object is added. A translation that can't be proven is
+   never kept.
+2. **An object that can't be rebuilt, or doesn't hold, comes in as the file's own shape for
+   that object** (a *stored leaf*), and the tree carries on above it. **Nothing of its own
+   operands stays in the design** (below: one transaction a unit, whole retries).
+3. **The top of a tree that can't come in this way comes in as today** (S3's final shape), and
+   the report says why. No shape that came in before is lost or changed: a tree's top body
+   measures as its stored shape (it is checked like every node), or it is the stored shape.
+4. **The order:** a tree's objects in an order where every operand comes before what uses it
+   (an iterative depth-first walk, operands in the file's order, base first), trees in
+   document order; within a unit the stored leaves come first (they need nothing, and one that
+   can't come in then ends what uses it before anything is built for it); deterministic, never
+   recursion on the file's depth.
+
+### Which objects
+
+A **tree** starts at a final shape of S3's kind `shape` whose object is a `Part::Box`,
+`Cylinder`, `Sphere`, `Torus`, `Cut`, `Fuse`, `Common`, `MultiFuse`, `MultiCommon`, `Fillet` or
+`Chamfer`. Its nodes are found through `Base`, `Tool`, `Shapes` and a compound's `Links`.
+Everything else S3 does (bodies, links, meshes, chain tips, other shapes) is as it was.
+
+| FreeCAD | Comes in as | Notes |
+|---|---|---|
+| `Part::Box` | `box` | FreeCAD's corner at its origin; Extrudo's box sits on the centre of its base: `x`, `y` are that centre, `length`, `width`, `height` the sizes |
+| `Part::Cylinder`, whole and upright (`Angle` 360, `FirstAngle` and `SecondAngle` 0) | `cylinder` | `diameter` twice `Radius`, `height`; base centred on its origin |
+| `Part::Sphere`, whole (`Angle1` −90, `Angle2` 90, `Angle3` 360) | `sphere` | `diameter` twice `Radius`, centred |
+| `Part::Torus`, whole (`Angle1` −180, `Angle2` 180, `Angle3` 360) | `torus` | `diameter` twice `Radius1`, `tube` twice `Radius2`, centred, axis Z |
+| `Part::Cut` | one `combine` (cut) per body of the base, all with the tool's bodies, `keepTools` on all but the last | |
+| `Part::Fuse`, `Part::MultiFuse` | one `combine` (join): the first shape's first body the target, every other body a tool | shapes that don't touch: no feature (below) |
+| `Part::Common` | one `combine` (intersect) per body of the base | |
+| `Part::MultiCommon` | a chain of intersects: the first shape with the second, the result with the third … | Extrudo's intersect with several tools is the target with the tools' **union** (`kernel/src/features/combine.ts`), not the common of all; a newer file's `Behavior` "common of the first and the rest" is exactly that, one combine |
+| `Part::Fillet`, `Part::Chamfer` | S6's `fillet`, `chamfer` on the base's bodies | below |
+| `Part::Compound` as a cut's tool or a fuse's member | nothing of its own: its members' bodies | anywhere else (a base, in a common, under a fillet), or with a placement of its own: a stored leaf; at the top: as today |
+| a `PartDesign::Body` as an operand | the body S5 to S10 bring in, walked when the tree reaches it | only when it comes in with its whole history or with steps, and nothing moves it; else a stored leaf |
+| anything else with a stored shape: a cone, a partial or skewed primitive, an ellipsoid, a prism, a wedge, `Part::Feature`, `Part::Extrusion` and the other sweeps, `Part::Mirroring`, offsets, Draft and Python objects, a PartDesign feature outside a body | **stored leaf**; its own operands are not walked | |
+
+- **Refine** has no counterpart, and the check decides: the solids are the same, the faces
+  aren't. The `refine` fixture: all three trees hold; FreeCAD's unrefined fuse has 10 faces
+  where Extrudo's join (which always merges faces on one surface) has 6, an unrefined fuse
+  under a refined cut 12 against 10, and the refined cut 6 against Extrudo's 8 (its cut never
+  merges). The report records the face counts where they differ (`TreeNodeReport.faces`).
+- **A fuse of shapes that don't touch** (the `nested` fixture's two holes): Extrudo's join
+  refuses them; FreeCAD's result is a compound of the two solids. When the join fails for that
+  reason, the node is tried again with no feature at all, its result the operands' bodies as
+  they are, checked against the stored compound (`apart`). It holds in `nested`.
+- **A result of several solids** (`split`): one Extrudo body per solid, as S5's walk measures a
+  FreeCAD body that rebuilds as several (`combined`); the top's bodies are named "Cut", "Cut 2".
+  An operand of several bodies is used as all of them (a cut's or common's base: one combine
+  per body; a tool: all its bodies).
+- **Part fillets and chamfers:** the edges are `EdgeN` of the base's stored shape, from the
+  binary entry (FORMAT.md); each is described on the base's stored shape and found on the
+  rebuilt bodies by S6's matcher (`addDressUp`, unchanged), exactly as a PartDesign fillet. A
+  fillet maps when every edge has one radius (start and end equal) and all edges the same; a
+  chamfer when all edges have the same sizes: equal sizes as `equal`, two sizes as
+  `two-distances` with the first size on the edge's first face in the base's face order (the
+  fixture's chamfer of 2 and 4 mm holds with it). Anything else is a stored leaf (`edges`).
+
+### Placement, as built
+
+FreeCAD builds a primitive in its own frame and places it by `Placement`; a boolean computes
+from its operands as placed, then puts **its own** `Placement` on the result; an `App::Part`
+adds its placement to everything in it. The importer writes, in this order of preference:
+
+1. **The primitive's own inputs.** The origin plane whose normal is along the primitive's
+   turned Z (either way: a negative height for a box or cylinder pointing the other way), its
+   position in that plane's frame (`x`, `y`, `offset`), a box's turn about the normal
+   (`rotation`, from where its turned X lies in the plane). A sphere is always on XY.
+2. **One `move` after the primitive** for any other turn: the primitive at the origin as
+   FreeCAD builds it, then a free move. Extrudo's free move turns about world X, then Y, then Z
+   through the **box centre of the bodies it moves**, then moves; the importer reads the three
+   angles off the rotation (`eulerXYZ`) and the move as `t + R·c − c`, `c` that box centre
+   **measured by a rebuild inside the node's transaction** (the same kernel call the move
+   evaluates with, so the pivot is exact).
+3. **A stored leaf** when neither holds (a placement that isn't finite, past 10 km, or no
+   rotation is refused before anything is written, `placement`).
+
+A boolean's (or a fillet's) own placement, when it isn't the identity, is one `move` of its
+result (split pieces included) in the same transaction, after a rebuild that measures the
+result's box, checked together with the boolean. A tree under containers whose chain isn't
+the identity gets one `move` of its top's bodies at the end ("Place <top>"), checked against
+the stored shape as S3 places it; nothing inside the tree knows about the container (each
+node is built and checked in its top's frame: a node in another container than its top is
+placed relative to it. Trees that share an object are built in the first top's frame, so a top
+whose containers place it otherwise comes in as today, `container`: left in that frame, it would
+not be where the file has it).
+
+Every fixture root: by its own inputs BoxMoved, BoxTurnedZ (turned about Z: `rotation`),
+BoxQuarterX (a quarter turn about X: on the XZ plane), CylMoved, CylAlongX (on YZ), CylAlongMinusY
+(on XZ), CylDown (on XY, height negative), SphereMoved, SphereTilted (a sphere's turn is
+nothing), Torus; with a move BoxTilted, CylTilted, TorusTilted (general axes); the booleans of
+`placed_booleans` each with a move of their own (CutMoved, FusionTilted, Inner below Outer,
+MultiMoved); `in_containers` with one move of each top whose container is moved and turned.
+
+### Shared operands, and what a node that doesn't hold costs
+
+- **A shared operand exists once per use.** Before each use but the last, the user's
+  transaction first copies the operand's bodies (`move` with `copy`, nothing moved: "Copy
+  <operand>") and the user consumes the original; the copy is what the next user gets. This is
+  the plainest timeline the check proves: one feature per extra use, whatever the operand's
+  own depth (building it again would copy its whole subtree; `keepTools` keeps every tool of a
+  combine, not one). So an object used twice at each of *n* levels costs one copy per extra
+  link, not 2ⁿ. `shared_operand`: one cylinder the tool of two cuts (one copy), one box the
+  base of a cut and of a fuse (one copy). An operand of two trees is built in the first and
+  kept, by the copy, for the second: trees that share an object are one **unit**.
+- **Rule 2, as built: one transaction a unit, whole retries.** A unit (the trees that share
+  objects) is built inside one outer transaction (Extrudo's history nests them); each node in
+  its own inner one. When a node that didn't hold had operands built for it, or a top doesn't
+  hold, the pass has **waste**: the outer transaction is cancelled (the binder's state, the
+  attachment bytes and the body list go back with it, `Binder.mark`) and the unit is built
+  again from the start with what the pass learnt: that node is a stored leaf from the start
+  (its operands not built), that top comes in as today. A pass learns at least one thing, and
+  everything the check proved holds again on the same inputs. At most **4 passes**
+  (`MAX_TREE_PASSES`); past them the unit's tops come in as today (`passes`). Chosen over
+  removing the dead features one by one: a removal has to find every copy, move and import the
+  operands made and every later feature that named them, where a cancel is exact by
+  construction, and a second pass costs only the unit's own rebuilds. `nested` with its cut's
+  base and tool swapped: pass 1 builds the box, cylinder, fusion and holes, the cut doesn't
+  hold; pass 2 imports the cut's own shape and builds the box and the common: the timeline is
+  `Import Cut`, `Box001`, `Common`.
+- **Kernel calls:** a node is one `measureStoredShape` and one rebuild (a leaf: one
+  `storedShapeToStep` and one rebuild; a turned primitive or placed boolean one more rebuild
+  for the pivot; a fillet S6's describe and reference calls). A tree of *n* nodes costs about
+  2·*n* calls a pass, and a rebuild sends the design so far (S5's known limit: a file's cost
+  grows with nodes × design size). A retry costs another pass.
+
+### Expressions (S10's binder)
+
+A primitive's sizes (`Length`, `Width`, `Height`, `Radius`, `Radius1`, `Radius2`) bind through
+the `Binder` as feature inputs do (`Binder.bindPart`, in the node's transaction, before its
+rebuild; the rule decides, the shape check runs with the expressions in). A radius is written
+as a diameter, so the binder's transforms gain `double` (`2 * (…)`, read back as `(name / 2)`).
+A placement member (`.Placement.Base.x` …) binds only where the importer writes exactly that
+member as one input, as written or negated (S10's rule; never a stored 0): a cylinder's,
+sphere's or torus's `x`, `y`, `offset` on an origin plane whose axes are world axes, and a
+boolean's own translation (`dx`, `dy`, `dz` of its move when it doesn't turn). A box's `x` and
+`y` are its base's centre, never a member; **when a box's length or width is bound, its `x`
+and `y` follow it** (`followText`: `corner + (length) / 2`), so a changed parameter grows the
+box from FreeCAD's corner as the file's model does. A literal size edited in Extrudo grows the
+box about its centre (Extrudo's box sits on its centre). **A primitive or boolean placed by a
+turning move follows FreeCAD's model only at the imported sizes:** the kernel computes a free
+move's pivot when it evaluates (the bodies' box centre `c′`), while the move's distances were
+written for the centre `c` at import, so after a size changes the result differs from FreeCAD's
+by (I − R)(c′ − c). A box placed by a move also keeps its `x` and `y` as numbers: they don't
+follow a bound length or width. Part fillets' and chamfers' sizes live
+in the binary edge list, which has no expressions. The `bound` fixture comes in live: all 11 of
+its expressions are kept, and with `length` set to 40 and `lift` to 2 the cut measures what
+FreeCAD's changed model must (the box from 0 to 40, the hole following `length / 2`, the cut 2
+up). An expression on an object that ends as a stored leaf stays a number of the file's shape:
+on a type that never maps (an extrusion, a mirror, a Python object) it is an `other` target as
+before; on a primitive or boolean type it is an `input` target whose object didn't come in, so
+it ends `unmapped`. A fuse kept apart has no feature to hold one, a boolean turned by its own
+placement no input for a member, and an input left out because the file stores 0 has S10's
+reason for a stored 0: each ends `target` with that reason. **S10's note that S11
+would map the Part extrusions is corrected**: extrusions are stored leaves here, so their
+`LengthFwd` expressions stay numbers on what came in as a shape.
+
+### Limits (hostile files)
+
+| Limit | Value | Past it |
+|---|---|---|
+| Objects one tree | 500 (`MAX_TREE_NODES`) | the top comes in as today (`limit`) |
+| Objects the trees of one import | 2,000 (`MAX_IMPORT_TREE_NODES`, counted per tree walked) | the later trees' tops as today |
+| Shapes one MultiFuse or MultiCommon lists | 64 (`MAX_MULTI_OPERANDS`) | a stored leaf (`limit`) |
+| Features the trees of one import add (copies, moves and the features of a body a tree uses included) | 4,000 (`MAX_TREE_FEATURES`), a node's counted before any of them is added | the trees that would pass it as today |
+| Bodies one operand brings to the node that uses it | 256 (`MAX_OPERAND_BODIES`; the library's largest stored shape has 86 solids) | the user is a stored leaf (`limit`), a top as today |
+| Passes per unit | 4 (`MAX_TREE_PASSES`) | the unit's tops as today (`passes`) |
+| Edges in a fillet's or chamfer's list | 1,000 (S6's), the entry exactly 4 + 20 per edge | a stored leaf (`edges`) |
+| A primitive's size | above 1e-6 mm, at most 10 km, finite | a stored leaf (`value`) |
+| A placement | finite, within 10 km, a rotation | a stored leaf (`placement`) |
+| Stored leaves | S8's per-shape limits and the design's 100 MB | a leaf that can't come in makes its user a leaf, and so on up; a top that can't is as today |
+
+Also clean, each with its reason: a link to an object that isn't in the file, to itself, to a
+sketch, a sheet or a container (`operand`); a cycle of links (the node that links back is a
+leaf, `cycle`); the same object twice in one `Shapes` list, a boolean with one operand or none
+(`operand`); a count larger than the edge entry, a truncated entry, an index of 0, sizes that
+are 0, negative or not finite, a missing entry (`edges`); an index past the base's edges
+(S6's `element`); an operand whose stored shape is missing or has no solid (its user and the
+top as today); a root whose stored shape is a compound of nothing (no final shape, so no tree).
+The walk is iterative: a chain of 10,000 cuts is planned (and refused at the tree cap) in well
+under a second. The budgets (S3's time per call and per import, the restart cap) stay the
+judges of the whole import; a call that fails makes its node a leaf.
+
+**Measured** (Ubuntu machine, shared and loaded, one run each; `part-hostile.test.ts`,
+`BENCH=1`): a chain of fuses of one box, each fuse the base of the next: 12 fuses (25 objects)
+1.6 s and 62 kernel calls, 100 fuses 4.1 s and 502 calls, **300 fuses (601 objects, past the
+tree cap, raised for the test) 12.1 s and 1,502 calls**: about 2.5 calls an object and linear,
+since a rebuild remeshes only what the newest feature changed. The `deep_chain` fixture (twelve
+cuts in a row, 25 objects) takes 0.7 s. 500 objects a tree keeps one tree well inside S3's 60 s
+a call and the import's 10 minutes; 2,000 an import bounds the whole file's trees to about four
+such trees. What a tree costs beyond that is the kernel's own work on large shapes (below).
+
+### The report and the app
+
+`FcstdImportReport.trees` (`TreeImport`): per tree its top (object, name, type), the outcome
+(`history`, `leaves`: with stored leaves and live features above, `shape` and `left-out`: as
+today, with the reason), the passes, the container move, and per node (`TreeNodeReport`) the
+object, its type, what it became (`feature`, `leaf` with its reason and detail, `members`,
+`body` with the body's history), the features it added, the moves written for placements, the
+copies made of it, the references a fillet found, how a primitive was placed, the inputs bound,
+the face counts where they differ, `apart`. Every object of every tree has one outcome.
+
+`fcstdNotices`: a tree that came in counts as a shape "with its history", one with stored leaves
+"with part of its history", as a body with steps does; the first notice's bracket says what the
+history is made of ("sketches and features", "primitives and booleans", or "sketches, features,
+primitives and booleans"). A tree that came in as today joins the line "Taken from the file's own
+shapes, without their whole history: …" with its reason. One new sentence: "Built on the file's
+own shape for a part of it: *Name*, because *reason*. What uses that part comes in with its
+history." (several: "Built on the file's own shapes for parts of them: *A*; *B*. Most often
+because *reason*, or *reason*. What uses those parts comes in with its history.").
+
+### The library (60 files, `history-corpus.test.ts`)
+
+- **Trees: 33** (a final shape of S3's kind `shape` whose object is one of the tops above; by
+  the Part links alone there are 41 tops, and the other 8 are no final shape: used by sketches,
+  a Python object, a thickness or a PartDesign fillet, or holding no solid), and
+  they hold 296 of the library's 321 Part primitives, booleans, fillets and chamfers; the other
+  25 are used by Python objects, PartDesign features and objects that are no final shape.
+  **8 with their whole history** (3
+  cuts, 2 boxes, 2 cylinders, a sphere), **11 with stored leaves and live booleans above them**
+  (6 MultiFuses, 4 cuts, a MultiCommon), **14 as today** (5 chamfers, 5 MultiCommons, 3 cuts, a
+  fillet that S3 leaves out too).
+- **Objects of the trees that came in:** 60 features (19 boxes, 11 cylinders, a sphere, 14
+  cuts, 12 MultiFuses, a MultiCommon, 2 Part fillets) and 35 stored leaves: 33 by type (17 Part
+  extrusions, 8 Python objects, 4 PartDesign features outside a body, a plain stored shape, a
+  mirror, a sweep, a revolution) and 2 that don't hold (`differs`: a MultiFuse whose stored
+  shape has 2 solids where Extrudo's join makes 3, a MultiCommon of 6 solids where the chain
+  of intersects keeps 2). Primitives placed by their own inputs 29, with a move 2 (boxes);
+  moves written 7; container moves 0; copies of shared operands 0 (no tree uses an object twice,
+  and no two trees that came in share one); expressions bound on tree objects 0 (the library's bound sizes are on objects of
+  trees that come in as today, or on extrusions); retried units 4, the most passes 2. The
+  features that held drift at most 1.8e-8 in volume from their stored shapes; 6 hold with face
+  counts that differ from FreeCAD's (refine, and joins that merge where FreeCAD's fuse didn't).
+  The trees' Part fillets found 3 edges, none missing.
+- **The census** (by the links alone): 175 primitives (91 boxes, 82 cylinders, a sphere, a
+  cone; 32 turned: 16 boxes about Z, 11 cylinders by quarter turns, 5 otherwise), 131 booleans (51 cuts, 24 fuses, 7
+  commons, 42 MultiFuses, 7 MultiCommons), 47 of them with a placement of their own, 15 Part
+  fillets and chamfers, 18 compounds.
+- **The standing numbers did not move:** 25 bodies with their history, 6 from the file's
+  shape, 4 empty; 131 references found; 50 parameters; 52 expressions kept; no restart; every
+  final shape that isn't a tree's top comes in exactly as before (329 compared, 0 differ). The
+  count of final shapes is unchanged.
+- **`import`s:** the final shapes' imports go from **266 to 247**: the 19 tops that now come
+  in with their history (8) or with leaves (11) have none. The trees' stored leaves add **35**
+  imports. 287 `import` features in all, S8's steps included.
+- **Expressions:** 4 entries on Part objects' sizes and placements moved from `other` targets to
+  feature inputs, where they are `unmapped` (3) or `target` (1): their objects belong to trees
+  that come in as today.
+- **Time per file:** median 0.17 s (0.1 before), **slowest 56 s (14.4 s before)**. The slowest
+  is a file of letters cut and intersected: four MultiCommon trees each import nine Part
+  extrusions of text (each a STEP import Extrudo takes seconds to rebuild and mesh) and two of
+  them can't come in after all. Two changes measured on it took it from 119 s: a fuse whose
+  stored shape is its operands side by side (their solids and volumes add up) is tried apart
+  first (Extrudo's join took 21 s to find that nine letters don't touch), and the file's own
+  shapes are built first in a pass, so a leaf that can't come in ends its users before anything
+  is built for them. Another file of extruded text took 1.6 s before and 42 s now, for the same
+  reason (a boolean on imported letters rebuilt in Extrudo's kernel); the import's budgets
+  bound both.
+- **The 14 trees that come in as today, by reason:** 4 chamfers (`reference`) in one file,
+  each on a deep tree of booleans that held, where an edge the chamfer names has no counterpart
+  on the rebuilt body (the check compares the solids' measures, not their edges; of the
+  library's 50 dress-up lookups, bodies' included, 10 met a rebuilt body with another number of edges than
+  the stored base); 1 chamfer (`failed`): our OCCT refuses its size on
+  an edge it doesn't fit, as S6's two fillets; 3 MultiCommons (`failed`): a common
+  whose first shape is several solids, where Extrudo's intersect refuses a solid that misses the
+  tool and FreeCAD drops it; 2 MultiCommons (`operand`): a shape they use is a Python
+  object whose stored shape can't come in; 2 cuts (`differs`, by 4.5e-5 and 5.9e-5 in volume:
+  both have stored leaves below them, and the drift is of the size S8 measured through STEP); 1 cut
+  (`failed`): its tool doesn't overlap its base, a cut Extrudo refuses as removing nothing; 1
+  fillet whose own stored shape S3 already leaves out (`differs` by 160 %, as its STEP does).
+- **Where the rest are:** the 14 trees that come in as today name 227 primitives, booleans,
+  fillets and chamfers (an object in two trees counted in each), against 71 in the trees that
+  came in.
+- **What the gaps would save, as counts:** a cone primitive 0 (the library's one cone is used by
+  an object that is no tree); a part cylinder or other partial primitive 0; a refine flag 0 (6 trees
+  hold without it, faces aside); a combine that keeps one tool of several 0 (no tree that came
+  in shares an operand); an intersect that drops a body missing the tool 3 trees; a cut that
+  may remove nothing 1; extrusions as features 17 leaves.
+
+### Review round (2026-11-18)
+
+An independent review of the slice found these; each has a test in `part-review.test.ts`.
+
+1. **What one node adds is known first.** A cut writes a combine per body of its base, an
+   intersect one per body and per shape after the first, so a stored compound of many solids
+   could make one attempt add thousands of features with no time check inside. The count (copies,
+   combines, moves) is taken before anything is added; past `MAX_TREE_FEATURES` the node's trees
+   come in as today, and an operand of more than `MAX_OPERAND_BODIES` bodies makes its user a
+   stored leaf, so one attempt is bounded whatever the cap is.
+2. **One set of counters per import** (`WalkShared`, `newWalkShared`, `markWalkShared`): the
+   features walked, the steps' stored text, the projections, the datums, which body owns which
+   feature and sketch, and whether the design's attachments are full. The body walk before the
+   trees and each body a tree uses share it, a cancelled pass gives back what it counted, and the
+   features of a body a tree uses count towards `MAX_TREE_FEATURES`.
+3. **A compound uses nothing up; what uses the compound uses its members**
+   (`effectiveOperands`): a member a compound holds and something else uses directly is copied
+   for each use but the last, whichever comes first.
+4. **An object named as both `Base` and `Tool`** is refused (`operand`), as one listed twice in
+   `Shapes` is.
+5. **A cancelled pass forgets its planes** (`forgetRemovedPlanes`): an offset plane the sketch of
+   a body operand made went with the pass, and the next pass's sketch would have named it. The
+   datums and owners go back with the counters; decoded sketches are the file's and stay.
+6. **A pass that loses its first top runs again.** The unit is built in that top's frame, so the
+   other tops can only be judged against a first top still there.
+7. **Words and reports:** a tree whose body operand took a stored-shape step comes in `leaves`; a
+   tree that uses a body says "sketches, features, primitives and booleans"; one tree on several
+   of the file's shapes reads "Built on the file's own shapes for parts of it".
+
+Measured (Ubuntu machine, shared; `BENCH=1`): a tree of 456 objects, seven MultiFuses of 64 stored
+leaves each, none with a stored shape, so that every leaf changes what the pass needs: 0.7 s.
+
+### After main's limits and the STEP pass (2026-11-18)
+
+- **Core's limits on an expression** (ADR-0004's amendment: 10,000 characters, 1,000 values a
+  call, 256 levels, 10,000 levels through parameters) are tighter than the emitter's 16,384
+  characters. Text between the two is written, core refuses it with the code `limit`, and the
+  rule puts the number back with that reason (tested). `fc-expr.ts`'s own 4,096 characters of
+  FreeCAD text stay the first gate. **A box's centre** reads both its sizes, so it can pass the
+  limit where each size doesn't: it is kept only where core evaluates it to the file's number,
+  else it stays a number (tested) and the bound sizes stay live.
+- **The STEP pass** (`step-reals.ts`) rewrites reals written without a decimal point before an
+  `import` reads them. The STEP of a stored leaf or step is our own writer's, whose reals all
+  have the point, so the pass returns it unchanged and what the read-back checked is what the
+  feature reads (tested on the fixtures' leaves). The library's numbers did not move.
+
+### What S12 and S13 inherit
+
+- **S12:** compounds at the top (18 in the library) still come in as the file's shape; a
+  compound could come in as its members' trees, one body each, which this slice's code does for
+  a compound used as a tool. Part containers as Extrudo components: a tree inside an `App::Part`
+  already comes in with one move of its top, so a component would take that move's place. Files
+  from before bodies: a PartDesign feature outside a body is a stored leaf here (4 in the
+  library's trees).
+- **S13:** the time a tree costs on large imported shapes (two files above), the chamfers whose
+  edges a rebuilt boolean doesn't share with FreeCAD's, and S8's STEP drift as a tolerance per
+  shape. Hostile input: the passes rebuild a unit from the start, so a unit whose nodes keep
+  failing one by one costs up to 4 passes of its own rebuilds; the feature cap and the import's
+  time bound it.

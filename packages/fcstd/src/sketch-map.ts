@@ -201,7 +201,8 @@ export interface ProjectedEntity {
 }
 
 /** How an Extrudo dimension's value is its FreeCAD constraint's (S10). */
-export type DimensionTransform = 'same' | 'neg' | 'half';
+/** How an Extrudo value holds FreeCAD's: as it is, negated, halved (an arc's diameter), doubled (a Part primitive's radius as a diameter, S11). */
+export type DimensionTransform = 'same' | 'neg' | 'half' | 'double';
 
 export interface SketchMapOptions {
   /** S10: the Extrudo name of each named driving constraint, by constraint index (the import's name rule). */
