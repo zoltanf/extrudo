@@ -2,7 +2,7 @@ import { gzipSync } from 'node:zlib';
 import { Design } from '@extrudo/api';
 import { type AttachmentId, addAttachment, type BodyId, createDocument } from '@extrudo/core';
 import type { BodyPlan, BodyStep, ImportResult } from '@extrudo/f3d';
-import type { HistoryStop } from '@extrudo/fcstd';
+import type { HistoryStop, TreeReason } from '@extrudo/fcstd';
 import { memoryProjectStore, sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { appNotifications } from '../design-system/notifications';
@@ -458,6 +458,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             restarts: 0,
             bodies: [],
             parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
+            trees: [],
           },
         };
       },
@@ -562,6 +563,133 @@ describe('fcstdNotices', () => {
       'Imported from the FreeCAD file: 5 of 5 shapes, 1 with its history and 4 as bodies without history.',
       "Taken from the file's own shapes, without their whole history: Housing; Clip; Knob. Most often because it has a feature Extrudo doesn't rebuild from FreeCAD files yet, or a rebuilt feature didn't match the file's shape. The features rebuilt before that stay in the timeline, ahead of a Remove that takes out what they made.",
     ]);
+  });
+
+  it('counts Part trees as shapes with their history, and words their stored parts (S11)', () => {
+    const node = (object: string, outcome: 'feature' | 'leaf', reason?: TreeReason) => ({
+      object,
+      name: object,
+      type: 'Part::Box',
+      outcome,
+      features: ['f'],
+      moves: 0,
+      copies: 0,
+      ...(reason ? { reason } : {}),
+    });
+    const tree = (
+      name: string,
+      outcome: 'history' | 'leaves' | 'shape',
+      nodes: ReturnType<typeof node>[] = [],
+      reason?: TreeReason,
+    ) => ({
+      object: name,
+      name,
+      type: 'Part::Cut',
+      outcome,
+      nodes,
+      bodies: outcome === 'shape' ? [] : ['b:0'],
+      passes: 1,
+      ...(reason ? { reason } : {}),
+    });
+    // box_cyl_cut: one tree, every object a feature.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [tree('Cut', 'history', [node('Box', 'feature')])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (primitives and booleans).',
+    ]);
+    // stored_leaf: two trees, each on a stored shape.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        trees: [
+          tree('Cut', 'leaves', [node('Imported', 'leaf', 'type'), node('Cut', 'feature')]),
+          tree('Cut001', 'leaves', [node('Tool', 'leaf', 'type'), node('Cut001', 'feature')]),
+        ],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 2 of 2 shapes, with part of their history (primitives and booleans).',
+      "Built on the file's own shapes for parts of them: Cut; Cut001. Most often because part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet. What uses those parts comes in with its history.",
+    ]);
+    // extrusion_leaf: one.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [tree('Cut', 'leaves', [node('Extrude', 'leaf', 'type')])],
+      })[1],
+    ).toBe(
+      "Built on the file's own shape for a part of it: Cut, because part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet. What uses that part comes in with its history.",
+    );
+    // One tree on several of the file's shapes.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [
+          tree('Cut', 'leaves', [node('Extrude', 'leaf', 'type'), node('Mirror', 'leaf', 'type')]),
+        ],
+      })[1],
+    ).toBe(
+      "Built on the file's own shapes for parts of it: Cut, because part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet. What uses those parts comes in with its history.",
+    );
+    // body_operand: a tree that uses a PartDesign body brought its sketches and features in too.
+    const bodyNode = (steps: { reason: HistoryStop }[]) => ({
+      ...node('Body', 'feature'),
+      outcome: 'body' as const,
+      body: { ...body('Body', 'history'), steps },
+    });
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [tree('Fusion', 'history', [bodyNode([]) as never])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches, features, primitives and booleans).',
+    ]);
+    // A body that took a stored-shape step leaves its tree with part of its history.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [tree('Fusion', 'leaves', [bodyNode([{ reason: 'differs' }]) as never])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with part of its history (sketches, features, primitives and booleans).',
+      "Built on the file's own shape for a part of it: Fusion, because a rebuilt feature didn't match the file's shape. What uses that part comes in with its history.",
+    ]);
+    // other_primitives: part primitives as today, beside a body of its own.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 4,
+        shapes: [shape('CylQuarter'), shape('SphereCap')],
+        bodies: [body('Bracket', 'history')],
+        trees: [
+          tree('Fusion', 'history'),
+          tree('CylQuarter', 'shape', [], 'partial'),
+          tree('SphereCap', 'shape', [], 'partial'),
+        ],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 4 of 4 shapes, 2 with their history and 2 as bodies without history.',
+      "Taken from the file's own shapes, without their whole history: CylQuarter; SphereCap. Most often because it is only part of a cylinder, sphere or torus.",
+    ]);
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 2,
+        bodies: [body('Bracket', 'history')],
+        trees: [tree('Fusion', 'history')],
+      })[0],
+    ).toBe(
+      'Imported from the FreeCAD file: 2 of 2 shapes, with their history (sketches, features, primitives and booleans).',
+    );
   });
 
   it('gives one body its one reason, and says when a body is only partly rebuilt', () => {

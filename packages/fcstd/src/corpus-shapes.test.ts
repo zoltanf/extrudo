@@ -183,7 +183,9 @@ describe.skipIf(!root)('a folder of real .FCStd files through importFcstd', () =
           report,
         } = await importFcstd(bytes, 'X', {
           kernel,
+          // S3's shapes-only import: no body history, no Part trees (S11).
           maxFileFeatures: 0,
+          maxImportTreeNodes: 0,
         });
         const ms = performance.now() - t;
         times.push(ms);

@@ -11,16 +11,18 @@ import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import { Binder } from './bind';
-import { type BodyHistory, bodyChain, importBodies } from './bodies';
+import { type BodyHistory, bodyChain, importBodies, markWalkShared, newWalkShared } from './bodies';
 import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
-import { readFcstd } from './model';
+import { readFcstd, storedShapeEntry } from './model';
 import { cleanName } from './names';
 import { type ParametersReport, parametersReport } from './parameters-report';
 import { prepareParameters } from './params';
+import { importTrees, type TreeImport } from './part-import';
+import { partTrees } from './part-tree';
 import { type ImportedShape, importShapes, type LeftOutShape, setBodies } from './shapes';
-import { releasePlane } from './sketch-place';
+import { containerChain, releasePlane } from './sketch-place';
 
 /**
  * The most a `.FCStd` file may be before it is read: the import holds the
@@ -59,6 +61,12 @@ export interface FcstdImportOptions {
   /** S10's `MAX_IMPORT_PARAMETERS` and `MAX_IMPORT_EXPRESSIONS`, for tests. */
   readonly maxParameters?: number;
   readonly maxExpressions?: number;
+  /** S11's limits (`MAX_TREE_NODES`, `MAX_IMPORT_TREE_NODES`, `MAX_TREE_PASSES`, `MAX_TREE_FEATURES`, `MAX_OPERAND_BODIES`), for tests. */
+  readonly maxOperandBodies?: number;
+  readonly maxTreeNodes?: number;
+  readonly maxImportTreeNodes?: number;
+  readonly maxTreePasses?: number;
+  readonly maxTreeFeatures?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -90,6 +98,8 @@ export interface FcstdImportReport {
   readonly bodies: readonly BodyImport[];
   /** The file's parameters and expressions (S10): what came in, and every expression's outcome. */
   readonly parameters: ParametersReport;
+  /** The Part workbench's trees (S11), in document order of their tops: what each object became. */
+  readonly trees: readonly TreeImport[];
 }
 
 export interface FcstdImportResult {
@@ -124,16 +134,28 @@ export async function importFcstd(
   });
   const binder = new Binder(design, prepared, (plane) => releasePlane(design, plane));
   const budget = new KernelBudget(options.kernel, options);
-  // Progress: each feature the walk takes, then each shape converted.
-  const steps = shapes.reduce((n, s) => {
-    if (s.kind !== 'body') return n;
-    const chain = bodyChain(doc, s.object);
-    return n + ('features' in chain ? chain.features.length : 0);
-  }, 0);
+  // S11: the Part workbench's trees, planned from the file alone.
+  const plan = partTrees(doc, shapes, {
+    ...(options.maxTreeNodes !== undefined ? { maxTreeNodes: options.maxTreeNodes } : {}),
+    ...(options.maxImportTreeNodes !== undefined
+      ? { maxImportNodes: options.maxImportTreeNodes }
+      : {}),
+  });
+  // Progress: each feature the walk takes, each tree node, then each shape converted.
+  const steps =
+    shapes.reduce((n, s) => {
+      if (s.kind !== 'body') return n;
+      const chain = bodyChain(doc, s.object);
+      return n + ('features' in chain ? chain.features.length : 0);
+    }, 0) + plan.trees.reduce((n, t) => n + t.order.length, 0);
   let walked = 0;
   // The stored-shape steps' STEP bytes (S8), then the shapes import's.
   const stepFiles = new Map<AttachmentId, Uint8Array>();
-  const histories = await importBodies(doc, shapes, design, {
+  const known = { ids: [] as string[] };
+  // One set of counters for the body walk and every body a tree uses (S11).
+  const shared = newWalkShared(options.maxExternal);
+  const walkOptions = {
+    shared,
     files: stepFiles,
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     ...(options.maxDatums !== undefined ? { maxDatums: options.maxDatums } : {}),
@@ -152,10 +174,58 @@ export async function importFcstd(
     ...(options.originFirst === false ? { originFirst: false } : {}),
     ...(options.onUntouched ? { onUntouched: options.onUntouched } : {}),
     onStep: () => options.onProgress?.(++walked, steps + shapes.length),
+  };
+  const histories = await importBodies(doc, shapes, design, { ...walkOptions, known });
+  const treeWalk = await importTrees(doc, plan, design, {
+    budget,
+    binder,
+    files: stepFiles,
+    ...(options.maxAttachmentsBytes !== undefined
+      ? { maxAttachmentsBytes: options.maxAttachmentsBytes }
+      : {}),
+    known: known.ids,
+    ...(options.maxTreePasses !== undefined ? { maxPasses: options.maxTreePasses } : {}),
+    ...(options.maxTreeFeatures !== undefined ? { maxFeatures: options.maxTreeFeatures } : {}),
+    ...(options.maxOperandBodies !== undefined
+      ? { maxOperandBodies: options.maxOperandBodies }
+      : {}),
+    markWalk: () => markWalkShared(shared),
+    onStep: () => options.onProgress?.(++walked, steps + shapes.length),
+    // A PartDesign body a tree uses: walked as any body is, from the design's bodies so far.
+    walkBody: async (body, ids) => {
+      const at = { ids: [...ids] };
+      const [history] = await importBodies(
+        doc,
+        [
+          {
+            kind: 'body',
+            object: body,
+            source: body,
+            entry: storedShapeEntry(doc, body),
+            format: 'brep',
+            name: body.label,
+            visible: true,
+            chain: containerChain(doc, body)?.chain ?? [],
+          },
+        ],
+        design,
+        { ...walkOptions, known: at },
+      );
+      return { history: history as BodyHistory, known: at.ids };
+    },
   });
   binder.finish();
   const complete = new Set(histories.filter((h) => !h.stop).map((h) => h.object));
-  const rest = shapes.filter((s) => !(s.kind === 'body' && complete.has(s.object.name)));
+  const byTop = new Map(shapes.map((s) => [s.object.name, s]));
+  for (const t of treeWalk.trees)
+    if (t.outcome === 'history' || t.outcome === 'leaves') {
+      complete.add(t.object);
+      const shape = byTop.get(t.object);
+      if (shape) setBodies(design, t.bodies, shape, t.name);
+    }
+  const rest = shapes.filter(
+    (s) => !((s.kind === 'body' || s.kind === 'shape') && complete.has(s.object.name)),
+  );
   const removesAt = design.doc.features.length;
   const result = await importShapes(doc, rest, design, {
     ...options,
@@ -204,6 +274,9 @@ export async function importFcstd(
       restarts: budget.restarts,
       bodies,
       parameters: parametersReport(prepared, binder, design.doc),
+      trees: treeWalk.trees.map((t) =>
+        t.outcome === 'shape' && !came.has(t.object) ? { ...t, outcome: 'left-out' } : t,
+      ),
     },
   };
 }

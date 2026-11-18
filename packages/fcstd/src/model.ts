@@ -21,6 +21,12 @@ export type Vec3 = readonly [number, number, number];
 export interface FcPlacement {
   readonly position: Vec3;
   readonly rotation: readonly [number, number, number, number];
+  /**
+   * The file's rotation was no rotation (a zero quaternion or axis), read as
+   * none: S11 refuses to build on such a placement (S3 and the walk read it
+   * as the identity, as before).
+   */
+  readonly degenerate?: true;
 }
 
 /** One sub-element of a link (`Face6`, `Edge12`, `H_Axis`, `''` for the whole object). */
@@ -260,6 +266,7 @@ export function placementOf(what: string, a: Readonly<Record<string, string>>): 
     return {
       position,
       rotation: [(x as number) * s, (y as number) * s, (z as number) * s, Math.cos(angle / 2)],
+      ...(length < 1e-12 && Math.abs(s) > 1e-12 ? { degenerate: true as const } : {}),
     };
   }
   const q = [
@@ -269,7 +276,7 @@ export function placementOf(what: string, a: Readonly<Record<string, string>>): 
     finite(what, a.Q3) ?? 1,
   ];
   const length = Math.hypot(...q);
-  if (length < 1e-12) return { position, rotation: [0, 0, 0, 1] };
+  if (length < 1e-12) return { position, rotation: [0, 0, 0, 1], degenerate: true };
   return { position, rotation: q.map((v) => v / length) as unknown as FcPlacement['rotation'] };
 }
 

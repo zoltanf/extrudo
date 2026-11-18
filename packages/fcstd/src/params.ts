@@ -1032,7 +1032,7 @@ export function modelRead(
     return dim ? { kind: 'constraint', object, at, dim } : undefined;
   }
   if (rest.length !== 1 || p.index !== undefined) return undefined;
-  if (!object.type.startsWith('PartDesign::')) return undefined;
+  if (!object.type.startsWith('PartDesign::') && !PART_INPUTS.has(object.type)) return undefined;
   const d = propertyDim(
     Object.hasOwn(object.properties, p.name) ? object.properties[p.name] : undefined,
     object.type,
@@ -1070,11 +1070,18 @@ function classify(o: FcObject, path: string, text: string): Entry {
   )
     return { ...withNode, target: 'plane' };
   if (
-    o.type.startsWith('PartDesign::') &&
+    (o.type.startsWith('PartDesign::') || PART_INPUTS.has(o.type)) &&
     names.length === 1 &&
     p.components[0]?.index === undefined
   )
     return { ...withNode, target: 'input', property: names[0] as string };
+  // S11: a Part object's placement member, which a tree's feature may write as one input.
+  if (
+    PART_INPUTS.has(o.type) &&
+    PLACEMENT_MEMBER.test(names.join('.')) &&
+    p.components.every((c) => c.index === undefined && !c.quoted)
+  )
+    return { ...withNode, target: 'input', property: names.join('.') };
   return { ...withNode, target: 'other' };
 }
 
@@ -1087,6 +1094,7 @@ function targetKind(e: Entry): ParameterKind | 'count' | undefined {
     return d ? (d.angle === 1 ? 'angle' : 'length') : undefined;
   }
   if (e.target === 'input') {
+    if (PLACEMENT_MEMBER.test(e.property as string)) return 'length';
     const p = Object.hasOwn(e.owner.properties, e.property as string)
       ? e.owner.properties[e.property as string]
       : undefined;
@@ -1109,6 +1117,7 @@ const EXACT_TYPES: ReadonlySet<string> = new Set([
 function storesExactly(e: Entry): boolean {
   if (e.target === 'dimension' || e.target === 'plane') return true;
   if (e.target !== 'input') return false;
+  if (PLACEMENT_MEMBER.test(e.property as string)) return true;
   const p = Object.hasOwn(e.owner.properties, e.property as string)
     ? e.owner.properties[e.property as string]
     : undefined;
@@ -1126,15 +1135,35 @@ export function storedValue(e: Entry): number | undefined {
     const v = e.owner.properties.AttachmentOffset?.value;
     return v?.kind === 'placement' ? v.value.position[2] : undefined;
   }
-  if (e.target === 'input') {
-    const p = Object.hasOwn(e.owner.properties, e.property as string)
-      ? e.owner.properties[e.property as string]
-      : undefined;
-    return p && (p.value.kind === 'float' || p.value.kind === 'integer')
-      ? p.value.value
+  if (e.target === 'input') return partValue(e.owner, e.property as string);
+  return undefined;
+}
+
+/** The Part objects whose properties a tree's features write as inputs (S11). */
+const PART_INPUTS: ReadonlySet<string> = new Set([
+  'Part::Box',
+  'Part::Cylinder',
+  'Part::Sphere',
+  'Part::Torus',
+  'Part::Cut',
+  'Part::Fuse',
+  'Part::Common',
+  'Part::MultiFuse',
+  'Part::MultiCommon',
+]);
+/** A placement's position member, as an expression's path names it. */
+const PLACEMENT_MEMBER = /^Placement\.Base\.[xyz]$/;
+
+/** The number an object stores for a property, or a placement's position member (`Placement.Base.x`). */
+export function partValue(o: FcObject, property: string): number | undefined {
+  if (PLACEMENT_MEMBER.test(property)) {
+    const v = o.properties.Placement?.value;
+    return v?.kind === 'placement'
+      ? v.value.position['xyz'.indexOf(property.slice(-1))]
       : undefined;
   }
-  return undefined;
+  const p = Object.hasOwn(o.properties, property) ? o.properties[property] : undefined;
+  return p && (p.value.kind === 'float' || p.value.kind === 'integer') ? p.value.value : undefined;
 }
 
 /**
