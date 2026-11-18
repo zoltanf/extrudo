@@ -11,10 +11,19 @@ import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import { Binder } from './bind';
-import { type BodyHistory, bodyChain, importBodies, markWalkShared, newWalkShared } from './bodies';
+import {
+  type BodyHistory,
+  bodyChain,
+  importBodies,
+  MAX_BODY_FEATURES,
+  MAX_FILE_FEATURES,
+  markWalkShared,
+  newWalkShared,
+} from './bodies';
 import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
+import { type LooseChain, looseChains } from './loose-chains';
 import { readFcstd, storedShapeEntry } from './model';
 import { cleanName } from './names';
 import { type ParametersReport, parametersReport } from './parameters-report';
@@ -67,6 +76,8 @@ export interface FcstdImportOptions {
   readonly maxImportTreeNodes?: number;
   readonly maxTreePasses?: number;
   readonly maxTreeFeatures?: number;
+  /** S12a's `MAX_LOOSE_CHAINS`, for tests. */
+  readonly maxLooseChains?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -141,9 +152,22 @@ export async function importFcstd(
       ? { maxImportNodes: options.maxImportTreeNodes }
       : {}),
   });
+  // S12a: the PartDesign features in no body, as rows of features ending in a final shape.
+  const loose = new Map<string, LooseChain>(
+    looseChains(
+      doc,
+      shapes.filter((s) => s.kind === 'chain-tip'),
+      {
+        maxFeatures: options.maxBodyFeatures ?? MAX_BODY_FEATURES,
+        maxFile: options.maxFileFeatures ?? MAX_FILE_FEATURES,
+        ...(options.maxLooseChains !== undefined ? { maxChains: options.maxLooseChains } : {}),
+      },
+    ).map((c) => [c.tip.name, c]),
+  );
   // Progress: each feature the walk takes, each tree node, then each shape converted.
   const steps =
     shapes.reduce((n, s) => {
+      if (s.kind === 'chain-tip') return n + (loose.get(s.object.name)?.features.length ?? 0);
       if (s.kind !== 'body') return n;
       const chain = bodyChain(doc, s.object);
       return n + ('features' in chain ? chain.features.length : 0);
@@ -175,7 +199,7 @@ export async function importFcstd(
     ...(options.onUntouched ? { onUntouched: options.onUntouched } : {}),
     onStep: () => options.onProgress?.(++walked, steps + shapes.length),
   };
-  const histories = await importBodies(doc, shapes, design, { ...walkOptions, known });
+  const histories = await importBodies(doc, shapes, design, { ...walkOptions, known, loose });
   const treeWalk = await importTrees(doc, plan, design, {
     budget,
     binder,
@@ -224,7 +248,11 @@ export async function importFcstd(
       if (shape) setBodies(design, t.bodies, shape, t.name);
     }
   const rest = shapes.filter(
-    (s) => !((s.kind === 'body' || s.kind === 'shape') && complete.has(s.object.name)),
+    (s) =>
+      !(
+        (s.kind === 'body' || s.kind === 'shape' || s.kind === 'chain-tip') &&
+        complete.has(s.object.name)
+      ),
   );
   const removesAt = design.doc.features.length;
   const result = await importShapes(doc, rest, design, {

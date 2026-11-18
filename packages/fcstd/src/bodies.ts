@@ -60,6 +60,7 @@ import {
 import { type FinalShape, linkedObjects, rotate } from './final-shapes';
 import { addHole } from './holes';
 import type { RebuildResult, ShapeMeasure } from './import-kernel';
+import type { LooseChain } from './loose-chains';
 import {
   binaryFormProblem,
   type FcDocument,
@@ -144,6 +145,8 @@ export type HistoryStop =
   | 'import-time'
   /** The kernel failed too often. */
   | 'restarts'
+  /** A loose chain's root builds on a shape that is no feature of the chain: that shape comes in first (S12a). */
+  | 'foreign-base'
   /** A dress-up's edge or face has no counterpart on the rebuilt body, or several (S6). */
   | 'reference';
 
@@ -227,11 +230,16 @@ export interface HistoryStep {
   readonly after: number;
 }
 
-/** What happened to one PartDesign body. */
+/** What happened to one PartDesign body, or to one loose chain (S12a), which is walked as a body is. */
 export interface BodyHistory {
-  /** The body's internal name and its name in the design. */
+  /** The body's internal name (a loose chain's tip's) and its name in the design. */
   readonly object: string;
   readonly name: string;
+  /** Set for a loose chain: PartDesign features in no body, this object their tip. */
+  readonly loose?: {
+    /** The shape its root builds on, when that is no feature of the chain. */
+    readonly foreignBase?: string;
+  };
   /** The solid features in its chain (up to its tip). */
   readonly features: number;
   /** The features that came in with their history, in order. */
@@ -300,7 +308,12 @@ export interface BodyWalkOptions {
   readonly known?: { ids: string[] };
   /** The counters of the whole import, when it walks more than once (S11). */
   readonly shared?: WalkShared;
+  /** The loose chains (S12a), by their tips' names: a final shape of kind `chain-tip` found here is walked. */
+  readonly loose?: ReadonlyMap<string, LooseChain>;
 }
+
+/** Who owns what a loose chain walks: every chain alike, since each walks its own copy of what they share (S12a). */
+const LOOSE_OWNER = '\u0000loose chain';
 
 /**
  * What every walk of one import counts together (S11): the body walk before the trees and each
@@ -352,6 +365,16 @@ export function markWalkShared(shared: WalkShared): () => void {
 
 /** Reasons that end a body however its features go on: its chain, the walk's limits, the budget (S8). */
 const ENDS_BODY: ReadonlySet<HistoryStop> = new Set(['chain', 'restarts', 'import-time']);
+
+/** What the walk takes from a body or a loose chain: its features in order, or why it has none. */
+type WalkSource =
+  | {
+      readonly features: readonly FcObject[];
+      readonly startsFrom?: string;
+      /** A loose chain's root builds on this shape, which comes in first as a stored-shape step. */
+      readonly foreignBase?: FcObject;
+    }
+  | { readonly broken: string; readonly reason?: HistoryStop };
 
 /** The attachments the design's `import` features use. */
 function importFiles(design: Design): Set<string> {
@@ -820,11 +843,22 @@ export async function importBodies(
   };
 
   for (const shape of shapes) {
-    if (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body') continue;
+    const looseChain = shape.kind === 'chain-tip' ? options.loose?.get(shape.object.name) : undefined;
+    if (!looseChain && (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body')) continue;
     const body = shape.object;
     const name = cleanName(shape.name, body.name);
-    const chain = bodyChain(doc, body);
+    const chain: WalkSource = !looseChain
+      ? bodyChain(doc, body)
+      : looseChain.refused
+        ? { broken: looseChain.refused.detail, reason: looseChain.refused.reason }
+        : {
+            features: looseChain.features,
+            ...(looseChain.foreignBase ? { foreignBase: looseChain.foreignBase } : {}),
+          };
     const features = 'features' in chain ? chain.features : [];
+    /** What the walk's ownership is kept under: this body, or every loose chain alike. */
+    const ownerKey = looseChain ? LOOSE_OWNER : body.name;
+    const foreignBase = 'foreignBase' in chain ? chain.foreignBase : undefined;
     const mapped: MappedFeature[] = [];
     const sketchOutcomes: SketchOutcome[] = [];
     /** Bodies of other FreeCAD bodies: never this body's. */
@@ -878,7 +912,11 @@ export async function importBodies(
       } else
         run = { features: [o], first: record, pending: true, why: new Map([[o.name, record]]) };
     };
-    if ('broken' in chain) stop(undefined, 'chain', chain.broken);
+    if ('broken' in chain) stop(undefined, chain.reason ?? 'chain', chain.broken, undefined, undefined, true);
+    // A root on a shape from outside the chain: that shape takes the body's place before the first
+    // feature is tried, through the step any feature that doesn't hold takes (S8).
+    else if (foreignBase)
+      stop(foreignBase, 'foreign-base', `it builds on ${named(foreignBase.name)}, a shape from outside its features`);
     /** The sketches imported for this body's kept features, by FreeCAD name. */
     const sketches = new Map<string, Extract<AddSketchResult, { imported: true }>>();
     /**
@@ -903,13 +941,18 @@ export async function importBodies(
         return;
       }
       const sketchObject = sketchOfFeature(doc, f);
+      // Nothing else says where a loose chain's sketch is: a placement the reader left out is no plane.
+      if (looseChain && sketchObject?.unreadable?.includes('Placement')) {
+        stop(f, 'sketch', "its sketch's placement can't be read");
+        return;
+      }
       // Each sketch is decoded once per import (the axis lookup here and addSketch share it).
       let decodedSketch = sketchObject ? decodedSketches.get(sketchObject.name) : undefined;
       if (sketchObject && !decodedSketch) {
         decodedSketch = decodeSketch(sketchObject);
         decodedSketches.set(sketchObject.name, decodedSketch);
       }
-      const previous = features[i - 1]?.name;
+      const previous = features[i - 1]?.name ?? foreignBase?.name;
       const decoded = decodeFeature(doc, f, {
         body,
         moved: frame.moved,
@@ -939,7 +982,7 @@ export async function importBodies(
       }
       // A sketch is imported for one body only: another body's sketch is not tried again.
       const of = owner.get(feature.sketch);
-      if (of !== undefined && of !== body.name) {
+      if (of !== undefined && of !== ownerKey) {
         stop(
           f,
           'chain',
@@ -947,7 +990,7 @@ export async function importBodies(
         );
         return;
       }
-      owner.set(feature.sketch, body.name);
+      owner.set(feature.sketch, ownerKey);
       const drawnCurves = (decodedSketch?.geometry ?? []).filter(
         (g) => g !== undefined && !g.construction && g.internal === 0 && g.kind !== 'point',
       ).length;
@@ -986,10 +1029,10 @@ export async function importBodies(
         await walkAxis(f, feature, frame.chain, decodedSketch, i, frame.moved);
         return;
       }
-      await holdAll(f, frame.chain, feature, [
-        async (): Promise<Added> => {
+      const attempt =
+        (onFace: boolean) => async (): Promise<Added> => {
           const mapper = mapperFor(f, i, frame.moved);
-          const extras = await sketchExtras(mapper, feature.sketch);
+          const extras = await sketchExtras(mapper, feature.sketch, onFace);
           if ('stop' in extras) return extras;
           const added = addFeature(
             doc,
@@ -1004,8 +1047,21 @@ export async function importBodies(
             extras,
           );
           return 'stop' in added ? added : { ...added, ...madeBy(mapper) };
-        },
-      ]);
+        };
+      // A loose chain's sketch stays on the face it is attached to where that holds; a try that
+      // doesn't hold there is tried again on the fixed plane its stored placement gives (S12a).
+      const onFace =
+        looseChain !== undefined &&
+        !sketches.has(feature.sketch) &&
+        budget.restarts === restartsAtHold;
+      await holdAll(
+        f,
+        frame.chain,
+        feature,
+        onFace ? [attempt(true), attempt(false)] : [attempt(false)],
+        false,
+        onFace,
+      );
     };
 
     /**
@@ -1182,7 +1238,10 @@ export async function importBodies(
         sketchOf,
         mine,
         own: own(),
-        walked: new Set(features.slice(0, i).map((x) => x.name)),
+        walked: new Set([
+          ...(foreignBase ? [foreignBase.name] : []),
+          ...features.slice(0, i).map((x) => x.name),
+        ]),
         name: cleanName(f.label, f.name),
         moved,
         datums,
@@ -1208,6 +1267,7 @@ export async function importBodies(
     const sketchExtras = async (
       mapper: TransformMapper,
       sketch: string,
+      onFace = false,
     ): Promise<
       | {
           tilted?: GivenPlane;
@@ -1216,7 +1276,8 @@ export async function importBodies(
         }
       | { stop: HistoryStop; detail: string }
     > => {
-      const tilted = await mapper.sketchPlane(sketch);
+      const face = onFace ? await mapper.sketchFace(sketch) : undefined;
+      const tilted = face ?? (await mapper.sketchPlane(sketch));
       if (tilted && 'stop' in tilted) return planeStop(tilted);
       const ext = await mapper.externals(sketch, projectionTry.reversed, projectionTry.off);
       if ('stop' in ext) return { stop: ext.stop as HistoryStop, detail: ext.detail };
@@ -1354,7 +1415,7 @@ export async function importBodies(
               : `it repeats ${named(name)}, a ${m.kind === 'fillet' || m.kind === 'chamfer' ? 'dress-up' : 'pattern or mirror'}, which Extrudo can't repeat`
             : at > i
               ? `it repeats ${named(name)}, which comes after it`
-              : owner.has(name) && owner.get(name) !== body.name
+              : owner.has(name) && owner.get(name) !== ownerKey
                 ? `it repeats ${named(name)}, a feature of another body`
                 : at < 0
                   ? `it repeats ${named(name)}, which is not a feature of this body`
@@ -2001,11 +2062,11 @@ export async function importBodies(
       }
       // A feature of another body (a chain that crosses bodies) is never mapped twice.
       const other = owner.get(f.name);
-      if (other !== undefined && other !== body.name) {
+      if (other !== undefined && other !== ownerKey) {
         stop(f, 'chain', `it is a feature of another body, ${named(other)}`);
         break;
       }
-      owner.set(f.name, body.name);
+      owner.set(f.name, ownerKey);
       shared.walked++;
       options.onStep?.();
       noted = false;
@@ -2054,6 +2115,9 @@ export async function importBodies(
     histories.push({
       object: body.name,
       name,
+      ...(looseChain
+        ? { loose: looseChain.foreignBase ? { foreignBase: looseChain.foreignBase.name } : {} }
+        : {}),
       features: features.length,
       mapped,
       ...(stopped ? { stop: stopped } : {}),
