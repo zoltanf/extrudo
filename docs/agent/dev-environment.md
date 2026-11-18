@@ -236,6 +236,10 @@ tools only work on some of them. Notes further down that name a machine apply to
   presses, or Playwright's `keyboard.type`, which do fire keydown.
 - Vitest 5 takes test options as the **second** argument:
   `it(name, { timeout }, fn)`; the old third-argument form throws.
+- **A unit test doesn't assert on the clock of a busy machine.** Count the work
+  (a spy, a bound from the input size), or compare with a yardstick measured in
+  the same run (CPU time, best of several). A time limit is only a watchdog
+  against a hang: at least 5× the slowest time under load, with the numbers in a comment.
 - **planegcs (P0-03):** the published `@salusoft89/planegcs` WASM has a fixed
   16 MB heap and aborts with `Aborted(OOM)` at about 100 entities in one
   system; we build our own (`spikes/p0-03-solver/planegcs-build/build.sh`).
