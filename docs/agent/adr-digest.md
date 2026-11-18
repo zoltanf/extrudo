@@ -5108,8 +5108,8 @@ is never bound where the sense is read off the numbers (`sameOrNeg` → `zero`, 
 its rounds in `begin`, restores in `discard` (the walk calls it when a try fails; the next `begin` and `finish` too).
 Constraint names are fitted after the parameters' evaluation (names of sources that went out released), unaliased cells'
 after them. Groups cut by UTF-16 units (`cutUnits`). `ExpressionOutcome.number`: what it sets is a number of the design;
-only those count as "plain numbers" in the notice; notice names cut to 40 characters. Core's errors by code (`cycle`) or by
-pinned words (`CORE_TOO_DEEP` → `limit`, `CORE_DEPENDENT`).
+only those count as "plain numbers" in the notice; notice names cut to 40 characters. Core's errors by code (`cycle`,
+`limit`); only a dependent's error by its pinned words (`CORE_DEPENDENT`).
 
 **ADR-0144, S11 (Part trees):** files `part-tree.ts` (`partTrees`, `classify`, `isTreeTop`: the trees from the file
 alone, iterative depth-first, operands base first; `usesOf`), `part-import.ts` (`importTrees`, `primitivePlan`,
@@ -5130,7 +5130,10 @@ one radius / one pair of sizes for all edges), a compound as a cut's tool or a f
 `PartDesign::Body` operand (walked then, `BodyWalkOptions.known`). **Placement:** a primitive's own inputs on the origin
 plane along its turned Z, else one free `move` after it (`t + R·c − c`, `c` the box centre measured by a rebuild in the
 transaction); a boolean's own placement one move of its result; one move of the top for its containers. A shared operand:
-a `move` copy before each use but the last. A box's `x`/`y` follow a bound length or width (`followText`), kept only where core evaluates them to the file's number. Tops of one unit must be placed alike by their containers, else `container` (as today). Limits:
+a `move` copy before each use but the last. A box's `x`/`y` follow a bound length or width (`followText`), kept only where core evaluates them to the file's number. Tops of one unit must be placed alike by their containers, else `container` (as today); a pass that loses its first top is
+waste and runs again. What a node adds is counted before anything is added (`MAX_TREE_FEATURES`), an operand brings at most
+`MAX_OPERAND_BODIES` (256) bodies. All walks of an import share `WalkShared`, given back with a cancelled pass
+(`markWalkShared`, `forgetRemovedPlanes`). A compound uses nothing up: what uses it uses its members (`effectiveOperands`). Limits:
 `MAX_TREE_NODES` 500, `MAX_IMPORT_TREE_NODES` 2,000, `MAX_MULTI_OPERANDS` 64, `MAX_TREE_FEATURES` 4,000. Report
 `FcstdImportReport.trees`; the app's `TREE_REASON` and the "Built on the file's own shape…" notice. Fixtures
 `part-fixtures.ts` (22 FreeCAD documents, the B-rep texts deflated), `part-parts.ts`; tests `part.test.ts`,

@@ -2677,12 +2677,21 @@ boolean's own translation (`dx`, `dy`, `dz` of its move when it doesn't turn). A
 `y` are its base's centre, never a member; **when a box's length or width is bound, its `x`
 and `y` follow it** (`followText`: `corner + (length) / 2`), so a changed parameter grows the
 box from FreeCAD's corner as the file's model does. A literal size edited in Extrudo grows the
-box about its centre (Extrudo's box sits on its centre), and a primitive or boolean placed by a
-move turns about the box centre its sizes had at import. Part fillets' and chamfers' sizes live
+box about its centre (Extrudo's box sits on its centre). **A primitive or boolean placed by a
+turning move follows FreeCAD's model only at the imported sizes:** the kernel computes a free
+move's pivot when it evaluates (the bodies' box centre `c′`), while the move's distances were
+written for the centre `c` at import, so after a size changes the result differs from FreeCAD's
+by (I − R)(c′ − c). A box placed by a move also keeps its `x` and `y` as numbers: they don't
+follow a bound length or width. Part fillets' and chamfers' sizes live
 in the binary edge list, which has no expressions. The `bound` fixture comes in live: all 11 of
 its expressions are kept, and with `length` set to 40 and `lift` to 2 the cut measures what
 FreeCAD's changed model must (the box from 0 to 40, the hole following `length / 2`, the cut 2
-up). Expressions on stored leaves stay on `other` targets as before; **S10's note that S11
+up). An expression on an object that ends as a stored leaf stays a number of the file's shape:
+on a type that never maps (an extrusion, a mirror, a Python object) it is an `other` target as
+before; on a primitive or boolean type it is an `input` target whose object didn't come in, so
+it ends `unmapped`. A fuse kept apart has no feature to hold one, a boolean turned by its own
+placement no input for a member, and an input left out because the file stores 0 has S10's
+reason for a stored 0: each ends `target` with that reason. **S10's note that S11
 would map the Part extrusions is corrected**: extrusions are stored leaves here, so their
 `LengthFwd` expressions stay numbers on what came in as a shape.
 
@@ -2693,7 +2702,8 @@ would map the Part extrusions is corrected**: extrusions are stored leaves here,
 | Objects one tree | 500 (`MAX_TREE_NODES`) | the top comes in as today (`limit`) |
 | Objects the trees of one import | 2,000 (`MAX_IMPORT_TREE_NODES`, counted per tree walked) | the later trees' tops as today |
 | Shapes one MultiFuse or MultiCommon lists | 64 (`MAX_MULTI_OPERANDS`) | a stored leaf (`limit`) |
-| Features the trees of one import add (copies and moves included) | 4,000 (`MAX_TREE_FEATURES`) | the trees that would pass it as today |
+| Features the trees of one import add (copies, moves and the features of a body a tree uses included) | 4,000 (`MAX_TREE_FEATURES`), a node's counted before any of them is added | the trees that would pass it as today |
+| Bodies one operand brings to the node that uses it | 256 (`MAX_OPERAND_BODIES`; the library's largest stored shape has 86 solids) | the user is a stored leaf (`limit`), a top as today |
 | Passes per unit | 4 (`MAX_TREE_PASSES`) | the unit's tops as today (`passes`) |
 | Edges in a fillet's or chamfer's list | 1,000 (S6's), the entry exactly 4 + 20 per edge | a stored leaf (`edges`) |
 | A primitive's size | above 1e-6 mm, at most 10 km, finite | a stored leaf (`value`) |
@@ -2806,6 +2816,38 @@ because *reason*, or *reason*. What uses those parts comes in with its history."
   hold without it, faces aside); a combine that keeps one tool of several 0 (no tree that came
   in shares an operand); an intersect that drops a body missing the tool 3 trees; a cut that
   may remove nothing 1; extrusions as features 17 leaves.
+
+### Review round (2026-11-18)
+
+An independent review of the slice found these; each has a test in `part-review.test.ts`.
+
+1. **What one node adds is known first.** A cut writes a combine per body of its base, an
+   intersect one per body and per shape after the first, so a stored compound of many solids
+   could make one attempt add thousands of features with no time check inside. The count (copies,
+   combines, moves) is taken before anything is added; past `MAX_TREE_FEATURES` the node's trees
+   come in as today, and an operand of more than `MAX_OPERAND_BODIES` bodies makes its user a
+   stored leaf, so one attempt is bounded whatever the cap is.
+2. **One set of counters per import** (`WalkShared`, `newWalkShared`, `markWalkShared`): the
+   features walked, the steps' stored text, the projections, the datums, which body owns which
+   feature and sketch, and whether the design's attachments are full. The body walk before the
+   trees and each body a tree uses share it, a cancelled pass gives back what it counted, and the
+   features of a body a tree uses count towards `MAX_TREE_FEATURES`.
+3. **A compound uses nothing up; what uses the compound uses its members**
+   (`effectiveOperands`): a member a compound holds and something else uses directly is copied
+   for each use but the last, whichever comes first.
+4. **An object named as both `Base` and `Tool`** is refused (`operand`), as one listed twice in
+   `Shapes` is.
+5. **A cancelled pass forgets its planes** (`forgetRemovedPlanes`): an offset plane the sketch of
+   a body operand made went with the pass, and the next pass's sketch would have named it. The
+   datums and owners go back with the counters; decoded sketches are the file's and stay.
+6. **A pass that loses its first top runs again.** The unit is built in that top's frame, so the
+   other tops can only be judged against a first top still there.
+7. **Words and reports:** a tree whose body operand took a stored-shape step comes in `leaves`; a
+   tree that uses a body says "sketches, features, primitives and booleans"; one tree on several
+   of the file's shapes reads "Built on the file's own shapes for parts of it".
+
+Measured (Ubuntu machine, shared; `BENCH=1`): a tree of 456 objects, seven MultiFuses of 64 stored
+leaves each, none with a stored shape, so that every leaf changes what the pass needs: 0.7 s.
 
 ### After main's limits and the STEP pass (2026-11-18)
 
