@@ -2621,8 +2621,9 @@ result's box, checked together with the boolean. A tree under containers whose c
 the identity gets one `move` of its top's bodies at the end ("Place <top>"), checked against
 the stored shape as S3 places it; nothing inside the tree knows about the container (each
 node is built and checked in its top's frame: a node in another container than its top is
-placed relative to it, and a unit whose tops sit in different containers comes in as today,
-`container`).
+placed relative to it. Trees that share an object are built in the first top's frame, so a top
+whose containers place it otherwise comes in as today, `container`: left in that frame, it would
+not be where the file has it).
 
 Every fixture root: by its own inputs BoxMoved, BoxTurnedZ (turned about Z: `rotation`),
 BoxQuarterX (a quarter turn about X: on the XZ plane), CylMoved, CylAlongX (on YZ), CylAlongMinusY
@@ -2712,8 +2713,8 @@ judges of the whole import; a call that fails makes its node a leaf.
 
 **Measured** (Ubuntu machine, shared and loaded, one run each; `part-hostile.test.ts`,
 `BENCH=1`): a chain of fuses of one box, each fuse the base of the next: 12 fuses (25 objects)
-0.96 s and 62 kernel calls, 100 fuses 3.2 s and 502 calls, **300 fuses (601 objects, past the
-tree cap, raised for the test) 10.9 s and 1,502 calls**: about 2.5 calls an object and linear,
+1.6 s and 62 kernel calls, 100 fuses 4.1 s and 502 calls, **300 fuses (601 objects, past the
+tree cap, raised for the test) 12.1 s and 1,502 calls**: about 2.5 calls an object and linear,
 since a rebuild remeshes only what the newest feature changed. The `deep_chain` fixture (twelve
 cuts in a row, 25 objects) takes 0.7 s. 500 objects a tree keeps one tree well inside S3's 60 s
 a call and the import's 10 minutes; 2,000 an import bounds the whole file's trees to about four
@@ -2740,7 +2741,9 @@ because *reason*, or *reason*. What uses those parts comes in with its history."
 
 ### The library (60 files, `history-corpus.test.ts`)
 
-- **Trees: 33** (a final shape of S3's kind `shape` whose object is one of the tops above), and
+- **Trees: 33** (a final shape of S3's kind `shape` whose object is one of the tops above; by
+  the Part links alone there are 41 tops, and the other 8 are no final shape: used by sketches,
+  a Python object, a thickness or a PartDesign fillet, or holding no solid), and
   they hold 296 of the library's 321 Part primitives, booleans, fillets and chamfers; the other
   25 are used by Python objects, PartDesign features and objects that are no final shape.
   **8 with their whole history** (3
@@ -2753,14 +2756,14 @@ because *reason*, or *reason*. What uses those parts comes in with its history."
   mirror, a sweep, a revolution) and 2 that don't hold (`differs`: a MultiFuse whose stored
   shape has 2 solids where Extrudo's join makes 3, a MultiCommon of 6 solids where the chain
   of intersects keeps 2). Primitives placed by their own inputs 29, with a move 2 (boxes);
-  moves written 7; container moves 0; shared operands built twice 0 (no tree that came in
-  shares one); expressions bound on tree objects 0 (the library's bound sizes are on objects of
+  moves written 7; container moves 0; copies of shared operands 0 (no tree uses an object twice,
+  and no two trees that came in share one); expressions bound on tree objects 0 (the library's bound sizes are on objects of
   trees that come in as today, or on extrusions); retried units 4, the most passes 2. The
   features that held drift at most 1.8e-8 in volume from their stored shapes; 6 hold with face
   counts that differ from FreeCAD's (refine, and joins that merge where FreeCAD's fuse didn't).
   The trees' Part fillets found 3 edges, none missing.
 - **The census** (by the links alone): 175 primitives (91 boxes, 82 cylinders, a sphere, a
-  cone; 32 turned, by quarter turns or about Z mostly), 131 booleans (51 cuts, 24 fuses, 7
+  cone; 32 turned: 16 boxes about Z, 11 cylinders by quarter turns, 5 otherwise), 131 booleans (51 cuts, 24 fuses, 7
   commons, 42 MultiFuses, 7 MultiCommons), 47 of them with a placement of their own, 15 Part
   fillets and chamfers, 18 compounds.
 - **The standing numbers did not move:** 25 bodies with their history, 6 from the file's
@@ -2773,7 +2776,7 @@ because *reason*, or *reason*. What uses those parts comes in with its history."
 - **Expressions:** 4 entries on Part objects' sizes and placements moved from `other` targets to
   feature inputs, where they are `unmapped` (3) or `target` (1): their objects belong to trees
   that come in as today.
-- **Time per file:** median 0.15 s (0.1 before), **slowest 53 s (14.4 s before)**. The slowest
+- **Time per file:** median 0.17 s (0.1 before), **slowest 56 s (14.4 s before)**. The slowest
   is a file of letters cut and intersected: four MultiCommon trees each import nine Part
   extrusions of text (each a STEP import Extrudo takes seconds to rebuild and mesh) and two of
   them can't come in after all. Two changes measured on it took it from 119 s: a fuse whose
@@ -2785,23 +2788,38 @@ because *reason*, or *reason*. What uses those parts comes in with its history."
   bound both.
 - **The 14 trees that come in as today, by reason:** 4 chamfers (`reference`) in one file,
   each on a deep tree of booleans that held, where an edge the chamfer names has no counterpart
-  on the rebuilt body (the check compares the solids' measures, not their edges; the rebuilt
-  booleans' edges are not FreeCAD's there); 1 chamfer (`failed`): our OCCT refuses its size on
+  on the rebuilt body (the check compares the solids' measures, not their edges; of the
+  library's 50 dress-up lookups, bodies' included, 10 met a rebuilt body with another number of edges than
+  the stored base); 1 chamfer (`failed`): our OCCT refuses its size on
   an edge it doesn't fit, as S6's two fillets; 3 MultiCommons (`failed`): a common
-  whose first shape is several solids, one of which misses the others, which Extrudo's intersect
-  refuses where FreeCAD drops it; 2 MultiCommons (`operand`): a shape they use is a Python
+  whose first shape is several solids, where Extrudo's intersect refuses a solid that misses the
+  tool and FreeCAD drops it; 2 MultiCommons (`operand`): a shape they use is a Python
   object whose stored shape can't come in; 2 cuts (`differs`, by 4.5e-5 and 5.9e-5 in volume:
-  not looked into further, the size of S8's STEP round-trip drift on a stored leaf); 1 cut
+  both have stored leaves below them, and the drift is of the size S8 measured through STEP); 1 cut
   (`failed`): its tool doesn't overlap its base, a cut Extrudo refuses as removing nothing; 1
   fillet whose own stored shape S3 already leaves out (`differs` by 160 %, as its STEP does).
-- **Where the rest are:** the 14 trees that come in as today hold about 200 of those 296
-  objects; one file's 5 chamfer trees, deep trees of booleans, hold most of them, so the
-  chamfers' edges (below) are worth more than any other gap here.
+- **Where the rest are:** the 14 trees that come in as today name 227 primitives, booleans,
+  fillets and chamfers (an object in two trees counted in each), against 71 in the trees that
+  came in.
 - **What the gaps would save, as counts:** a cone primitive 0 (the library's one cone is used by
   an object that is no tree); a part cylinder or other partial primitive 0; a refine flag 0 (6 trees
   hold without it, faces aside); a combine that keeps one tool of several 0 (no tree that came
   in shares an operand); an intersect that drops a body missing the tool 3 trees; a cut that
   may remove nothing 1; extrusions as features 17 leaves.
+
+### After main's limits and the STEP pass (2026-11-18)
+
+- **Core's limits on an expression** (ADR-0004's amendment: 10,000 characters, 1,000 values a
+  call, 256 levels, 10,000 levels through parameters) are tighter than the emitter's 16,384
+  characters. Text between the two is written, core refuses it with the code `limit`, and the
+  rule puts the number back with that reason (tested). `fc-expr.ts`'s own 4,096 characters of
+  FreeCAD text stay the first gate. **A box's centre** reads both its sizes, so it can pass the
+  limit where each size doesn't: it is kept only where core evaluates it to the file's number,
+  else it stays a number (tested) and the bound sizes stay live.
+- **The STEP pass** (`step-reals.ts`) rewrites reals written without a decimal point before an
+  `import` reads them. The STEP of a stored leaf or step is our own writer's, whose reals all
+  have the point, so the pass returns it unchanged and what the read-back checked is what the
+  feature reads (tested on the fixtures' leaves). The library's numbers did not move.
 
 ### What S12 and S13 inherit
 

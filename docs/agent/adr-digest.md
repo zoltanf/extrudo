@@ -5130,7 +5130,7 @@ one radius / one pair of sizes for all edges), a compound as a cut's tool or a f
 `PartDesign::Body` operand (walked then, `BodyWalkOptions.known`). **Placement:** a primitive's own inputs on the origin
 plane along its turned Z, else one free `move` after it (`t + R·c − c`, `c` the box centre measured by a rebuild in the
 transaction); a boolean's own placement one move of its result; one move of the top for its containers. A shared operand:
-a `move` copy before each use but the last. A box's `x`/`y` follow a bound length or width (`followText`). Limits:
+a `move` copy before each use but the last. A box's `x`/`y` follow a bound length or width (`followText`), kept only where core evaluates them to the file's number. Tops of one unit must be placed alike by their containers, else `container` (as today). Limits:
 `MAX_TREE_NODES` 500, `MAX_IMPORT_TREE_NODES` 2,000, `MAX_MULTI_OPERANDS` 64, `MAX_TREE_FEATURES` 4,000. Report
 `FcstdImportReport.trees`; the app's `TREE_REASON` and the "Built on the file's own shape…" notice. Fixtures
 `part-fixtures.ts` (22 FreeCAD documents, the B-rep texts deflated), `part-parts.ts`; tests `part.test.ts`,
