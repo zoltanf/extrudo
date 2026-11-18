@@ -596,11 +596,12 @@ the first detection; the app's cache keys text sketches by the fonts'
 version instead. Construction geometry, construction text included, is
 never read by detection, so it doesn't matter.
 
-**No bound is needed.** An entry lives as long as its frozen data object,
-and what holds those is the store's current document, one object per sketch.
-The undo history keeps patches, not earlier sketches: a script that edits a
+**No bound is needed.** An entry lives as long as its frozen data object.
+The store's current document holds one per sketch. The undo history keeps
+patches: an edit's are the values it changed, so a script that edits a
 sketch 1,000 times and asks for its regions after each edit has one version
-alive at the end, and the heap doesn't grow. The app's cache already held
+alive at the end, and the heap doesn't grow; a deleted sketch stays in its
+step's patch until that step leaves the history (500 steps). The app's cache already held
 the same results for the same objects and now shares the frozen profiles.
 **The kernel worker keeps none:** its engine holds up to 256 past results,
 each with the parsed copy of its sketch, and remembering those would pin
