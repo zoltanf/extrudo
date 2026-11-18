@@ -214,9 +214,16 @@ export class Binder {
    * Extrudo input to the FreeCAD property it holds (`diameter` → `Radius`,
    * `x` → `Placement.Base.x`), written as it is, negated or doubled (read off
    * the numbers, as `bind` does). Runs inside the node's transaction, before
-   * its rebuild; the rule decides.
+   * its rebuild; the rule decides. `because`: why what `sources` doesn't name
+   * isn't written as an input. An input left out because the file stores 0 has
+   * the reason for a stored 0.
    */
-  bindPart(f: FcObject, featureId: string, sources: Readonly<Record<string, string>>): void {
+  bindPart(
+    f: FcObject,
+    featureId: string | undefined,
+    sources: Readonly<Record<string, string>>,
+    because?: string,
+  ): void {
     const candidates: Candidate[] = [];
     const outcome = (e: Entry, o: NonNullable<Entry['outcome']>): void => {
       this.#pendingOutcomes.push([e, o]);
@@ -260,12 +267,18 @@ export class Binder {
           ? (fe.inputs as FeatureInputs)[input]
           : undefined;
       if (!fe || !input || value?.kind !== 'expr') {
-        outcome(e, {
-          outcome: 'target',
-          detail: input
-            ? `${property} isn't an expression in Extrudo`
-            : `${property} isn't written as one input`,
-        });
+        const stored = partValue(f, property);
+        if (fe && input && value === undefined && stored !== undefined && within(stored, 0))
+          outcome(e, { outcome: 'target', detail: ZERO, number: true });
+        else
+          outcome(e, {
+            outcome: 'target',
+            detail:
+              because ??
+              (input
+                ? `${property} isn't an expression in Extrudo`
+                : `${property} isn't written as one input`),
+          });
         continue;
       }
       if (e.failure) {

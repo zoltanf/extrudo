@@ -298,6 +298,56 @@ export interface BodyWalkOptions {
    * import, after other bodies came in.
    */
   readonly known?: { ids: string[] };
+  /** The counters of the whole import, when it walks more than once (S11). */
+  readonly shared?: WalkShared;
+}
+
+/**
+ * What every walk of one import counts together (S11): the body walk before the trees and each
+ * body a tree uses share one set, so the file's caps hold however the bodies are reached.
+ */
+export interface WalkShared {
+  /** The features walked over the whole file (`MAX_FILE_FEATURES`). */
+  walked: number;
+  /** The stored-shape text the steps converted so far (`MAX_STEP_TEXT_BYTES`). */
+  stepText: number;
+  /** A step's shape didn't fit the design's attachments: no later step of this import converts one. */
+  designFull: boolean;
+  /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
+  readonly owner: Map<string, string>;
+  readonly decodedSketches: Map<string, DecodedSketch>;
+  /** The datum lines and planes brought in, by FreeCAD name (S9): one construction per datum per import. */
+  readonly datums: Map<string, DatumMade>;
+  /** External links projected in this import (S9). */
+  readonly externalBudget: { used: number; readonly max: number };
+}
+
+export function newWalkShared(maxExternal?: number): WalkShared {
+  return {
+    walked: 0,
+    stepText: 0,
+    designFull: false,
+    owner: new Map(),
+    decodedSketches: new Map(),
+    datums: new Map(),
+    externalBudget: { used: 0, max: maxExternal ?? MAX_EXTERNAL_PER_FILE },
+  };
+}
+
+/** Remembers `shared`; what is returned gives back all that was counted since (a cancelled pass, S11). */
+export function markWalkShared(shared: WalkShared): () => void {
+  const { walked, stepText, designFull } = shared;
+  const used = shared.externalBudget.used;
+  const owner = new Map(shared.owner);
+  const datums = new Map(shared.datums);
+  return () => {
+    Object.assign(shared, { walked, stepText, designFull });
+    shared.externalBudget.used = used;
+    shared.owner.clear();
+    for (const [k, v] of owner) shared.owner.set(k, v);
+    shared.datums.clear();
+    for (const [k, v] of datums) shared.datums.set(k, v);
+  };
 }
 
 /** Reasons that end a body however its features go on: its chain, the walk's limits, the budget (S8). */
@@ -739,22 +789,13 @@ export async function importBodies(
   const maxSteps = options.maxSteps ?? MAX_BODY_STEPS;
   const maxStepText = options.maxStepTextBytes ?? MAX_STEP_TEXT_BYTES;
   const files = options.files ?? new Map<AttachmentId, Uint8Array>();
-  /** The stored-shape text the steps converted so far, in all. */
-  let stepText = 0;
+  /** What the walks of this import have used so far (S11: a body a tree uses is one more walk). */
+  const shared = options.shared ?? newWalkShared(options.maxExternal);
+  const { owner, decodedSketches, datums, externalBudget } = shared;
   const maxAttachments = options.maxAttachmentsBytes ?? MAX_ATTACHMENTS_BYTES;
-  /** A step's shape didn't fit the design's attachments: no later step of this import converts one. */
-  let designFull = false;
   const histories: BodyHistory[] = [];
   /** Every Extrudo body the last rebuild had. */
   let known: string[] = [...(options.known?.ids ?? [])];
-  let walked = 0;
-  /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
-  const owner = new Map<string, string>();
-  const decodedSketches = new Map<string, DecodedSketch>();
-  /** The datum lines and planes brought in, by FreeCAD name (S9): one construction per datum per import. */
-  const datums = new Map<string, DatumMade>();
-  /** External links projected in this import (S9). */
-  const externalBudget = { used: 0, max: options.maxExternal ?? MAX_EXTERNAL_PER_FILE };
   /** What the tries of the feature being walked learnt about its sketch's projections (S9). */
   let projectionTry = {
     reversed: new Set<number>(),
@@ -1810,14 +1851,14 @@ export async function importBodies(
       const stored = storedText(doc, target);
       if (!('text' in stored)) return 'out';
       // The design's attachments are full: no step's shape can come in, so none is converted.
-      if (designFull) return 'out';
-      if (stepText + stored.text.length > maxStepText)
+      if (shared.designFull) return 'out';
+      if (shared.stepText + stored.text.length > maxStepText)
         return endIn(
           r,
           'limit',
           `its steps would convert more than ${Math.round(maxStepText / (1024 * 1024))} MB of stored shapes`,
         );
-      stepText += stored.text.length;
+      shared.stepText += stored.text.length;
       const frame = containerChain(doc, target);
       if (!frame) return 'out';
       const conv = await convertStored(budget, stored.text, frame.chain);
@@ -1841,7 +1882,7 @@ export async function importBodies(
         existing === undefined &&
         attachmentBytes(design, freed) + conv.bytes.length > maxAttachments
       ) {
-        designFull = true;
+        shared.designFull = true;
         return 'out';
       }
       const label = cleanName(target.label, target.name);
@@ -1938,7 +1979,7 @@ export async function importBodies(
 
     for (let i = 0; i < features.length && !stopped; i++) {
       const f = features[i] as FcObject;
-      if (i >= maxBody || walked >= maxFile) {
+      if (i >= maxBody || shared.walked >= maxFile) {
         stop(
           f,
           'limit',
@@ -1965,7 +2006,7 @@ export async function importBodies(
         break;
       }
       owner.set(f.name, body.name);
-      walked++;
+      shared.walked++;
       options.onStep?.();
       noted = false;
       projectionTry = { reversed: new Set(), off: new Set(), turned: new Map() };

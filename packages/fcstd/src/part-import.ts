@@ -42,6 +42,7 @@ import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { type Binder, within } from './bind';
 import {
   type BodyHistory,
+  bodyChain,
   type HistoryStop,
   type SaneRebuild,
   saneRebuild,
@@ -56,6 +57,7 @@ import type { RebuildResult, ShapeMeasure } from './import-kernel';
 import type { FcDocument, FcObject, FcPlacement } from './model';
 import { cleanName, clip } from './names';
 import {
+  effectiveOperands,
   isIdentity,
   type LeafReason,
   type PartNodeKind,
@@ -66,12 +68,19 @@ import {
   usesOf,
 } from './part-tree';
 import { addStepAttachment, attachmentBytes, convertStored } from './shapes';
-import { compose, containerChain } from './sketch-place';
+import { compose, containerChain, forgetRemovedPlanes } from './sketch-place';
 
 /** The most passes one unit of trees is built in (a pass learns at least one node that doesn't hold). */
 export const MAX_TREE_PASSES = 4;
 /** The most features the trees of one import may add in all (copies and moves included). */
 export const MAX_TREE_FEATURES = 4_000;
+
+/**
+ * The most bodies one operand may bring to the node that uses it (a stored compound, a fuse
+ * kept apart). A combine is written per body of a base, so this bounds what one node costs
+ * whatever the features' cap is (the library's largest stored shape has 86 solids).
+ */
+export const MAX_OPERAND_BODIES = 256;
 
 type Vec3 = readonly [number, number, number];
 
@@ -153,8 +162,11 @@ export interface TreeWalkOptions {
     body: FcObject,
     known: string[],
   ) => Promise<{ history: BodyHistory; known: string[] }>;
+  /** Remembers the walks' counters; what it returns gives back what a cancelled pass counted. */
+  readonly markWalk?: () => () => void;
   readonly maxPasses?: number;
   readonly maxFeatures?: number;
+  readonly maxOperandBodies?: number;
   readonly onStep?: () => void;
 }
 
@@ -403,6 +415,8 @@ const callFailure = (o: Exclude<CallOutcome<unknown>, { kind: 'done' }>): Failur
 });
 
 const IDENTITY: FcPlacement = { position: [0, 0, 0], rotation: [0, 0, 0, 1] };
+/** A boolean's own translation, as the inputs of its move. */
+const TRANSLATION = { dx: 'Placement.Base.x', dy: 'Placement.Base.y', dz: 'Placement.Base.z' };
 
 /** A unit's fate for a node across passes. */
 type Fate =
@@ -428,6 +442,7 @@ export async function importTrees(
   const { budget, files } = options;
   const maxPasses = options.maxPasses ?? MAX_TREE_PASSES;
   const maxFeatures = options.maxFeatures ?? MAX_TREE_FEATURES;
+  const maxOperandBodies = options.maxOperandBodies ?? MAX_OPERAND_BODIES;
   const maxAttachments = options.maxAttachmentsBytes ?? MAX_ATTACHMENTS_BYTES;
   let known = [...options.known];
   let featuresAdded = 0;
@@ -504,6 +519,7 @@ export async function importTrees(
         break;
       }
       const restore = options.binder?.mark();
+      const restoreWalk = options.markWalk?.();
       const filesBefore = new Set(files.keys());
       const knownBefore = [...known];
       const featuresBefore = featuresAdded;
@@ -532,6 +548,9 @@ export async function importTrees(
       // Take the whole unit back: nothing of a pass with waste stays.
       design.state.cancelTransaction();
       restore?.();
+      restoreWalk?.();
+      // The planes the pass's sketches made went with it: a later sketch makes its own.
+      forgetRemovedPlanes(design);
       for (const id of [...files.keys()]) if (!filesBefore.has(id)) files.delete(id);
       known = knownBefore;
       featuresAdded = featuresBefore;
@@ -623,21 +642,51 @@ export async function importTrees(
             seen.add(name);
             order.push(name);
           }
+    /** Who uses each object, among what the pass may build. */
+    const usersOf = new Map<string, string[]>();
+    for (const name of order)
+      for (const op of new Set((plan.nodes.get(name) as PlannedNode).operands))
+        if (usersOf.has(op)) usersOf.get(op)?.push(name);
+        else usersOf.set(op, [name]);
+    /** What a node uses up: a compound that stands for its members is those members. */
+    const usedBy = (name: string) => effectiveOperands(plan, name, isMapped);
+    /** The bodies an operand brings: a compound's are its members' as they are now. */
+    const bodiesOf = (op: string): string[] =>
+      plan.nodes.get(op)?.kind === 'compound' && isMapped(op)
+        ? effectiveOperands(plan, op, isMapped).flatMap((m) => built.get(m) ?? [])
+        : (built.get(op) ?? []);
+    /** The most features a node can add, known before anything is added for it. */
+    const adds = (n: PlannedNode, kind: PartNodeKind): number => {
+      if (kind === 'leaf') return 1;
+      if (kind === 'compound') return 0;
+      if (kind === 'body') {
+        const chain = bodyChain(doc, n.object);
+        return 'features' in chain ? chain.features.length : 0;
+      }
+      const copies = usedBy(n.object.name).filter((op) => (uses.get(op) ?? 0) > 1).length;
+      const own = n.object.properties.Placement?.value;
+      const moved = own?.kind === 'placement' && !isIdentity(own.value) ? 1 : 0;
+      const bases = bodiesOf(n.operands[0] ?? '').length;
+      const behavior = n.object.properties.Behavior?.value;
+      const steps = behavior?.kind === 'enum' && behavior.index === 1 ? 1 : n.operands.length - 1;
+      if (kind === 'cut') return copies + bases + moved;
+      if (kind === 'intersect') return copies + steps * bases + moved;
+      return copies + 1 + moved;
+    };
     /** Operands copied for a later use: a pass ends with waste if a copy was never used. */
     const copied = new Set<string>();
     /** A node that can't come in: what uses it can't be built either, from now on. */
     const lose = (name: string) => {
       lost.add(name);
-      for (const t of live)
-        for (const user of t.order) {
-          const u = plan.nodes.get(user) as PlannedNode;
-          if (!isMapped(user) || !u.operands.includes(name) || today.has(user)) continue;
-          const detail = `its operand ${cleanName(plan.nodes.get(name)?.object.label ?? name, name)} can't come in`;
-          if (tops.has(user)) today.set(user, { kind: 'today', reason: 'operand', detail });
-          else fates.set(user, { kind: 'leaf', reason: 'operand', detail });
-          // What was built for it is no longer needed.
-          if (u.operands.some((op) => built.has(op))) waste = true;
-        }
+      for (const user of usersOf.get(name) ?? []) {
+        const u = plan.nodes.get(user) as PlannedNode;
+        if (!isMapped(user) || today.has(user)) continue;
+        const detail = `its operand ${cleanName(plan.nodes.get(name)?.object.label ?? name, name)} can't come in`;
+        if (tops.has(user)) today.set(user, { kind: 'today', reason: 'operand', detail });
+        else fates.set(user, { kind: 'leaf', reason: 'operand', detail });
+        // What was built for it is no longer needed.
+        if (u.operands.some((op) => built.has(op))) waste = true;
+      }
     };
     const uses = usesOf(plan, live, (n) => reached.has(n) && isMapped(n));
     const tops = new Set(live.map((t) => t.top.object.name));
@@ -695,7 +744,8 @@ export async function importTrees(
         },
       ) =>
         records.set(name, { object: name, name: label, type: o.type, moves: 0, copies: 0, ...r });
-      if (featuresAdded >= maxFeatures) {
+      /** Past the features' cap: the trees of this node come in as today, nothing more is added. */
+      const overCap = () => {
         waste = true;
         for (const t of live)
           if (t.order.includes(name))
@@ -704,8 +754,7 @@ export async function importTrees(
               reason: 'limit',
               detail: `the file's trees would add more than ${maxFeatures} features`,
             });
-        break;
-      }
+      };
       if (budget.broken || budget.left() <= 0) {
         waste = true;
         for (const t of live)
@@ -719,6 +768,10 @@ export async function importTrees(
         break;
       }
       const kind: PartNodeKind = fate ? 'leaf' : n.kind;
+      if (featuresAdded + adds(n, kind) > maxFeatures) {
+        overCap();
+        break;
+      }
       /** A node that didn't hold: from the next pass on (or now, if it is a top) the file's shape stands in. */
       const fail = async (f: Failure) => {
         if (tops.has(name)) {
@@ -796,12 +849,20 @@ export async function importTrees(
         });
         continue;
       }
+      const wide =
+        kind === 'compound'
+          ? undefined
+          : n.operands.find((op) => bodiesOf(op).length > maxOperandBodies);
+      if (wide !== undefined) {
+        await fail({
+          reason: 'limit',
+          detail: `its operand ${cleanName(plan.nodes.get(wide)?.object.label ?? wide, wide)} is more than ${maxOperandBodies} bodies`,
+        });
+        continue;
+      }
       if (kind === 'compound') {
-        built.set(
-          name,
-          n.operands.flatMap((m) => built.get(m) ?? []),
-        );
-        // Its members are used up through it: a compound used twice copies them.
+        // Its members are used up by what uses it (`usedBy`), each as it is by then.
+        built.set(name, []);
         record({ outcome: 'members', features: [] });
         continue;
       }
@@ -812,8 +873,14 @@ export async function importTrees(
           await fail({ reason: 'body', detail: 'its body is moved by a container' });
           continue;
         }
+        const featuresBefore = design.doc.features.length;
         const walked = await options.walkBody(o, known);
         known = walked.known;
+        featuresAdded += design.doc.features.length - featuresBefore;
+        if (featuresAdded > maxFeatures) {
+          overCap();
+          break;
+        }
         const h = walked.history;
         if (h.stop || h.bodies.length === 0) {
           // Its features came in for nothing: this pass is taken back, and next time it is the file's shape.
@@ -868,7 +935,7 @@ export async function importTrees(
         ...(tried.added.bound && tried.added.bound.length > 0 ? { bound: tried.added.bound } : {}),
       });
       // Counted only now: an attempt that didn't hold used nothing up.
-      for (const op of n.operands) uses.set(op, (uses.get(op) ?? 0) - 1);
+      for (const op of usedBy(name)) uses.set(op, (uses.get(op) ?? 0) - 1);
       for (const [op, copy] of tried.added.copies) {
         built.set(op, copy);
         copied.add(op);
@@ -886,6 +953,11 @@ export async function importTrees(
     // The tops: their containers' placements, then the file's name, colour and visibility.
     const trees = new Map<string, TreeImport>();
     for (const t of live) {
+      // The unit was built in its first top's frame: without that top, the next pass decides.
+      if (today.has(live[0]?.top.object.name ?? '')) {
+        waste = true;
+        break;
+      }
       const top = t.top.object.name;
       if (today.has(top) || !built.has(top)) continue;
       let bodies = built.get(top) as string[];
@@ -932,7 +1004,12 @@ export async function importTrees(
         object: top,
         name: cleanName(t.top.name, top),
         type: t.top.object.type,
-        outcome: nodes.some((x) => x.outcome === 'leaf') ? 'leaves' : 'history',
+        // A body that took a stored-shape step is part of its history, as at the top of a file.
+        outcome: nodes.some(
+          (x) => x.outcome === 'leaf' || (x.outcome === 'body' && (x.body?.steps.length ?? 0) > 0),
+        )
+          ? 'leaves'
+          : 'history',
         nodes,
         bodies,
         passes: 0,
@@ -947,14 +1024,14 @@ export async function importTrees(
       const chain = relChain(o);
       if (!chain)
         return { stop: 'chain' as TreeReason, detail: 'its containers hold each other in a loop' };
-      const opBodies = n.operands.map((op) => built.get(op) ?? []);
+      const opBodies = n.operands.map(bodiesOf);
       if (opBodies.some((b) => b.length === 0) && n.operands.length > 0)
         return { stop: 'operand' as TreeReason, detail: 'an operand has no body' };
       return attempt(o, chain, async (): Promise<Added | Stopped> => {
         // Copies first: an operand used again later keeps a copy, this node uses the original.
         const copies = new Map<string, string[]>();
         const features: string[] = [];
-        for (const op of n.operands) {
+        for (const op of usedBy(n.object.name)) {
           const left = uses.get(op) ?? 0;
           if (left > 1) {
             const bodies = built.get(op) as string[];
@@ -1013,17 +1090,14 @@ export async function importTrees(
           case 'cut':
           case 'join':
           case 'intersect': {
-            const [base, ...tools] = n.operands.map((op) => built.get(op) as string[]) as [
-              string[],
-              ...string[][],
-            ];
+            const [base, ...tools] = opBodies as [string[], ...string[][]];
             const name = (k: number) => (k > 0 ? `${label} ${k + 1}` : label);
             let made: string[] = [];
             if (n.kind === 'join' && apart) {
               // Shapes that don't touch: FreeCAD's fuse holds them apart, and so does the design.
               made = [...base, ...tools.flat()];
             } else if (n.kind === 'join') {
-              const all = [...base, ...tools.flat()];
+              const all = [...new Set([...base, ...tools.flat()])];
               const c = design.add(
                 'combine',
                 combineInputs(all[0] as string, all.slice(1), { operation: 'join' }),
@@ -1087,15 +1161,12 @@ export async function importTrees(
               });
               features.push(m.id);
               moves++;
-              if (!turned(placement))
-                bound.push(
-                  ...bindPart(o, m.id, {
-                    dx: 'Placement.Base.x',
-                    dy: 'Placement.Base.y',
-                    dz: 'Placement.Base.z',
-                  }),
-                );
-            } else bindPart(o, features[0] as string, {});
+              if (!turned(placement)) bound.push(...bindPart(o, m.id, TRANSLATION));
+              else
+                bindPart(o, m.id, {}, 'its own placement turns it, so a member of it is no input');
+            } else if (n.kind === 'join' && apart)
+              bindPart(o, undefined, {}, 'it has no feature of its own: its shapes stay apart');
+            else bindPart(o, features[0], TRANSLATION);
             return { features, keeps: made, copies, moves, bound };
           }
           case 'fillet':
@@ -1183,7 +1254,7 @@ export async function importTrees(
 
     /** Whether a fuse's stored shape is its operands' bodies side by side: their solids and volumes added up. */
     async function looksApart(n: PlannedNode): Promise<boolean> {
-      const bodies = n.operands.flatMap((op) => built.get(op) ?? []);
+      const bodies = n.operands.flatMap(bodiesOf);
       const ms = bodies.map((b) => lastBodies.get(b));
       if (bodies.length < 2 || ms.some((m) => m === undefined)) return false;
       const stored = storedText(doc, n.object);
@@ -1241,10 +1312,15 @@ export async function importTrees(
     }
 
     /** S10's binder on a Part object's feature; the inputs bound (kept). */
-    function bindPart(o: FcObject, featureId: string, sources: Record<string, string>): string[] {
+    function bindPart(
+      o: FcObject,
+      featureId: string | undefined,
+      sources: Record<string, string>,
+      because?: string,
+    ): string[] {
       const b = options.binder;
       if (!b) return [];
-      b.bindPart(o, featureId, sources);
+      b.bindPart(o, featureId, sources, because);
       const f = design.doc.features.find((x) => x.id === featureId);
       if (!f) return [];
       return Object.keys(sources).filter((input) => {
@@ -1335,6 +1411,7 @@ export async function importTrees(
       features: readonly string[],
     ): string[] {
       const before = new Set(known);
+      const kept = new Set(keeps);
       const copyOf = (id: string) => copyPrefixes.some((p) => id.startsWith(p));
       const copyPrefixes: string[] = [];
       for (const f of features) {
@@ -1342,7 +1419,7 @@ export async function importTrees(
         if (x?.type === 'move' && (x.inputs as { copy?: { value?: boolean } }).copy?.value)
           copyPrefixes.push(`${f}:`);
       }
-      return r.ids.filter((id) => (keeps.includes(id) || !before.has(id)) && !copyOf(id));
+      return r.ids.filter((id) => (kept.has(id) || !before.has(id)) && !copyOf(id));
     }
 
     /**

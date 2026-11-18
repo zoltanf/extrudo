@@ -151,6 +151,7 @@ export {
 export {
   eulerXYZ,
   importTrees,
+  MAX_OPERAND_BODIES,
   MAX_TREE_FEATURES,
   MAX_TREE_PASSES,
   type TreeImport,

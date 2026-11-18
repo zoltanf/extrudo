@@ -420,8 +420,11 @@ export function fcstdNotices(
   const plain = report.shapes.length;
   const came = plain + whole + partial;
   // What "history" is made of: a body's sketches and features, a tree's primitives and booleans.
-  const historyBodies = bodies.some((b) => b.outcome === 'history');
-  const historyTrees = treesWhole + leafy.length > 0;
+  const cameIn = trees.filter((t) => t.outcome === 'history' || t.outcome === 'leaves');
+  const historyBodies =
+    bodies.some((b) => b.outcome === 'history') ||
+    cameIn.some((t) => t.nodes.some((n) => n.outcome === 'body'));
+  const historyTrees = cameIn.length > 0;
   const made =
     historyBodies && historyTrees
       ? 'sketches, features, primitives and booleans'
@@ -462,12 +465,25 @@ export function fcstdNotices(
   }
   if (leafy.length > 0) {
     // S11: a tree built on the file's shapes for some of its parts; nothing below them stays.
+    // A stored leaf, or a stored-shape step of a body the tree uses, each a part.
     const reasons = leafy.flatMap((t) =>
-      t.nodes.filter((n) => n.outcome === 'leaf').map((n) => n.reason as TreeReason),
+      t.nodes.flatMap((n): TreeReason[] =>
+        n.outcome === 'leaf'
+          ? [n.reason as TreeReason]
+          : n.outcome === 'body'
+            ? (n.body?.steps ?? []).map((st) => st.reason)
+            : [],
+      ),
     );
     const one = leafy.length === 1;
+    const onePart = one && reasons.length === 1;
+    const what = onePart
+      ? 'shape for a part of it'
+      : one
+        ? 'shapes for parts of it'
+        : 'shapes for parts of them';
     out.push(
-      `Built on the file's own ${one ? 'shape for a part of it' : 'shapes for parts of them'}: ${listed(leafy.map((t) => t.name))}${one ? ', because' : '. Most often because'} ${commonestOf(reasons, TREE_REASON).join(', or ')}. What uses ${one ? 'that part comes' : 'those parts comes'} in with its history.`,
+      `Built on the file's own ${what}: ${listed(leafy.map((t) => t.name))}${one ? ', because' : '. Most often because'} ${commonestOf(reasons, TREE_REASON).join(', or ')}. What uses ${onePart ? 'that part' : 'those parts'} comes in with its history.`,
     );
   }
   const short = [

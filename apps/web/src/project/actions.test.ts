@@ -625,7 +625,45 @@ describe('fcstdNotices', () => {
     ).toBe(
       "Built on the file's own shape for a part of it: Cut, because part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet. What uses that part comes in with its history.",
     );
-    // body_operand beside a body of its own; other_primitives: part primitives as today.
+    // One tree on several of the file's shapes.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [
+          tree('Cut', 'leaves', [node('Extrude', 'leaf', 'type'), node('Mirror', 'leaf', 'type')]),
+        ],
+      })[1],
+    ).toBe(
+      "Built on the file's own shapes for parts of it: Cut, because part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet. What uses those parts comes in with its history.",
+    );
+    // body_operand: a tree that uses a PartDesign body brought its sketches and features in too.
+    const bodyNode = (steps: { reason: HistoryStop }[]) => ({
+      ...node('Body', 'feature'),
+      outcome: 'body' as const,
+      body: { ...body('Body', 'history'), steps },
+    });
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [tree('Fusion', 'history', [bodyNode([]) as never])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches, features, primitives and booleans).',
+    ]);
+    // A body that took a stored-shape step leaves its tree with part of its history.
+    expect(
+      fcstdNotices({
+        ...base,
+        finalShapes: 1,
+        trees: [tree('Fusion', 'leaves', [bodyNode([{ reason: 'differs' }]) as never])],
+      }),
+    ).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with part of its history (sketches, features, primitives and booleans).',
+      "Built on the file's own shape for a part of it: Fusion, because a rebuilt feature didn't match the file's shape. What uses that part comes in with its history.",
+    ]);
+    // other_primitives: part primitives as today, beside a body of its own.
     expect(
       fcstdNotices({
         ...base,

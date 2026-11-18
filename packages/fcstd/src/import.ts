@@ -11,7 +11,7 @@ import { Design } from '@extrudo/api';
 import type { AttachmentId } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
 import { Binder } from './bind';
-import { type BodyHistory, bodyChain, importBodies } from './bodies';
+import { type BodyHistory, bodyChain, importBodies, markWalkShared, newWalkShared } from './bodies';
 import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
@@ -61,7 +61,8 @@ export interface FcstdImportOptions {
   /** S10's `MAX_IMPORT_PARAMETERS` and `MAX_IMPORT_EXPRESSIONS`, for tests. */
   readonly maxParameters?: number;
   readonly maxExpressions?: number;
-  /** S11's limits (`MAX_TREE_NODES`, `MAX_IMPORT_TREE_NODES`, `MAX_TREE_PASSES`, `MAX_TREE_FEATURES`), for tests. */
+  /** S11's limits (`MAX_TREE_NODES`, `MAX_IMPORT_TREE_NODES`, `MAX_TREE_PASSES`, `MAX_TREE_FEATURES`, `MAX_OPERAND_BODIES`), for tests. */
+  readonly maxOperandBodies?: number;
   readonly maxTreeNodes?: number;
   readonly maxImportTreeNodes?: number;
   readonly maxTreePasses?: number;
@@ -151,7 +152,10 @@ export async function importFcstd(
   // The stored-shape steps' STEP bytes (S8), then the shapes import's.
   const stepFiles = new Map<AttachmentId, Uint8Array>();
   const known = { ids: [] as string[] };
+  // One set of counters for the body walk and every body a tree uses (S11).
+  const shared = newWalkShared(options.maxExternal);
   const walkOptions = {
+    shared,
     files: stepFiles,
     ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps } : {}),
     ...(options.maxDatums !== undefined ? { maxDatums: options.maxDatums } : {}),
@@ -182,6 +186,10 @@ export async function importFcstd(
     known: known.ids,
     ...(options.maxTreePasses !== undefined ? { maxPasses: options.maxTreePasses } : {}),
     ...(options.maxTreeFeatures !== undefined ? { maxFeatures: options.maxTreeFeatures } : {}),
+    ...(options.maxOperandBodies !== undefined
+      ? { maxOperandBodies: options.maxOperandBodies }
+      : {}),
+    markWalk: () => markWalkShared(shared),
     onStep: () => options.onProgress?.(++walked, steps + shapes.length),
     // A PartDesign body a tree uses: walked as any body is, from the design's bodies so far.
     walkBody: async (body, ids) => {

@@ -219,6 +219,7 @@ export function classify(doc: FcDocument, o: FcObject): PlannedNode {
           'operand',
           `it has no ${!base ? 'Base' : 'Tool'} to ${t.slice(6).toLowerCase()}`,
         );
+      if (base === tool) return leaf('operand', 'it names the same shape as its Base and its Tool');
       return placed(t === 'Part::Cut' ? 'cut' : t === 'Part::Fuse' ? 'join' : 'intersect', [
         base,
         tool,
@@ -429,9 +430,33 @@ export function partTrees(
 }
 
 /**
- * How many times each node is used by the mapped nodes of the given trees
- * (each use one operand position of a user that is built), counting each
- * user once: a shared operand needs a copy for every use but its last.
+ * What a node uses up: its operands, a compound that stands for its members
+ * (`isBuilt`) read as those members, each object once. Iterative: compounds
+ * may nest as deep as the file's links.
+ */
+export function effectiveOperands(
+  plan: PartPlan,
+  name: string,
+  isBuilt: (name: string) => boolean,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const stack = [...((plan.nodes.get(name) as PlannedNode).operands as string[])].reverse();
+  while (stack.length > 0) {
+    const op = stack.pop() as string;
+    if (seen.has(op)) continue;
+    seen.add(op);
+    const m = plan.nodes.get(op);
+    if (m?.kind === 'compound' && isBuilt(op)) stack.push(...[...m.operands].reverse());
+    else out.push(op);
+  }
+  return out;
+}
+
+/**
+ * How many times each node is used up by the features of the given trees: a
+ * shared operand needs a copy for every use but its last. A compound uses
+ * nothing up itself: whatever uses the compound uses its members.
  */
 export function usesOf(
   plan: PartPlan,
@@ -445,8 +470,9 @@ export function usesOf(
       if (counted.has(name) || !isBuilt(name)) continue;
       counted.add(name);
       const n = plan.nodes.get(name) as PlannedNode;
-      if (n.kind === 'leaf' || n.kind === 'body') continue;
-      for (const op of n.operands) uses.set(op, (uses.get(op) ?? 0) + 1);
+      if (n.kind === 'leaf' || n.kind === 'body' || n.kind === 'compound') continue;
+      for (const op of effectiveOperands(plan, name, isBuilt))
+        uses.set(op, (uses.get(op) ?? 0) + 1);
     }
   return uses;
 }
