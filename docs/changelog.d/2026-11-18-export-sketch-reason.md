@@ -1,0 +1,1 @@
+- 2026-11-18 · **Export Sketch says why there are no profiles**: on a sketch too complex to search for profiles, the dialog gives the reason and points to All curves, which can still be exported.

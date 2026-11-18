@@ -2688,6 +2688,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   hole); the DXF is `AC1009` with 4 `LINE` and 1 `CIRCLE`. Selected profiles
   are chosen first (the overlay's `[data-selected-profiles]`).
 
+- A refused sketch is imported, not drawn: `writeArchive` of a circle and a line out to 2e9 mm
+  (reason `size`) through the home screen's "Import…" file chooser.
+
 - A timeline chip's right-click menu has `/^Export SVG or DXF/`; an open
   sketch of one line has no profiles, so "All profiles" says "no closed
   profiles" and "Export SVG" is disabled.

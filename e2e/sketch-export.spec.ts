@@ -1,5 +1,16 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
+import {
+  addToSketch,
+  applyCommand,
+  createDocument,
+  createSketch,
+  type FeatureId,
+  originPlaneRef,
+} from '../packages/core/src/index';
+import { SketchBuilder } from '../packages/sketch/src/fixtures';
+import { TOO_LARGE_COORDINATES } from '../packages/sketch/src/profiles/profiles';
+import { writeArchive } from '../packages/storage/src/archive';
 import { clicker, mapping, openProject, pickTool, sketchOnXY } from './helpers';
 
 // P1-13: a sketch exports to SVG (1 unit = 1 mm, with the size on the root)
@@ -126,4 +137,46 @@ test('a timeline chip exports its sketch; an open sketch has no profiles to expo
   await expect(dialog(page).getByRole('button', { name: 'Export SVG' })).toBeDisabled();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toHaveCount(0);
+});
+
+test('a sketch refused by profile detection says why and still exports its curves', async ({
+  page,
+}) => {
+  // A circle and a line out past the coordinate limit: two curves are enough.
+  const curves = new SketchBuilder();
+  curves.circle(0, 0, 5);
+  curves.line(0, 0, 2e9, 0);
+  const feature = 's' as FeatureId;
+  let doc = createDocument({ name: 'Far out' });
+  doc = applyCommand(doc, createSketch({ id: feature, plane: originPlaneRef('origin:xy') })).doc;
+  doc = applyCommand(doc, addToSketch({ feature, entities: curves.sketch.entities })).doc;
+
+  await page.goto('./');
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
+  ]);
+  await chooser.setFiles({
+    name: 'far-out.extrudo',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from(writeArchive(doc)),
+  });
+  await page
+    .getByRole('list', { name: 'Features' })
+    .getByRole('button', { name: /^Sketch1/ })
+    .click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /^Export SVG or DXF/ }).click();
+
+  const button = dialog(page).getByRole('button', { name: 'Export SVG' });
+  await expect(dialog(page).getByRole('radio', { name: 'All curves' })).toBeChecked();
+  await expect(button).toBeEnabled();
+  await dialog(page)
+    .getByRole('radio', { name: /^All profiles/ })
+    .check();
+  await expect(summary(page)).toHaveText(
+    `${TOO_LARGE_COORDINATES} All curves can still be exported.`,
+  );
+  await expect(button).toBeDisabled();
+  await dialog(page).getByRole('radio', { name: 'All curves' }).check();
+  await expect(button).toBeEnabled();
 });
