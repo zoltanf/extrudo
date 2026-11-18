@@ -1003,19 +1003,20 @@ function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityI
  * curves cut each other too often (`MAX_PROFILE_CUTS`) or lie too far out
  * (`MAX_PROFILE_COORDINATE`).
  *
- * Remembered per sketch data object (ADR-0020's amendment of 2026-11-16):
- * a sketch's data is never changed in place (the document is frozen; edits
- * make new objects), so the same object gives the same regions, or the
- * same refusal, without the work again. Each call gets its own list; the
- * profiles in it are frozen (not their points) and shared: never write
- * into a profile's points. A sketch with text is detected
- * every time: its ink depends on fonts loaded later.
+ * Remembered for a sketch whose data is frozen all the way through, as a
+ * document's is (ADR-0020's amendment of 2026-11-16): that object can't
+ * change, so it gives the same regions, or the same refusal, without the
+ * work again. Each call gets its own list; the profiles in it are frozen
+ * (not their points) and shared: never write into a profile's points. Data
+ * that isn't frozen (the kernel's parsed copy of its inputs, a builder's) is
+ * detected every time and keeps nothing, and so is a sketch with text: its
+ * ink depends on fonts loaded later.
  */
 export function detectProfiles(data: SketchData): Profile[] {
   const known = remembered.get(data);
   if (typeof known === 'string') throw new ProfilesRefusedError(known);
   if (known) return known.slice();
-  if (hasText(data)) return detect(data, false);
+  if (!canRemember(data)) return detect(data, false);
   let found: Profile[];
   try {
     found = detect(data, false);
@@ -1027,16 +1028,30 @@ export function detectProfiles(data: SketchData): Profile[] {
   return found.slice();
 }
 
-/** Each sketch data object's regions, or why they were refused; entries go with their sketch. */
+/** Each frozen sketch data object's regions, or why they were refused; entries go with their sketch. */
 const remembered = new WeakMap<SketchData, readonly Profile[] | ProfilesRefusal>();
 
-/** Whether a normal (not construction) text is in the sketch: its regions depend on the fonts. */
-function hasText(data: SketchData): boolean {
+/** Whether `value` and everything in it is frozen. */
+function frozenThrough(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return true;
+  if (!Object.isFrozen(value)) return false;
+  for (const inner of Object.values(value)) if (!frozenThrough(inner)) return false;
+  return true;
+}
+
+/**
+ * Whether the answer for `data` may be kept: its entities (all detection
+ * reads) can't change, and no normal (not construction) text is among them.
+ * The first test is all that unfrozen data pays.
+ */
+function canRemember(data: SketchData): boolean {
+  if (!Object.isFrozen(data) || !Object.isFrozen(data.entities)) return false;
   for (const id in data.entities) {
     const e = data.entities[id as SketchEntityId] as SketchEntity;
-    if (e.type === 'text' && !e.construction) return true;
+    if (e.type === 'text' && !e.construction) return false;
+    if (!frozenThrough(e)) return false;
   }
-  return false;
+  return true;
 }
 
 /**

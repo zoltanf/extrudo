@@ -1,9 +1,10 @@
 /**
- * Detection remembers its result per sketch data object (ADR-0020's
- * amendment of 2026-11-16): the same object again does no work, a refusal
- * is given again without the work, a sketch with text is detected every
- * time, an edit (a new object) gives the new regions, the measuring entries
- * still do the work, and no caller can change what the next one gets.
+ * Detection remembers its result for sketch data frozen all the way through
+ * (ADR-0020's amendment of 2026-11-16): the same object again does no work, a
+ * refusal is given again without the work, data that isn't frozen and a
+ * sketch with text are detected every time, an edit (a new object) gives the
+ * new regions, the measuring entries still do the work, and no caller can
+ * change what the next one gets.
  * The work is counted by the crossing tests (`intersectCurves`), which every
  * detection of curves that meet makes.
  */
@@ -44,6 +45,15 @@ beforeEach(() => {
   tests.mockClear();
 });
 
+/** `value` frozen all the way through, as a document's sketch is. */
+function frozen<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    Object.values(value).forEach(frozen);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 /** A `w` × `h` rectangle at (x, y), with a circle hole in it. */
 function plate(b = new SketchBuilder(), x = 0, w = 40): SketchBuilder {
   b.line(x, 0, x + w, 0);
@@ -82,7 +92,7 @@ function refusal(data: SketchData): string | undefined {
 
 describe('detectProfiles remembers', () => {
   it('a sketch: the same object again does no work and gives the same regions', () => {
-    const data = plate().sketch;
+    const data = frozen(plate().sketch);
     const first = detectProfiles(data);
     expect(tests.mock.calls.length).toBeGreaterThan(0);
     tests.mockClear();
@@ -91,12 +101,12 @@ describe('detectProfiles remembers', () => {
     expect(again).toEqual(first);
     expect(again.map((p) => p.id)).toEqual(first.map((p) => p.id));
     // A new object with the same content is detected again.
-    detectProfiles({ ...data });
+    detectProfiles(frozen({ ...data }));
     expect(tests.mock.calls.length).toBeGreaterThan(0);
   });
 
   it('a refusal: the same object refuses again with the same reason and no work', () => {
-    const data = chords();
+    const data = frozen(chords());
     expect(refusal(data)).toBe('crossings');
     expect(tests.mock.calls.length).toBeGreaterThan(1000);
     tests.mockClear();
@@ -117,12 +127,13 @@ describe('detectProfiles remembers', () => {
       x: 2 * MAX_PROFILE_COORDINATE,
       y: 0,
     };
+    frozen(far);
     expect(refusal(far)).toBe('size');
     expect(refusal(far)).toBe('size');
   });
 
   it('only what detection itself throws for: other errors are thrown again, with the work again', () => {
-    const data = plate().sketch;
+    const data = frozen(plate().sketch);
     tests.mockImplementationOnce(() => {
       throw new Error('boom');
     });
@@ -130,6 +141,49 @@ describe('detectProfiles remembers', () => {
     tests.mockClear();
     expect(detectProfiles(data).length).toBeGreaterThan(0);
     expect(tests.mock.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe('data that is not frozen all the way through', () => {
+  /** Whether a second look at `data` did the work again. */
+  const worksAgain = (data: SketchData) => {
+    detectProfiles(data);
+    tests.mockClear();
+    detectProfiles(data);
+    return tests.mock.calls.length > 0;
+  };
+
+  it('is detected every time: a parsed copy, a builder, a literal', () => {
+    expect(worksAgain(plate().sketch)).toBe(true);
+    expect(worksAgain(structuredClone(frozen(plate().sketch)))).toBe(true);
+  });
+
+  it('is detected every time when only part of it is frozen', () => {
+    // The object, over a builder's live map.
+    expect(worksAgain(Object.freeze(plate().sketch))).toBe(true);
+    // The map too, with entities that can still change.
+    const b = plate().sketch;
+    Object.freeze(b.entities);
+    expect(worksAgain(Object.freeze(b))).toBe(true);
+    // All but what is inside one entity: a spline's list of points.
+    const s = plate();
+    s.spline([
+      [90, 0],
+      [95, 10],
+      [100, 0],
+    ]);
+    const data = s.sketch;
+    for (const e of Object.values(data.entities)) Object.freeze(e);
+    Object.freeze(data.entities);
+    expect(worksAgain(Object.freeze(data))).toBe(true);
+  });
+
+  it('gives the new regions after a write into it', () => {
+    const data = plate().sketch;
+    const area = detectProfiles(data)[0]?.area ?? 0;
+    const corner = Object.values(data.entities).filter((e) => e.type === 'point' && e.x === 40);
+    for (const p of corner) (p as { x: number }).x = 60;
+    expect(detectProfiles(data)[0]?.area).toBeCloseTo(area + 400, 6);
   });
 });
 
@@ -158,7 +212,7 @@ describe('a sketch with text', () => {
   }
 
   it('is detected every time: its ink depends on the fonts loaded', () => {
-    const data = withText(false);
+    const data = frozen(withText(false));
     const first = detectProfiles(data);
     expect(first.some((p) => p.text)).toBe(true);
     tests.mockClear();
@@ -167,7 +221,7 @@ describe('a sketch with text', () => {
   });
 
   it('is remembered when the text is construction: detection never reads it', () => {
-    const data = withText(true);
+    const data = frozen(withText(true));
     const first = detectProfiles(data);
     expect(first.some((p) => p.text)).toBe(false);
     tests.mockClear();
@@ -213,8 +267,11 @@ describe('an edited sketch gives the new regions', () => {
     );
     expect(data()).not.toBe(before);
     expect(detectProfiles(data())[0]?.area).toBeCloseTo(1200 - Math.PI * 16, 0);
-    // The document's data can't be written into: it is frozen.
+    // The document's data can't be written into: it is frozen, and remembered.
     expect(Object.isFrozen(data().entities)).toBe(true);
+    tests.mockClear();
+    detectProfiles(data());
+    expect(tests).not.toHaveBeenCalled();
 
     // Delete the circle: one region, no hole.
     const circle = Object.entries(data().entities).find(([, e]) => e.type === 'circle')?.[0];
@@ -241,7 +298,7 @@ describe('an edited sketch gives the new regions', () => {
 
 describe('the measuring entries', () => {
   it('still do the work on a remembered sketch', () => {
-    const data = plate().sketch;
+    const data = frozen(plate().sketch);
     const first = detectProfiles(data);
     tests.mockClear();
     const work: Work = { segments: 0, points: 0, tests: 0 };
@@ -257,7 +314,7 @@ describe('the measuring entries', () => {
 
 describe('what a caller gets', () => {
   it("is its own list, of frozen profiles, loops and edges: the next caller's regions don't change", () => {
-    const data = plate(plate(), 100).sketch;
+    const data = frozen(plate(plate(), 100).sketch);
     const first = detectProfiles(data);
     const ids = first.map((p) => p.id);
     const area = first[0]?.area;
@@ -284,7 +341,7 @@ describe('what a caller gets', () => {
     expect(again[0]?.area).toBe(area);
   });
 
-  it("shares nothing with the sketch: freezing leaves a builder's data as it was", () => {
+  it('shares nothing with the sketch it was found in', () => {
     const b = plate();
     b.arc(60, 10, 5, 0, 180);
     b.line(55, 10, 65, 10);
@@ -294,17 +351,24 @@ describe('what a caller gets', () => {
       [95, 10],
       [100, 0],
     ]);
-    const data = b.sketch;
+    const objects = (root: unknown, seen = new Set<object>()) => {
+      if (typeof root === 'object' && root !== null && !seen.has(root)) {
+        seen.add(root);
+        for (const inner of Object.values(root)) objects(inner, seen);
+      }
+      return seen;
+    };
+    const data = frozen(b.sketch);
     const profiles = detectProfiles(data);
     expect(profiles.length).toBeGreaterThan(3);
-    const isPart = (o: unknown): boolean =>
-      typeof o === 'object' &&
-      o !== null &&
-      (Object.isFrozen(o) || Object.values(o as object).some(isPart));
-    expect(isPart(b.entities)).toBe(false);
-    // The builder still writes into its maps and entities.
-    b.line(0, 30, 10, 30);
-    const first = Object.values(b.entities)[0] as { x: number };
-    first.x += 0;
+    const ofSketch = objects(data);
+    for (const o of objects(profiles)) expect(ofSketch.has(o)).toBe(false);
+  });
+
+  it("leaves data that isn't frozen as it was", () => {
+    const b = plate();
+    detectProfiles(b.sketch);
+    expect(Object.values(b.entities).some((e) => Object.isFrozen(e))).toBe(false);
+    expect(Object.isFrozen(b.entities)).toBe(false);
   });
 });

@@ -386,6 +386,45 @@ describe('the sketch evaluator', () => {
     engine.clear();
   });
 
+  it("keeps no regions for the sketches it holds: each result's data is its own parsed copy", async () => {
+    // Detection remembers frozen data only (ADR-0020's amendment of 2026-11-16), and
+    // the engine keeps up to 256 results: each would pin all its regions' points.
+    const frozen = <T>(value: T): T => {
+      if (typeof value === 'object' && value !== null) {
+        Object.values(value).forEach(frozen);
+        Object.freeze(value);
+      }
+      return value;
+    };
+    const { registry, seen } = testFeatures();
+    const engine = new RecomputeEngine(kernel, registry, { strictLeaks: true });
+    for (const w of [40, 50, 60]) {
+      const b = new SketchBuilder();
+      rect(b, 0, 0, w, 20);
+      const id = detectProfiles(b.sketch)[0]?.id as string;
+      const sketch = {
+        ...testFeature('s1', 'sketch'),
+        inputs: sketchInputs(originPlaneRef('origin:xy'), b.sketch),
+      };
+      const sheet = testFeature(
+        'sheet',
+        'test-sheet',
+        {},
+        { profile: { kind: 'ref', refs: [{ kind: 'profile', id: `s1/${id}` }] } },
+      );
+      // Frozen as a document store's is (the CLI's kernel runs in its process).
+      await engine.recompute({ doc: frozen(testDocument([sketch, sheet])) });
+    }
+    const held = seen.map((output) => (output.data as SketchOutputData).sketch);
+    expect(held).toHaveLength(3);
+    for (const data of held) {
+      expect(Object.isFrozen(data)).toBe(false);
+      // A remembered sketch's profiles are frozen; these are found anew.
+      expect(Object.isFrozen(detectProfiles(data)[0])).toBe(false);
+    }
+    engine.clear();
+  });
+
   it('reports the plane, and each profile with the curves of its edges', async () => {
     const b = new SketchBuilder();
     const bottom = b.line(0, 0, 10, 0);
