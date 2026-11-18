@@ -400,7 +400,7 @@ export const sketchConic: RecordDecoder<SketchSpline> = {
 };
 
 /** u32 degree, f64 fit tolerance, knots, weights and poles; undefined when the bytes are not one. */
-function readNurbs(
+export function readNurbs(
   r: Reader,
 ): Pick<SketchSpline, 'degree' | 'knots' | 'weights' | 'poles'> | undefined {
   if (r.remaining < 12 + 36) return undefined;
@@ -425,7 +425,8 @@ function readNurbs(
   const poles: Vec3[] = [];
   for (let i = 0; i < flat.length; i += 3)
     poles.push([flat[i] as number, flat[i + 1] as number, flat[i + 2] as number]);
-  if (poles.length < 2 || knots.length !== poles.length + degree + 1) return undefined;
+  // A curve of degree d needs d + 1 poles at least.
+  if (poles.length < degree + 1 || knots.length !== poles.length + degree + 1) return undefined;
   if (weights.length !== 0 && weights.length !== poles.length) return undefined;
   for (let i = 1; i < knots.length; i++)
     if ((knots[i] as number) < (knots[i - 1] as number)) return undefined;

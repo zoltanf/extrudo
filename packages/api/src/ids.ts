@@ -103,9 +103,13 @@ export function storedIds(doc: StoredIdDocument): string[] {
     ids.push(feature.id);
     for (const input of Object.values(feature.inputs)) {
       if (input.kind !== 'sketchData') continue;
-      ids.push(...Object.keys(input.sketch.entities));
-      ids.push(...Object.keys(input.sketch.constraints));
-      ids.push(...Object.keys(input.sketch.dimensions));
+      // A loop, not a spread: a sketch of many entities passes the engine's argument limit.
+      for (const table of [
+        input.sketch.entities,
+        input.sketch.constraints,
+        input.sketch.dimensions,
+      ])
+        for (const id of Object.keys(table)) ids.push(id);
     }
   }
   for (const group of doc.groups ?? []) ids.push(group.id);

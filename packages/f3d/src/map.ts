@@ -63,8 +63,10 @@ import {
   ImportBudget,
   type InputValue,
   MAX_IMPORT_ENTITIES,
+  offsetDroppedNote,
   overBudgetNote,
   sketchEntities,
+  sketchUnits,
   TOO_MANY_ENTITIES,
 } from './budget';
 import { F3dFormatError } from './bytes';
@@ -523,7 +525,8 @@ const CAP_HEIGHT = 0.716;
  */
 function fontFor(family: string, bold = false): TextFont {
   const f = family.trim().toLowerCase();
-  const standIn = STAND_INS[f];
+  // Own keys only: a family such as `constructor` has no stand-in.
+  const standIn = Object.hasOwn(STAND_INS, f) ? STAND_INS[f] : undefined;
   if (standIn) return bold ? standIn.bold : standIn.regular;
   if (/mono|courier|consol|menlo/.test(f)) return FONTS.mono;
   if (/stencil/.test(f)) return FONTS.stencil;
@@ -565,6 +568,8 @@ export function f3dToDesign(
   name: string,
   options: ImportOptions = {},
 ): ImportResult {
+  faceMisses.clear();
+  lastMiss = undefined;
   const report: ImportReport = {
     imported: [],
     skipped: [],
@@ -838,9 +843,20 @@ export function f3dToDesign(
   const moved = new Map<string, SketchEntry | undefined>();
   /** The sketch copies `movedSketch` made (the import's budget charges their size). */
   const copies = new Set<string>();
+  /**
+   * Set when a copy would pass the budget: it is not made, and the feature
+   * asking for it comes in on its own sketch, suppressed (`charge`).
+   */
+  let copyRefused = false;
   const movedSketch = (entry: SketchEntry, cm: number, name: string): SketchEntry | undefined => {
     const key = `${entry.source.id}@${cm}`;
     if (moved.has(key)) return moved.get(key);
+    // The copy is the sketch drawn again, so it costs what a copy of the sketch would.
+    const original = d.doc.features.find((x) => x.id === entry.handle.id);
+    if (original && sketchUnits(original, true) > budget.left) {
+      copyRefused = true;
+      return entry;
+    }
     const m = [...entry.source.frame];
     m[3] = (m[3] as number) + cm * (m[2] as number);
     m[7] = (m[7] as number) + cm * (m[6] as number);
@@ -892,6 +908,8 @@ export function f3dToDesign(
    * size, past `MAX_IMPORT_ENTITIES` the import is refused.
    */
   const charge = (feature: F3dFeature, from: number) => {
+    const refused = copyRefused;
+    copyRefused = false;
     const added = d.doc.features.slice(from);
     if (added.length === 0) return;
     // A full-length thread runs its longest face's length (unknown: the most turns).
@@ -903,7 +921,7 @@ export function f3dToDesign(
     // Once the budget is spent, nothing is evaluated: a count is taken as the most.
     const value: InputValue = budget.left > 0 ? inputValue : () => undefined;
     const units = budget.cost(added, value, copies, fullTurns);
-    if (units > 0 && !budget.spend(units)) {
+    if (refused || (units > 0 && !budget.spend(units))) {
       // Construction planes stay: later sketches on the same plane share them.
       for (const f of added) {
         if (isConstructionType(f.type)) continue;
@@ -911,6 +929,7 @@ export function f3dToDesign(
         d.suppress(f.id);
       }
       report.notes.push(overBudgetNote(feature.name));
+      if (refused) report.notes.push(offsetDroppedNote(feature.name));
     }
     for (const f of added) entities += sketchEntities(f);
     if (entities > MAX_IMPORT_ENTITIES) throw new F3dFormatError(TOO_MANY_ENTITIES);
@@ -2276,10 +2295,9 @@ function selectProfilesOf(
       continue;
     }
     const regions = sketch.handle.regions;
-    if (!operand.regions) {
-      profiles.push(...sketch.handle.profiles());
-      continue;
-    }
+    // Every profile operand of a file lists its regions; one whose regions
+    // record is missing or not read names no profile this could pick.
+    if (!operand.regions) return PROFILE_REGIONS_UNREAD;
     const present = new Set([...sketch.tags.values()].map(String));
     const before = profiles.length;
     let lost = 0;
@@ -2671,8 +2689,11 @@ function toModel(m: Matrix, p: Vec3): Vec3 {
   ];
 }
 
-/** Why faces could not be named, counted (for the corpus tools). */
-export const faceMisses: Record<string, number> = {};
+/**
+ * Why faces could not be named in the last import, counted (for the corpus
+ * tools; reset by every `f3dToDesign`). A Map: a reason can carry a type name from the file.
+ */
+export const faceMisses = new Map<string, number>();
 /** For the corpus tools: called with every fillet or chamfer edge as it is named. */
 export const edgeTrace: {
   edge?: (row: {
@@ -2686,7 +2707,7 @@ export const edgeTrace: {
 } = {};
 let lastMiss: string | undefined;
 const miss = (why: string): undefined => {
-  faceMisses[why] = (faceMisses[why] ?? 0) + 1;
+  faceMisses.set(why, (faceMisses.get(why) ?? 0) + 1);
   lastMiss = why;
   return undefined;
 };
@@ -3510,6 +3531,8 @@ export const regionStats: Record<string, number> = {
 
 /** Why a feature's profile was not found when its sketch's region matching ran out of budget. */
 export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
+/** Why a feature is left out when a profile's regions record is missing or could not be read. */
+export const PROFILE_REGIONS_UNREAD = "its profile's regions could not be read";
 /** Why a feature's profile was not found when its sketch's curves lie too far out to find regions. */
 export const TOO_LARGE_SKETCH = 'its sketch has coordinates too large to find its profile';
 /** Why a feature's profile was not found when its sketch has too many curves to find regions. */

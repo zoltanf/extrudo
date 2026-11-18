@@ -122,7 +122,10 @@ export function fontBytes(id: string): Promise<ArrayBuffer | undefined> {
   if (attachmentId) return attachmentBytes(attachmentId);
   const known = bytes.get(id);
   if (known) return known;
-  const url = (fontUrls as Readonly<Record<string, string>>)[id];
+  // Own keys only: a name such as `constructor` is no bundled font.
+  const url = Object.hasOwn(fontUrls, id)
+    ? (fontUrls as Readonly<Record<string, string>>)[id]
+    : undefined;
   const promise = url
     ? fetch(url)
         .then((response) => (response.ok ? response.arrayBuffer() : undefined))

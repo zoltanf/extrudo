@@ -1,7 +1,9 @@
 /** The ellipse and line readers on hand-built records (no real file's bytes). */
 import { describe, expect, it } from 'vitest';
+import { Reader } from '../bytes';
 import {
   ellipseSweep,
+  readNurbs,
   SKETCH_CIRCULAR,
   SKETCH_CONIC,
   SKETCH_ELLIPSE,
@@ -179,6 +181,24 @@ describe('hostile numbers', () => {
       ]);
     expect(sketchLine.decode(record(0), 11).end).toEqual([2, 0, 0]);
     expect(() => sketchLine.decode(record(Number.NaN), 11)).toThrow(/isn't finite/);
+  });
+
+  it('reads no spline with fewer poles than its degree + 1', () => {
+    // Three poles; degree 2, or 3 (too few poles), knots as many as poles + degree + 1.
+    const nurbs = (degree: number) => {
+      const b = new Bytes().u32(degree);
+      const knots = Array.from({ length: 3 + degree + 1 }, (_, i) => i);
+      f64s(b, 0).u32(knots.length).u32(knots.length).u32(8);
+      f64s(b, ...knots)
+        .u32(0)
+        .u32(0)
+        .u32(8);
+      f64s(b).u32(3).u32(3).u32(8);
+      f64s(b, 0, 0, 0, 1, 1, 0, 2, 0, 0);
+      return readNurbs(new Reader(new Uint8Array(b.out)));
+    };
+    expect(nurbs(2)?.poles.length).toBe(3);
+    expect(nurbs(3)).toBeUndefined();
   });
 
   it('refuses a spline whose poles, knots or weights are not finite', () => {

@@ -50,8 +50,9 @@ export function readThreadSpec(seg: Segment, scope: Scope): ThreadSpec | undefin
       const minor = r.f64();
       r.u8();
       const pitch = r.f64();
-      if (external > 1 || full > 1 || !(major > minor && minor > 0 && pitch > 0 && pitch < major))
-        continue;
+      // Finite major: minor and pitch are below it, so all three are.
+      const sizes = Number.isFinite(major) && major > minor && minor > 0 && pitch > 0;
+      if (external > 1 || full > 1 || !(sizes && pitch < major)) continue;
       return {
         angle,
         external: external === 1,

@@ -112,7 +112,7 @@ export interface ProfileOperand {
   id: number;
   /** The sketch container (record number) the profile is in. */
   sketch: number;
-  /** Selected regions; absent: the whole sketch. */
+  /** Selected regions; absent when its regions record is missing or not read (the mapper then leaves the feature out). */
   regions?: ProfileRegion[];
   /** A text-profile operand's text record: the profile is that text's ink. */
   text?: number;

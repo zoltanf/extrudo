@@ -1,0 +1,1 @@
+- 2026-11-15 · **STEP import**: reals written without a decimal point (such as `1e1`) are read as the standard requires, so a file from another program that writes them comes in as the shape it holds.

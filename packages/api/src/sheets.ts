@@ -66,6 +66,7 @@ import {
 import { ApiError } from './error';
 import type { FeatureHandle } from './handles';
 import type { IdKind } from './ids';
+import { byNameThenId } from './lookup';
 
 /** What the sheet handles change the design through (`Design`), kept off its surface. */
 export interface SheetHandleContext {
@@ -539,10 +540,9 @@ export class SheetHandle {
     return (this.sheet?.views ?? []).map((v) => new SheetViewHandle(this.#design, this, v.id));
   }
 
-  /** One of its views, by ID or (case-insensitive) name, or `undefined`. */
+  /** One of its views, by name (any case), then by ID, or `undefined`. */
   view(view: string): SheetViewHandle | undefined {
-    const wanted = view.toLowerCase();
-    const found = this.sheet?.views.find((v) => v.id === view || v.name.toLowerCase() === wanted);
+    const found = byNameThenId(this.sheet?.views ?? [], view, true);
     return found && new SheetViewHandle(this.#design, this, found.id);
   }
 
@@ -871,9 +871,10 @@ export class SheetItemHandle {
   }
 }
 
-/** A sheet of `doc`, by handle, ID or (case-insensitive) name. */
+/** A sheet of `doc`, by handle (its ID) or by a string: its name (any case), then its ID. */
 export function findSheet(doc: ExtrudoDocument, sheet: SheetLike): Sheet | undefined {
-  const id = typeof sheet === 'string' ? sheet : sheet.id;
-  const wanted = id.toLowerCase();
-  return (doc.sheets ?? []).find((s) => s.id === id || s.name.toLowerCase() === wanted);
+  const all = doc.sheets ?? [];
+  return typeof sheet === 'string'
+    ? byNameThenId(all, sheet, true)
+    : all.find((s) => s.id === sheet.id);
 }

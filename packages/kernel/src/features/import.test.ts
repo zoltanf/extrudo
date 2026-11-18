@@ -266,6 +266,28 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
     expect(bodies(b, engine as RecomputeEngine).map((x) => x.size)).toEqual(sizes);
   });
 
+  it('reads reals written without a decimal point as the standard requires (2026-11-15)', {
+    timeout: 60_000,
+  }, async () => {
+    // A 10 mm box as another writer might put it: `1e1` for 10., `0e0` for 0.,
+    // `1e0` for 1. (one-digit mantissas, which the reader took as other numbers).
+    const box = (() => {
+      using scope = kernel.scope();
+      const shape = scope.track(kernel.box([10, 10, 10]));
+      return kernel.writeStep([{ shape, name: 'Box' }]);
+    })();
+    const odd = box.replace(/(?<=[(,])(-?)(10|0|1)\.(?=[,)])/g, (_, sign, n) =>
+      n === '10' ? `${sign}1e1` : n === '0' ? `${sign}0e0` : `${sign}1e0`,
+    );
+    expect(odd).not.toBe(box);
+    expect(odd).toMatch(/[(,]1e1[,)]/);
+    const result = await recompute(design({ bytes: new TextEncoder().encode(odd) }).doc);
+    expect(result.features[IMPORT_ID]?.status).toBe('ok');
+    expect(bodies(result, engine as RecomputeEngine).map((b) => [b.size, b.volume])).toEqual([
+      [[10, 10, 10], expect.closeTo(1000, 6)],
+    ]);
+  });
+
   it("says what is wrong with a file it can't use", { timeout: 60_000 }, async () => {
     const messageOf = async (doc: ExtrudoDocument) => {
       const result = await recompute(doc);

@@ -143,6 +143,26 @@ describe('a sheet handle', () => {
     expect(d.sheet('C')).toBeUndefined();
   });
 
+  it("finds a sheet by its name before another's ID", () => {
+    const { d } = setup();
+    const first = d.addSheet('A');
+    const named = d.addSheet(first.id); // named like the first's ID
+    expect(d.sheet(first.id)?.id).toBe(named.id);
+    expect(d.sheet(first.id.toUpperCase())?.id).toBe(named.id);
+    expect(d.sheet(named.id)?.id).toBe(named.id); // no sheet has that name: by ID
+    expect(d.sheet(first)?.id).toBe(first.id); // a handle by its ID
+  });
+
+  it("finds a view by its name before another view's ID", () => {
+    const { d } = setup();
+    const first = d.addSheet('A');
+    const front = first.addView('Front', { at: [100, 100] });
+    const view = first.addView(front.id, { at: [200, 100] });
+    expect(first.view(front.id)?.id).toBe(view.id);
+    expect(first.view('front')?.id).toBe(front.id);
+    expect(first.view(view.id)?.id).toBe(view.id);
+  });
+
   it('changes its setup, merging fields, in one step each', () => {
     const { d } = setup();
     const sheet = d.addSheet('A', { fields: { title: 'Plate', units: 'mm' } });
