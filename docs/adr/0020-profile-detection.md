@@ -544,9 +544,12 @@ refused; 9,000 fit splines the same poles and knots.
 
 ## Amendment 2026-11-16: detection remembers its result per sketch
 
-**What.** `detectProfiles` keeps what it found for each sketch data object
-in a `WeakMap` keyed by that object: the regions, or the reason it refused
-them (`ProfilesRefusedError.reason`). The same object again gets the same
+**What.** `detectProfiles` keeps what it found for a sketch data object
+**frozen all the way through** (the object, its entities and everything in
+them, as a document's sketch is), in a `WeakMap` keyed by that object: the
+regions, or the reason it refused them (`ProfilesRefusedError.reason`).
+Data that isn't frozen is detected every time and keeps nothing. The same
+frozen object again gets the same
 answer without the work: a new list of the same profiles, or a new
 `ProfilesRefusedError` with the same reason (callers test the class, the
 reason and the message, never the error's identity). Other errors are not
@@ -561,10 +564,9 @@ measure the work.
 **Why.** Many callers ask for the regions of the same unchanged sketch:
 the API (`regions`, `profiles()`, `profileAt`, `profilesInside`: each a
 whole detection, and the agent's tools call two of them per request), the
-emitter and the OpenSCAD export once per profile reference, the importers
-once per feature that uses the sketch, the kernel's sketch feature and the
-export in the same recompute. A large sketch, or one refused after seconds
-of work, costs that time on every call. The app's own cache
+emitter once per profile reference, the importers once per feature that
+uses the sketch. All of these read a document's frozen sketch. A large
+sketch, or one refused after seconds of work, costs that time on every call. The app's own cache
 (`apps/web/src/sketch/profiles.ts`, per data object and fonts' version)
 already answers the viewport, picking and panels: in the app a design
 open in model or sketch mode for half a minute, with the pointer moving
@@ -572,22 +574,21 @@ over it, detects nothing again (wall bracket template: 2 detections per
 sketch on opening, the template's own and the viewport's, none while idle;
 a refused sketch: 1 on the main thread, 1 in the kernel).
 
-**A sketch's data is never changed in place**, which is what makes the
-object a sound key (checked, not assumed): the document store holds
-frozen documents (Immer's `produceWithPatches` and `applyPatches` freeze,
-`replaceDocument` freezes deeply), so every edit, solve, drag step, undo
-and redo makes a new data object for the sketch it touches and keeps the
-others. The solver and settling copy what they change and hand it back
-through a command. The builders whose maps grow while a sketch is built
-(the API's `SketchBuilder.data`, the tests' `SketchBuilder.sketch`) hand
-out a new object at every look, so a look during a build is never
-answered from an earlier one; the importers change builder entities only
-inside the build, before detection sees the document. The kernel worker
-gets a copy of the document with every recompute and changes nothing. The
-whole Vitest suite ran with every remembered answer detected again and
-compared: no difference. Rules: never change a `SketchData` after it may
-have been detected (make a new object), and never key this cache by
-`data.entities` (a builder's map grows under it).
+**Only frozen data is a key**, so that the rule the cache rests on, that
+a key never changes, holds by construction: a frozen object can't change.
+The document store holds frozen documents (Immer's `produceWithPatches` and
+`applyPatches` freeze, `replaceDocument` freezes deeply), so every edit,
+solve, drag step, undo and redo makes a new data object for the sketch it
+touches and keeps the others, and the API, the emitter and the importers,
+which read a store's document, get their answers again. What isn't frozen
+never gets an entry: the builders whose maps grow while a sketch is built
+(the API's `SketchBuilder.data`, the tests' `SketchBuilder.sketch`), one-off
+literals, and **the kernel's sketch feature**, which detects the copy of its
+inputs the engine has just parsed. The test looks at the object first, so
+unfrozen data pays one `Object.isFrozen`; frozen data pays the walk once,
+when it is first detected (0.16 ms for the largest sketch of an f3d corpus,
+685 entities, against 0.67 s of detection). Rules: never key this cache by
+`data.entities` alone, and never remember data that isn't frozen.
 
 **Left out: a sketch with text** (any text entity that is not
 construction). Its ink depends on the fonts loaded, which can arrive after
@@ -595,16 +596,19 @@ the first detection; the app's cache keys text sketches by the fonts'
 version instead. Construction geometry, construction text included, is
 never read by detection, so it doesn't matter.
 
-**No bound is needed.** An entry lives as long as its data object: the
-store's document (one object per sketch), the undo history (up to 500
-steps of patches, which can hold earlier objects) and, in the worker, the
-last recompute's outputs. The app's cache already held the same results
-for the same objects and now shares the frozen profiles. The largest
-sketch of the f3d corpus (11,562 segments) keeps about 3 MB (49,000
-points in its loops and edges); a stress test of the suite with 3,294
-regions about 23 MB.
+**No bound is needed.** An entry lives as long as its frozen data object,
+and what holds those is the store's current document, one object per sketch.
+The undo history keeps patches, not earlier sketches: a script that edits a
+sketch 1,000 times and asks for its regions after each edit has one version
+alive at the end, and the heap doesn't grow. The app's cache already held
+the same results for the same objects and now shares the frozen profiles.
+**The kernel worker keeps none:** its engine holds up to 256 past results,
+each with the parsed copy of its sketch, and remembering those would pin
+every region's points for each of them. The largest sketch of the f3d corpus
+(11,562 segments) keeps about 3 MB (49,000 points in its loops and edges); a
+stress test of the suite with 3,294 regions about 23 MB.
 
-**Numbers.** That corpus sketch: 1.2 s the first time, 0.05 ms the
+**Numbers.** That corpus sketch: 0.67 s the first time, 0.06 ms the
 second; a suite sketch refused for its size 118 ms, then 0.03 ms; one
 refused for its crossings 23 ms, then 0.01 ms. The 1,545 sketches of the second amendment's proof, each
 detected on the code before and twice on the same object (and once on a
@@ -614,14 +618,22 @@ against 6.2 s for the first. 6,000 seeded random sketches give the same
 output before and after, and the same on the second call (149 refused by
 both). Over the 252 designs of an f3d corpus, importing them asked 2,570
 times for the regions of 1,001 sketch objects and now does the work 1,035
-times (text sketches every time), and emitting each design's script asked
-5,199 times and now does the work 76 times (16.6 s → 4.0 s in all). The f3d
+times (7.2 s → 4.4 s in all; text sketches every time), and emitting each
+design's script asked 5,199 times and now does the work 76 times (17.0 s →
+2.2 s). A kernel recompute detects each changed sketch once, as before; the
+OpenSCAD export still detects once per profile reference, as before. The f3d
 corpus gate (the 252 designs replayed and their bodies checked, before and
 after): no design's verdict or body outcome changed (170 match, 47
 mismatch, 18 partial; 248 bodies editable, 111 frozen, 26 unchecked), and
 no run failed.
 
-**Rejected.** A key by the sketch's content (a hash or serialisation per
+**Rejected.** Remembering every data object, frozen or not: the kernel's
+parsed copies are never asked for twice across recomputes, yet each result
+the engine keeps would hold its sketch's whole region list. A plate with
+20 × 20 holes over 128 recomputes (256 engine entries) grew the heap by
+1,369 MB against 81 MB without the cache; with only frozen data remembered
+it grows by 81 MB, and with 10 × 10 holes over 60 recomputes by 8.8 MB, the
+same as without the cache (160 MB when every object was remembered). A key by the sketch's content (a hash or serialisation per
 call costs about what detecting a small sketch costs, and nothing would
 need it: an unchanged sketch keeps its object). A size or age bound (the
 entries already go with their sketches). Remembering text sketches by the
