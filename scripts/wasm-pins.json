@@ -1,0 +1,14 @@
+{
+  "occt": {
+    "tag": "occt-8bd8ae5125b7",
+    "sha256": "6e2920a63618dae634ae26c780cc703e285aad896b350852435cd9c166c08131"
+  },
+  "openscad": {
+    "tag": "openscad-5fb8abc2c626",
+    "sha256": "a73619496798d63bef640a56c36266737625f51cbf397e33ef81b6a475349406"
+  },
+  "planegcs": {
+    "tag": "planegcs-73d135604959",
+    "sha256": "a2213fc45ea32fdffdfcc6b74bd6610eee2788be570bdce469486acc16a71b2f"
+  }
+}

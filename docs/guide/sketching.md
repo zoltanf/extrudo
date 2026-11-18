@@ -242,6 +242,16 @@ right. **Show profiles** in the palette turns the shading off. Select a profile 
 the selection panel shows its area. Curves that don't close, and construction geometry, make no
 profile.
 
+A sketch whose curves cross each other a great many times (about 10,000 crossings, far more than
+a part needs) has no profiles: finding them would take too long. The palette says so under the
+DOF counter, and features that use one of its profiles say why they fail. The curves stay;
+delete or simplify some of them and the profiles come back. The same goes for a sketch with a
+curve more than 1,000 km from the origin (an imported or pasted sketch gone wrong): move or delete
+it. And for a sketch with far too many curves (a very long spline, thousands of curves nested
+inside each other, or texts of more than about 500 to 1,000 letters together, by font): the
+palette says "This sketch has too many curves to find its profiles." Remove or simplify curves,
+or move part of a long text to another sketch.
+
 ```widget profiles
 Click regions to select them; flip a switch to open the slot or make the hole construction.
 ```

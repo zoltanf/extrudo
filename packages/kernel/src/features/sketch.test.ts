@@ -7,14 +7,27 @@ import {
   sketchInputs,
 } from '@extrudo/core';
 import { gear, SketchBuilder } from '@extrudo/sketch/fixtures';
-import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
-import { beforeAll, describe, expect, it } from 'vitest';
+import {
+  detectProfiles,
+  PROFILE_TOLERANCE,
+  TOO_LARGE_COORDINATES,
+  TOO_MANY_CROSSINGS,
+  TOO_MANY_CURVES,
+} from '@extrudo/sketch/profiles';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { Kernel } from '../kernel';
 import { loadOcct } from '../occt/load';
 import type { PlanarFrame } from '../planar';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
-import { planarCurves, profileFaceIds, type SketchOutputData } from './sketch';
+import {
+  planarCurves,
+  profileFaceIds,
+  type SketchOutputData,
+  TOO_LARGE_TO_PICK,
+  TOO_MANY_CROSSINGS_TO_PICK,
+  TOO_MANY_CURVES_TO_PICK,
+} from './sketch';
 
 let kernel: Kernel;
 
@@ -431,6 +444,116 @@ describe('the sketch evaluator', () => {
       message: expect.stringMatching(/profile/),
     });
     engine.clear();
+  });
+});
+
+/**
+ * A sketch whose curves cross too often for its regions to be found
+ * (`MAX_PROFILE_CUTS`, ADR-0020's amendment of 2026-11-15): the sketch stays
+ * (a warning), makes no faces and never asks the kernel for them, and a
+ * feature on one of its profiles says why. Without the crossing curves the
+ * profile and the feature come back.
+ */
+describe('a sketch with too many crossings', () => {
+  /** A 20 × 10 rectangle, then (`crossing`) 330 chords of a circle beside it, all crossing: 54,000 crossings. */
+  function sketchOf(crossing: boolean): SketchData {
+    const b = new SketchBuilder();
+    rect(b, 0, 0, 20, 10);
+    if (crossing)
+      for (let i = 0; i < 330; i++) {
+        const a = (PI * i) / 330;
+        b.line(
+          500 + 100 * Math.cos(a),
+          100 * Math.sin(a),
+          500 - 100 * Math.cos(a + 0.3),
+          -100 * Math.sin(a + 0.3),
+        );
+      }
+    return b.sketch;
+  }
+
+  async function extrudeOf(data: SketchData, region: string) {
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, { strictLeaks: true });
+    const sketch = {
+      ...testFeature('s1', 'sketch'),
+      inputs: sketchInputs(originPlaneRef('origin:xy'), data),
+    };
+    const extrude = {
+      ...testFeature('e1', 'extrude'),
+      inputs: extrudeInputs([{ kind: 'profile', id: `s1/${region}` }], { distance: '2 mm' }),
+    };
+    const faces = vi.spyOn(kernel, 'planarFaces');
+    try {
+      const result = await engine.recompute({ doc: testDocument([sketch, extrude]) });
+      if (result.status !== 'done') throw new Error('cancelled');
+      const body = result.bodies.find((b) => b.id.startsWith('e1'));
+      const shape = body && engine.latestBody(body.id);
+      return {
+        features: result.features,
+        volume: shape === undefined ? undefined : kernel.measure(shape).volume,
+        faceBuilds: faces.mock.calls.length,
+      };
+    } finally {
+      faces.mockRestore();
+      engine.clear();
+      expect(kernel.stats().liveShapes).toBe(0);
+    }
+  }
+
+  // The rectangle's region, by the same ID with or without the chords.
+  const region = () => (detectProfiles(sketchOf(false))[0] as { id: string }).id;
+
+  it('keeps the sketch, makes no faces, and fails the extrude with the reason', async () => {
+    const { features, volume, faceBuilds } = await extrudeOf(sketchOf(true), region());
+    expect(features).toEqual({
+      s1: { status: 'warning', message: TOO_MANY_CROSSINGS },
+      e1: { status: 'error', message: TOO_MANY_CROSSINGS_TO_PICK },
+    });
+    expect(volume).toBeUndefined();
+    expect(faceBuilds).toBe(0);
+  });
+
+  it('fails the extrude with its own reason for a curve too far out', async () => {
+    const data = sketchOf(false);
+    const b = new SketchBuilder();
+    b.line(0, 0, 2e9, 0);
+    const far = { ...data, entities: { ...data.entities } };
+    for (const [id, e] of Object.entries(b.sketch.entities))
+      far.entities[`far-${id}` as SketchEntityId] = (
+        e.type === 'line' ? { ...e, start: `far-${e.start}`, end: `far-${e.end}` } : e
+      ) as SketchData['entities'][SketchEntityId];
+    const { features, faceBuilds } = await extrudeOf(far, region());
+    expect(features).toEqual({
+      s1: { status: 'warning', message: TOO_LARGE_COORDINATES },
+      e1: { status: 'error', message: TOO_LARGE_TO_PICK },
+    });
+    expect(faceBuilds).toBe(0);
+  });
+
+  it('fails the extrude with its own reason for too many curves', async () => {
+    // Beside the rectangle, a thousand circles of 1 m, apart: two million points.
+    const data = sketchOf(false);
+    const b = new SketchBuilder();
+    for (let i = 0; i < 1000; i++)
+      b.circle(5000 + (i % 40) * 2100, Math.floor(i / 40) * 2100, 1000);
+    const many = { ...data, entities: { ...data.entities } };
+    for (const [id, e] of Object.entries(b.sketch.entities))
+      many.entities[`many-${id}` as SketchEntityId] = (
+        e.type === 'circle' ? { ...e, center: `many-${e.center}` } : e
+      ) as SketchData['entities'][SketchEntityId];
+    const { features, faceBuilds } = await extrudeOf(many, region());
+    expect(features).toEqual({
+      s1: { status: 'warning', message: TOO_MANY_CURVES },
+      e1: { status: 'error', message: TOO_MANY_CURVES_TO_PICK },
+    });
+    expect(faceBuilds).toBe(0);
+  });
+
+  it('gives the profile and the extrude back once the crossing curves are deleted', async () => {
+    const { features, volume, faceBuilds } = await extrudeOf(sketchOf(false), region());
+    expect(features).toEqual({ s1: { status: 'ok' }, e1: { status: 'ok' } });
+    expect(volume).toBeCloseTo(400, 6);
+    expect(faceBuilds).toBe(1);
   });
 });
 

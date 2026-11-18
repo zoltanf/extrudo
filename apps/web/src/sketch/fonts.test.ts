@@ -96,6 +96,22 @@ describe('fontUrls', () => {
     }
   });
 
+  it('fetches nothing for a name the bundled fonts only inherit', async () => {
+    const calls: unknown[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = ((...args: unknown[]) => {
+      calls.push(args[0]);
+      return Promise.resolve(new Response(new Uint8Array([1])));
+    }) as typeof fetch;
+    try {
+      for (const id of ['constructor', 'toString', '__proto__', 'hasOwnProperty'])
+        expect(await fontBytes(id), id).toBeUndefined();
+      expect(calls).toEqual([]);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it('names exactly the bundled fonts', () => {
     expect(Object.keys(fontUrls).sort()).toEqual(BUNDLED_FONTS.map((f) => f.id).sort());
   });

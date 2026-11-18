@@ -18,9 +18,9 @@ export class ApiError extends Error {
 
   constructor(
     message: string,
-    options: { path?: string; featureType?: string; featureId?: string } = {},
+    options: { path?: string; featureType?: string; featureId?: string; cause?: unknown } = {},
   ) {
-    super(message);
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.path = options.path;
     this.featureType = options.featureType;
     this.featureId = options.featureId;

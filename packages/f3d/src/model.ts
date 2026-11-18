@@ -5,7 +5,7 @@
  * the file's internal centimetres here; the mapper converts.
  */
 import { designSegments, type Entries, type SegmentFiles, unzip } from './archive';
-import { type AsmCurve, type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
+import { type AsmCurve, type AsmFace, type AsmSurface, asmBudget, asmFaces, readAsm } from './asm';
 import { F3dFormatError, finite, Reader } from './bytes';
 import { BASE_FEATURE, type F3dBase, readBase } from './decode/base';
 import { BODY, type BodyFlags, readBody } from './decode/body';
@@ -40,6 +40,7 @@ import {
 import {
   EDGE_OPERAND,
   EDGE_RECIPE,
+  type EdgeRecipe,
   edgeFaces,
   type FaceTag,
   OPERAND_GROUP,
@@ -93,7 +94,7 @@ import {
   readAxis,
   readRevolveOperation,
 } from './decode/revolve';
-import { readScope, type Scope } from './decode/scope';
+import { readScope, type Scope, SEGMENT_CANDIDATES } from './decode/scope';
 import {
   refAhead,
   SKETCH_CIRCULAR,
@@ -131,6 +132,25 @@ import { readThreadSpec, type ThreadSpec } from './decode/thread';
 import { TIMELINE, timeline } from './decode/timeline';
 import { readTorusHead, torusPlacement } from './decode/torus';
 import { Segment } from './segment';
+
+/**
+ * The tags and design references of the recipes decoded, the faces features name and the
+ * hole centres one import may keep (ADR-0083 "Hostile files"); the largest design seen
+ * keeps about 20,000.
+ */
+export const KEEP_BUDGET = 1_000_000;
+/**
+ * The most centre points one hole may have: five times the holes one kernel hole feature
+ * makes (`MAX_HOLES`), so it never refuses a hole the kernel would make; the largest seen
+ * has 6.
+ */
+export const MAX_HOLE_CENTRES = 1000;
+/** The reason a feature past `KEEP_BUDGET` is left out with. */
+export const OVER_BUDGET =
+  "the import's limit on the faces, edges and points features name was reached";
+
+/** A feature the reader leaves out, with the reason a person reads. */
+class LeftOut extends Error {}
 
 export const SKETCH_CONTAINER = '44A64366-4BD3-4B24-881A-F94C206E8F2D';
 export const SKETCH_PLACEMENT = 'F47A46FB-DA27-4AFA-8A72-1B38FA596E23';
@@ -343,6 +363,11 @@ export interface F3dThread extends FeatureBase {
   spec: ThreadSpec;
   /** The faces it threads, each named by its recipe's first face. */
   faces: F3dFace[];
+  /**
+   * Each face's length along its axis (cm), from its edges' vertices, where
+   * the B-rep tells (`axialLength`): what a full-length thread runs.
+   */
+  lengths?: (number | undefined)[];
 }
 
 export interface F3dTorus extends FeatureBase {
@@ -372,6 +397,8 @@ export interface F3dOther extends FeatureBase {
   type: 'other';
   /** A group of timeline items: no step of its own. */
   group?: boolean;
+  /** Why the reader left the feature out, in plain words (a budget it would pass). */
+  leftOut?: string;
 }
 
 export type F3dFeature =
@@ -497,9 +524,11 @@ export function brepFaces(entries: Entries, folder: string): Map<string, AsmFace
   const names = [...entries.keys()]
     .filter((n) => n.startsWith(`${asset}/Breps.BlobParts/`) && /\.smbh?$/.test(n))
     .sort((a, b) => Number(a.endsWith('h')) - Number(b.endsWith('h')));
+  // One budget for the pass: a stream past it stays unread (`AsmBudget`).
+  const budget = asmBudget();
   for (const name of names) {
     try {
-      for (const face of asmFaces(readAsm(entries.get(name) as Uint8Array))) {
+      for (const face of asmFaces(readAsm(entries.get(name) as Uint8Array, budget))) {
         for (const tag of face.tags) {
           const key = `${tag.token}@${tag.design}`;
           const list = out.get(key) ?? [];
@@ -520,6 +549,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     try {
       return f();
     } catch (error) {
+      if (error instanceof LeftOut) throw error;
       problems.push(`${what}: ${(error as Error).message}`);
       return undefined;
     }
@@ -545,13 +575,15 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       return refsIn(seg, f.start, f.end);
     }) ?? [];
 
-  // Each feature's scope read once, however many times the file names it.
+  // Each feature's scope read once, however many times the file names it, with one budget
+  // for the search for their tails.
   const scopes = new Map<number, Scope | Error>();
+  const scanBudget = { left: SEGMENT_CANDIDATES };
   const scopeOf = (id: number): Scope => {
     let scope = scopes.get(id);
     if (!scope) {
       try {
-        scope = readScope(seg, id);
+        scope = readScope(seg, id, scanBudget);
       } catch (error) {
         scope = error as Error;
       }
@@ -691,21 +723,75 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   /** The bodies a feature names, with those its records in other components name. */
   const participantsAll = (scope: Scope): number[] =>
     allParticipants(
-      participantsOf(seg, scope),
+      participantsOf(seg, scope, insideOnce),
       (furtherRecords.get(scope.id) ?? []).map((record) => {
         const other = tryDecode(`feature #${record}`, () => scopeOf(record));
-        return other ? participantsOf(seg, other) : [];
+        return other ? participantsOf(seg, other, insideOnce) : [];
       }),
     );
+  // What the features keep is bounded across the import (ADR-0083 "Hostile files"): each
+  // recipe is decoded once however many operands name it, and the tags and design references
+  // of the recipes decoded, the faces the features name and the hole centres all draw on one
+  // budget. A feature that would pass it is left out with a reason.
+  let keepLeft = KEEP_BUDGET;
+  const keep = (n: number) => {
+    keepLeft -= n;
+    if (keepLeft < 0) throw new LeftOut(OVER_BUDGET);
+  };
+  // A record decoded once, however many features name it; a failure too.
+  const once = <T extends object>(read: (id: number) => T): ((id: number) => T) => {
+    const done = new Map<number, T | Error>();
+    return (id) => {
+      let value = done.get(id);
+      if (!value) {
+        try {
+          value = read(id);
+        } catch (error) {
+          value = error as Error;
+        }
+        done.set(id, value);
+      }
+      if (value instanceof Error) throw value;
+      return value;
+    };
+  };
+  const recipeOf = once((id) => {
+    const recipe = readEdgeRecipe(seg, id);
+    keep(recipeSize(recipe));
+    return recipe;
+  });
+  const profileOf = once((id) => readProfileOperand(seg, id));
+  const textOf = once((id) => readTextOperand(seg, id, profileOf));
+  // An operand group's recipes, each once, read once.
+  const groupRecipes = new Map<number, number[]>();
+  const recipesOf = (group: number): number[] => {
+    let list = groupRecipes.get(group);
+    if (!list) {
+      list = recipesIn(seg, group, insideOnce);
+      groupRecipes.set(group, list);
+    }
+    return list;
+  };
+  // The face a recipe names first (a face operand's), looked up once per recipe.
+  const firstFaces = new Map<number, F3dFace | undefined>();
+  const firstFace = (recipe: number): F3dFace | undefined => {
+    if (!firstFaces.has(recipe)) {
+      const first = tryDecode(`face #${recipe}`, () => recipeOf(recipe))?.faces[0];
+      firstFaces.set(recipe, first ? faceOf(first.tags, faces, featureOf, instances) : undefined);
+    }
+    const face = firstFaces.get(recipe);
+    if (face) keep(1);
+    return face;
+  };
   // The body faces a feature names through its operand groups: each face
   // operand's recipe lists the face first, then its neighbours.
   const faceOperands = (scope: Scope): F3dFace[] => {
     const out: F3dFace[] = [];
     for (const group of scope.refs) {
       if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
-      for (const recipe of recipesIn(seg, group)) {
-        const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-        if (first) out.push(faceOf(first.tags, faces, featureOf, instances));
+      for (const recipe of recipesOf(group)) {
+        const face = firstFace(recipe);
+        if (face) out.push(face);
       }
     }
     return out;
@@ -757,7 +843,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       for (const [op, code] of found ?? []) instances.set(op, code);
     }
   const features: F3dFeature[] = [];
-  for (const id of items) {
+  const decodeItem = (id: number): void => {
     const type = seg.typeOf(id);
     if (!type || !FEATURE_TYPES[type.guid]) {
       const scope = tryDecode(`feature #${id}`, () => scopeOf(id));
@@ -772,10 +858,10 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         parameters: byScope.get(id) ?? [],
         ...(type?.guid === TIMELINE_GROUP ? { group: true } : {}),
       });
-      continue;
+      return;
     }
     const scope = tryDecode(`feature #${id}`, () => scopeOf(id));
-    if (!scope) continue;
+    if (!scope) return;
     // Sketches have no history state of their own; a feature without one is suppressed.
     const isSketch = FEATURE_TYPES[type.guid] === 'Sketch';
     const base = {
@@ -789,14 +875,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const container = firstRefOfType(seg, scope.start, scope.end, SKETCH_CONTAINER);
       if (container === undefined) {
         problems.push(`sketch #${id}: no sketch container`);
-        continue;
+        return;
       }
       features.push({ type: 'sketch', ...base, sketch: sketchOf(container) });
     } else if (FEATURE_TYPES[type.guid] === 'Extrude') {
       const head = tryDecode(`extrude #${id}`, () => readExtrudeHead(seg, scope));
       if (!head) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       const profiles: ProfileOperand[] = [];
       let sketchGone = false;
@@ -806,7 +892,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           // A deleted sketch is no decoding problem: the extrude is skipped for it.
           const p = tryDecode(`profile #${ref}`, () => {
             try {
-              return readProfileOperand(seg, ref);
+              return profileOf(ref);
             } catch (error) {
               if (!(error instanceof SketchGoneError)) throw error;
               sketchGone = true;
@@ -815,19 +901,12 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           });
           if (p) profiles.push(p);
         } else if (t === TEXT_PROFILE_OPERAND) {
-          const p = tryDecode(`text profile #${ref}`, () => readTextOperand(seg, ref));
+          const p = tryDecode(`text profile #${ref}`, () => textOf(ref));
           if (p) profiles.push(p);
         }
       }
       // A face operand's recipe lists the face first, then its neighbours.
-      const named: F3dFace[] = [];
-      for (const group of scope.refs) {
-        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
-        for (const recipe of recipesIn(seg, group)) {
-          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) named.push(faceOf(first.tags, faces, featureOf, instances));
-        }
-      }
+      const named = faceOperands(scope);
       // A start on a plane (an origin or construction plane) rather than a body
       // face: a geometry operand holding the plane in model space.
       const upTo = base.parameters.some((p) => /^Side[12]Offset$/.test(p.kind));
@@ -848,14 +927,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const operation = tryDecode(`revolve #${id}`, () => readRevolveOperation(seg, scope));
       if (!operation) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       const profiles: ProfileOperand[] = [];
       let axis: RevolveAxis | undefined;
       for (const ref of scope.refs) {
         const t = seg.typeOf(ref)?.guid;
         if (t === SKETCH_PROFILE_OPERAND) {
-          const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+          const p = tryDecode(`profile #${ref}`, () => profileOf(ref));
           if (p) profiles.push(p);
         } else if (t === GEOMETRY_OPERAND && !axis) {
           axis = tryDecode(`axis #${ref}`, () => {
@@ -876,12 +955,17 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const centres: Vec3[] = [];
       let plane: ModelPlane | undefined;
       let placed: Vec3 | undefined;
-      const inside = refsOf;
+      // Each operand's references and each point once, and so many (ADR-0083 "Hostile files").
+      const inside = (ref: number) => tryDecode(`record #${ref}`, () => insideOnce(ref)) ?? [];
+      const points = new Set<number>();
       for (const ref of scope.refs) {
         const t = seg.typeOf(ref)?.guid;
         if (t === GEOMETRY_OPERAND)
           for (const q of inside(ref))
-            if (seg.typeOf(q)?.guid === MODEL_POINT) {
+            if (seg.typeOf(q)?.guid === MODEL_POINT && !points.has(q)) {
+              points.add(q);
+              if (points.size > MAX_HOLE_CENTRES)
+                throw new LeftOut(`it has more than ${MAX_HOLE_CENTRES} centres`);
               const c = tryDecode(`hole centre #${q}`, () => readModelPoint(seg, q));
               if (c) centres.push(c);
             }
@@ -897,12 +981,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
             ? undefined
             : tryDecode(`hole placement #${ref}`, () => readHolePlacement(seg, ref));
           if (at) {
-            const recipe = recipesIn(seg, ref)[0];
-            const first =
-              recipe === undefined
-                ? undefined
-                : tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-            const s = first ? faceOf(first.tags, faces, featureOf, instances).surface : undefined;
+            const recipe = recipesOf(ref)[0];
+            const s = recipe === undefined ? undefined : firstFace(recipe)?.surface;
             if (s?.kind === 'plane' && onPlane(s, at.point, at.normal)) {
               plane = planeThrough(at.point, at.normal);
               placed = at.point;
@@ -916,11 +996,15 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       if (centres.length === 0 && plane && diameter)
         centres.push(...centresFromCylinders(madeBy(id, true), plane, diameter / 2));
       if (centres.length === 0 && placed) centres.push(placed);
+      keep(centres.length);
       const flipped = readHoleFlipped(seg, scope);
       features.push({ type: 'hole', ...base, centres, flipped, ...(plane ? { plane } : {}) });
     } else if (FEATURE_TYPES[type.guid] === 'CircularPattern') {
       const inside = refsOf;
       const repeated: number[] = [];
+      // Each record reference read once, however many operands name it.
+      const read = new Set<number>();
+      const listed = new Set<number>();
       let objects: F3dCircularPattern['objects'] = 'features';
       let axis: RevolveAxis | undefined;
       let count: ParameterValue | undefined;
@@ -931,9 +1015,13 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           // A feature it repeats names the body it acted on; the axis does not.
           if (refs.some((r) => seg.typeOf(r)?.guid === BODY_LINK)) {
             for (const r of refs)
-              if (seg.typeOf(r)?.guid === RECORD_REF) {
+              if (seg.typeOf(r)?.guid === RECORD_REF && !read.has(r)) {
+                read.add(r);
                 const record = tryDecode(`record #${r}`, () => readRecordRef(seg, r));
-                if (record !== undefined && !repeated.includes(record)) repeated.push(record);
+                if (record !== undefined && !listed.has(record)) {
+                  listed.add(record);
+                  repeated.push(record);
+                }
               }
           } else axis ??= tryDecode(`axis #${ref}`, () => readAxis(seg, refs));
         } else if (t === PATTERN_COUNT) {
@@ -968,7 +1056,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const copied = tryDecode(`mirror #${id}`, () => readCopied(seg, scope, inside));
       if (!copied) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       const plane = tryDecode(`mirror plane #${id}`, () => readMirrorPlane(seg, scope, inside));
       features.push({ type: 'mirror', ...base, ...copied, ...(plane ? { plane } : {}) });
@@ -977,7 +1065,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const copied = tryDecode(`pattern #${id}`, () => readCopied(seg, scope, inside));
       if (!copied) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       features.push({
         type: 'rectangular-pattern',
@@ -991,13 +1079,19 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const threaded: F3dFace[] = [];
       for (const group of scope.refs) {
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
-        for (const recipe of tryDecode(`thread faces #${group}`, () => recipesIn(seg, group)) ??
-          []) {
-          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) threaded.push(faceOf(first.tags, faces, featureOf, instances));
+        for (const recipe of tryDecode(`thread faces #${group}`, () => recipesOf(group)) ?? []) {
+          const face = firstFace(recipe);
+          if (face) threaded.push(face);
         }
       }
-      if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
+      if (spec)
+        features.push({
+          type: 'thread',
+          ...base,
+          spec,
+          faces: threaded,
+          lengths: threaded.map((face) => axialLength(face, faces)),
+        });
       else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'PathPattern') {
       const inside = insideOnce;
@@ -1018,7 +1112,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const bodies = tryDecode(`split #${id}`, () => readCopied(seg, scope, inside))?.bodies;
       if (!bodies) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       const plane = tryDecode(`split plane #${id}`, () => readMirrorPlane(seg, scope, inside));
       features.push({ type: 'split', ...base, bodies, ...(plane ? { plane } : {}) });
@@ -1026,7 +1120,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       const operation = tryDecode(`sweep #${id}`, () => readSweepOperation(seg, scope));
       if (!operation) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       const inside = insideOnce;
       const profiles: ProfileOperand[] = [];
@@ -1034,7 +1128,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         if (seg.typeOf(group)?.guid === OPERAND_GROUP)
           for (const ref of tryDecode(`sweep #${id}`, () => inside(group)) ?? [])
             if (seg.typeOf(ref)?.guid === SKETCH_PROFILE_OPERAND) {
-              const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+              const p = tryDecode(`profile #${ref}`, () => profileOf(ref));
               if (p) profiles.push(p);
             }
       const read = tryDecode(`sweep #${id}`, () => ({
@@ -1043,7 +1137,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       }));
       if (!read) {
         features.push({ type: 'other', ...base });
-        continue;
+        return;
       }
       features.push({
         type: 'sweep',
@@ -1057,7 +1151,11 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';
       const sets = tryDecode(`${kind} #${id}`, () =>
-        readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf, instances),
+        readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf, instances, {
+          recipeOf,
+          recipesOf,
+          keep,
+        }),
       );
       if (!sets) features.push({ type: 'other', ...base });
       else {
@@ -1086,6 +1184,26 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         ...(made !== undefined ? { made } : {}),
       });
     } else features.push({ type: 'other', ...base });
+  };
+  for (const id of items) {
+    const at = features.length;
+    try {
+      decodeItem(id);
+    } catch (error) {
+      if (!(error instanceof LeftOut)) throw error;
+      // What it decoded goes; the feature stays on the timeline with the reason.
+      features.length = at;
+      const scope = scopeOf(id);
+      features.push({
+        type: 'other',
+        id,
+        kind: scope.kind,
+        name: nameOf(scope),
+        suppressed: scope.state === null,
+        parameters: byScope.get(id) ?? [],
+        leftOut: error.message,
+      });
+    }
   }
 
   // Bodies, and the feature that made each (from the links features keep to them).
@@ -1209,6 +1327,12 @@ function readOperationTable(
           const op = r.u64();
           const m = lists ? r.u32() : 1;
           if (m === 0 || m * 8 > r.remaining) ok = false;
+          else if (lists) {
+            // The lists form's records count too: one entry may name thousands.
+            budget.left -= m;
+            if (budget.left < 0)
+              throw new F3dFormatError('the operation table takes too long to find');
+          }
           const records: number[] = [];
           for (let j = 0; j < m && ok; j++) records.push(r.u64());
           const found = records.filter((x) => seg.has(x));
@@ -1234,8 +1358,12 @@ function readOperationTable(
  * A text-profile operand: its sketch, by record number as a sketch-profile
  * operand names it, and the text, by a record reference (`90055C05…`).
  */
-function readTextOperand(seg: Segment, id: number): ProfileOperand {
-  const { sketch } = readProfileOperand(seg, id);
+function readTextOperand(
+  seg: Segment,
+  id: number,
+  profileOf: (id: number) => ProfileOperand,
+): ProfileOperand {
+  const { sketch } = profileOf(id);
   const f = seg.frame(id);
   for (const r of refsIn(seg, f.start, f.end))
     if (seg.typeOf(r)?.guid === RECORD_REF) {
@@ -1282,12 +1410,8 @@ function readTorus(
  * The bodies a feature's operand groups name through body operands, by body
  * record (a body link names the body record first).
  */
-function participantsOf(seg: Segment, scope: Scope): number[] {
+function participantsOf(seg: Segment, scope: Scope, inside: (id: number) => number[]): number[] {
   const out: number[] = [];
-  const inside = (id: number) => {
-    const f = seg.frame(id);
-    return refsIn(seg, f.start, f.end);
-  };
   for (const group of scope.refs) {
     if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
     for (const member of inside(group)) {
@@ -1302,17 +1426,25 @@ function participantsOf(seg: Segment, scope: Scope): number[] {
   return out;
 }
 
-/** The recipes an operand group's edge or face operands point to. */
-function recipesIn(seg: Segment, group: number): number[] {
-  const f = seg.frame(group);
-  const out: number[] = [];
-  for (const member of refsIn(seg, f.start, f.end)) {
+/**
+ * The recipes an operand group's edge or face operands point to, each once (`inside`: a
+ * record's references, each once).
+ */
+function recipesIn(seg: Segment, group: number, inside: (id: number) => number[]): number[] {
+  const out = new Set<number>();
+  for (const member of inside(group)) {
     if (seg.typeOf(member)?.guid !== EDGE_OPERAND) continue;
-    const m = seg.frame(member);
-    const recipe = refsIn(seg, m.start, m.end).find((r) => seg.typeOf(r)?.guid === EDGE_RECIPE);
-    if (recipe !== undefined) out.push(recipe);
+    const recipe = inside(member).find((r) => seg.typeOf(r)?.guid === EDGE_RECIPE);
+    if (recipe !== undefined) out.add(recipe);
   }
-  return out;
+  return [...out];
+}
+
+/** What a decoded recipe holds: its tags and their design references. */
+function recipeSize(recipe: EdgeRecipe): number {
+  let n = 0;
+  for (const face of recipe.faces) for (const tag of face.tags) n += 1 + tag.designs.length;
+  return n;
 }
 
 /** A B-rep plane through `p` (cm) square to the unit `n`, either way round, within 1e-6. */
@@ -1367,6 +1499,34 @@ function faceOf(
 }
 
 /**
+ * A cylinder's or cone's length along its axis (cm): the spread of its edges'
+ * vertices along the axis, on the B-rep face `faceOf` found for it. Undefined
+ * for a copy, another surface, or a face without vertices.
+ */
+function axialLength(face: F3dFace, faces: Map<string, AsmFace[]>): number | undefined {
+  const s = face.surface;
+  const first = face.tags[0];
+  if (s?.kind !== 'cone' || face.instance || !first) return undefined;
+  const design = Math.abs(first.designs[0] ?? -1);
+  const found = statesOf(face.tags, faces.get(`${first.token}@${design}`) ?? [])[0];
+  const norm = Math.hypot(...s.axis);
+  if (found?.surface !== s || !(norm > 0)) return undefined;
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  for (const edge of found.edges)
+    for (const p of edge.points) {
+      const t =
+        ((p[0] - s.center[0]) * s.axis[0] +
+          (p[1] - s.center[1]) * s.axis[1] +
+          (p[2] - s.center[2]) * s.axis[2]) /
+        norm;
+      lo = Math.min(lo, t);
+      hi = Math.max(hi, t);
+    }
+  return hi > lo && Number.isFinite(hi - lo) ? hi - lo : undefined;
+}
+
+/**
  * A face's states the B-rep streams hold, the one a reference means first. A
  * face keeps a tag per operation that made or later changed it (an offset, a
  * deletion beside it); a recipe's tags list those the face had when the
@@ -1410,12 +1570,27 @@ function readEdgeSets(
   faces: Map<string, AsmFace[]>,
   featureOf: (design: number) => number | undefined,
   instances: Map<number, number>,
+  decoded: {
+    recipeOf: (id: number) => EdgeRecipe;
+    recipesOf: (group: number) => number[];
+    keep: (n: number) => void;
+  },
 ): F3dEdgeSet[] {
   const groups = scope.refs.filter((r) => seg.typeOf(r)?.guid === OPERAND_GROUP);
   const sizes = [...parameters]
     .sort((a, b) => a.number - b.number)
     .filter((p) => (kind === 'fillet' ? p.kind === 'Radius' : p.kind !== 'TangencyWeight'));
-  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf, instances);
+  // A recipe's tags are decoded once (`recipeOf`), so a face is found once
+  // per tag list however many edges name it; the edges share it.
+  const found = new Map<FaceTag[], F3dFace>();
+  const face = (tags: FaceTag[]) => {
+    let out = found.get(tags);
+    if (!out) {
+      out = faceOf(tags, faces, featureOf, instances);
+      found.set(tags, out);
+    }
+    return out;
+  };
   /** The B-rep key of the face a recipe's tags name: a copy's own face, else the face itself. */
   const keyOf = (tags: FaceTag[]): string | undefined => {
     const t = tags[0];
@@ -1425,10 +1600,15 @@ function readEdgeSets(
       ? `${t.token}@${instance}`
       : `${t.token}@${Math.abs(design)}`;
   };
+  // Once per pair of B-rep keys: the edges between two faces don't depend on which recipe asks.
+  const between = new Map<string, KnownEdge[]>();
   const knownBetween = (a: FaceTag[], b: FaceTag[]): KnownEdge[] => {
     const ka = keyOf(a);
     const kb = keyOf(b);
     if (!ka || !kb) return [];
+    const pair = `${ka} ${kb}`;
+    const done = between.get(pair);
+    if (done) return done;
     const out = new Map<string, KnownEdge>();
     for (const f of faces.get(ka) ?? [])
       for (const e of f.edges) {
@@ -1439,14 +1619,17 @@ function readEdgeSets(
           .join(' ')}`;
         if (!out.has(key)) out.set(key, { curve: e.curve, points: e.points });
       }
-    return [...out.values()];
+    const list = [...out.values()];
+    between.set(pair, list);
+    return list;
   };
   const perSet = kind === 'chamfer' && sizes.length >= 2 * groups.length ? 2 : 1;
   return groups.map((group, i) => {
     const edges: F3dEdge[] = [];
-    for (const recipeId of recipesIn(seg, group)) {
-      const recipe = edgeFaces(readEdgeRecipe(seg, recipeId).faces);
+    for (const recipeId of decoded.recipesOf(group)) {
+      const recipe = edgeFaces(decoded.recipeOf(recipeId).faces);
       if (!recipe) continue;
+      decoded.keep(2 + recipe.bounds.length);
       const [a, b] = recipe.support;
       const edge: F3dEdge = {
         faces: [face(a.tags), face(b.tags)],

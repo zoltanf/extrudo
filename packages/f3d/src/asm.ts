@@ -57,8 +57,27 @@ const BYTES_PER_VALUE = 4;
 const BYTES_PER_RECORD = 16;
 const MAX_VALUES = 16_000_000;
 
-/** Every record of an ASM binary stream, in order (a pointer is an index into it). */
-export function readAsm(bytes: Uint8Array): AsmRecord[] {
+/**
+ * What one pass over a design's B-rep streams may read in all, shared by its
+ * `readAsm` calls: `MAX_VALUES`, one stream's most, so the streams a pass
+ * keeps at once cost no more than one could. A pass is the faces' lookup or
+ * one writer's (`bodiesStep`, `baseBodiesStep`); the corpus's dearest design
+ * reads 4.2 million values in one, a margin of about 3.8.
+ */
+export interface AsmBudget {
+  values: number;
+}
+
+/** A pass's budget, whole. */
+export function asmBudget(): AsmBudget {
+  return { values: MAX_VALUES };
+}
+
+/**
+ * Every record of an ASM binary stream, in order (a pointer is an index into
+ * it). With `budget`, its values are spent from it (`AsmBudget`).
+ */
+export function readAsm(bytes: Uint8Array, budget?: AsmBudget): AsmRecord[] {
   const magic = latin1.decode(bytes.subarray(0, 15));
   // The width of ints, enums and pointers: 8 bytes in BinaryFile8, 4 in
   // BinaryFile4 (FORMAT.md, "ASM B-rep"). Nothing else differs.
@@ -93,7 +112,8 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
     } else throw new F3dFormatError(`ASM header: tag ${t} at ${p - 1}.`);
   }
   const records: AsmRecord[] = [];
-  const maxValues = Math.min(Math.ceil(bytes.length / BYTES_PER_VALUE), MAX_VALUES);
+  const own = Math.min(Math.ceil(bytes.length / BYTES_PER_VALUE), MAX_VALUES);
+  const maxValues = budget ? Math.min(own, Math.max(0, budget.values)) : own;
   const maxRecords = Math.ceil(bytes.length / BYTES_PER_RECORD);
   let valueCount = 0;
   // Class names and small integers, one copy each.
@@ -133,8 +153,14 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
   const str = (len: number, at: number) => latin1.decode(bytes.subarray(at, at + len));
   while (p < bytes.length) {
     const t = bytes[p++] as number;
-    if (t !== 0x11 && ++valueCount > maxValues)
-      throw new F3dFormatError(`ASM: more than ${maxValues} values in ${bytes.length} bytes.`);
+    if (t !== 0x11 && ++valueCount > maxValues) {
+      if (budget) budget.values -= valueCount;
+      throw new F3dFormatError(
+        maxValues < own
+          ? `ASM: the design's B-rep streams have more than ${MAX_VALUES} values.`
+          : `ASM: more than ${maxValues} values in ${bytes.length} bytes.`,
+      );
+    }
     switch (t) {
       case 0x0d:
       case 0x0e: {
@@ -163,7 +189,10 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
             `ASM: more than ${maxRecords} records in ${bytes.length} bytes.`,
           );
         records.push({ type, derived: derived || type, values: values.slice() });
-        if (type === 'End-of-ASM-data') return records;
+        if (type === 'End-of-ASM-data') {
+          if (budget) budget.values -= valueCount;
+          return records;
+        }
         values.length = 0;
         type = '';
         derived = '';
@@ -265,6 +294,7 @@ export function readAsm(bytes: Uint8Array): AsmRecord[] {
         throw new F3dFormatError(`ASM: unknown tag ${t} at ${p - 1}.`);
     }
   }
+  if (budget) budget.values -= valueCount;
   return records;
 }
 
@@ -585,13 +615,20 @@ export function asmFaceTags(records: AsmRecord[], face: number): Tag[] {
 export function asmFaces(records: AsmRecord[]): AsmFace[] {
   const faces: AsmFace[] = [];
   const tagsAt = new Map<number, { token: string; design: number }[]>();
+  // Each surface record read once: faces may share one (ADR-0083 "Hostile files").
+  const surfaces = new Map<number, AsmSurface>();
   records.forEach((r, index) => {
     if (r.type !== 'face') return;
     const ptrs = pointers(r);
     // face: attribute, (history id), next face, loop, shell, subshell, surface
     const surfacePtr = ptrs[ptrs.length - 1] ?? -1;
     const tags = asmFaceTags(records, index);
-    faces.push({ index, surface: surfaceOf(records[surfacePtr]), tags, edges: [] });
+    let surface = surfaces.get(surfacePtr);
+    if (!surface) {
+      surface = surfaceOf(records[surfacePtr]);
+      surfaces.set(surfacePtr, surface);
+    }
+    faces.push({ index, surface, tags, edges: [] });
     tagsAt.set(index, tags);
   });
   // Faces that share loops would walk them again: the walks together may take

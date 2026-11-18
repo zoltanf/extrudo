@@ -78,8 +78,8 @@ const dimKind = (d: FcDim): ParameterKind | undefined =>
           ? 'angle'
           : undefined;
 
-/** Core's parser refusing a tree's height (`bind.ts`'s `CORE_TOO_DEEP`, pinned by its test). */
-const TOO_DEEP = /^Nested more than \d+ levels deep/;
+/** Core's error for an expression that reads one with an error (`bind.ts`'s `CORE_DEPENDENT`, pinned by its test). */
+const DEPENDENT = /^Uses `/;
 
 /** The rule's tolerance (`bind.ts`'s `within`, which this module can't import). */
 const within = (got: number, want: number) =>
@@ -830,9 +830,19 @@ export function prepareParameters(
         unit: s.kindOf as ParameterKind,
       }));
       const evaluation = evaluateParameters({ ...design.doc, parameters: params, features: [] });
+      // Past a limit, only the parameter past it settles in this round: those that
+      // use it are evaluated again against what it became.
+      const limited = list.some((s) => {
+        const r = evaluation.parameters.get(s.name as string)?.result;
+        return r !== undefined && !r.ok && r.error.code === 'limit';
+      });
       let changed = false;
       for (const s of list) {
         const r = evaluation.parameters.get(s.name as string)?.result;
+        if (limited && r && !r.ok && DEPENDENT.test(r.error.message)) {
+          changed = true;
+          continue;
+        }
         if (r?.ok && Number.isFinite(r.value)) {
           // A formula the file proves otherwise (every bound property stores another value) is that number.
           const v = s.from === 'formula' ? proven(s) : undefined;
@@ -859,7 +869,7 @@ export function prepareParameters(
                 ? 'reference'
                 : r.error.code === 'cycle'
                   ? 'cycle'
-                  : TOO_DEEP.test(r.error.message)
+                  : r.error.code === 'limit'
                     ? 'limit'
                     : s.from === 'formula'
                       ? 'differs'

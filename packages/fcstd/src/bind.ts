@@ -755,12 +755,12 @@ export class Binder {
 }
 
 /**
- * Core's errors this module tells apart. `ExprError.code` has `cycle` (and
- * `unknown-name`); its other errors are told by their words, pinned by
- * `bind.test.ts` so a change of wording in core fails a test here.
+ * Core's errors this module tells apart. `ExprError.code` has `cycle` and
+ * `limit` (length, values per call, nesting, depth through parameters); a
+ * dependent's error is told by its words, pinned by `bind.test.ts` so a change
+ * of wording in core fails a test here.
  */
 export const CORE_DEPENDENT = /^Uses `/;
-export const CORE_TOO_DEEP = /^Nested more than \d+ levels deep/;
 
 /** The reason for an error core gives for an expression. */
 export function coreReason(error: {
@@ -768,7 +768,7 @@ export function coreReason(error: {
   message: string;
 }): ExpressionReason {
   if (error.code === 'cycle') return 'cycle';
-  if (CORE_TOO_DEEP.test(error.message)) return 'limit';
+  if (error.code === 'limit') return 'limit';
   return 'differs';
 }
 

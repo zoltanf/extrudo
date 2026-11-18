@@ -11,23 +11,39 @@
  * normals point opposite ways.
  */
 import {
+  CounterIds,
   Design,
   edgeName,
   type GeomRef,
+  inferUnit,
   type SketchBuilder,
   type SketchHandle,
 } from '@extrudo/api';
 import {
   type AttachmentId,
   addAttachment,
+  addParameters,
   type BodyId,
   type ComponentId,
+  ExprError,
   evaluateParameters,
+  type FeatureId,
   faceSketchFrame,
+  heightOf,
   importInputs,
+  isConstructionType,
+  MAX_PARAMETER_DEPTH,
+  type Node,
   newId,
   ORIGIN_PLANES,
+  PARAMETER_DEPTH_MESSAGE,
+  type Parameter,
+  type ParameterId,
+  parameterNameProblem,
+  parse,
+  references,
   type SketchData,
+  setFeatureVisibility,
   updateBody,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
@@ -36,10 +52,24 @@ import {
   insidePolygon,
   interiorPoint,
   type Profile,
+  profilesRefusal,
 } from '@extrudo/sketch/profiles';
 import { sha256Hex } from '@extrudo/storage';
 import type { AsmSurface } from './asm';
 import type { BaseStep, BodyStep } from './brep-step';
+import {
+  ENTITIES_PER_UNIT,
+  hiddenSketchesNote,
+  ImportBudget,
+  type InputValue,
+  MAX_IMPORT_ENTITIES,
+  offsetDroppedNote,
+  overBudgetNote,
+  sketchEntities,
+  sketchUnits,
+  TOO_MANY_ENTITIES,
+} from './budget';
+import { F3dFormatError } from './bytes';
 import { firstFace } from './chamfer-side';
 import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
@@ -78,6 +108,7 @@ import type {
   F3dEdgeFeature,
   F3dExtrude,
   F3dFace,
+  F3dFeature,
   F3dHole,
   F3dOffsetFaces,
   F3dRevolve,
@@ -347,6 +378,83 @@ function numberExpression(value: number, unit: string): string {
   return `${Number((value * 10).toPrecision(12))} mm`;
 }
 
+/**
+ * The limit an expression from the file goes past, if any: its length or the
+ * values in one call (ADR-0004, amendment of 2026-11-15). The import keeps its
+ * value instead.
+ */
+function pastLimit(expression: string): ExprError | undefined {
+  try {
+    parse(expression);
+  } catch (error) {
+    if (error instanceof ExprError && error.code === 'limit') return error;
+  }
+  return undefined;
+}
+
+/**
+ * The user parameters that keep their values for a limit (ADR-0004), each
+ * with its own error: one whose own expression is past a limit, and one whose
+ * chain through the others passes the depth limit, counted from the last one
+ * kept. A kept one counts as 1 level, so the chain counts again from there and
+ * those that use it keep their expressions. One walk over the references,
+ * deepest first; each expression is read once.
+ */
+function keptValues(parameters: readonly ParameterValue[]): Map<string, ExprError> {
+  const found = new Map<string, ExprError>();
+  const nodes = new Map<string, Node | undefined>();
+  for (const p of parameters) {
+    if (p.text !== undefined || nodes.has(p.name)) continue;
+    try {
+      nodes.set(p.name, parse(p.expression));
+    } catch (error) {
+      // An expression that doesn't read nests nothing; one past a limit keeps its value.
+      nodes.set(p.name, undefined);
+      if (error instanceof ExprError && error.code === 'limit') found.set(p.name, error);
+    }
+  }
+  const refsOf = (name: string): string[] => {
+    const node = nodes.get(name);
+    return node ? references(node).filter((ref) => nodes.has(ref)) : [];
+  };
+  const depth = new Map<string, number>();
+  for (const root of nodes.keys()) {
+    if (depth.has(root)) continue;
+    const stack = [{ name: root, refs: refsOf(root), next: 0 }];
+    const onPath = new Set([root]);
+    while (stack.length > 0) {
+      const top = stack[stack.length - 1] as (typeof stack)[number];
+      const ref = top.refs[top.next++];
+      if (ref !== undefined) {
+        // A reference back along the path closes a cycle: it adds nothing.
+        if (!depth.has(ref) && !onPath.has(ref)) {
+          stack.push({ name: ref, refs: refsOf(ref), next: 0 });
+          onPath.add(ref);
+        }
+        continue;
+      }
+      stack.pop();
+      onPath.delete(top.name);
+      const node = nodes.get(top.name);
+      const own = node && !found.has(top.name) ? heightOf(node) : 1;
+      let chain = own;
+      if (!found.has(top.name))
+        for (const r of top.refs) chain = Math.max(chain, own + (depth.get(r) ?? 0));
+      if (chain > MAX_PARAMETER_DEPTH) {
+        found.set(top.name, new ExprError(PARAMETER_DEPTH_MESSAGE, { start: 0, end: 0 }, 'limit'));
+        chain = 1;
+      }
+      depth.set(top.name, chain);
+    }
+  }
+  return found;
+}
+
+/** An expression to quote in a note: its start when it is long. */
+function quoted(expression: string): string {
+  return expression.length > 80 ? `${expression.slice(0, 80)}…` : expression;
+}
+
 /** A bundled font this import draws text in (`@extrudo/fonts`). */
 interface TextFont {
   id: string;
@@ -417,7 +525,8 @@ const CAP_HEIGHT = 0.716;
  */
 function fontFor(family: string, bold = false): TextFont {
   const f = family.trim().toLowerCase();
-  const standIn = STAND_INS[f];
+  // Own keys only: a family such as `constructor` has no stand-in.
+  const standIn = Object.hasOwn(STAND_INS, f) ? STAND_INS[f] : undefined;
   if (standIn) return bold ? standIn.bold : standIn.regular;
   if (/mono|courier|consol|menlo/.test(f)) return FONTS.mono;
   if (/stencil/.test(f)) return FONTS.stencil;
@@ -459,46 +568,64 @@ export function f3dToDesign(
   name: string,
   options: ImportOptions = {},
 ): ImportResult {
+  faceMisses.clear();
+  lastMiss = undefined;
   const report: ImportReport = {
     imported: [],
     skipped: [],
     notes: [],
     problems: [...f3d.problems],
   };
+  const ids = new CounterIds().next;
   const d = Design.create({
     name,
     units: 'mm',
+    ids,
     ...(options.id ? { id: options.id as never } : {}),
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   });
   const userNames = new Set<string>();
   const components = new ComponentMapping(d, f3d, report);
 
-  // User parameters, in the order they were made.
+  // User parameters, in the order they were made, all in one step: one at a
+  // time, each would read every name before it. A name Extrudo refuses
+  // (taken, reserved, not a name) leaves its parameter out, with a note. One
+  // whose expression is past a limit (ADR-0004) comes in with its value, with
+  // a note; those that use it keep their expressions.
+  const kept = keptValues(f3d.userParameters);
+  const userParameters: Parameter[] = [];
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
     const unit = p.text === undefined ? unitKind(p.unit) : undefined;
-    try {
-      d.parameter(p.name, p.text !== undefined ? `'${p.text}'` : p.expression, {
-        ...(p.comment ? { comment: p.comment } : {}),
-        ...(unit ? { unit } : {}),
-      });
-      userNames.add(p.name);
-    } catch (error) {
-      // An expression Extrudo does not read: keep the value.
-      try {
-        d.parameter(p.name, numberExpression(p.value, p.unit), {
-          ...(p.comment ? { comment: p.comment } : {}),
-          ...(unit ? { unit } : {}),
-        });
-        userNames.add(p.name);
-        report.notes.push(
-          `Parameter ${p.name}: "${p.expression}" kept as its value (${(error as Error).message}).`,
-        );
-      } catch (inner) {
-        report.notes.push(`Parameter ${p.name} skipped: ${(inner as Error).message}`);
-      }
+    const id = ids('parameter') as ParameterId;
+    const problem = parameterNameProblem(p.name, userNames);
+    if (problem) {
+      // The ID a second try with the value took (the IDs stay as they were).
+      ids('parameter');
+      report.notes.push(`Parameter ${p.name} skipped: ${problem}`);
+      continue;
     }
+    const limit = p.text === undefined ? kept.get(p.name) : undefined;
+    const expression =
+      p.text !== undefined
+        ? `'${p.text}'`
+        : limit
+          ? numberExpression(p.value, p.unit)
+          : p.expression;
+    if (limit) {
+      report.notes.push(
+        `Parameter ${p.name}: "${quoted(p.expression)}" kept as its value (${limit.message}).`,
+      );
+    }
+    userNames.add(p.name);
+    userParameters.push({
+      id,
+      name: p.name,
+      expression,
+      unit: unit ?? inferUnit(expression),
+      ...(p.comment ? { comment: p.comment } : {}),
+    });
   }
+  if (userParameters.length > 0) d.state.dispatch(addParameters({ parameters: userParameters }));
 
   // The file's sketch constraints and dimensions, vetted by the solver.
   let constraints: ConstraintContext | undefined;
@@ -548,7 +675,10 @@ export function f3dToDesign(
     const names = p.expression.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
     const units = new Set(['mm', 'cm', 'm', 'in', 'ft', 'deg', 'rad', 'um', 'mil']);
     const own = names.every((n) => units.has(n) || known(n));
-    if (own && names.some((n) => known(n))) return negate ? `-(${p.expression})` : p.expression;
+    if (own && names.some((n) => known(n))) {
+      const expression = negate ? `-(${p.expression})` : p.expression;
+      if (!pastLimit(expression)) return expression;
+    }
     return numberExpression(negate ? -p.value : p.value, p.unit);
   };
 
@@ -711,9 +841,22 @@ export function f3dToDesign(
    * with a start offset begins (Extrudo's extrude starts on its sketch).
    */
   const moved = new Map<string, SketchEntry | undefined>();
+  /** The sketch copies `movedSketch` made (the import's budget charges their size). */
+  const copies = new Set<string>();
+  /**
+   * Set when a copy would pass the budget: it is not made, and the feature
+   * asking for it comes in on its own sketch, suppressed (`charge`).
+   */
+  let copyRefused = false;
   const movedSketch = (entry: SketchEntry, cm: number, name: string): SketchEntry | undefined => {
     const key = `${entry.source.id}@${cm}`;
     if (moved.has(key)) return moved.get(key);
+    // The copy is the sketch drawn again, so it costs what a copy of the sketch would.
+    const original = d.doc.features.find((x) => x.id === entry.handle.id);
+    if (original && sketchUnits(original, true) > budget.left) {
+      copyRefused = true;
+      return entry;
+    }
     const m = [...entry.source.frame];
     m[3] = (m[3] as number) + cm * (m[2] as number);
     m[7] = (m[7] as number) + cm * (m[6] as number);
@@ -741,9 +884,55 @@ export function f3dToDesign(
         { name },
       );
       made = { handle, placement, tags, curves, texts, source, profileCurves: used };
+      copies.add(handle.id);
     }
     moved.set(key, made);
     return made;
+  };
+
+  // One budget for the work the design asks of the app at each open (`budget.ts`).
+  const budget = new ImportBudget();
+  let entities = 0;
+  /** An input as the kernel reads it: a plain number as it is, else evaluated with the design so far. */
+  const inputValue: InputValue = (f, input) => {
+    const v = f.inputs[input];
+    if (v?.kind !== 'expr') return undefined;
+    const n = v.expr.trim() === '' ? Number.NaN : Number(v.expr);
+    if (Number.isFinite(n)) return n;
+    const got = evaluateParameters(d.doc).inputs.get(f.id)?.get(input);
+    return got?.ok ? got.value : undefined;
+  };
+  /**
+   * Charges what one file feature added (features `from` on); past the
+   * budget they come in suppressed, with a note. Then counts the sketches'
+   * size, past `MAX_IMPORT_ENTITIES` the import is refused.
+   */
+  const charge = (feature: F3dFeature, from: number) => {
+    const refused = copyRefused;
+    copyRefused = false;
+    const added = d.doc.features.slice(from);
+    if (added.length === 0) return;
+    // A full-length thread runs its longest face's length (unknown: the most turns).
+    const lengths = feature.type === 'thread' ? (feature.lengths ?? []) : [];
+    const fullTurns =
+      lengths.length > 0 && lengths.every((l) => l !== undefined) && feature.type === 'thread'
+        ? Math.max(...(lengths as number[])) / feature.spec.pitch
+        : undefined;
+    // Once the budget is spent, nothing is evaluated: a count is taken as the most.
+    const value: InputValue = budget.left > 0 ? inputValue : () => undefined;
+    const units = budget.cost(added, value, copies, fullTurns);
+    if (refused || (units > 0 && !budget.spend(units))) {
+      // Construction planes stay: later sketches on the same plane share them.
+      for (const f of added) {
+        if (isConstructionType(f.type)) continue;
+        budget.suppressed(f.id);
+        d.suppress(f.id);
+      }
+      report.notes.push(overBudgetNote(feature.name));
+      if (refused) report.notes.push(offsetDroppedNote(feature.name));
+    }
+    for (const f of added) entities += sketchEntities(f);
+    if (entities > MAX_IMPORT_ENTITIES) throw new F3dFormatError(TOO_MANY_ENTITIES);
   };
 
   for (const feature of f3d.features) {
@@ -756,6 +945,11 @@ export function f3dToDesign(
       });
       continue;
     }
+    if (feature.type === 'other' && feature.leftOut) {
+      report.skipped.push(skippedFeature(feature.name, feature.kind, feature.leftOut));
+      continue;
+    }
+    const from = d.doc.features.length;
     try {
       if (feature.type === 'sketch') {
         const placement = placeSketch(
@@ -1024,9 +1218,12 @@ export function f3dToDesign(
       }
     } catch (error) {
       report.skipped.push(skippedFeature(feature.name, feature.kind, (error as Error).message));
+    } finally {
+      charge(feature, from);
     }
   }
   components.enter(undefined);
+  hideUnusedSketches(d, budget, report);
   // Bodies hidden in the file stay hidden (a STEP export of the same design leaves them out too)
   // — unless a body that can be seen (shown, in a shown component) came from a
   // feature not imported (its shape may be the hidden one's moved on; a Body to
@@ -1077,6 +1274,55 @@ export function f3dToDesign(
     });
   }
   return { design: d, report, bodies, ...(files.size > 0 ? { files } : {}) };
+}
+
+/**
+ * Sketches no feature uses stay visible while finding their profiles fits the
+ * import's budget (the app finds the profiles of every visible sketch each
+ * time the design opens): each is charged its points and curves, then its
+ * profiles are found here, once, and charged their edges (one with text, its
+ * points and curves only). Past the budget a
+ * sketch comes in hidden; one note names them. A sketch a feature uses is not
+ * touched.
+ */
+function hideUnusedSketches(d: Design, budget: ImportBudget, report: ImportReport): void {
+  const features = d.doc.features;
+  const used = new Set<string>();
+  for (const f of features)
+    for (const v of Object.values(f.inputs)) {
+      if (v.kind !== 'ref') continue;
+      for (const r of v.refs) {
+        const owner = r.id.split('/')[0] as string;
+        if (owner !== f.id) used.add(owner);
+      }
+    }
+  const hidden: FeatureId[] = [];
+  const names: string[] = [];
+  for (const f of features) {
+    if (f.type !== 'sketch' || f.suppressed || f.visible === false || used.has(f.id)) continue;
+    const sketch = f.inputs.sketch;
+    if (sketch?.kind !== 'sketchData') continue;
+    // A text's characters were charged with its sketch; its profiles are not
+    // found here (that work grows faster than the text's length).
+    const text = Object.values(sketch.sketch.entities).some((e) => e.type === 'text');
+    if (budget.spend(Math.ceil(sketchEntities(f) / ENTITIES_PER_UNIT))) {
+      if (text) continue;
+      let edges = 0;
+      try {
+        for (const p of detectProfiles(sketch.sketch))
+          edges += p.outer.edges.length + p.holes.reduce((n, h) => n + h.edges.length, 0);
+      } catch (error) {
+        // Refused (too many crossings): the app finds none either.
+        if (!profilesRefusal(error)) throw error;
+      }
+      if (budget.spend(Math.ceil(edges / ENTITIES_PER_UNIT))) continue;
+    }
+    hidden.push(f.id);
+    names.push(f.name);
+  }
+  if (hidden.length === 0) return;
+  d.state.dispatch(setFeatureVisibility({ ids: hidden, visible: false }));
+  report.notes.push(hiddenSketchesNote(names));
 }
 
 /** The Extrudo frame of a sketch plane: its origin, axes and normal (mm). */
@@ -2006,11 +2252,35 @@ export function unmatchedRegion(
   return `profile region {${wanted.join('|')}} not found in ${sketch} (it has ${count}: ${have.map((k) => `{${k}}`).join(' ')})`;
 }
 
-/** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
+/**
+ * The Extrudo profiles a feature's profile operands select, and the sketch
+ * they are in. A sketch whose regions Extrudo refuses to find (its curves cut
+ * each other too often, lie too far out or are too many; ADR-0020's amendment of
+ * 2026-11-15) gives `TOO_MANY_CROSSINGS`, `TOO_LARGE_SKETCH` or `TOO_MANY_CURVES`.
+ */
 export function selectProfiles(
   operands: ProfileOperand[],
   sketchOf: (operand: ProfileOperand) => SketchEntry | string,
   note: (text: string) => void = () => {},
+): { profiles: GeomRef[]; entry: SketchEntry } | string {
+  try {
+    return selectProfilesOf(operands, sketchOf, note);
+  } catch (error) {
+    const refusal = profilesRefusal(error);
+    if (refusal)
+      return refusal.reason === 'size'
+        ? TOO_LARGE_SKETCH
+        : refusal.reason === 'curves'
+          ? TOO_MANY_CURVES
+          : TOO_MANY_CROSSINGS;
+    throw error;
+  }
+}
+
+function selectProfilesOf(
+  operands: ProfileOperand[],
+  sketchOf: (operand: ProfileOperand) => SketchEntry | string,
+  note: (text: string) => void,
 ): { profiles: GeomRef[]; entry: SketchEntry } | string {
   const profiles: GeomRef[] = [];
   let entry: SketchEntry | undefined;
@@ -2025,10 +2295,9 @@ export function selectProfiles(
       continue;
     }
     const regions = sketch.handle.regions;
-    if (!operand.regions) {
-      profiles.push(...sketch.handle.profiles());
-      continue;
-    }
+    // Every profile operand of a file lists its regions; one whose regions
+    // record is missing or not read names no profile this could pick.
+    if (!operand.regions) return PROFILE_REGIONS_UNREAD;
     const present = new Set([...sketch.tags.values()].map(String));
     const before = profiles.length;
     let lost = 0;
@@ -2420,8 +2689,11 @@ function toModel(m: Matrix, p: Vec3): Vec3 {
   ];
 }
 
-/** Why faces could not be named, counted (for the corpus tools). */
-export const faceMisses: Record<string, number> = {};
+/**
+ * Why faces could not be named in the last import, counted (for the corpus
+ * tools; reset by every `f3dToDesign`). A Map: a reason can carry a type name from the file.
+ */
+export const faceMisses = new Map<string, number>();
 /** For the corpus tools: called with every fillet or chamfer edge as it is named. */
 export const edgeTrace: {
   edge?: (row: {
@@ -2435,7 +2707,7 @@ export const edgeTrace: {
 } = {};
 let lastMiss: string | undefined;
 const miss = (why: string): undefined => {
-  faceMisses[why] = (faceMisses[why] ?? 0) + 1;
+  faceMisses.set(why, (faceMisses.get(why) ?? 0) + 1);
   lastMiss = why;
   return undefined;
 };
@@ -3259,6 +3531,12 @@ export const regionStats: Record<string, number> = {
 
 /** Why a feature's profile was not found when its sketch's region matching ran out of budget. */
 export const TOO_MANY_CROSSINGS = 'its sketch has too many curve crossings to find its profile';
+/** Why a feature is left out when a profile's regions record is missing or could not be read. */
+export const PROFILE_REGIONS_UNREAD = "its profile's regions could not be read";
+/** Why a feature's profile was not found when its sketch's curves lie too far out to find regions. */
+export const TOO_LARGE_SKETCH = 'its sketch has coordinates too large to find its profile';
+/** Why a feature's profile was not found when its sketch has too many curves to find regions. */
+export const TOO_MANY_CURVES = 'its sketch has too many curves to find its profile';
 
 /**
  * The Extrudo regions inside an f3d region rebuilt from its pieces of

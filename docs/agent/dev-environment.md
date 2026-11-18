@@ -133,7 +133,8 @@ tools only work on some of them. Notes further down that name a machine apply to
   CI's `planegcs` job publishes `planegcs-<hash>`, `pnpm wasm` fetches both
   builds. After changing `build.sh`, the `Dockerfile` or the patch, run
   `pnpm planegcs build` (Arch workstation; through `newgrp docker` if
-  needed) or let CI build it (preferred on the Ubuntu machine). Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
+  needed) or let CI build it (preferred on the Ubuntu machine), then pin it
+  (the pins bullet below). Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
   under node_modules so Vitest skips the clone's own tests (it ran them when
   the clone sat in `planegcs/.work/`). Sketch tests
   import `../../planegcs/dist/planegcs.js`; the browser loads it through
@@ -150,6 +151,16 @@ tools only work on some of them. Notes further down that name a machine apply to
   After changing the config or the facade, run `pnpm occt build` locally
   (Arch workstation; through `newgrp docker` until the next login) or let CI
   build it (preferred on the Ubuntu machine: the CI note below).
+- **Every WASM release is pinned** (`scripts/wasm-pins.json`, ADR-0001's
+  amendment of 2026-11-15): `pnpm wasm` refuses a tarball without a pin for its
+  exact tag or with another SHA-256, and a changed file in `dist/`. After
+  changing a build's inputs (OCCT config or facade C++, planegcs `build.sh` /
+  `Dockerfile` / patch, `packages/openscad/openscad.mjs`): push → CI's WASM job
+  publishes → `pnpm wasm:pin` → commit `scripts/wasm-pins.json` → push. Until
+  then the test, Docker and e2e jobs stop with "no SHA-256 for <tag>". A branch
+  made before the pins existed that changes a build's inputs: merge main first,
+  then pin (otherwise main gets the new inputs with the old pin). Never edit a
+  digest by hand.
   The CI path is proven (run 36179601320, 2026-09-25): the `occt` job took
   about 16 minutes and published the release before the tests ran. After a
   local rebuild, restart the dev server: it keeps serving the old WASM.
@@ -348,13 +359,14 @@ tools only work on some of them. Notes further down that name a machine apply to
   are also at `https://raw.githubusercontent.com/Open-Cascade-SAS/OCCT/b8f597c677811d1f9f4d8a97f5ae2825c0353a42/src/…`
   (the tag's tarball works for grepping the sources: `src/ModelingAlgorithms/TKFillet/…`).
   Changing the facade changes the OCCT input hash, so `pnpm build`/`pnpm
-  wasm` fail until CI has published it; `pnpm --filter @extrudo/web build`
+  wasm` fail until CI has published it and the branch pins it; `pnpm --filter @extrudo/web build`
   and Vitest/Playwright still work with the `dist/` you have.
 - **OCCT builds through CI** (the preferred way on the 4-core Ubuntu
   machine; works from either machine): push a branch (only `main` and pull requests trigger CI by
   themselves) and run `gh workflow run ci.yml --ref <branch>`; the `occt`
   job builds that branch's inputs in about 14 minutes and publishes
-  `occt-<hash>`, then `pnpm occt ensure` downloads it. The dispatch needs the
+  `occt-<hash>`; then `pnpm wasm:pin`, commit the pins, and `pnpm occt ensure`
+  downloads it. The dispatch needs the
   workflow file on `main`; runs of one ref cancel each other, so run
   experiments from separate branches (and delete the branch afterwards).
 - **`node scripts/measure-startup.mjs`** prints the size table and times a

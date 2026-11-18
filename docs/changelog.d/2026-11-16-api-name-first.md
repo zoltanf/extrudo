@@ -1,0 +1,1 @@
+- 2026-11-16 · **Scripts find things by name first**: a parameter, component, sheet or drawing view named like another one's ID is found by its name; an ID still finds its object when no name matches, and a handle always finds its own.

@@ -23,7 +23,15 @@
 
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { designSegments, type Entries, unzip } from './archive';
-import { type AsmCurve, type AsmRecord, type AsmSurface, asmFaceTags, readAsm } from './asm';
+import {
+  type AsmBudget,
+  type AsmCurve,
+  type AsmRecord,
+  type AsmSurface,
+  asmBudget,
+  asmFaceTags,
+  readAsm,
+} from './asm';
 import {
   type AsmBodyEdge,
   type AsmBodyFace,
@@ -148,11 +156,33 @@ function entryFor(entries: Entries, file: string): Uint8Array | undefined {
 }
 
 /**
- * The most STEP text one body may come to. The files' largest body is 4 MB
- * (85,000 entities); a crafted stream past this is refused rather than
- * written out on the UI thread.
+ * The most STEP text one body may come to: the storage's limit on one file
+ * (`MAX_ATTACHMENT_BYTES`, 25 MB), which a body kept as its file must keep
+ * to. The files' largest body is 4 MB (85,000 entities); a crafted stream
+ * past this is refused rather than written out.
  */
-export const MAX_STEP_BYTES = 64 * 1024 * 1024;
+export const MAX_STEP_BYTES = MAX_ATTACHMENT_BYTES;
+
+/**
+ * Writes solids as STEP within one total, `total` (the storage's limit on a
+ * design's files, `MAX_ATTACHMENTS_BYTES`), each at most `MAX_STEP_BYTES`:
+ * a solid past what is left is refused like one past the per-body cap. The
+ * corpus's largest design comes to 23.5 MB.
+ */
+export function stepWithin(
+  total: number = MAX_ATTACHMENTS_BYTES,
+): (solid: AsmBodySolid) => { step?: string; reason?: string } {
+  let left = total;
+  return (solid) => {
+    const room = Math.min(MAX_STEP_BYTES, Math.max(0, left));
+    const written = solidStep(solid, room);
+    // STEP text is ASCII: a character is a byte.
+    if (written.step !== undefined) left -= written.step.length;
+    else if (room < MAX_STEP_BYTES && written.reason === tooLarge(room))
+      return { reason: `unsupported geometry (the bodies' STEP would pass ${total} bytes)` };
+    return written;
+  };
+}
 
 /** The solid as AP214 STEP text (mm). Throws `UnsupportedGeometry` on a surface or curve it does not carry. */
 export function solidToStep(solid: AsmBodySolid, maxBytes = MAX_STEP_BYTES): string {
@@ -533,9 +563,28 @@ function header(w: StepWriter): number {
   );
 }
 
-/** A double in a compact STEP lexical form. */
-function g(v: number): string {
-  return Number.isFinite(v) ? Number.parseFloat(v.toPrecision(9)).toString() : '0';
+/**
+ * A double as a STEP real, rounded to nine significant digits: JavaScript's
+ * shortest form of that, which has no exponent from 1e-6 up to 1e21 (an
+ * integral value prints as an integer, which the kernel's reader takes as a
+ * real; integer arguments such as knot multiplicities and entity numbers go
+ * through here too and must stay integers). Outside that range the exponent
+ * form gets the decimal point and the capital `E` the exchange syntax needs:
+ * `1e-7` → `1.E-7`, `1.5e+21` → `1.5E21`. The kernel's reader took `1e-7` and
+ * `2e-1` as 0, and `1e+21` as nothing it could build (ADR-0083, 2026-11-15).
+ *
+ * The B-rep stream's doubles are not checked when it is read, and a product of
+ * finite ones can overflow, so a number that is not finite can reach this:
+ * the body is refused, rather than written with a 0 in its place.
+ */
+export function stepReal(v: number): string {
+  if (!Number.isFinite(v)) throw new UnsupportedGeometry('a number that is not finite');
+  const s = Number.parseFloat(v.toPrecision(9)).toString();
+  const e = s.indexOf('e');
+  if (e < 0) return s;
+  const mantissa = s.slice(0, e);
+  const exponent = s.slice(s[e + 1] === '+' ? e + 2 : e + 1);
+  return `${mantissa.includes('.') ? mantissa : `${mantissa}.`}E${exponent}`;
 }
 
 /** Emits AP214 STEP entities, numbering them as `#n=…;` (lengths: cm in, mm out). */
@@ -557,7 +606,7 @@ class StepWriter {
       refs.length
         ? text.replace(/\{\}/g, () => {
             const v = refs[i++];
-            return typeof v === 'number' ? g(v) : String(v);
+            return typeof v === 'number' ? stepReal(v) : String(v);
           })
         : text
     };`;
@@ -570,12 +619,14 @@ class StepWriter {
 
   point(p: [number, number, number]): number {
     const [x, y, z] = p.map((v) => v * 10) as [number, number, number];
-    return this.add(`CARTESIAN_POINT('',(${g(x)},${g(y)},${g(z)}))`);
+    return this.add(`CARTESIAN_POINT('',(${stepReal(x)},${stepReal(y)},${stepReal(z)}))`);
   }
 
   direction(d: [number, number, number]): number {
     const n = Math.hypot(d[0], d[1], d[2]) || 1;
-    return this.add(`DIRECTION('',(${g(d[0] / n)},${g(d[1] / n)},${g(d[2] / n)}))`);
+    return this.add(
+      `DIRECTION('',(${stepReal(d[0] / n)},${stepReal(d[1] / n)},${stepReal(d[2] / n)}))`,
+    );
   }
 
   /** An axis placement from an origin, a z and an x direction (x orthogonalized to z). */
@@ -643,7 +694,7 @@ class StepWriter {
 
   /** A list of numbers or references, `(a,b,…)`. */
   static list(xs: (number | string)[]): string {
-    return `(${xs.map((x) => (typeof x === 'number' ? g(x) : x)).join(',')})`;
+    return `(${xs.map((x) => (typeof x === 'number' ? stepReal(x) : x)).join(',')})`;
   }
 
   bsplineCurve(c: AsmBSplineCurve): number {
@@ -711,6 +762,10 @@ class StepWriter {
   }
 }
 
+/** The reason a solid past `maxBytes` of STEP is refused with. */
+const tooLarge = (maxBytes: number) =>
+  `unsupported geometry (a body of more than ${maxBytes} bytes of STEP)`;
+
 /** The solid as STEP, or the reason it cannot be written. */
 export function solidStep(
   solid: AsmBodySolid,
@@ -774,6 +829,9 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
     string,
     { solids: AsmBodySolid[]; paired: Map<number, number | string> } | { error: string }
   >();
+  // The streams read stay in `cache`: one value budget for them all.
+  const budget = asmBudget();
+  const write = stepWithin();
   const out: BodyStep[] = [];
   for (const body of design.bodies) {
     if (!body.visible) continue;
@@ -797,7 +855,7 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
     let read = cache.get(link.file);
     if (!read) {
       try {
-        const records = readAsm(data);
+        const records = readAsm(data, budget);
         const solids = asmBodies(records);
         // The container lists the component's bodies, the stream's lumps are
         // its solids, and the two do not always line up by position (a hidden
@@ -821,7 +879,7 @@ export function bodiesStep(entries: Entries, design: F3dDesign): BodyStep[] {
       );
       continue;
     }
-    out.push(at(solidStep(solid)));
+    out.push(at(write(solid)));
   }
   return out;
 }
@@ -869,6 +927,8 @@ export function baseBodiesStep(entries: Entries, design: F3dDesign): BaseStep[] 
     ? bodyStreams(new Segment(first.meta, first.bulk))
     : new Map<number, { file: string; index: number }>();
   const read = new Map<string, { records: AsmRecord[]; solids: AsmBodySolid[] } | string>();
+  // The streams read stay in `read`: one value budget for them all.
+  const budget = asmBudget();
   const byBody = new Map<number, Omit<BaseStep, 'feature'>>();
   let total = 0;
   const out: BaseStep[] = [];
@@ -876,7 +936,15 @@ export function baseBodiesStep(entries: Entries, design: F3dDesign): BaseStep[] 
     const kept = base.kept as number;
     let done = byBody.get(kept);
     if (!done) {
-      done = keptStep(entries, streams, read, base.ops, MAX_ATTACHMENTS_BYTES - total, kept);
+      done = keptStep(
+        entries,
+        streams,
+        read,
+        budget,
+        base.ops,
+        MAX_ATTACHMENTS_BYTES - total,
+        kept,
+      );
       // STEP text is ASCII: a character is a byte.
       if (done.step !== undefined) total += done.step.length;
       byBody.set(kept, done);
@@ -891,6 +959,7 @@ function keptStep(
   entries: Entries,
   streams: Map<number, { file: string; index: number }>,
   read: Map<string, { records: AsmRecord[]; solids: AsmBodySolid[] } | string>,
+  budget: AsmBudget,
   ops: readonly number[],
   room: number,
   kept?: number,
@@ -902,7 +971,7 @@ function keptStep(
     const data = entryFor(entries, link.file);
     try {
       if (!data) throw new Error(`stream ${link.file} is missing from the archive`);
-      const records = readAsm(data);
+      const records = readAsm(data, budget);
       stream = { records, solids: asmBodies(records) };
     } catch (error) {
       stream = (error as Error).message;

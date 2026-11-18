@@ -30,6 +30,7 @@
     "extrudo": "node packages/cli/bin/extrudo.mjs",
     "occt": "node packages/kernel/occt/occt.mjs",
     "wasm": "pnpm occt ensure && pnpm planegcs ensure && pnpm openscad ensure",
+    "wasm:pin": "pnpm occt pin && pnpm planegcs pin && pnpm openscad pin",
     "planegcs": "node packages/sketch/planegcs/planegcs.mjs",
     "openscad": "node packages/openscad/openscad.mjs"
   },

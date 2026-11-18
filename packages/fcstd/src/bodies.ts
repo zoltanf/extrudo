@@ -29,7 +29,7 @@ import {
   sketchEntityRefId,
 } from '@extrudo/core';
 import type { SketchSolver } from '@extrudo/sketch';
-import { insidePolygon } from '@extrudo/sketch/profiles';
+import { insidePolygon, profilesRefusal } from '@extrudo/sketch/profiles';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { type Binder, namingFor } from './bind';
 import { type CallOutcome, type KernelBudget, NONSENSE_REPLY } from './budget';
@@ -100,6 +100,8 @@ export const MAX_FILE_FEATURES = 2_000;
  * 250 holes) need hundreds. Measured unloaded at 500 (ADR-0144's S5
  * amendment): a grid of crossing lines 1.1 s and 485 MB, concentric circles
  * 2.1 s and 410 MB; at 1,000 both pass 5 s, the grid in the region detection.
+ * Since ADR-0020's amendment of 2026-11-15 that grid (125,000 cuts) is
+ * refused early by the detection's own crossing limit (`MAX_PROFILE_CUTS`).
  */
 export const MAX_PROFILE_CURVES = 500;
 /** The most closed regions a profile sketch may have for its faces to be picked (each pick tests every region). */
@@ -678,7 +680,20 @@ const boxOf = (ring: readonly Pt[]) => {
  * only where its box holds the point.
  */
 export function profileRefs(handle: SketchHandle, multiFace: boolean): GeomRef[] | string {
-  const regions = handle.regions.filter((r) => !r.text);
+  let all: SketchHandle['regions'];
+  try {
+    all = handle.regions;
+  } catch (error) {
+    // Regions Extrudo refuses to find (`ProfilesRefusedError`).
+    const refusal = profilesRefusal(error);
+    if (!refusal) throw error;
+    return refusal.reason === 'size'
+      ? 'its sketch has coordinates too large to find its profiles'
+      : refusal.reason === 'curves'
+        ? 'its sketch has too many curves to find its profiles'
+        : 'its sketch has too many curve crossings to find its profiles';
+  }
+  const regions = all.filter((r) => !r.text);
   if (regions.length > MAX_PROFILE_REGIONS)
     return `its sketch has ${regions.length} closed regions, more than ${MAX_PROFILE_REGIONS}`;
   const boxes = regions.map((r) => boxOf(r.outer.polygon));

@@ -211,6 +211,16 @@ describe('copying features', () => {
     });
   });
 
+  it('leaves out a path start that is not finite', () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      const { seg, inside, scope } = fixture({
+        1: { guid: 'pattern', refs: [] },
+        5: { guid: PATH_START, bytes: [...new Array(19).fill(0), ...f64s(2, bad, 0)] },
+      });
+      expect(readPathPattern(seg, scope([5], 1), inside)).not.toHaveProperty('start');
+    }
+  });
+
   it("unpairs a rectangular pattern's instance codes", () => {
     // A row: (u, 0) codes u(u + 1) / 2 — 1 the original, 3 the second, 36 the eighth.
     expect([1, 3, 6, 36].map(cantorPair)).toEqual([

@@ -29,6 +29,7 @@ import {
 import {
   detectProfiles,
   PROFILE_TOLERANCE,
+  ProfilesRefusedError,
   profileCentroid,
   profileIds,
   profileKey,
@@ -46,6 +47,26 @@ import {
   withoutRepeats,
 } from './projection';
 import { lineOf, planeOf, pointOf } from './references';
+
+/**
+ * Why a feature has none of the profiles it picked when their sketch's
+ * curves cross too often (`SketchOutputData.profilesRefused`).
+ */
+export const TOO_MANY_CROSSINGS_TO_PICK =
+  'Its sketch has too many curve crossings to find its profiles. Remove or simplify curves in the sketch.';
+
+/** The same when the sketch's curves lie too far out (`MAX_PROFILE_COORDINATE`). */
+export const TOO_LARGE_TO_PICK = 'Its sketch has coordinates too large to find its profiles.';
+
+/** The same when the sketch's curves are too many (`MAX_PROFILE_SEGMENTS` and the others). */
+export const TOO_MANY_CURVES_TO_PICK =
+  'Its sketch has too many curves to find its profiles. Remove or simplify curves in the sketch.';
+
+const PICK_REFUSALS: Record<ProfilesRefusedError['reason'], string> = {
+  crossings: TOO_MANY_CROSSINGS_TO_PICK,
+  size: TOO_LARGE_TO_PICK,
+  curves: TOO_MANY_CURVES_TO_PICK,
+};
 
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
 export interface SketchProfileInfo {
@@ -85,6 +106,13 @@ export interface SketchOutputData {
   sketch: SketchData;
   /** Largest first. */
   profiles: SketchProfileInfo[];
+  /**
+   * Set when `detectProfiles` refused the sketch (its curves cut each other
+   * too often or lie too far out; ADR-0020's amendment of 2026-11-15): it
+   * has no faces and no `profiles`, and a feature that picked one fails
+   * with this message (`TOO_MANY_CROSSINGS_TO_PICK`, `TOO_LARGE_TO_PICK`, `TOO_MANY_CURVES_TO_PICK`).
+   */
+  profilesRefused?: string;
   /**
    * Every line of the sketch, construction lines too, from its start to its
    * end in sketch coordinates (mm): what a revolve's axis refers to
@@ -159,7 +187,12 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
     const projections = projectAll(ctx, data, frame);
     const { curves, ids } = planarCurves(data);
     using scope = kernel.scope();
-    const { faces, regionIds, textOf } = sketchFaces(kernel, scope, curves, ids, data, frame);
+    // The regions first: a sketch refused there has no faces to make.
+    const detected = detectedRegions(data);
+    const refused = detected instanceof ProfilesRefusedError ? detected : undefined;
+    const { faces, regionIds, textOf } = !(detected instanceof ProfilesRefusedError)
+      ? sketchFaces(kernel, scope, curves, ids, data, frame, detected)
+      : { faces: [], regionIds: [], textOf: new Map<string, SketchEntityId>() };
 
     const order = faces
       .map((_, i) => i)
@@ -186,6 +219,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       });
     }
     const warnings = textWarnings(data);
+    if (refused) warnings.unshift(refused.message);
     const texts = textsOf(data);
     const exact = exactCurves(data);
     const points = sketchPoints(data);
@@ -195,6 +229,9 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       frame,
       sketch: data,
       profiles,
+      ...(refused && {
+        profilesRefused: PICK_REFUSALS[refused.reason],
+      }),
       lines: sketchLines(data),
       curves: sketchCurves(data),
       exact,
@@ -803,10 +840,10 @@ function sketchFaces(
   ids: readonly SketchEntityId[],
   data: SketchData,
   frame: SketchFrame,
+  detected: readonly DetectedRegion[],
 ): { faces: PlanarFace[]; regionIds: string[]; textOf: Map<string, SketchEntityId> } {
   const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
   for (const face of faces) scope.track(face.shape);
-  const detected = detectedRegions(data);
   const first = profileFaceIds(faces, ids, data, detected);
   if (first.missing.length === 0) {
     return { faces: [...faces], regionIds: first.ids, textOf: first.textOf };
@@ -836,8 +873,19 @@ interface DetectedRegion {
   text?: SketchEntityId;
 }
 
-function detectedRegions(data: SketchData): DetectedRegion[] {
-  return detectProfiles(data).map((p) => ({
+const regionsOrNone = (d: DetectedRegion[] | ProfilesRefusedError) =>
+  d instanceof ProfilesRefusedError ? [] : d;
+
+/** The sketch's regions, or why `detectProfiles` refused to find them. */
+function detectedRegions(data: SketchData): DetectedRegion[] | ProfilesRefusedError {
+  let profiles: ReturnType<typeof detectProfiles>;
+  try {
+    profiles = detectProfiles(data);
+  } catch (error) {
+    if (error instanceof ProfilesRefusedError) return error;
+    throw error;
+  }
+  return profiles.map((p) => ({
     id: p.id,
     area: p.area,
     centroid: profileCentroid(p),
@@ -862,7 +910,7 @@ export function profileFaceIds(
   faces: readonly PlanarFace[],
   curveIds: readonly SketchEntityId[],
   data: SketchData,
-  detected: readonly DetectedRegion[] = detectedRegions(data),
+  detected: readonly DetectedRegion[] = regionsOrNone(detectedRegions(data)),
 ): {
   ids: string[];
   reassigned: number;

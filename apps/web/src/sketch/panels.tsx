@@ -236,6 +236,12 @@ export interface SketchPaletteProps {
   onOutline(on: boolean): void;
   onLookAt(): void;
   onFinish(): void;
+  /**
+   * Why the sketch shows no profiles, under the DOF counter: its curves
+   * cross too often, lie too far out or are too many (`ProfilesRefusedError`,
+   * ADR-0020's amendments of 2026-11-15).
+   */
+  problem?: string;
 }
 
 /** The sketch palette (UI spec §4): sketch options, the DOF counter and Finish Sketch. */
@@ -247,6 +253,7 @@ export function SketchPalette({
   onOutline,
   onLookAt,
   onFinish,
+  problem,
 }: SketchPaletteProps) {
   const grid = useStore(viewport, (s) => s.grid);
   const points = useStore(viewport, (s) => s.sketchPoints);
@@ -395,6 +402,11 @@ export function SketchPalette({
         </PaletteSwitch>
       </div>
       <DofCounter host={host} />
+      {problem && (
+        <p className="text-sm text-warning" role="status" data-sketch-problem>
+          {problem}
+        </p>
+      )}
       <Button
         className="border-success/60 font-semibold text-ink hover:bg-success/10"
         onClick={onFinish}

@@ -202,8 +202,8 @@ stack and a guard). That file now rebuilds to its end and counts among those
 that build different geometry: **120 match, 60 lose some features, 55 build
 different geometry, 8 have no body, none crash** (every other file's volume,
 box, skips and failures are unchanged). Its chamfer and four other edge or face
-features end in ordinary messages ("Distance 0.75 mm is too large… (max ≈
-0.74 mm)"), and one more chamfer loses its edge: OCCT can't build them on the
+features end in ordinary messages ("Distance … is too large… (max ≈
+…)"), and one more chamfer loses its edge: OCCT can't build them on the
 geometry the import gives them, which is an import question, not a kernel one.
 
 ## Amendment, 2026-10-11 (components)
@@ -466,7 +466,7 @@ The review for untrusted files changed three things in the constraint import:
 
 The file's ellipse record (`FF23079A…`: centre, unit major and minor axes,
 radii, parameter angles, and the centre, end and start points) is read; all
-those in the owner's corpus are arcs (up to 190°). Extrudo's
+those in the owner's corpus are arcs. Extrudo's
 `ellipse` entity (ADR-0014) is whole and has no arc, so an arc is drawn as
 **exact conics** (ADR-0063's `mode: 'conic'`, a rational quadratic): one per
 quarter turn at most, each from the affine image of a circular arc — the
@@ -479,7 +479,7 @@ map onto the `ellipse` entity; none is in the corpus, so none is read yet.
 No constraint or dimension of the corpus names an ellipse (only its points),
 so the conics take no constraint.
 
-A line subclass (`AE42BAB6…`, 20 in 7 files) with a line's members after a
+A line subclass (`AE42BAB6…`, seen in several files) with a line's members after a
 reference to its incidence record is read as a **construction line** (drawn
 as profile curves, it split the profiles it crosses); the constraints naming
 it (midpoints, tangents, parallels) now go through the vetting.
@@ -510,7 +510,7 @@ what that showed.
 
 1. **Copies are measured where they are.** An edge on a pattern's or
    mirror's copy was measured on the copied face, so its fingerprint sat on
-   the original (a gear's 46 tooth edges all pointed at the first tooth).
+   the original (a gear's tooth edges all pointed at the first tooth).
    The copy's own B-rep face gives its surface now.
 2. **The B-rep's stored edges.** The ASM reader follows each face's loops to
    its edges (curve, vertices, the face across). The streams keep earlier
@@ -556,7 +556,7 @@ not; references whose pick lies on the file's edge rose (by name 3,732 →
 3,843 before item 4) and picks off it fell (by name 118 → 57). Worse: the two
 holders above, a case whose fillet now rounds all four of the
 file's edges (3.3 % → 4.2 % volume error) and a toy whose rounds already failed
-(0.1 % → 0.2 %); a stand's chamfer no longer picks four edges 5 mm
+(0.1 % → 0.2 %); a stand's chamfer no longer picks edges
 off by fingerprint, and its volume error went from 0.04 % to 0.25 %.
 
 ## Amendment, 2026-10-11: reasons in plain words
@@ -594,7 +594,7 @@ build (each with a warning: some leave their lost edges out, others find all
 their edges now because an earlier round they stand on builds), 18 get past
 the lost edge to OCCT and fail there ("too large", "can't be chamfered with any
 distance", an edge that "isn't between two faces"), and one round fails that
-built before: a chamfer an earlier fillet, now built on 12 of its 18 edges,
+built before: a chamfer an earlier fillet, now built on most of its edges,
 leaves no room. New match: a shelf whose chamfer was held by one lost edge.
 Eight designs come closer; no verdict got worse, and six volumes moved away
 from the reference by 0.03 to 0.31 percentage points where a round now builds
@@ -777,9 +777,9 @@ copy. Body links name only a body's creator (one link per body over the 449
 in the corpus), so no later feature was available as a key; bodies in no
 container are mostly tool bodies whose operations also sit on the result, so
 they do not claim. The container order is dropped stream-wide when any body's
-evidence contradicts it: in one cabinet stream the index had written two of
-nine panels with another panel's solid, and the bodies of a feature that made
-two panels with equal tags there are now refused instead.
+evidence contradicts it: in one cabinet stream the index had written some
+panels with another panel's solid, and the bodies of a feature that made
+several panels with equal tags there are now refused instead.
 
 **Numbers** (250 files, `probeDocument` → `planBodies` → `applyBodyPlan`,
 against the reference STEP): designs matching 165 → 169 of 237 comparable,
@@ -788,7 +788,7 @@ frozen 78 → 84, unchecked 147 → 146, missing 24. Of the 32 bodies the "strea
 holds N bodies" refusal kept out, 9 are now written (3 editable, 6 frozen),
 21 reach the writer and stop at geometry it does not carry (15 intersection or
 spline, 6 degenerate tori), 1 is refused as `creator in several solids` and 1
-as `creator in no solid`. The 8 cabinet panels the index wrote before are now
+as `creator in no solid`. The cabinet panels the index wrote before are now
 refused as `creator in several solids` (they were editable; that design's
 verdict and volume error are unchanged). The crossed
 design now writes each body's own solid (its verdict was already a match: the
@@ -880,8 +880,8 @@ normal. The writer decided whether to reverse a loop from the face's sense
 after the reader had folded a negative radius (or a spline record's sense) into
 it, so on an inward-signed surface the loop ran the wrong way. A kernel turns a
 single wrong loop round, but on a torus face bounded by two parallel circles the
-winding picks the band: such faces came out as the rest of the torus (473.6 mm²
-where the export has 101.2). The loop now follows the file's own face flag. The
+winding picks the band: such faces came out as the rest of the torus (several times
+the export's area). The loop now follows the file's own face flag. The
 eight bodies the body check leaves unchecked because of an inward-signed
 surface each measure as the export's solid once read on their own (volume
 within 0.02 %, box exact). The body check's rule that left such bodies
@@ -918,8 +918,8 @@ under it, with a warning. 20 designs' first divergence from the file was such a
 round (job C's divergence report). Replay-only corpus: within 0.5 % volume and
 0.05 mm box 135 → 142, 50 rounds error → built, 2 rounds built → error
 (downstream of a newly built round, on edges next to its faces), one design
-match → mismatch (0.48 % → 0.71 % volume; the newly built 0.33 mm chamfer is
-the file's, on all 42 of its edges, and the design was short of volume for
+match → mismatch (0.48 % → 0.71 % volume; the newly built chamfer is
+the file's, on all of its edges, and the design was short of volume for
 another reason).
 
 ## Amendment, 2026-10-14: a symmetric extrude's distance is each side's
@@ -934,8 +934,8 @@ before only because their caps fall outside the body or on another plane. The
 import now writes `symmetricMeasure: 'half'`. No whole-length symmetric extrude
 is in the corpus, so a flag for one was not found; if a file has one it would
 come in twice as long. Replay corpus: within 0.5 % volume and 0.05 mm box 142 →
-147 (5 designs reach it, none leaves it); Pillar Connector's box error 8.5 mm →
-0; 4 rounds now build, 1 round further down now fails (it had been built on the
+147 (5 designs reach it, none leaves it); one design's box error went
+to 0; 4 rounds now build, 1 round further down now fails (it had been built on the
 half-length body). Body check on the 10 designs that changed: editable 1 → 6,
 frozen 6 → 1. Test: `map.test.ts` "extrudes a symmetric extrude's distance on
 each side…".
@@ -948,8 +948,8 @@ a plane slanted to the sketch the import now writes the offset divided by the
 cosine between the sweep and the plane's normal (same sign); other faces keep
 it as it is (`alongSweep` in `map.ts`). The corpus has 16 up-to-face extrudes
 with a non-zero offset: 13 to a plane parallel to the sketch (already a
-distance) and 3 in one design to a slanted plane, whose end
-faces were about half a millimetre off the file's and now lie on them. Replay corpus: no
+distance) and the others, in one design, to a slanted plane, whose end
+faces were off the file's and now lie on them. Replay corpus: no
 verdict changes (that design already matched, volume error 0.015 % → 0.010 %).
 Test: `map.test.ts` "measures an up-to-face offset along the sweep…".
 
@@ -966,12 +966,12 @@ their root point on a line's stretch; of the 2,964 on planes holding several
 lines, 2,071 are on exactly one. Together with ADR-0051's amendment of the same
 day (rounds next to a moved face keep their radius), the 7 designs whose first
 divergence was an Offset Faces: 3 now have no divergence left (the housing
-family's corner round on the file's axis at 3 mm), 3 diverge first at a later
+family's corner round on the file's axis), 3 diverge first at a later
 feature that was skipped or failed before too, and 1 still at its Offset Faces
 (refused for rounds meeting at a sharp corner). Replay corpus: no verdict or
 feature status changes. Body check, both amendments together: editable bodies
-195 → 199, frozen 159 → 155, none worse; one design's offsets name 9 distinct
-faces instead of 7 (two collinear walls had come out as one name), and 3 of its
+195 → 199, frozen 159 → 155, none worse; one design's offsets name more distinct
+faces (two collinear walls had come out as one name), and several of its
 bodies now rebuild as the file has them. Test: `map-more.test.ts` "offsets the side
 of the collinear line its plane is rooted at".
 
@@ -1028,7 +1028,7 @@ the import can fix, each checked on the designs it touches:
    `skipLostEdges` drops the ones not found. 26 rounds in 10 designs: 4 build,
    the rest now fail ("Can't find an edge to fillet any more") instead of being
    skipped, because the guessed face is not there (the earlier round failed, or
-   the token guess picks the wrong edge: in one design all 8 edges named one
+   the token guess picks the wrong edge: in one design every edge named one
    chamfer face). Such a round is in the timeline with its sizes, for Fix
    References, where it used to be missing; the body is the same either way.
 
@@ -1056,7 +1056,7 @@ result after the check stays 225, none harmed; bodies editable 195 → 202,
 frozen 159 → 152 (made differently 114 → 109, made nothing 45 → 43), unchecked
 26 → 26. Bodies that turn editable: a cover pin, a cap cover, a hammer cover, a
 holder end, a wrench holder, an earbuds case's second body and one of a hinge
-part's four.
+part's bodies.
 Tests: `edges.test.ts`, `hole.test.ts`, `extrude.test.ts`, and `map.test.ts`
 "rounds an edge by its two faces' names…" and "leaves out a profile region it
 cannot match…".
@@ -1090,7 +1090,7 @@ measured on the corpus before it was built.
    revolve's about its axis (planes square to it, cylinders, cones, tori);
    along a spline only a plane at one height is known. The caps are the
    planes across the path's ends, `cap:start` at the end nearer the profile
-   (in one design the profile sits 0.023 mm along the path from its end).
+   (in one design the profile sits a hair along the path from its end).
    Paths that don't chain, aren't flat or don't cross the profile's plane
    square to it name no sweep face (as before). 24 round edges in 3 designs
    named sweep faces: all along lines and arcs are now named, the 4 round a
@@ -1103,7 +1103,7 @@ measured on the corpus before it was built.
    other component's bodies), name that component's body, and share the
    first's sketch profile and parameter values; they are numbered in their own
    component's count, so their name says nothing (a further record of the
-   timeline's `Extrude5` is named `Extrude3`, beside an unrelated `Extrude3` on
+   timeline's `ExtrudeN` can be named `ExtrudeM`, beside an unrelated `ExtrudeM` on
    the timeline). Faces are now named through that list only: an operation
    whose records are all off the timeline maps to the timeline feature one of
    them is a further record of, never to a feature that shares its name. A
@@ -1285,7 +1285,7 @@ boxes do). Evidence: of the 28 features in the corpus that make several bodies
 with a shown one, 26 are such extrudes; on the 22 bodies of 10 of them (5
 designs) that no later feature changed, each file body's box (its B-rep
 through the writer) is that of the replayed solid the rule names, 22 of 22,
-including a 5-body extrude whose bodies the file numbers out of order in x, y
+including an extrude whose bodies the file numbers out of order in x, y
 and z alike. Two centres are a tie on an axis when they are at most 1e-6 mm
 apart (the kernel's own `ORDER_TOLERANCE`), and the next axis decides; on the
 deciding axis, a gap above that but under 0.01 mm (`ORDER_SLACK`: the kernel's
@@ -1426,7 +1426,7 @@ body went from editable to anything else.
 
 **Not moved.** Four fraction models (two-line older texts, bold): Arimo Bold's
 underscore is 0.038 em thick, the file's about 0.086 em, so the fraction bar
-cuts 18.5 mm³ where the file cuts 43; and the second line sits about half a
+cuts less than half of what the file's does; and the second line sits about half a
 capital height too low (a single-line text in the same alignment sits within
 0.06 mm, so the rule for several lines is still unknown); 1.1 to 2.8 % off.
 A hinge part's text cut is refused ("removes nothing") for its extrude's
@@ -1466,7 +1466,7 @@ column) imported with its base thinner than in the file. Four causes:
   ("it turns the bodies"): Extrudo's free mode turns about the bodies' box
   centre and its rotate mode needs an axis the import does not make. The
   matrix reading was checked on the corpus's two such moves: both designs'
-  boxes now equal their exports' (20 mm and 70 mm off before).
+  boxes now equal their exports' (off by the move before).
 - **An extrude whose sketch was deleted.** A profile operand can name a
   sketch record the file no longer holds. That was a decoding problem and the
   skip said "its profile is a face"; now the profile reader tells it apart
@@ -1476,10 +1476,10 @@ column) imported with its base thinner than in the file. Four causes:
 Face deletions (`DeleteFace`, 28 in the bumper) stay unsupported.
 
 **Numbers** (replay corpus, before → after): match 157 → 158 (the corpus's
-move of a frame part, box 70 mm → 0), mismatch 51 → 52, partial 27 → 25,
+move of a frame part, its box error → 0), mismatch 51 → 52, partial 27 → 25,
 features left out 75 → 73. The one design that went from partial to
 mismatch has nothing left out now; its volume error is the same (3.7 %, a text
-cut in a substitute font) and its box error went from 20 mm to 0. The
+cut in a substitute font) and its box error went to 0. The
 corpus's other combine and a move that turns stay left out, with the new
 reasons. Body check: editable 225 → 226 (the moved frame part, frozen
 before), frozen 129 → 128, unchecked 26 → 26 (same reasons); no body worse.
@@ -1607,10 +1607,10 @@ wrong edges. Three causes, all in naming, none in the kernel's fillet:
   Offset faces step names its faces by the solved state alone, exactly as
   before. Named by the picked state, two corpus designs imported an offset
   they had left out, and both went wrong in the replay: on a box lid the new
-  offset (−0.1 mm on a side an earlier offset moved) ran the kernel's Offset
+  offset (a small one on a side an earlier offset moved) ran the kernel's Offset
   Face for over 15 minutes (the design replays in 25 s without it), which
   would hang the import; on a filament guide an offset that widens a hole
-  by 0.6 mm made the thread cut into it next refuse the hole (Extrudo's
+  made the thread cut into it next refuse the hole (Extrudo's
   thread needs a hole narrower than the thread; the file's re-forms the
   wall), which turned a match into a 1.2 % miss. They stay out until Offset
   Face is bounded.
@@ -1712,14 +1712,14 @@ step.
 
 ## Amendment, 2026-10-29: an offset's face by the state the offset saw; the end cap only at the distance
 
-Three designs of one family (a connector plate with a semicircular end, 3 mm
-thick, its bottom raised 1.5 mm by an offset of −1.5 mm and rebuilt by a
+Three designs of one family (a connector plate with a semicircular end, its
+bottom raised by a negative offset d and rebuilt by a
 later extrude) replayed with the **wrong face offset**: the import named the
 offset's face by its solved state (`face.solved ?? face.surface`, as the
-round-faces amendment of 2026-10-23 left it), a plane 1.5 mm above the start
+round-faces amendment of 2026-10-23 left it), a plane |d| above the start
 cap, and the extrude cap rule called every plane that is not the profile plane
 the **end cap** (`Math.abs(h) < tol ? 'start' : 'end'`). So the top ring
-moved down by 1.5 mm instead of the bottom up: −2029 mm³, 17.7 % off the
+moved down by |d| instead of the bottom up: 17.7 % off the
 reference (before #130 the kernel refused that offset and the design matched
 by accident, 0.35 %).
 
@@ -1752,15 +1752,15 @@ nothing and the offset is left out with "none of its 1 faces could be named".
 amendment of the same day): 163 match, 48 mismatch, 25 partial, 2 match
 despite skips, 9 with no reference, 5 with no bodies (was 161 / 49 / 25 / 3);
 features left out 78 (was 80). The connector family: the first design
-17.690 % → **0.354 %** (11 284.3 mm³ against 11 244.6), the second 37.8 → 40.2 %
-and the third 40.7 → 24.9 % (their later features fail on their own: a 3 mm
+17.690 % → **0.354 %**, the second 37.8 → 40.2 %
+and the third 40.7 → 24.9 % (their later features fail on their own: a
 round too large for its edge, chamfers whose edges the join changed; no
 crash). A lamp base 5.018 % → **0.265 %** (a round after a cut that ran forever
 with a non-destructive boolean, see ADR-0051, now builds on the unchanged
 boolean). Closer without a new verdict: a rail top 15.05 → 0.81 %, a tray
 5.13 → 0.57 %. Two designs drop a rank, both because an offset that was left
 out now imports: a filament guide with a threaded hole 0.024 % (match despite
-the skip) → 1.157 % (partial), where the offset widens the hole by 0.3 mm as
+the skip) → 1.157 % (partial), where the offset widens the hole as
 the file does and the thread after it then refuses the hole ("as wide as the
 thread"; a thread-import limit, not a naming one); a distributor base 0.727 %
 over (partial) → 0.545 % under (mismatch, no skip left), nearer the reference
@@ -1794,7 +1794,7 @@ A base feature is a body the file keeps without history, as a step of the
 timeline, or off it where a body move (Body to Component, a cut and paste of
 bodies into another component) made one to hold the body it moved. The import
 left base features out ("not supported yet"), so nothing after one had a body
-to work on: a phone case modelled as one base feature and two chamfers came in
+to work on: a phone case modelled as a base feature and chamfers came in
 with no body at all, and in three designs of one power-supply family the body
 a cut and paste had pasted was missing, so the extrudes and chamfers after it
 had nothing to join to.
@@ -1803,7 +1803,7 @@ had nothing to join to.
 holds a body names two body records. One is the design's body, which later
 features change. The other is a hidden body with its own body container and
 B-rep stream, and that stream holds **the body as the base feature left it**:
-the phone case's kept body is its final body before the two chamfers. So no
+the phone case's kept body is its final body before the chamfers. So no
 guess is needed: neither the final body twice changed (it plus a replay of the
 features after it) nor a final body put back in time.
 
@@ -1863,7 +1863,7 @@ STEP is at most `MAX_ATTACHMENT_BYTES` (25 MB) and all of them together
   (that is its other components) with its body now made; a carrying case
   from 72.4 % to 1.6 % and a printer accessory from 8.9 % to 0.6 % (the moved body
   is read now; what is left is their fillets and chamfers); the phone case from
-  no body to one 2.8 % over: its chamfers name all 57 of their edges, but the
+  no body to one 2.8 % over: its chamfers name all of their edges, but the
   kernel reads the kept body as not quite a sound solid and can't chamfer it.
   A base feature that holds no body is imported as nothing (6 on the
   corpus's timelines, in 4 designs), so it no longer counts as left out.
@@ -1909,7 +1909,7 @@ corner, an opening or the whole plate instead of the region meant. Six rules
    start counts first" was tried and rejected: it harmed six matching designs.
 4. **Tangent touch** (`lineCircle`): two roots closer than 10·TOL (0.1 µm
    along the line) are one. The existing discriminant slack is not the test: it
-   also calls a real 64 µm chord tangent.
+   also calls a real, short chord tangent.
 5. **Probe clearance** (`clearProbeOf`): a region's probe point nearer than
    `PROBE_CLEARANCE` 0.05 mm to its edges is moved inward (`interiorPoint` with
    that margin, only then: always using it was too slow on long spline outlines);
@@ -1931,8 +1931,8 @@ meter case from 57 % to 2 %. Two designs move away while their bodies get
 closer: a cabinet loses a skip (a region now found; its total is closer too, but
 a skip-free mismatch ranks below a partial), and a part whose second body is
 now exact still lacks the copy the file's Move keeps. A multi-part case moves
-from 3.9 % to 4.1 %: rule 4 gives one extrude the file's four small regions
-(4.3 mm² each, the file's 4.4) where two came with 81 mm² more; its body is
+from 3.9 % to 4.1 %: rule 4 gives one extrude the file's small regions
+(each within a few percent of the file's) where fewer, larger ones came before; its body is
 now one body as in the file, and closer, while the case's total is short
 elsewhere.
 Not import problems, left to the owner: the kernel's sketch faces and the
@@ -2013,7 +2013,7 @@ test that fails before it (`map-more.test.ts`).
    (`copiedFeatures`). The file lists the features it copies in the order they
    were picked; the kernel replays them in the order given, each on what the
    last left (ADR-0047). A light housing's mirror listed a join before the cut
-   it sits in: the join's copies came out as two loose 619 mm³ bodies and the
+   it sits in: the join's copies came out as loose bodies and the
    cut's copy then removed the material they stood on (the body 6.3 % short).
    The features are now taken in the order the import made them.
 2. **Its fillets and chamfers are repeated on the copies** (`copyRounds`). The
@@ -2049,8 +2049,8 @@ test that fails before it (`map-more.test.ts`).
 Found, not changed:
 
 - **A revolve that joins leaves a copy of the target** (a bird feeder top): the
-  revolve's profile comes from a free sketch point the file keeps 2.4e-6 mm
-  above the target's top face. The kernel counts the two as touching (1e-4
+  revolve's profile comes from a free sketch point the file keeps a hair
+  (well under 1e-4 mm) above the target's top face. The kernel counts the two as touching (1e-4
   mm), but OCCT's fuse, at its own tolerance, finds no contact and keeps two
   solids, and the split after it gives the bigger one the target's ID and the
   old target a new one. The facade's retry with a fuzzy value
@@ -2058,7 +2058,7 @@ Found, not changed:
   facade (a fuse that keeps operands apart that lie within 1e-4 mm is built
   again with that fuzzy value) and needs a WASM build: not in this change.
 - **A text cut that removed nothing** (a hinge part, 2026-10-21's amendment):
-  already fixed on main; the cut removes 25.7 mm³ and the body is within
+  already fixed on main; the cut removes material and the body is within
   0.15 %. The design's mismatch is its Move, which keeps the moved body's
   original in the file (a copy) and moves it in Extrudo.
 - **A hole wider than its thread** has imported since 2026-11-03.
@@ -2069,7 +2069,7 @@ the four fraction models moving from partial to mismatch only because their one
 skip is gone (the same volumes); skipped features 66 → 62. Bodies 244 editable
 / 115 frozen / 26 unchecked / 1 missing → 245 / 114 / 26 / 1 (the light
 housing's second body frozen → editable; no body worse). By design: a pipe
-input 28.0 % → 2.5 % (its 12 mm hole threaded G 1/2 over 16 of 49 mm now has
+input 28.0 % → 2.5 % (its hole, threaded over part of its length, now has
 its bore at the thread's minor all along), a screw and nut 14.1 % → 5.0 %, a
 filament hole-through 1.2 % → 0.6 %, the light housing 0.44 % → 0.004 %, a
 drain cover 1.49 % → 1.47 % (its pattern's round copies; the rest is an
@@ -2080,7 +2080,264 @@ unnamed offset face). No `RuntimeError`; the two files of #93 are unchanged.
 2026-11-10) instead of the 60° ISO one with a note. In a hole between the
 Whitworth tooth's basic crest and the file's minor (the class's, wider), the
 tooth moves out to the hole by `tolerance` instead of the hole being filled in
-(a pipe input's 12 mm hole, resized to Ø18.9015 by item 3, would otherwise get
-a 0.13 mm sleeve that a later cut left as a loose 24 mm³ body). Corpus: a pipe
-adapter 1.505 % → 1.604 % (still a mismatch; its knurl pattern also leaves 7
+(a pipe input's hole, resized to the thread's minor by item 3, would otherwise
+get a thin sleeve that a later cut left as a loose body). Corpus: a pipe
+adapter 1.505 % → 1.604 % (still a mismatch; its knurl pattern also leaves
 loose slivers, a separate cause), nothing else changes.
+
+## Amendment, 2026-11-15: STEP reals with a decimal point; component loops in linear time
+
+- **STEP reals** (`brep-step.ts` `stepReal`, the writer's numbers). The writer
+  printed a real as JavaScript's shortest form of it rounded to nine digits,
+  which below 1e-6 and from 1e21 up is an exponent form with no decimal point:
+  `1e-7`, `1e+21`. The exchange syntax wants a point in a real, and the kernel's
+  STEP reader, tried on a box with one coordinate replaced, took an unsigned
+  `1e-7`, `2e-7` or `2e-1` as 0, built nothing from `1e+21` (an empty shape)
+  and threw on `1e1`; with a sign or a point (`-1e-7`, `1.5e-10`, `1.E21`) it
+  read the value. The exponent form now gets the point and a capital `E`
+  (`1.E-7`, `1.5E-10`, `1.E21`, `5.E-324`); every other number prints as before,
+  integers included (the reader takes `10` as it takes `10.`, and knot
+  multiplicities and entity numbers go through the same function). On the
+  corpus every exponent form already had its point (a direction's float noise
+  such as `6.123234e-17`: 42,694 of them in 324 of the 382 bodies written), so
+  only their `e` became `E`: the rest of each text is byte for byte the same,
+  body by body, and the gate (replay and body check, 252 designs) measures
+  every design as before, no `RuntimeError`. A number that is not finite
+  used to print as 0; the B-rep stream's doubles are not checked when the
+  stream is read and a product of finite ones can overflow, so one can reach
+  the writer, and the body is now refused ("unsupported geometry (a number that
+  is not finite)"). Test: `brep-step-real.test.ts` (the forms, 60,000 seeded
+  values against the old form, and a box 1e-7 mm off the origin read back
+  through the kernel).
+- **Component loops** (`decode/component.ts` `setParents`, `components.ts`
+  `uniqueName`). The parent of each component placed in another's occurrence
+  list was found by scanning every component's occurrences per entry, and a
+  unique component name by trying `name (2)`, `name (3)`, … from 2 each time,
+  so k components of one name cost k². Both are linear now with the same output
+  for every input: an occurrence goes to the first component that has it,
+  through one map, and the name search goes on per lower-cased name from where
+  it last stopped (every name below that is taken and stays taken). 20,000
+  components of one name took 81 s and take 20 ms; 20,000 occurrences in one
+  list took 6.0 s and take 9 ms (synthetic, the Ubuntu dev machine under
+  load). Test: `component-loops.test.ts` (the old functions as the reference
+  on seeded inputs with heavy collisions, and the steps counted at 20,000).
+
+## Amendment, 2026-11-15: each referenced record decoded once; one budget for what an import keeps
+
+The design stream's references may name one record many times: a scope's
+reference table may list an operand group again, a group the same operand, a
+geometry operand the same point. Each repetition was decoded again and its
+result kept again, so the work and what was kept followed the references rather
+than the records. Now each referenced record is decoded once, and what the
+features keep is bounded across the import. The rules:
+
+- **Each once.** `readScope` takes each record of a reference table once (in
+  order, first place kept). An operand group's recipes are found once per
+  import (`recipesOf`, through `insideOnce`) and each once; an edge or face
+  recipe is decoded once per import however many operands name it
+  (`recipeOf`), and the face a face operand names is looked up once per
+  recipe (`firstFace`; offset faces, deleted faces, an extrude's named faces,
+  thread faces and a hole's placement face share it, so the features share
+  that face object). A profile or text-profile operand is decoded once
+  however many extrudes, revolves or sweeps name it (`profileOf`, `textOf`;
+  they share it). A hole takes each centre point record once.
+  `participantsOf` reads through `insideOnce` too.
+- **One budget for what an import keeps** (`KEEP_BUDGET` = 1,000,000 in
+  `model.ts`): a decoded recipe costs its tags plus their design references,
+  each face a feature keeps one (a face operand, an edge's two faces and each
+  face bounding it), each hole centre one. A feature whose decode would pass it
+  is left out (`LeftOut` in `readSegment`, an `other` feature with `leftOut`,
+  which `f3dToDesign` reports as skipped) with the reason "the import's limit on
+  the faces, edges and points features name was reached". The corpus's dearest
+  design keeps 19,729 (a gear's fillet), so the margin is about 50.
+- **A hole's centres** (`MAX_HOLE_CENTRES` = 1,000): a hole with more centre
+  points is left out: "it has more than 1000 centres". Five times the holes one
+  kernel hole feature makes (`MAX_HOLES`, 200; a test keeps it above), so the
+  cap never refuses a hole the kernel would make; the corpus's largest has 6.
+- **The operation table's lists form** counts each entry's records against
+  `OPERATION_TABLE_BUDGET`, not only its entries. The corpus's dearest design
+  spends 1,280 of the 1,000,000.
+- **The feature tail search** has one budget across a segment's records:
+  `SEGMENT_CANDIDATES` (4,096, one record's `MAX_CANDIDATES`) plus 16 for each
+  record read. Past it a scope fails with "the feature records take too long to
+  read". In the corpus every tail is found at the first position tried (119
+  in the largest design).
+- **`asmFaces`** reads a surface record once however many faces name it (they
+  share the surface object). Corpus streams have up to 456 faces on one
+  surface record.
+
+Measured on synthetic cases built from the package's own test builders (Node,
+main and this change on the same machine): a case that repeats a reference
+now costs what naming the record once costs, each well under a second, where
+the work before grew with the repetition count. In the corpus no reference table,
+operand group or hole repeats a record and no recipe is named by two operands,
+so the deduplication changes no design. A real file can only import
+differently past a bound above: a hole of more than 1,000 centre points, or a
+design keeping about 50 times what the corpus's largest keeps. The corpus gate
+(replay and body check, all 252 designs, against main 1e0bb5f8) is unchanged
+design by design, timings aside; no `RuntimeError`. A new reader keeps to
+this: a record a file can name many times is decoded once, and what it keeps
+draws on `KEEP_BUDGET`.
+
+## Amendment, 2026-11-15: one budget per design for what an import asks of the app
+
+A file's counts were bounded feature by feature (a pattern's instances by the
+kernel, a hole's centres, a thread's turns, a text's length), but not across
+the design: a file could ask for many patterns, holes, threads, texts and
+sketch copies, and the design would rebuild them each time it opens. Sketches
+no feature uses came in visible, so the app found their profiles at every open,
+work the import never measured. Now one budget per design bounds that work,
+and the import also keeps the design's size and its STEP text within the
+storage's limits. The rules (`budget.ts`, `map.ts`, `brep-step.ts`, `asm.ts`,
+`segment.ts`):
+
+- **One budget per design** (`IMPORT_WORK` = 1,000 units, as much repeated work
+  as one pattern may make by itself, `MAX_PATTERN_INSTANCES`). The mapper
+  charges what each file feature added to the design, in timeline order, from
+  the inputs as the kernel reads them (a count that names a parameter is
+  evaluated; one that doesn't evaluate is charged the most): a pattern or
+  mirror its copies times the units of what it repeats (a feature's own units,
+  at least one; a body one; a pattern at least one unit), a hole one unit a
+  centre, a thread `THREAD_UNITS` (2) a turn a face (its length over its pitch;
+  a full-length thread its longest face's length along its axis, read from the
+  B-rep face's vertices, `F3dThread.lengths`; unknown: the kernel's
+  `MAX_TURNS`, 150), a text `TEXT_UNITS` (3) a character, and a sketch copy an
+  extrude with a start offset begins on one unit per `ENTITIES_PER_UNIT` (25)
+  points and curves. The weights follow what each costs the kernel, measured
+  on the Ubuntu dev machine. The corpus's dearest design spends 192
+  (a pattern of 160, two threads, a text), so the margin is about 5.2; no
+  corpus design comes in differently.
+- **Past the budget, suppressed with a note.** A file feature whose charge would
+  pass what is left comes in as mapped, suppressed (every feature it added but
+  construction planes, which later sketches may share), and the import report
+  says "`Name` is suppressed: it would take the design past the import's limit
+  on repeated work (pattern copies, hole centres, thread turns, text and sketch
+  copies). Unsuppress it to build it." A suppressed feature costs the kernel
+  nothing at open and its sketch no profile work in the app. Features after it
+  still import; one that names it (a pattern repeating it, a fillet on its
+  faces, an extrude of its text) errors at recompute as with any suppressed
+  parent. Once the budget is spent nothing more is evaluated: a count is taken
+  as the most, so a pattern, hole, thread or text after that is suppressed too.
+- **Sketches no feature uses** stay visible while they fit what the features
+  left: each is charged its points and curves, then its profiles are found
+  once, in the worker, and charged their edges (one unit per 25 of both). A
+  sketch with text is charged its points and curves only (its characters were
+  charged with it; finding a text's profiles grows faster than its length).
+  Past the budget a sketch comes in hidden (the app finds no profiles for a
+  hidden sketch), with one note: "`Sketch5, Sketch6, Sketch7 and 2 more`: no
+  feature uses these sketches, and finding their profiles would take the design
+  past the import's limit on repeated work, so they are hidden. Show them to
+  see them." A sketch a feature uses is never hidden. The corpus has up to 26
+  such sketches in one design (737 points and curves, 296 profile edges).
+- **The design's size** (`MAX_IMPORT_ENTITIES` = 100,000 sketch points and
+  curves, copies included; the corpus's largest design has 8,090, 5,474 in one
+  sketch): past it the import is refused, before the design is posted from the
+  worker: "This .f3d file is too large to import (its sketches have more than
+  100,000 points and curves)."
+- **STEP text** (`bodiesStep`): one body at most `MAX_STEP_BYTES` =
+  `MAX_ATTACHMENT_BYTES` (25 MB, the storage's limit on one file; was 64 MB),
+  all of a design's bodies together at most `MAX_ATTACHMENTS_BYTES` (100 MB,
+  `stepWithin`); a body past what is left is refused like one past the cap,
+  "unsupported geometry (the bodies' STEP would pass 104857600 bytes)". The
+  corpus's largest body is 4.0 MB, its largest design 23.5 MB. A B-spline is
+  shared within a body already; a body is one solid, so there is nothing
+  further to share.
+- **One value budget per pass over the B-rep streams** (`AsmBudget`,
+  `asmBudget()`, 16 million values, one stream's most): the faces' lookup
+  (`brepFaces`) and each writer (`bodiesStep`, `baseBodiesStep`, which keep the
+  streams they read until they return) spend one budget across their streams;
+  a stream past it stays unread ("ASM: the design's B-rep streams have more
+  than 16000000 values."). The corpus's dearest design reads 4.2 million
+  values in one pass.
+- **Record indexes** (`Segment`): the type table's records (each counted once)
+  and each index may list at most one record per 19 bytes of the bulk stream
+  (the least a record takes: its class tag, id and name length); more is "Bad
+  type table." or "Bad record index.". The corpus's records take 118 bytes or
+  more on average.
+- **User parameters** come in in one step (core's `addParameters`, which reads
+  the names in use once; `parameterNameProblem` gives `addParameter`'s
+  refusals): one at a time, each read every name before it. Same names, IDs,
+  units and notes as before.
+- **Fillet and chamfer edges** find a face once per recipe tag list, and the
+  edges between two B-rep faces once per pair (`readEdgeSets`); a circular
+  pattern reads each record reference once.
+
+Measured on synthetic designs built like the package's test builders (Node,
+main and this change on the same machine): a design past the budget now asks
+the kernel and the app for what the budget allows, where before the work grew
+with the file's counts; the user parameters map in linear time. On the corpus
+no design comes near a bound, so none imports differently: the gate (replay
+and body check, all 252 designs, against main 72367300) is unchanged design by
+design, timings aside, no design has a suppressed or hidden feature, no
+`RuntimeError`, and decode, map and the B-rep writer take the same time over
+the corpus.
+
+Not done here: a recompute watchdog and Cancel while a design first opens, and
+finding profiles off the UI thread (later tasks); the profiles of sketches a
+feature uses are not charged (the mapper's own region search has its budget,
+`MAX_PIECE_WORK`); a sketch copy is still the whole sketch (its regions name
+curve pieces split by every other curve, so a copy of the profile's curves
+alone would find other regions).
+
+## Amendment, 2026-11-15: small input checks
+
+A few numbers and keys from the file were taken without the checks the other
+readers make. Each now gets one (`decode/text.ts`, `decode/thread.ts`,
+`decode/copies.ts`, `decode/sketch-geometry.ts`, `map.ts`, `budget.ts`; in
+`packages/api` `ids.ts` and `design.ts`; in the app `sketch/fonts.ts`):
+
+- **Text numbers:** a sketch text's height, angle, corner and box width (an
+  older text's frame matrix too) go through `finite`, and its height must be
+  above 0 and at most `MAX_TEXT_HEIGHT` (10⁶ cm, the bound the reader puts on
+  an ellipse's radius); otherwise the text record is refused like any other
+  record a reader can't use (a problem in the report, the text left out). Was:
+  a NaN height reached the document as `null` coordinates and the app refused
+  the design as damaged; `1e300` was saved. An older text's box lines with a
+  number that is not finite are skipped.
+- **A thread's major diameter** must be finite (minor and pitch are below it,
+  so all three are); a **path pattern's start point** that is not finite is
+  left out, so the mapper gives its existing reason ("its start point was not
+  found").
+- **Splines:** `readNurbs` needs at least degree + 1 poles. A spline with fewer
+  is a record the reader can't use ("no curve found", the sketch maps without
+  it) instead of throwing a `TypeError` in the region code, which skipped the
+  whole sketch with a raw message.
+- **Profile regions:** every profile operand of a file lists its regions (the
+  corpus: 1,195 of 1,195). One whose regions record is missing, of another type
+  or with a back-reference to another operand no longer extrudes every profile
+  of its sketch: the feature is left out, "its profile's regions could not be
+  read" (`PROFILE_REGIONS_UNREAD`). Chosen over a note because the import can't
+  tell which profiles the file meant, and the corpus gate shows no design that
+  reaches it, so nothing that matched is lost.
+- **Keys from a file:** `fontFor` takes a stand-in font only for an own key of
+  its table (`Object.hasOwn`), so a family named `constructor` is drawn in the
+  default font instead of skipping the sketch; the app's `fontBytes` fetches a
+  bundled font only for an own key of `fontUrls`. `faceMisses` (the corpus
+  tools' count of faces not named) is a `Map`, its keys may carry a type name
+  from the file, and `f3dToDesign` clears it: it counts the last import.
+- **`storedIds`** (`packages/api`) collects a sketch's IDs with a loop, not a
+  spread: a sketch of more entities than a call takes arguments gave a raw
+  `RangeError` in `Design.from`.
+- **Lookups by name or ID** (`packages/api`, `lookup.ts` `byNameThenId`; run
+  2 of 2026-11-16): a string names a parameter, component, sheet or sheet view
+  by its name first, then by its ID; a handle by its ID. Was: ID or name in one
+  test, so `setParameter('p12', …)` changed the parameter whose ID is `p12`
+  although another is named `p12` (the same for the others). Names keep their
+  case rules: a parameter's exact case; a component's, sheet's or view's any
+  case, an exact-case name first (a valid document can't hold two that differ
+  only in case: the schema folds them). Configurations (`applyConfiguration`)
+  already took the name first, in exact case.
+- **Sketch copies past the budget:** a start-offset extrude's sketch copy is
+  charged before it is made (`sketchUnits`, what `ImportBudget.cost` charges a
+  copy); a copy past what is left is not made, and its extrude comes in on its
+  own sketch, suppressed, with `overBudgetNote` and `offsetDroppedNote` ("…
+  starts on its sketch's plane, not at its start offset …"). The design-size
+  cap (`MAX_IMPORT_ENTITIES`) then counts only the sketches the document holds:
+  a design whose suppressed copies alone passed it was refused although they
+  would never be built.
+
+Each has a synthetic test that fails on the code before. On the corpus nothing
+imports differently: the gate (replay and body check, all 252 designs, against
+main 7fcc5da5) is unchanged design by design, timings aside (170 matches and 4
+matches despite skips; bodies 248 editable, 111 frozen, 26 unchecked with the
+same reasons), with no `RuntimeError`.

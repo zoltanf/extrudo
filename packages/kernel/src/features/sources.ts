@@ -90,6 +90,7 @@ function profilePart(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base {
   const data = output.data as Partial<SketchOutputData> | undefined;
   const face = output.shapes?.[parsed.profile];
   const info = data?.profiles?.find((p) => p.id === parsed.profile);
+  if (data?.profilesRefused) throw new KernelError(data.profilesRefused);
   if (face === undefined || !info || !data?.frame) {
     throw new LostReferenceError(
       `Can't find one of its profiles any more: an earlier change to the sketch removed it. Edit the ${noun} and pick it again.`,
@@ -139,6 +140,7 @@ function textParts(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base[] {
     });
   }
   if (parts.length === 0) {
+    if (data.profilesRefused) throw new KernelError(data.profilesRefused);
     // A text of the sketch that draws nothing: no font, nothing to draw,
     // or construction geometry.
     throw new KernelError(`The text has no letters to ${noun}.`);

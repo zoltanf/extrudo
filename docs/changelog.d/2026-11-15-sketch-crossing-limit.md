@@ -1,0 +1,1 @@
+- 2026-11-15 · **Sketches with too many crossings**: a sketch whose curves cross each other about 10,000 times or more, or reach more than 1,000 km from the origin, no longer freezes the app; it shows its curves without profiles and says why, and the features that use its profiles say why they fail.

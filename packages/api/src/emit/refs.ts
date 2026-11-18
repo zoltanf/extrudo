@@ -13,7 +13,12 @@ import {
   parseSketchEntityRefId,
   type SketchEntity,
 } from '@extrudo/core';
-import { detectProfiles, interiorPoint, profileCentroid } from '@extrudo/sketch/profiles';
+import {
+  detectProfiles,
+  interiorPoint,
+  ProfilesRefusedError,
+  profileCentroid,
+} from '@extrudo/sketch/profiles';
 import type { EmitContext } from './context';
 import { arr, call, type Expr, num, obj, raw, str, tmpl } from './print';
 
@@ -150,12 +155,23 @@ function edgeOrVertex(kind: 'edge' | 'vertex', id: string, ctx: EmitContext): Ex
   return call(`${owner}.${kind}`, args);
 }
 
-/** An interior point of a region, for the API's `profileAt`. */
+/**
+ * An interior point of a region, for the API's `profileAt`; undefined when
+ * the sketch has no such region, or no regions at all because its curves
+ * cross too often (the script then names the region by its ID).
+ */
 function regionInterior(
   data: import('@extrudo/core').SketchData,
   id: string,
 ): [number, number] | undefined {
-  const region = detectProfiles(data).find((profile) => profile.id === id);
+  let regions: ReturnType<typeof detectProfiles>;
+  try {
+    regions = detectProfiles(data);
+  } catch (error) {
+    if (error instanceof ProfilesRefusedError) return undefined;
+    throw error;
+  }
+  const region = regions.find((profile) => profile.id === id);
   if (!region) return undefined;
   const point =
     interiorPoint(

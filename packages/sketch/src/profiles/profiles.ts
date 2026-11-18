@@ -27,8 +27,16 @@
  * authoritative faces from the same curves and keys them the same way
  * (`profileKey`, `profileIds`; P2-02).
  */
-import type { SketchData, SketchEntity, SketchEntityId, Vec2 } from '@extrudo/core';
-import { curvePolyline, placeText, textPolylines } from '@extrudo/core';
+import type { SketchData, SketchEntity, SketchEntityId, TextCurveId, Vec2 } from '@extrudo/core';
+import {
+  curvePolyline,
+  placeText,
+  SPLINE_SEGMENTS_PER_SPAN,
+  splinePolyline,
+  splinePolylinePieces,
+  splineSampling,
+  textPolylines,
+} from '@extrudo/core';
 import {
   type Curve,
   dist,
@@ -40,8 +48,8 @@ import {
   sub,
   TAU,
 } from '../inference/geometry';
-import { interiorPoint, windingNumber } from './ink';
-import { nearPairsWithin } from './pairs';
+import { interiorPoint, type WindingRings, windingNumberOf, windingRings } from './ink';
+import { BoxesAt, nearPairsWithin, type PairSearchStats } from './pairs';
 
 /** Positions closer than this (mm) are the same vertex. */
 export const PROFILE_TOLERANCE = 1e-4;
@@ -55,6 +63,112 @@ const SAGITTA = 1e-3;
 const MAX_CIRCLE_SAMPLES = 2048;
 /** Lower bound of samples for a full circle (what the viewport draws). */
 const MIN_CIRCLE_SAMPLES = 96;
+
+/**
+ * The most cuts inside curves a sketch may have for its regions to be
+ * found: each crossing of two curves cuts both (two cuts), the end of one
+ * curve on another cuts that one (one cut); curves that meet end to end
+ * cut nothing. So about 10,000 crossings. The regions, and the time and
+ * memory they take, grow with the cuts: n lines that all cross make n²/2
+ * regions. A sketch with more is refused while it is being cut, before
+ * the work that grows with them (ADR-0020's amendment of 2026-11-15). The
+ * kernel asks the same before it makes the sketch's faces.
+ */
+export const MAX_PROFILE_CUTS = 20_000;
+
+/**
+ * Every cut a pair of segments makes counts too, ends included: two
+ * curves that meet end to end cut each other four times (each end on the
+ * other curve, found twice). A sketch may have `MAX_PROFILE_CUTS` plus this
+ * many per segment; the most per segment in real sketches is about 14, and
+ * their excess over 8 per segment at most a few hundred. Many curves
+ * through one point, or stacked on each other, pass it.
+ */
+export const PROFILE_CUTS_PER_SEGMENT = 8;
+
+/**
+ * The largest coordinate (mm, either axis, of any normal curve's box) a
+ * sketch may have for its regions to be found: 1,000 km. Within it a
+ * double still resolves 0.12 µm, far finer than `PROFILE_TOLERANCE`, and
+ * squares and products of coordinates stay finite and exact enough for the
+ * tolerance tests. Real sketches reach a few metres; the tests' largest 20 km.
+ */
+export const MAX_PROFILE_COORDINATE = 1e9;
+
+/**
+ * The most segments a sketch's curves may make for its regions to be found
+ * (a line is one, an arc or circle one, an ellipse, spline or text one per
+ * piece of its polyline, charged before the polyline is made): every
+ * segment costs a share of every step. Counted curve by curve, before any
+ * pair is tested. Real sketches reach about 12,000 (ADR-0020's amendment
+ * of 2026-11-15, second).
+ */
+export const MAX_PROFILE_SEGMENTS = 200_000;
+
+/**
+ * The most sample points the segments may have (a line one, an arc or
+ * circle up to 2,048): what the regions' loops are drawn with. Counted
+ * with the segments. Real sketches reach about 12,500.
+ */
+export const MAX_PROFILE_POINTS = 2_000_000;
+
+/**
+ * The most tests detection may make of curves near each other, cutting
+ * each other or not: the pair search's own work (cells made and looked up,
+ * boxes looked at; `PairSearchStats`), pairs of segments whose boxes meet,
+ * and the levels, regions and polygons' points an outline is tested against
+ * to find the region it is a hole of. Checked as they are counted. Real
+ * sketches reach about 1,000,000 (ADR-0020's amendment of 2026-11-15,
+ * second).
+ */
+export const MAX_PROFILE_TESTS = 10_000_000;
+
+/** Why a sketch has no regions when its curves cut each other too often (`MAX_PROFILE_CUTS`), in the user's words. */
+export const TOO_MANY_CROSSINGS =
+  'This sketch has too many curve crossings to find its profiles. Remove or simplify curves.';
+
+/** Why a sketch has no regions when a curve lies beyond `MAX_PROFILE_COORDINATE`, in the user's words. */
+export const TOO_LARGE_COORDINATES = 'This sketch has coordinates too large to find its profiles.';
+
+/**
+ * Why a sketch has no regions when its curves are too many or too long
+ * (`MAX_PROFILE_SEGMENTS`, `MAX_PROFILE_POINTS`, `MAX_PROFILE_TESTS`), in
+ * the user's words.
+ */
+export const TOO_MANY_CURVES =
+  'This sketch has too many curves to find its profiles. Remove or simplify curves.';
+
+/** Why detection refused a sketch (`ProfilesRefusedError.reason`). */
+export type ProfilesRefusal = 'crossings' | 'size' | 'curves';
+
+const REFUSAL_MESSAGES: Record<ProfilesRefusal, string> = {
+  crossings: TOO_MANY_CROSSINGS,
+  size: TOO_LARGE_COORDINATES,
+  curves: TOO_MANY_CURVES,
+};
+
+/**
+ * `detectProfiles` refuses a sketch whose curves cut each other too often
+ * (`crossings`: `MAX_PROFILE_CUTS`, `PROFILE_CUTS_PER_SEGMENT`), lie too
+ * far out (`size`: `MAX_PROFILE_COORDINATE`) or are too many (`curves`:
+ * `MAX_PROFILE_SEGMENTS`, `MAX_PROFILE_POINTS`, `MAX_PROFILE_TESTS`). The
+ * sketch itself is fine: it only has no regions.
+ */
+export class ProfilesRefusedError extends Error {
+  override readonly name = 'ProfilesRefusedError';
+  readonly reason: ProfilesRefusal;
+  constructor(reason: ProfilesRefusal) {
+    super(REFUSAL_MESSAGES[reason]);
+    this.reason = reason;
+  }
+}
+
+/** That refusal, when `error` is it or was caused by it (the API's `ApiError`). */
+export function profilesRefusal(error: unknown): ProfilesRefusedError | undefined {
+  if (error instanceof ProfilesRefusedError) return error;
+  if (error instanceof Error && error.cause instanceof ProfilesRefusedError) return error.cause;
+  return undefined;
+}
 
 /** One sketch curve's share of a loop, in loop order. */
 export interface ProfileEdge {
@@ -112,6 +226,8 @@ interface Segment {
   sweptArea(u0: number, u1: number): number;
   box: [number, number, number, number];
   cuts: number[];
+  /** How many points `sample` gives over the whole segment, less one. */
+  points: number;
 }
 
 function lineSegment(curve: SketchEntityId, a: Vec2, b: Vec2): Segment | undefined {
@@ -139,6 +255,7 @@ function lineSegment(curve: SketchEntityId, a: Vec2, b: Vec2): Segment | undefin
     },
     box: [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])],
     cuts: [0, 1],
+    points: 1,
   };
 }
 
@@ -195,10 +312,53 @@ function arcSegment(
     },
     box: [center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius],
     cuts: closed ? [] : [0, sweep],
+    points: Math.max(1, Math.ceil(sweep * density)),
   };
 }
 
-function segmentsOf(data: SketchData, id: SketchEntityId, e: SketchEntity): Segment[] {
+/** A text's polylines, sampled once per detection (`textPolylines`): its segments and its ink use the same. */
+type TextLines = Map<SketchEntityId, Map<TextCurveId, Vec2[]>>;
+
+function textLinesOf(lines: TextLines, data: SketchData, id: SketchEntityId) {
+  let out = lines.get(id);
+  if (!out) {
+    out = textPolylines(data, id);
+    lines.set(id, out);
+  }
+  return out;
+}
+
+/**
+ * Counts `pieces` more segments and points of one curve's polyline before
+ * it is sampled, and refuses the sketch if they don't fit under the limits:
+ * no polyline is built past them.
+ */
+function chargePolyline(work: Work, pieces: number): void {
+  work.segments += pieces;
+  work.points += pieces;
+  if (tooMuch(work)) throw new ProfilesRefusedError('curves');
+}
+
+/** The line segments of a polyline, its pieces shorter than the tolerance left out. */
+function chain(curve: SketchEntityId, line: readonly Vec2[], out: Segment[]): void {
+  for (let i = 1; i < line.length; i++) {
+    const s = lineSegment(curve, line[i - 1] as Vec2, line[i] as Vec2);
+    if (s) out.push(s);
+  }
+}
+
+/**
+ * The segments of one curve. A polyline curve (ellipse, spline, text) is
+ * charged its pieces before it is sampled (`chargePolyline`); a line, arc or
+ * circle is one segment, charged by the caller.
+ */
+function segmentsOf(
+  data: SketchData,
+  id: SketchEntityId,
+  e: SketchEntity,
+  lines: TextLines,
+  work: Work,
+): Segment[] {
   const point = (ref: SketchEntityId): Vec2 | undefined => {
     const p = data.entities[ref];
     return p?.type === 'point' ? [p.x, p.y] : undefined;
@@ -226,27 +386,39 @@ function segmentsOf(data: SketchData, id: SketchEntityId, e: SketchEntity): Segm
       if (sweep <= 1e-12) sweep = TAU;
       return one(arcSegment(id, c, dist(c, s), from, sweep, false));
     }
-    case 'ellipse':
-    case 'spline': {
+    case 'ellipse': {
+      // `curvePolyline`'s fixed number of pieces.
       const line = curvePolyline(data, e);
       if (!line) return [];
+      chargePolyline(work, line.length - 1);
       const out: Segment[] = [];
-      for (let i = 1; i < line.length; i++) {
-        const s = lineSegment(id, line[i - 1] as Vec2, line[i] as Vec2);
-        if (s) out.push(s);
-      }
+      chain(id, line, out);
+      return out;
+    }
+    case 'spline': {
+      // The curve first (linear in its points), its pieces from its knots,
+      // and only then its polyline (`curvePolyline`'s, the same samples).
+      const points = e.points.map(point);
+      if (!points.every((p) => p !== undefined)) return [];
+      const { spline, perSpan } = splineSampling(e, points as Vec2[]);
+      chargePolyline(work, splinePolylinePieces(spline, perSpan));
+      const out: Segment[] = [];
+      chain(id, splinePolyline(spline, perSpan), out);
       return out;
     }
     case 'text': {
       // One chain of line segments per placed sub-curve; the sub-curve ID
       // (`<text>.<k>`) is the segment's curve, so region IDs hash sub-IDs.
-      const out: Segment[] = [];
-      for (const [cid, poly] of textPolylines(data, id)) {
-        for (let i = 1; i < poly.length; i++) {
-          const s = lineSegment(cid as SketchEntityId, poly[i - 1] as Vec2, poly[i] as Vec2);
-          if (s) out.push(s);
-        }
+      // Its pieces from the placed curves, before they are sampled.
+      if (!lines.has(id)) {
+        let pieces = 0;
+        for (const c of placeText(data, id).curves)
+          pieces += c.kind === 'line' ? 1 : splinePolylinePieces(c, SPLINE_SEGMENTS_PER_SPAN);
+        chargePolyline(work, pieces);
       }
+      const out: Segment[] = [];
+      for (const [cid, poly] of textLinesOf(lines, data, id))
+        chain(cid as SketchEntityId, poly, out);
       return out;
     }
   }
@@ -266,49 +438,144 @@ const overlap = (a: Segment['box'], b: Segment['box']) =>
  */
 const PAIR_GRID_MIN = 32;
 
-/** Cuts every segment where another crosses or touches it, or ends on it. */
-function cutSegments(segments: readonly Segment[], allPairs: boolean): void {
+/** The cuts so far: inside curves (`MAX_PROFILE_CUTS`), and all of them, with what they may reach. */
+interface CutCount {
+  inside: number;
+  all: number;
+  maxAll: number;
+  /** Detection's tests of things near each other (`MAX_PROFILE_TESTS`). */
+  work: Work;
+}
+
+/** What detection has done so far, against the limits that refuse a sketch with reason `curves`. */
+export interface Work {
+  segments: number;
+  points: number;
+  tests: number;
+}
+
+const refuse = (): never => {
+  throw new ProfilesRefusedError('curves');
+};
+
+const tooMuch = (work: Work) =>
+  work.segments > MAX_PROFILE_SEGMENTS ||
+  work.points > MAX_PROFILE_POINTS ||
+  work.tests > MAX_PROFILE_TESTS;
+
+/**
+ * Throws `ProfilesRefusedError('size')` when a segment's box reaches past
+ * `MAX_PROFILE_COORDINATE` (infinite too), before any pair is tested. A NaN
+ * box (a degenerate curve) is no reason: it meets nothing (`overlap` is
+ * false for it) and stays out of the pair search. Whether there is one.
+ */
+function checkSize(segments: readonly Segment[]): boolean {
+  let nan = false;
+  for (let i = 0; i < segments.length; i++) {
+    const b = (segments[i] as Segment).box;
+    for (let k = 0; k < 4; k++) {
+      const v = b[k] as number;
+      if (v > MAX_PROFILE_COORDINATE || v < -MAX_PROFILE_COORDINATE)
+        throw new ProfilesRefusedError('size');
+      if (Number.isNaN(v)) nan = true;
+    }
+  }
+  return nan;
+}
+
+/**
+ * Cuts every segment where another crosses or touches it, or ends on it.
+ * Throws `ProfilesRefusedError('crossings')` as soon as the cuts inside
+ * curves pass `MAX_PROFILE_CUTS`, or all cuts pass it plus
+ * `PROFILE_CUTS_PER_SEGMENT` per segment: their totals don't depend on the
+ * order of the pairs, so neither does the refusal.
+ */
+function cutSegments(
+  segments: readonly Segment[],
+  allPairs: boolean,
+  nan: boolean,
+  work: Work,
+): void {
   const n = segments.length;
+  const count: CutCount = {
+    inside: 0,
+    all: 0,
+    maxAll: MAX_PROFILE_CUTS + PROFILE_CUTS_PER_SEGMENT * n,
+    work,
+  };
   if (n >= PAIR_GRID_MIN && !allPairs) {
+    // Segments with a NaN in their box meet nothing: they stay out of the
+    // grid (it needs finite boxes), and the others keep their order.
+    const index: number[] = [];
+    for (let i = 0; i < n; i++)
+      if (!nan || !(segments[i] as Segment).box.some(Number.isNaN)) index.push(i);
     // The grid's boxes are wider than `overlap`'s tolerance: it may only
     // pass over pairs that `overlap` refuses too.
-    const boxes = new Float64Array(4 * n);
-    let finite = true;
-    for (let i = 0; i < n; i++) {
+    const boxes = new Float64Array(4 * index.length);
+    index.forEach((i, k) => {
       const b = (segments[i] as Segment).box;
-      for (let k = 0; k < 4; k++) {
-        const v = b[k] as number;
-        if (!(Math.abs(v) <= 1e300)) finite = false;
-        boxes[4 * i + k] = k < 2 ? v - 2 * PROFILE_TOLERANCE : v + 2 * PROFILE_TOLERANCE;
-      }
-    }
-    if (finite) {
-      for (const [i, j] of nearPairsWithin(boxes))
-        cutPair(segments[i] as Segment, segments[j] as Segment);
-      return;
-    }
+      for (let c = 0; c < 4; c++)
+        boxes[4 * k + c] =
+          c < 2
+            ? (b[c] as number) - 2 * PROFILE_TOLERANCE
+            : (b[c] as number) + 2 * PROFILE_TOLERANCE;
+    });
+    // The search's own work counts with the pairs' tests (`MAX_PROFILE_TESTS`).
+    for (const [i, j] of nearPairsWithin(boxes, work, { limit: MAX_PROFILE_TESTS, refuse }))
+      cutPair(
+        segments[index[i] as number] as Segment,
+        segments[index[j] as number] as Segment,
+        count,
+      );
+    return;
   }
   for (let i = 0; i < n; i++) {
     const si = segments[i] as Segment;
-    for (let j = i + 1; j < n; j++) cutPair(si, segments[j] as Segment);
+    for (let j = i + 1; j < n; j++) cutPair(si, segments[j] as Segment, count);
   }
 }
 
 const ends = (s: Segment): Vec2[] => (s.closed ? [] : [s.at(0), s.at(s.max)]);
 
+/**
+ * 0 for a cut within the tolerance of the segment's ends, else 1 (anywhere
+ * on a circle, and a cut at no number at all).
+ */
+const inside = (s: Segment, u: number): number =>
+  s.closed || (!(u * s.scale <= PROFILE_TOLERANCE) && !((s.max - u) * s.scale <= PROFILE_TOLERANCE))
+    ? 1
+    : 0;
+
 /** Cuts two segments where they cross or touch, or where an end of one lies on the other. */
-function cutPair(si: Segment, sj: Segment): void {
+function cutPair(si: Segment, sj: Segment, count: CutCount): void {
   if (!overlap(si.box, sj.box)) return;
+  // Every pair whose boxes meet costs a test, whether they cut or not.
+  if (++count.work.tests > MAX_PROFILE_TESTS) throw new ProfilesRefusedError('curves');
+  const before = si.cuts.length + sj.cuts.length;
   for (const p of intersectCurves(si.shape, sj.shape)) {
-    si.cuts.push(si.param(p));
-    sj.cuts.push(sj.param(p));
+    const ui = si.param(p);
+    const uj = sj.param(p);
+    si.cuts.push(ui);
+    sj.cuts.push(uj);
+    count.inside += inside(si, ui) + inside(sj, uj);
   }
   for (const p of ends(si)) {
-    if (dist(p, nearestOnCurve(sj.shape, p)) < PROFILE_TOLERANCE) sj.cuts.push(sj.param(p));
+    if (dist(p, nearestOnCurve(sj.shape, p)) < PROFILE_TOLERANCE) {
+      const u = sj.param(p);
+      sj.cuts.push(u);
+      count.inside += inside(sj, u);
+    }
   }
   for (const p of ends(sj)) {
-    if (dist(p, nearestOnCurve(si.shape, p)) < PROFILE_TOLERANCE) si.cuts.push(si.param(p));
+    if (dist(p, nearestOnCurve(si.shape, p)) < PROFILE_TOLERANCE) {
+      const u = si.param(p);
+      si.cuts.push(u);
+      count.inside += inside(si, u);
+    }
   }
+  count.all += si.cuts.length + sj.cuts.length - before;
+  if (count.inside > MAX_PROFILE_CUTS || count.all > count.maxAll)
+    throw new ProfilesRefusedError('crossings');
 }
 
 // Vertices ---------------------------------------------------------------------
@@ -316,24 +583,37 @@ function cutPair(si: Segment, sj: Segment): void {
 /** Merges positions within `PROFILE_TOLERANCE` into numbered vertices (a hash grid). */
 class Vertices {
   readonly points: Vec2[] = [];
-  readonly #cells = new Map<string, number[]>();
+  /** Cell column, then row: exact integers for any finite position, no key strings. */
+  readonly #cells = new Map<number, Map<number, number[]>>();
 
   id(p: Vec2): number {
+    // A point at no finite position merges with nothing (every distance to
+    // it is NaN or infinite): it needs no cell, and no cell needs scanning.
+    if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) {
+      this.points.push(p);
+      return this.points.length - 1;
+    }
     const cx = Math.floor(p[0] / PROFILE_TOLERANCE);
     const cy = Math.floor(p[1] / PROFILE_TOLERANCE);
     for (let dx = -1; dx <= 1; dx++) {
+      const column = this.#cells.get(cx + dx);
+      if (!column) continue;
       for (let dy = -1; dy <= 1; dy++) {
-        for (const v of this.#cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+        for (const v of column.get(cy + dy) ?? []) {
           if (dist(this.points[v] as Vec2, p) < PROFILE_TOLERANCE) return v;
         }
       }
     }
     const v = this.points.length;
     this.points.push(p);
-    const key = `${cx},${cy}`;
-    const cell = this.#cells.get(key);
+    let column = this.#cells.get(cx);
+    if (!column) {
+      column = new Map();
+      this.#cells.set(cx, column);
+    }
+    const cell = column.get(cy);
     if (cell) cell.push(v);
-    else this.#cells.set(key, [v]);
+    else column.set(cy, [v]);
     return v;
   }
 }
@@ -571,6 +851,18 @@ function outsideBox(b: PolygonBox, p: Vec2): boolean {
   return p[1] < b[1] || p[1] > b[3] || p[0] < b[0] - b[4] || p[0] > b[2] + b[4];
 }
 
+/** From this many outline–region pairs on, the hole search asks a grid (`BoxesAt`) which regions to test. */
+const HOLE_GRID_MIN = 4096;
+
+/** The boxes `outsideBox` passes over nothing outside of: each widened sideways by its margin. */
+function sideways(boxes: readonly PolygonBox[]): Float64Array {
+  const out = new Float64Array(4 * boxes.length);
+  boxes.forEach((b, k) => {
+    out.set([b[0] - b[4], b[1], b[2] + b[4], b[3]], 4 * k);
+  });
+  return out;
+}
+
 /** Whether `p` is inside a polygon (even-odd). */
 export function insidePolygon(polygon: readonly Vec2[], p: Vec2): boolean {
   let inside = false;
@@ -662,9 +954,16 @@ export function textInkOf(
   data: SketchData,
   id: SketchEntityId,
 ): readonly (readonly Vec2[])[] | undefined {
+  return inkOf(data, id, textPolylines(data, id));
+}
+
+function inkOf(
+  data: SketchData,
+  id: SketchEntityId,
+  polys: ReadonlyMap<TextCurveId, readonly Vec2[]>,
+): Vec2[][] | undefined {
   const placed = placeText(data, id);
   if (placed.curves.length === 0) return undefined;
-  const polys = textPolylines(data, id);
   const out: Vec2[][] = [];
   for (const contour of placed.contours) {
     const pts: Vec2[] = [];
@@ -700,7 +999,9 @@ function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityI
  * The closed regions of a sketch (FR-SK-11), largest first. Regions don't
  * overlap: where curves cross, each piece of the plane between them is its
  * own region, and a region inside another is a hole of it as well as a
- * region of its own.
+ * region of its own. Throws `ProfilesRefusedError` for a sketch whose
+ * curves cut each other too often (`MAX_PROFILE_CUTS`) or lie too far out
+ * (`MAX_PROFILE_COORDINATE`).
  */
 export function detectProfiles(data: SketchData): Profile[] {
   return detect(data, false);
@@ -711,16 +1012,39 @@ export function detectProfilesAllPairs(data: SketchData): Profile[] {
   return detect(data, true);
 }
 
-function detect(data: SketchData, allPairs: boolean): Profile[] {
+/**
+ * `detectProfiles`, filling in `work` with what it did (segments, points,
+ * tests; `MAX_PROFILE_SEGMENTS` and the others), refused or not: for tests,
+ * and to measure real sketches against the limits.
+ */
+export function detectProfilesWork(data: SketchData, work: Work): Profile[] {
+  return detect(data, false, work);
+}
+
+function detect(
+  data: SketchData,
+  allPairs: boolean,
+  work: Work = { segments: 0, points: 0, tests: 0 },
+): Profile[] {
   const segments: Segment[] = [];
+  const lines: TextLines = new Map();
   for (const id of Object.keys(data.entities).sort() as SketchEntityId[]) {
     const e = data.entities[id] as SketchEntity;
     if (e.type === 'point' || e.construction) continue;
     // A loop, not a spread: a long spline has more segments than a call takes arguments.
-    for (const segment of segmentsOf(data, id, e)) segments.push(segment);
+    const made = segmentsOf(data, id, e, lines, work);
+    for (const segment of made) segments.push(segment);
+    // A line, arc or circle: one segment, its points from its samples.
+    if (e.type === 'line' || e.type === 'circle' || e.type === 'arc') {
+      for (const segment of made) {
+        work.segments++;
+        work.points += segment.points;
+      }
+      if (tooMuch(work)) throw new ProfilesRefusedError('curves');
+    }
   }
   if (segments.length === 0) return [];
-  cutSegments(segments, allPairs);
+  cutSegments(segments, allPairs, checkSize(segments), work);
   const vertices = new Vertices();
   const pieces = piecesOf(segments, vertices);
   const vertexCount = vertices.points.length;
@@ -768,17 +1092,33 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
   // Each group's outline is a hole in the smallest region of another group around it.
   // A probe outside a region's box (by more than rounding, sideways) is
   // outside its polygon: the box only passes over tests that answer no.
-  // Worth making only when there are several outlines to place.
+  // Worth making only when there are several outlines to place; with many
+  // outlines and regions, a grid of the boxes gives each probe the regions
+  // whose box holds it, tested in the same order as all of them. Each
+  // region looked at, and each point of a polygon a probe is tested
+  // against, counts a test.
   const boxes = outlines.length > 1 ? regions.map((r) => polygonBox(r.loop.polygon)) : undefined;
+  const near =
+    boxes && outlines.length * regions.length > HOLE_GRID_MIN
+      ? new BoxesAt(sideways(boxes))
+      : undefined;
+  const stats: PairSearchStats = { tests: 0 };
+  const all = near ? undefined : regions.map((_, k) => k);
   for (const outline of outlines) {
     const probe = outline.loop.polygon[0] as Vec2;
     let best: (typeof regions)[number] | undefined;
-    for (let k = 0; k < regions.length; k++) {
+    stats.tests = 0;
+    const candidates = near ? near.at(probe, stats) : (all as number[]);
+    work.tests += near ? stats.tests : candidates.length;
+    for (const k of candidates) {
       const r = regions[k] as (typeof regions)[number];
       if (r.group === outline.group || (best && r.loop.area >= best.loop.area)) continue;
       if (boxes && outsideBox(boxes[k] as PolygonBox, probe)) continue;
+      work.tests += r.loop.polygon.length;
+      if (work.tests > MAX_PROFILE_TESTS) throw new ProfilesRefusedError('curves');
       if (insidePolygon(r.loop.polygon, probe)) best = r;
     }
+    if (work.tests > MAX_PROFILE_TESTS) throw new ProfilesRefusedError('curves');
     best?.holes.push(outline.loop);
   }
 
@@ -800,6 +1140,8 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
   // (outer loop and holes) belongs to sub-curves of that text and the
   // winding number at the region's interior point is non-zero (counters
   // wind to 0 and stay ordinary islands; overlapping contours are all ink).
+  // Each text's ink is laid out once, from the polylines its segments came from.
+  const inks = new Map<SketchEntityId, WindingRings | undefined>();
   for (const profile of out) {
     const curveIds = [
       ...profile.outer.edges.map((e) => e.curve),
@@ -807,12 +1149,16 @@ function detect(data: SketchData, allPairs: boolean): Profile[] {
     ];
     const text = soleTextOf(curveIds, data);
     if (!text) continue;
-    const ink = textInkOf(data, text);
+    if (!inks.has(text)) {
+      const contours = inkOf(data, text, textLinesOf(lines, data, text));
+      inks.set(text, contours && windingRings(contours));
+    }
+    const ink = inks.get(text);
     const inner = interiorPoint(
       profile.outer.polygon,
       profile.holes.map((h) => h.polygon),
     );
-    if (ink && inner && windingNumber(inner, ink) !== 0) profile.text = text;
+    if (ink && inner && windingNumberOf(inner, ink) !== 0) profile.text = text;
   }
 
   return out.sort((a, b) => b.area - a.area || (a.id < b.id ? -1 : 1));
