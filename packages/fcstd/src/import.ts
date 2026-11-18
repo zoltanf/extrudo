@@ -23,7 +23,7 @@ import {
 import { KernelBudget } from './budget';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
-import { type LooseChain, looseChains } from './loose-chains';
+import { type LooseChain, looseChains, loosePlanner } from './loose-chains';
 import { readFcstd, storedShapeEntry } from './model';
 import { cleanName } from './names';
 import { type ParametersReport, parametersReport } from './parameters-report';
@@ -145,8 +145,10 @@ export async function importFcstd(
   });
   const binder = new Binder(design, prepared, (plane) => releasePlane(design, plane));
   const budget = new KernelBudget(options.kernel, options);
+  const planner = loosePlanner(doc);
   // S11: the Part workbench's trees, planned from the file alone.
   const plan = partTrees(doc, shapes, {
+    isLoose: planner.isLoose,
     ...(options.maxTreeNodes !== undefined ? { maxTreeNodes: options.maxTreeNodes } : {}),
     ...(options.maxImportTreeNodes !== undefined
       ? { maxImportNodes: options.maxImportTreeNodes }
@@ -162,6 +164,7 @@ export async function importFcstd(
         maxFile: options.maxFileFeatures ?? MAX_FILE_FEATURES,
         ...(options.maxLooseChains !== undefined ? { maxChains: options.maxLooseChains } : {}),
       },
+      planner,
     ).map((c) => [c.tip.name, c]),
   );
   // Progress: each feature the walk takes, each tree node, then each shape converted.
@@ -215,14 +218,27 @@ export async function importFcstd(
       : {}),
     markWalk: () => markWalkShared(shared),
     onStep: () => options.onProgress?.(++walked, steps + shapes.length),
-    // A PartDesign body a tree uses: walked as any body is, from the design's bodies so far.
+    // A PartDesign body a tree uses, or a loose chain ending at the feature it uses (S12a):
+    // walked as any body is, from the design's bodies so far.
     walkBody: async (body, ids) => {
       const at = { ids: [...ids] };
+      const isBody = body.type === 'PartDesign::Body';
+      const operand = isBody
+        ? undefined
+        : planner.chain(
+            body,
+            {
+              maxFeatures: options.maxBodyFeatures ?? MAX_BODY_FEATURES,
+              maxFile: options.maxFileFeatures ?? MAX_FILE_FEATURES,
+            },
+            // Its own count: what a chain walks is counted by the walk, which a cancelled pass gives back.
+            { features: 0 },
+          );
       const [history] = await importBodies(
         doc,
         [
           {
-            kind: 'body',
+            kind: isBody ? 'body' : 'chain-tip',
             object: body,
             source: body,
             entry: storedShapeEntry(doc, body),
@@ -233,7 +249,11 @@ export async function importFcstd(
           },
         ],
         design,
-        { ...walkOptions, known: at },
+        {
+          ...walkOptions,
+          known: at,
+          ...(operand ? { loose: new Map([[body.name, operand]]) } : {}),
+        },
       );
       return { history: history as BodyHistory, known: at.ids };
     },

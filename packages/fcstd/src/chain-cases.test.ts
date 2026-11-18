@@ -152,8 +152,45 @@ const outcomeOf = (b: { outcome: string; steps: readonly { reason: string }[] })
       : 'whole';
 
 describe('loose chains, new grammar', () => {
-  it('has an expectation for each document but the one that waits for the trees', () => {
+  it('has an expectation for each document', () => {
     expect([...Object.keys(EXPECTED), 'tip_in_tree'].sort()).toEqual(chainDocuments().sort());
+  });
+
+  it('tip_in_tree: the chains come in with their history under a live cut and a live fuse', {
+    timeout: 120_000,
+  }, async () => {
+    const { report, design, files } = await run(chainFile('tip_in_tree'));
+    expect(report.trees.map((t) => [t.object, t.outcome])).toEqual([
+      ['Cut', 'history'],
+      ['Fusion', 'history'],
+    ]);
+    expect(
+      report.trees.flatMap((t) => t.nodes.map((n) => [n.object, n.outcome, n.body?.loose])),
+    ).toEqual([
+      ['Pocket', 'body', {}],
+      ['Cylinder', 'feature', undefined],
+      ['Cut', 'feature', undefined],
+      ['Slab', 'body', {}],
+      ['Box', 'feature', undefined],
+      ['Fusion', 'feature', undefined],
+    ]);
+    expect(design.doc.features.map((f) => `${f.type} ${f.name}`)).toEqual([
+      ...pair('PadSketch', 'Pad'),
+      ...pair('Sketch001', 'Pocket'),
+      'cylinder Cylinder',
+      'combine Cut',
+      ...pair('SlabSketch', 'Slab'),
+      'box Box',
+      'combine Fusion',
+    ]);
+    expect(design.doc.features.filter((f) => f.type === 'import')).toEqual([]);
+    const rebuilt = await kernel.rebuild(design.toJSON(), files);
+    expect(rebuilt.failed).toEqual([]);
+    const volumes = Object.values(rebuilt.bodies).map((m) => m.volume);
+    for (const root of ['Cut', 'Fusion']) {
+      const fc = chainCase('tip_in_tree').objects.find((o) => o.object === root)?.measure;
+      expect(volumes.some((v) => Math.abs(v / (fc?.volume ?? 1) - 1) < 1e-6)).toBe(true);
+    }
   });
 
   it.each(Object.keys(EXPECTED))('%s', { timeout: 120_000 }, async (name) => {

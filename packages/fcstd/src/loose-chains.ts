@@ -88,17 +88,20 @@ function supportOf(sketch: FcObject): string | undefined {
   return v ? linkedObjects(v)[0] || undefined : undefined;
 }
 
-/**
- * The loose chains of the given tips, one per tip, in the tips' order. A tip past a limit, on a
- * broken link or on a cycle gets a chain with `refused`, which comes in as today.
- */
-export function looseChains(
-  doc: FcDocument,
-  tips: readonly FinalShape[],
-  limits: LooseChainLimits,
-): LooseChain[] {
+/** What is read once per file, however many chains ask: who is loose and what each feature builds on. */
+export interface LoosePlanner {
+  /** Whether `o` is a PartDesign feature in no body. */
+  readonly isLoose: (o: FcObject) => boolean;
+  /**
+   * The chain ending at `tip`. `used` counts the features planned so far across the calls that
+   * share it: past `limits.maxFile` a chain is refused without being followed.
+   */
+  readonly chain: (tip: FcObject, limits: LooseChainLimits, used: { features: number }) => LooseChain;
+}
+
+/** The planner of one file: each feature's base is read once, however many chains pass through it. */
+export function loosePlanner(doc: FcDocument): LoosePlanner {
   const members = bodyMembers(doc);
-  const maxChains = limits.maxChains ?? MAX_LOOSE_CHAINS;
   const isLoose = (o: FcObject) =>
     o.type.startsWith('PartDesign::') &&
     !NOT_LOOSE.has(o.type.slice('PartDesign::'.length)) &&
@@ -168,10 +171,7 @@ export function looseChains(
     return read;
   };
 
-  const out: LooseChain[] = [];
-  let total = 0;
-  for (const shape of tips) {
-    const tip = shape.object;
+  const chain: LoosePlanner['chain'] = (tip, limits, used) => {
     const refuse = (reason: 'chain' | 'limit', detail: string): LooseChain => ({
       tip,
       features: [],
@@ -179,44 +179,26 @@ export function looseChains(
       rules: [],
       conflicts: 0,
     });
-    if (out.length >= maxChains) {
-      out.push(refuse('limit', `the file has more than ${maxChains} rows of features`));
-      continue;
-    }
-    if (total >= limits.maxFile) {
-      out.push(refuse('limit', `the file's rows have more than ${limits.maxFile} features`));
-      continue;
-    }
+    const overFile = `the file's rows have more than ${limits.maxFile} features`;
+    if (used.features >= limits.maxFile) return refuse('limit', overFile);
     const features: FcObject[] = [];
     const rules: BaseRule[] = [];
     const seen = new Set<string>();
     let conflicts = 0;
     let foreignBase: FcObject | undefined;
-    let refused: LooseChain | undefined;
     for (let at: FcObject | undefined = tip; at; ) {
-      if (features.length >= limits.maxFeatures) {
-        refused = refuse('limit', `its row has more than ${limits.maxFeatures} features`);
-        break;
-      }
-      if (total >= limits.maxFile) {
-        refused = refuse('limit', `the file's rows have more than ${limits.maxFile} features`);
-        break;
-      }
-      total++;
+      if (features.length >= limits.maxFeatures)
+        return refuse('limit', `its row has more than ${limits.maxFeatures} features`);
+      if (used.features >= limits.maxFile) return refuse('limit', overFile);
+      used.features++;
       seen.add(at.name);
       features.push(at);
       const base = baseOf(at);
       rules.push(base.rule);
       if (base.conflict) conflicts++;
-      if (base.broken) {
-        refused = refuse('chain', `${named(at.name)}: ${base.broken}`);
-        break;
-      }
+      if (base.broken) return refuse('chain', `${named(at.name)}: ${base.broken}`);
       if (base.name === undefined) break;
-      if (seen.has(base.name)) {
-        refused = refuse('chain', 'its features lead back to themselves');
-        break;
-      }
+      if (seen.has(base.name)) return refuse('chain', 'its features lead back to themselves');
       const next = doc.byName.get(base.name) as FcObject;
       if (isLoose(next)) at = next;
       else {
@@ -224,17 +206,41 @@ export function looseChains(
         break;
       }
     }
-    if (refused) {
-      out.push(refused);
-      continue;
-    }
-    out.push({
+    return {
       tip,
       features: features.reverse(),
       ...(foreignBase ? { foreignBase } : {}),
       rules: rules.reverse(),
       conflicts,
-    });
-  }
-  return out;
+    };
+  };
+  return { isLoose, chain };
+}
+
+/**
+ * The loose chains of the given tips, one per tip, in the tips' order. A tip past a limit, on a
+ * broken link or on a cycle gets a chain with `refused`, which comes in as today.
+ */
+export function looseChains(
+  doc: FcDocument,
+  tips: readonly FinalShape[],
+  limits: LooseChainLimits,
+  planner: LoosePlanner = loosePlanner(doc),
+): LooseChain[] {
+  const maxChains = limits.maxChains ?? MAX_LOOSE_CHAINS;
+  const used = { features: 0 };
+  return tips.map((shape, i) =>
+    i >= maxChains
+      ? {
+          tip: shape.object,
+          features: [],
+          refused: {
+            reason: 'limit' as const,
+            detail: `the file has more than ${maxChains} rows of features`,
+          },
+          rules: [],
+          conflicts: 0,
+        }
+      : planner.chain(shape.object, limits, used),
+  );
 }

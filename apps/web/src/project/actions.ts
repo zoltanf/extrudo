@@ -371,7 +371,7 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
   'multi-transform': "a pattern of patterns combines steps Extrudo can't rebuild yet",
   datum: "a datum line or plane didn't come in where the file has it",
   chain: "its features don't follow each other",
-  'foreign-base': "it is built on a shape Extrudo doesn't rebuild from the file",
+  'foreign-base': 'it is built on another shape in the file',
   limit: 'it has too many features, or a pattern or hole larger than Extrudo takes',
   stored: "a feature's shape can't be read from the file",
   failed: 'a feature failed when Extrudo rebuilt it',

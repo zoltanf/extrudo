@@ -178,6 +178,92 @@ describe('it is live', () => {
   });
 });
 
+/** An object of no shape, as a test adds it: a pad whose base is `base`. */
+const emptyPad = (name: string, base?: string) => ({
+  name,
+  type: 'PartDesign::Pad',
+  xml: `<Object name="${name}"><Properties Count="1" TransientCount="0"><Property name="BaseFeature" type="App::PropertyLink"><Link value="${base ?? ''}"/></Property></Properties></Object>`,
+});
+
+describe('the worst cases a file can build', () => {
+  it('a comb of 1,500 tips on one row stops at the cap, the rest as today', {
+    timeout: 120_000,
+  }, async () => {
+    const n = 1_500;
+    const extra = Array.from({ length: n }, (_, i) => [
+      emptyPad(`P${i}`, i > 0 ? `P${i - 1}` : undefined),
+      emptyPad(`Q${i}`, `P${i}`),
+    ]).flat();
+    const t = performance.now();
+    const r = await run(chainFile('pad_only', { extra }));
+    const ms = performance.now() - t;
+    const combs = r.report.bodies.filter((b) => b.object.startsWith('Q'));
+    expect(combs.length).toBe(n);
+    expect(combs.filter((b) => b.stop?.reason === 'limit').length).toBeGreaterThan(1_400);
+    expect(combs.every((b) => b.outcome !== 'history')).toBe(true);
+    expect(chainOf(r, 'Pad').outcome).toBe('history');
+    expect(r.report.finalShapes).toBe(n + 1);
+    expect(r.report.restarts).toBe(0);
+    if (process.env.BENCH) console.log(`comb of ${n}: ${Math.round(ms)} ms`);
+  });
+
+  it('a row of 10,000 features is refused at the cap, without recursion', {
+    timeout: 120_000,
+  }, async () => {
+    const n = 10_000;
+    const extra = Array.from({ length: n }, (_, i) =>
+      emptyPad(`P${i}`, i > 0 ? `P${i - 1}` : undefined),
+    );
+    const t = performance.now();
+    const r = await run(chainFile('pad_only', { extra }));
+    const ms = performance.now() - t;
+    expect(chainOf(r, `P${n - 1}`).stop?.reason).toBe('limit');
+    expect(chainOf(r, `P${n - 1}`).mapped).toEqual([]);
+    expect(r.report.finalShapes).toBe(2);
+    if (process.env.BENCH) console.log(`row of ${n}: ${Math.round(ms)} ms`);
+  });
+});
+
+describe('chains under Part trees', () => {
+  it('past the trees’ features the tree comes in as today, nothing lost', {
+    timeout: 120_000,
+  }, async () => {
+    const r = await run(chainFile('tip_in_tree'), { maxTreeFeatures: 2 });
+    expect(r.report.finalShapes).toBe(2);
+    expect(r.report.shapes.map((s) => s.object).sort()).toEqual(['Cut', 'Fusion']);
+    expect(r.report.leftOut).toEqual([]);
+  });
+
+  it('a cancelled pass gives its chain’s features back', { timeout: 120_000 }, async () => {
+    let pocket = '';
+    const bytes = chainFile('tip_in_tree', {
+      brep: (o, t) => {
+        if (o === 'Pocket') pocket = t;
+        // The cut stores what its base stores: it doesn't hold, and its pass is taken back.
+        return o === 'Cut' ? pocket : t;
+      },
+    });
+    const r = await run(bytes, { maxFileFeatures: 2 });
+    expect(r.report.trees.map((t) => [t.object, t.outcome])).toEqual([
+      ['Cut', 'shape'],
+      ['Fusion', 'history'],
+    ]);
+  });
+
+  it('a chain that can’t come in under a tree is that tree’s stored leaf', {
+    timeout: 120_000,
+  }, async () => {
+    const r = await run(
+      chainFile('tip_in_tree', editing('Pad', (xml) => setLength(9)(xml))),
+    );
+    const node = r.report.trees[0]?.nodes.find((n) => n.object === 'Pocket');
+    // The pad is a step and the pocket holds on it: the chain comes in with part of its history.
+    expect(node?.outcome).toBe('body');
+    expect(node?.body?.steps.map((s) => s.shape)).toEqual(['Pad']);
+    expect(r.report.trees[0]?.outcome).toBe('leaves');
+  });
+});
+
 describe('hostile files', () => {
   it('more features than a chain may have: as today', { timeout: 60_000 }, async () => {
     const r = await run(chainFile('long_chain'), { maxBodyFeatures: 3 });

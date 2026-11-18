@@ -487,6 +487,41 @@ describe('fcstdNotices', () => {
     stepBytes: 1,
   });
 
+  it('reads a row of features on another shape as a body that starts from the file’s shape', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 1,
+      bodies: [
+        {
+          object: 'Pocket',
+          name: 'Pocket',
+          loose: { foreignBase: 'Box' },
+          features: 2,
+          mapped: [],
+          bodies: ['b:0'],
+          sketches: [],
+          secondAttempts: 0,
+          steps: [
+            {
+              features: [],
+              reason: 'foreign-base',
+              shape: 'Box',
+              feature: 'f',
+              after: 0,
+            },
+          ],
+          heldAfterLastStep: 2,
+          upToTries: 0,
+          outcome: 'history',
+        },
+      ],
+    } as never);
+    expect(notices).toEqual([
+      'Imported from the FreeCAD file: 1 of 1 shape, with part of its history (sketches and features).',
+      "Starts from the file's own shape: Pocket, because it is built on another shape in the file. The features after it come in with their history.",
+    ]);
+  });
+
   it('says when a file has no shapes at all', () => {
     expect(fcstdNotices(base)).toEqual([
       'The FreeCAD file has no shapes to import, so the design is empty.',
