@@ -1,0 +1,1 @@
+- 2026-11-18 · **Faster linked parameters**: the Customizer panel and slider ranges respond at once in designs with thousands of parameters that depend on each other.

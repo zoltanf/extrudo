@@ -78,7 +78,10 @@ document, and again for each `evaluate()` call; `Scope.has` answers "is it a par
 Never spread a node's children into a call. The f3d import keeps the value of only the
 parameter past a limit, with its own error (`pastLimit`; `keptValues` in `map.ts`, one walk
 with `heightOf` and `PARAMETER_DEPTH_MESSAGE`, no evaluation per cut); the FreeCAD import
-reads `code === 'limit'` and settles only the parameter past a limit in its round. ADR-0007 (P0-04) set the
+reads `code === 'limit'` and settles only the parameter past a limit in its round. Since
+2026-11-18 `dependents` walks `usersByName`, made once per evaluation on the first question:
+users in document order and names no parameter has included, so answers and their order stay
+as they were; `evaluateRange` asks only when the range uses a parameter. ADR-0007 (P0-04) set the
 design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
 wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the
