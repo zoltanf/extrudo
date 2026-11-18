@@ -210,5 +210,12 @@ makes: at its 1,000-parameter cap, with rows like `=A1 + 1`, about 2,000 levels.
 - **A smaller length limit (1,000).** Still 13× the longest real expression, but 10,000 costs
   little, since reading is linear in the length.
 
-**Not done:** `dependents()` and `featuresAffectedBy` still look through every parameter for
-each name they follow, as before this amendment: quadratic in a long chain's length.
+**Done since (2026-11-18):** finding what depends on a parameter takes time linear in the
+parameters and their references. `dependents()` follows a map from each name to the parameters
+that use it directly, made once per evaluation when the first question is asked, so an
+evaluation that never asks pays nothing. The map lists users in document order and keeps names
+no parameter has, so every answer is the same as before, in the same order. `featuresAffectedBy`
+uses that walk and still goes through the features once, in timeline order. `evaluateRange` asks
+only when a range uses a parameter. With 20,000 parameters a question took 8 to 11 seconds and
+now takes about 10 ms; 1,000 exposed parameters with slider ranges took 24 s to list and now
+take about 10 ms.
