@@ -1,0 +1,1 @@
+- 2026-11-16 · **Profiles found once per sketch version**: a sketch that hasn't changed no longer has its profiles searched for again by scripts, the assistant, script generation and imports, so large sketches (and ones too large to have profiles) cost that time only once.
