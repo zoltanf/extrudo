@@ -217,5 +217,5 @@ evaluation that never asks pays nothing. The map lists users in document order a
 no parameter has, so every answer is the same as before, in the same order. `featuresAffectedBy`
 uses that walk and still goes through the features once, in timeline order. `evaluateRange` asks
 only when a range uses a parameter. With 20,000 parameters a question took 8 to 11 seconds and
-now takes about 10 ms; 1,000 exposed parameters with slider ranges took 24 s to list and now
-take about 10 ms.
+now takes about 10 ms; listing 1,000 exposed parameters took 24 s and now takes about 10 ms
+with plain-number slider ranges, and 9 s and now about 90 ms with ranges that use a parameter.
