@@ -131,22 +131,9 @@ export const OLD_PROPERTIES: Readonly<Record<string, readonly string[]>> = {
     'Originals',
     'Reversed',
   ],
-  'PartDesign::PolarPattern': [
-    ...COMMON,
-    'Angle',
-    'Axis',
-    'Occurrences',
-    'Originals',
-    'Reversed',
-  ],
+  'PartDesign::PolarPattern': [...COMMON, 'Angle', 'Axis', 'Occurrences', 'Originals', 'Reversed'],
   'PartDesign::Mirrored': [...COMMON, 'MirrorPlane', 'Originals'],
-  'Sketcher::SketchObject': [
-    ...COMMON,
-    'Constraints',
-    'ExternalGeometry',
-    'Geometry',
-    'Support',
-  ],
+  'Sketcher::SketchObject': [...COMMON, 'Constraints', 'ExternalGeometry', 'Geometry', 'Support'],
 };
 
 /** The property types an old file declares where they differ from what FreeCAD 1.1 wrote. */
@@ -191,12 +178,7 @@ function sketchUsers(name: string): Map<string, string | undefined> {
  * builds on, which an old file can only say through the sketch's `Support`: a sketch that has
  * none (it was drawn on a plane of its own) supports on that feature's first face.
  */
-function oldXml(
-  type: string,
-  xml: string,
-  version: OldVersion,
-  base: string | undefined,
-): string {
+function oldXml(type: string, xml: string, version: OldVersion, base: string | undefined): string {
   const allowed = OLD_PROPERTIES[type];
   if (!allowed) return xml;
   const keep = new Set([...allowed, ...(version === '0.16' ? ['ExpressionEngine'] : [])]);
@@ -220,7 +202,8 @@ function oldXml(
           `<LinkSub value="${object}" count="${object ? 1 : 0}">${object ? `<Sub value="${sub}"/>` : ''}</LinkSub>`,
         ),
       );
-    } else if (name === 'Midplane') out.push(property(name, declared, bool(midplane || /"true"/.test(body))));
+    } else if (name === 'Midplane')
+      out.push(property(name, declared, bool(midplane || /"true"/.test(body))));
     else if (name === 'Type' && twoSides)
       out.push(property(name, 'App::PropertyEnumeration', '<Integer value="4"/>'));
     else if (keep.has(name)) {

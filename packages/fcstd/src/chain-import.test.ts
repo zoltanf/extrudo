@@ -4,14 +4,9 @@
  * on comes in as today, every limit ends in a clean outcome, and what came in is live.
  */
 import { setSketchGeometry, updateFeatureInputs, updateParameter } from '@extrudo/core';
-import {
-  loadPlanegcs,
-  type PlanegcsModule,
-  SketchSolver,
-  settleSketches,
-} from '@extrudo/sketch';
+import { loadPlanegcs, type PlanegcsModule, SketchSolver, settleSketches } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { asOldFile, chainFile, type ChainFileOptions } from './chain-parts';
+import { asOldFile, type ChainFileOptions, chainFile } from './chain-parts';
 import { type FcstdImportOptions, type FcstdImportResult, importFcstd } from './import';
 import { nodeImportKernel } from './node-kernel-test-support';
 
@@ -72,12 +67,7 @@ describe('a feature that doesn’t hold', () => {
   });
 
   it('a sketch’s placement read wrong likewise', { timeout: 60_000 }, async () => {
-    const r = await run(
-      chainFile(
-        'chain_five',
-        editing('Sketch001', setPlacement('Px', '1')),
-      ),
-    );
+    const r = await run(chainFile('chain_five', editing('Sketch001', setPlacement('Px', '1'))));
     const c = chainOf(r, 'Lug');
     expect(c.outcome).toBe('history');
     expect(c.steps.map((s) => [s.reason, s.shape])).toEqual([['differs', 'Hole']]);
@@ -139,29 +129,35 @@ describe('it is live', () => {
   it.each([
     ['new', () => chainFile('bound')],
     ['0.16', () => asOldFile('bound', '0.16')],
-  ])('bound (%s): the height moves the pad, and the pocket stays on its top face', {
-    timeout: 60_000,
-  }, async (_, file) => {
-    const r = await run(file());
-    expect(chainOf(r, 'Pocket').sketches.map((s) => s.plane)).toEqual(['origin', 'face']);
-    const kept = r.report.parameters.expressions.filter((e) => e.outcome === 'kept');
-    expect(kept.map((e) => `${e.object}.${e.path}`).sort()).toEqual([
-      'Pad.Length',
-      'Pocket.Length',
-      'Sketch.Constraints[4]',
-    ]);
-    expectBlock(await measure(r), block(30 * 20, 12, 4, 4));
-    const d = r.design;
-    const p = d.doc.parameters.find((x) => x.name === 'height');
-    if (!p) throw new Error('no parameter height');
-    const before = d.doc;
-    d.state.beginTransaction('Edit height');
-    d.state.dispatch(updateParameter({ id: p.id, changes: { expression: '15 mm' } }));
-    for (const c of settleSketches({ solver: new SketchSolver(planegcs), before, after: d.doc }))
-      d.state.dispatch(setSketchGeometry({ feature: c.feature, points: c.points, radii: c.radii }));
-    d.state.commitTransaction();
-    expectBlock(await measure(r), block(30 * 20, 15, 4, 4));
-  });
+  ])(
+    'bound (%s): the height moves the pad, and the pocket stays on its top face',
+    {
+      timeout: 60_000,
+    },
+    async (_, file) => {
+      const r = await run(file());
+      expect(chainOf(r, 'Pocket').sketches.map((s) => s.plane)).toEqual(['origin', 'face']);
+      const kept = r.report.parameters.expressions.filter((e) => e.outcome === 'kept');
+      expect(kept.map((e) => `${e.object}.${e.path}`).sort()).toEqual([
+        'Pad.Length',
+        'Pocket.Length',
+        'Sketch.Constraints[4]',
+      ]);
+      expectBlock(await measure(r), block(30 * 20, 12, 4, 4));
+      const d = r.design;
+      const p = d.doc.parameters.find((x) => x.name === 'height');
+      if (!p) throw new Error('no parameter height');
+      const before = d.doc;
+      d.state.beginTransaction('Edit height');
+      d.state.dispatch(updateParameter({ id: p.id, changes: { expression: '15 mm' } }));
+      for (const c of settleSketches({ solver: new SketchSolver(planegcs), before, after: d.doc }))
+        d.state.dispatch(
+          setSketchGeometry({ feature: c.feature, points: c.points, radii: c.radii }),
+        );
+      d.state.commitTransaction();
+      expectBlock(await measure(r), block(30 * 20, 15, 4, 4));
+    },
+  );
 
   it.each([
     ['new', () => chainFile('pad_pocket')],
@@ -224,6 +220,29 @@ describe('the worst cases a file can build', () => {
   });
 });
 
+describe('a branch', () => {
+  it('each copy of a shared feature binds its own expression', { timeout: 60_000 }, async () => {
+    const r = await run(
+      chainFile(
+        'branch',
+        editing('Pad', (xml) =>
+          xml.replace(
+            /<Property name="ExpressionEngine".*?<\/Property>/s,
+            '<Property name="ExpressionEngine" type="App::PropertyExpressionEngine"><ExpressionEngine count="1"><Expression path="Length" expression="4 mm + 4 mm"/></ExpressionEngine></Property>',
+          ),
+        ),
+      ),
+    );
+    expect(r.report.bodies.map((b) => b.outcome)).toEqual(['history', 'history']);
+    const pads = r.design.doc.features.filter((f) => f.name === 'Pad');
+    expect(pads.map((f) => (f.inputs.distance as { expr: string }).expr)).toEqual([
+      '4 mm + 4 mm',
+      '4 mm + 4 mm',
+    ]);
+    expect(r.report.parameters.expressions.map((e) => e.outcome)).toEqual(['kept']);
+  });
+});
+
 describe('chains under Part trees', () => {
   it('past the trees’ features the tree comes in as today, nothing lost', {
     timeout: 120_000,
@@ -254,7 +273,10 @@ describe('chains under Part trees', () => {
     timeout: 120_000,
   }, async () => {
     const r = await run(
-      chainFile('tip_in_tree', editing('Pad', (xml) => setLength(9)(xml))),
+      chainFile(
+        'tip_in_tree',
+        editing('Pad', (xml) => setLength(9)(xml)),
+      ),
     );
     const node = r.report.trees[0]?.nodes.find((n) => n.object === 'Pocket');
     // The pad is a step and the pocket holds on it: the chain comes in with part of its history.
@@ -314,7 +336,10 @@ describe('hostile files', () => {
       chainFile(
         'patterns',
         editing('Mirrored', (xml) =>
-          xml.replace(/(<Property name="Originals"[^>]*>).*?(<\/Property>)/s, '$1<LinkList count="0"/>$2'),
+          xml.replace(
+            /(<Property name="Originals"[^>]*>).*?(<\/Property>)/s,
+            '$1<LinkList count="0"/>$2',
+          ),
         ),
       ),
     );
@@ -324,25 +349,31 @@ describe('hostile files', () => {
   it.each([
     ['isn’t a face', 'Edge1'],
     ['is past the base’s faces', 'Face999'],
-  ])('a support whose sub-name %s: the sketch takes its stored plane', {
-    timeout: 60_000,
-  }, async (_, sub) => {
-    const r = await run(
-      chainFile(
-        'pad_pocket',
-        editing('Sketch001', (xml) => xml.replace('sub="Face6"', `sub="${sub}"`)),
-      ),
-    );
-    const c = chainOf(r, 'Pocket');
-    expect(c.outcome).toBe('history');
-    expect(c.sketches.map((s) => s.plane)).toEqual(['origin', 'offset']);
-  });
+  ])(
+    'a support whose sub-name %s: the sketch takes its stored plane',
+    {
+      timeout: 60_000,
+    },
+    async (_, sub) => {
+      const r = await run(
+        chainFile(
+          'pad_pocket',
+          editing('Sketch001', (xml) => xml.replace('sub="Face6"', `sub="${sub}"`)),
+        ),
+      );
+      const c = chainOf(r, 'Pocket');
+      expect(c.outcome).toBe('history');
+      expect(c.sketches.map((s) => s.plane)).toEqual(['origin', 'offset']);
+    },
+  );
 
   it('one sketch used by two features: the check decides', { timeout: 60_000 }, async () => {
     const r = await run(
       chainFile(
         'pad_pocket',
-        editing('Pocket', (xml) => xml.replace('<LinkSub value="Sketch001"', '<LinkSub value="PadSketch"')),
+        editing('Pocket', (xml) =>
+          xml.replace('<LinkSub value="Sketch001"', '<LinkSub value="PadSketch"'),
+        ),
       ),
     );
     expect(chainOf(r, 'Pocket').outcome).toBe('shape');
@@ -364,9 +395,7 @@ describe('hostile files', () => {
   it('a sketch placement that isn’t finite: a step or as today, never a throw', {
     timeout: 60_000,
   }, async () => {
-    const r = await run(
-      chainFile('pad_pocket', editing('Sketch001', setPlacement('Pz', '1e999'))),
-    );
+    const r = await run(chainFile('pad_pocket', editing('Sketch001', setPlacement('Pz', '1e999'))));
     expectAsToday(r, 'Pocket', 'sketch');
   });
 });

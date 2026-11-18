@@ -43,7 +43,11 @@ const plan = (
   limits: { maxFeatures: number; maxFile: number; maxChains?: number } = LIMITS,
 ) => {
   const d = doc(objects);
-  return looseChains(d, tips.map((t) => tip(d.byName.get(t) as FcObject)), limits);
+  return looseChains(
+    d,
+    tips.map((t) => tip(d.byName.get(t) as FcObject)),
+    limits,
+  );
 };
 const names = (c: LooseChain | undefined) => c?.features.map((f) => f.name);
 
@@ -87,11 +91,14 @@ describe('what a loose feature builds on', () => {
   it('prefers BaseFeature where the sketch’s support says otherwise, and counts it', () => {
     const d = readFcstd(
       chainFile('chain_five', {
-        edit: (name, xml) =>
-          name === 'Sketch003' ? xml.replace('obj="Boss"', 'obj="Pad"') : xml,
+        edit: (name, xml) => (name === 'Sketch003' ? xml.replace('obj="Boss"', 'obj="Pad"') : xml),
       }),
     );
-    const [c] = looseChains(d, finalShapes(d).filter((s) => s.kind === 'chain-tip'), LIMITS);
+    const [c] = looseChains(
+      d,
+      finalShapes(d).filter((s) => s.kind === 'chain-tip'),
+      LIMITS,
+    );
     expect(names(c)).toEqual(['Pad', 'Hole', 'Boss', 'Recess', 'Lug']);
     expect(c?.conflicts).toBe(1);
   });

@@ -233,7 +233,8 @@ document order:
 
 1. each `PartDesign::Body` nothing consumes: the body's own shape;
 2. each other PartDesign object (not a datum) outside every body that nothing
-   consumes: the tip of a chain in a file from before bodies;
+   consumes: the tip of a chain in a file from before bodies (S12a walks the
+   chain, see "Features outside a body");
 3. each `App::Link`: one instance of its target (through further links, at
    most 32), placed as the link says;
 4. each `Mesh::Feature` nothing consumes;
@@ -679,6 +680,50 @@ link. Nothing in the file orders them but the links.
 - **Expressions** on a Part object's sizes (`Length`, `Radius` …) and on its
   placement's members (`.Placement.Base.x`) are ordinary `ExpressionEngine`
   entries of the object.
+
+## Features outside a body (S12a)
+
+FreeCAD had no bodies before 0.17. A file from 0.14 to 0.16 holds a part as a row of PartDesign
+features at the document's top (or in an `App::Part`), each with its own stored shape; newer files
+can hold such features too, never put in a body or left behind by a migration. `loose-chains.ts`
+reads them as **loose chains**: a tip and the loose features reached from it by following each
+feature's base, root first.
+
+**A feature's base**, in the order the importer asks:
+
+1. `BaseFeature` (`App::PropertyLink`), when the file has it and it names an object;
+2. a dress-up's `Base` (`App::PropertyLinkSub`, with the edges and faces it works on);
+3. a pattern's or mirror's first entry of `Originals`;
+4. the object its sketch is attached to (`AttachmentSupport`, before 1.0 `Support`), when that
+   object stores a solid. A sketch with no support, or on a plane or a datum, gives no base: the
+   feature starts a new solid.
+
+Where the first and the fourth name different objects, the first is taken and the import counts
+it. How 0.14 to 0.16 found the base isn't stored anywhere else: the shape stored for the feature
+is the judge of a base read wrong.
+
+**The grammar before 0.17**, against what 1.1 writes (counted on the library's 16 files of 0.14
+to 0.16 without bodies, for the features and sketches outside a body):
+
+| | 0.14 to 0.16 | 0.17 and later |
+|---|---|---|
+| A sketch-based feature's sketch | `Sketch`, `App::PropertyLink` | `Profile`, `App::PropertyLinkSub` |
+| What it adds or removes | `AddShape` (Pad, Revolution), `SubShape` (Pocket) | `AddSubShape` |
+| What it builds on | through the sketch's `Support` | `BaseFeature` |
+| Pad and Pocket | `Type` as an integer (0 a length, a Pocket's 1 through all), `Length`, `Length2` (a Pad), `Midplane`, `Reversed`, `UpToFace` | also `SideType`, `Type2`, `Offset`, `TaperAngle`, `Refine` |
+| A revolution | `Axis` and `Base` vectors beside `ReferenceAxis` | `ReferenceAxis` |
+| A pattern's length or angle | `App::PropertyFloat` in 0.14 | `App::PropertyLength`, `App::PropertyAngle` |
+| `Occurrences` | `App::PropertyInteger` | `App::PropertyIntegerConstraint` |
+| A fillet's radius, a chamfer's size | `App::PropertyFloatConstraint` (0.16: `App::PropertyQuantityConstraint`) | `App::PropertyQuantityConstraint` |
+| A sketch's support | `Support`, one `App::PropertyLinkSub` | a list; `AttachmentSupport` from 1.0 |
+| A sketch's place | `Placement` alone: no `MapMode`, no `AttachmentOffset` (both from 0.17) | the attacher's result, stored in `Placement` |
+| A `PropertyPlacement` | `Px` … `Q3` only | also `A`, `Ox`, `Oy`, `Oz` |
+| A constraint | no `IsDriving` in 0.14 and 0.15, no `IsInVirtualSpace` before 0.17 | both |
+| Sketch geometry | line segments, circles and arcs of circles, each with a `Construction` element | `GeoExtensions` as well |
+| `ExpressionEngine` | from 0.16 | yes |
+
+The reader needed nothing new for this grammar: S4 to S7 already read every one of these forms.
+No `Refine` means nothing to the importer, which never reads it: the check compares the solids.
 
 ## Not read yet
 

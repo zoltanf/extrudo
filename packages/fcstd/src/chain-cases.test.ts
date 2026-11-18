@@ -219,7 +219,10 @@ describe('loose chains, new grammar', () => {
       const ms = c.bodies.map((b) => rebuilt.bodies[b]);
       const sum = (f: (m: NonNullable<(typeof ms)[number]>) => number) =>
         ms.reduce((v, m) => v + (m ? f(m) : 0), 0);
-      expect(sum((m) => m.solids), c.object).toBe(fc.solids);
+      expect(
+        sum((m) => m.solids),
+        c.object,
+      ).toBe(fc.solids);
       expect(Math.abs(sum((m) => m.volume) / fc.volume - 1), c.object).toBeLessThan(1e-6);
       expect(Math.abs(sum((m) => m.area) / fc.area - 1), c.object).toBeLessThan(1e-6);
     }

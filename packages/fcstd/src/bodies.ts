@@ -843,8 +843,10 @@ export async function importBodies(
   };
 
   for (const shape of shapes) {
-    const looseChain = shape.kind === 'chain-tip' ? options.loose?.get(shape.object.name) : undefined;
-    if (!looseChain && (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body')) continue;
+    const looseChain =
+      shape.kind === 'chain-tip' ? options.loose?.get(shape.object.name) : undefined;
+    if (!looseChain && (shape.kind !== 'body' || shape.object.type !== 'PartDesign::Body'))
+      continue;
     const body = shape.object;
     const name = cleanName(shape.name, body.name);
     const chain: WalkSource = !looseChain
@@ -912,11 +914,16 @@ export async function importBodies(
       } else
         run = { features: [o], first: record, pending: true, why: new Map([[o.name, record]]) };
     };
-    if ('broken' in chain) stop(undefined, chain.reason ?? 'chain', chain.broken, undefined, undefined, true);
+    if ('broken' in chain)
+      stop(undefined, chain.reason ?? 'chain', chain.broken, undefined, undefined, true);
     // A root on a shape from outside the chain: that shape takes the body's place before the first
     // feature is tried, through the step any feature that doesn't hold takes (S8).
     else if (foreignBase)
-      stop(foreignBase, 'foreign-base', `it builds on ${named(foreignBase.name)}, a shape from outside its features`);
+      stop(
+        foreignBase,
+        'foreign-base',
+        `it builds on ${named(foreignBase.name)}, a shape from outside its features`,
+      );
     /** The sketches imported for this body's kept features, by FreeCAD name. */
     const sketches = new Map<string, Extract<AddSketchResult, { imported: true }>>();
     /**
@@ -1029,25 +1036,24 @@ export async function importBodies(
         await walkAxis(f, feature, frame.chain, decodedSketch, i, frame.moved);
         return;
       }
-      const attempt =
-        (onFace: boolean) => async (): Promise<Added> => {
-          const mapper = mapperFor(f, i, frame.moved);
-          const extras = await sketchExtras(mapper, feature.sketch, onFace);
-          if ('stop' in extras) return extras;
-          const added = addFeature(
-            doc,
-            design,
-            f,
-            feature,
-            sketches,
-            mine,
-            options.solver,
-            decodedSketch,
-            wantedAxes,
-            extras,
-          );
-          return 'stop' in added ? added : { ...added, ...madeBy(mapper) };
-        };
+      const attempt = (onFace: boolean) => async (): Promise<Added> => {
+        const mapper = mapperFor(f, i, frame.moved);
+        const extras = await sketchExtras(mapper, feature.sketch, onFace);
+        if ('stop' in extras) return extras;
+        const added = addFeature(
+          doc,
+          design,
+          f,
+          feature,
+          sketches,
+          mine,
+          options.solver,
+          decodedSketch,
+          wantedAxes,
+          extras,
+        );
+        return 'stop' in added ? added : { ...added, ...madeBy(mapper) };
+      };
       // A loose chain's sketch stays on the face it is attached to where that holds; a try that
       // doesn't hold there is tried again on the fixed plane its stored placement gives (S12a).
       const onFace =

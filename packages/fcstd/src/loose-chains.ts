@@ -96,7 +96,11 @@ export interface LoosePlanner {
    * The chain ending at `tip`. `used` counts the features planned so far across the calls that
    * share it: past `limits.maxFile` a chain is refused without being followed.
    */
-  readonly chain: (tip: FcObject, limits: LooseChainLimits, used: { features: number }) => LooseChain;
+  readonly chain: (
+    tip: FcObject,
+    limits: LooseChainLimits,
+    used: { features: number },
+  ) => LooseChain;
 }
 
 /** The planner of one file: each feature's base is read once, however many chains pass through it. */
@@ -131,8 +135,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
   /** A base named outright must be something that can hold a shape. */
   const namedBase = (name: string, what: string, rule: BaseRule, conflict: boolean): BaseRead => {
     const target = doc.byName.get(name);
-    if (!target)
-      return { rule, conflict, broken: `${what} ${named(name)} isn't in the file` };
+    if (!target) return { rule, conflict, broken: `${what} ${named(name)} isn't in the file` };
     if (NOT_A_SHAPE.some((x) => target.type.startsWith(x)))
       return { rule, conflict, broken: `${what} ${named(name)} is a ${target.type}, not a shape` };
     return { name, rule, conflict };

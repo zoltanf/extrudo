@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { asOldFile } from '../packages/fcstd/src/chain-parts';
 import {
   DRESSUP_CASES,
   type DressUpFixtureFeature,
@@ -12,7 +13,6 @@ import {
   num,
   rectangle,
 } from '../packages/fcstd/src/history-fixtures';
-import { asOldFile } from '../packages/fcstd/src/chain-parts';
 import { paramFile } from '../packages/fcstd/src/parameter-parts';
 import { partFile } from '../packages/fcstd/src/part-parts';
 import { BREP, PATTERN_CASES } from '../packages/fcstd/src/pattern-fixtures';
@@ -445,7 +445,9 @@ test('features from before bodies come in as a timeline, live (S12a)', async ({ 
   });
   const viewport = page.getByRole('region', { name: 'Viewport' });
   // FreeCAD's 40 × 30 × 8 plate with the pocket in its top: one body, named as the file names the tip.
-  await expect(viewport).toHaveAttribute('data-bodies', /^Pocket:\d+:40,30,8$/, { timeout: 60_000 });
+  await expect(viewport).toHaveAttribute('data-bodies', /^Pocket:\d+:40,30,8$/, {
+    timeout: 60_000,
+  });
 
   // A longer pad makes a taller plate, and the pocket's sketch stays on its top face.
   await page
