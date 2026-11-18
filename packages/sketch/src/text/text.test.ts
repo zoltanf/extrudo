@@ -300,10 +300,11 @@ describe('shapeText', () => {
       );
     }
     expect(sum).toBeGreaterThan(0);
-    // Measured alone and beside four busy cores: 1.7 to 2.3 times the yardstick
-    // and 9.7 to 12.6 times the tenth of the text.
-    expect(shaped / read).toBeLessThan(4.5);
-    expect(shaped / short).toBeLessThan(20);
+    // Measured alone and beside four busy cores: 1.7 to 2.4 times the yardstick
+    // and 9.6 to 12.6 times the tenth of the text. A list copied per glyph comes
+    // to 4.2 and 16.
+    expect(shaped / read).toBeLessThan(3.5);
+    expect(shaped / short).toBeLessThan(15);
   });
 });
 
