@@ -390,16 +390,37 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     }
   }
 
+  /** The parameters that refer to each name directly, in document order. */
+  let users: Map<string, string[]> | undefined;
+  /** Made when first asked for: most evaluations never ask what depends on what. */
+  const usersByName = (): Map<string, string[]> => {
+    if (users) return users;
+    users = new Map();
+    for (const p of parameters.values()) {
+      for (const ref of p.refs) {
+        const direct = users.get(ref);
+        if (direct) direct.push(p.name);
+        else users.set(ref, [p.name]);
+      }
+    }
+    return users;
+  };
+
   const dependents = (names: Iterable<string>): Set<string> => {
+    const byName = usersByName();
     const found = new Set<string>();
     const queue = [...names];
     const start = new Set(queue);
+    /** A name given twice is followed once. */
+    const followed = new Set<string>();
     while (queue.length > 0) {
       const name = queue.pop() as string;
-      for (const p of parameters.values()) {
-        if (p.refs.includes(name) && !found.has(p.name) && !start.has(p.name)) {
-          found.add(p.name);
-          queue.push(p.name);
+      if (followed.has(name)) continue;
+      followed.add(name);
+      for (const user of byName.get(name) ?? []) {
+        if (!found.has(user) && !start.has(user)) {
+          found.add(user);
+          queue.push(user);
         }
       }
     }

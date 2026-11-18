@@ -97,10 +97,12 @@ export function evaluateRange(
   const result = evaluation.evaluate(expression, parameter.unit);
   if (!result.ok) return result;
   const node = parse(expression);
-  const moving = evaluation.dependents([parameter.name]);
+  const names = references(node).filter((name) => !isReservedName(name));
+  // A range that uses no parameter can't move with one.
+  const moving = names.length > 0 ? evaluation.dependents([parameter.name]) : new Set<string>();
   moving.add(parameter.name);
-  for (const name of references(node)) {
-    if (isReservedName(name) || !moving.has(name)) continue;
+  for (const name of names) {
+    if (!moving.has(name)) continue;
     const span = findRef(node, name) ?? node.span;
     const message =
       name === parameter.name
