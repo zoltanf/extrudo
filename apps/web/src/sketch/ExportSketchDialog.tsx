@@ -11,6 +11,7 @@ import {
   sketchExport,
   sketchExportFile,
 } from './exportFile';
+import { sketchProfilesProblem } from './profiles';
 
 export interface ExportRequest {
   sketch: FeatureId;
@@ -40,10 +41,15 @@ export function ExportSketchDialog({ store, request, files, onClose }: ExportSke
   const [format, setFormat] = useState<ExportFormat>('svg');
   const [content, setContent] = useState<ExportContent>('curves');
   const [construction, setConstruction] = useState(false);
-  // Each request starts from its selection: selected profiles if there are any.
+  // Each request starts from its selection: selected profiles if there are any,
+  // unless the sketch's profiles can't be found, when they would export nothing.
   useEffect(() => {
-    if (request) setContent(request.selected.length > 0 ? 'selected' : 'curves');
-  }, [request]);
+    if (!request) return;
+    const asked = store.getState().doc.features.find((f) => f.id === request.sketch);
+    const data = asked && readSketch(asked)?.data;
+    const usable = request.selected.length > 0 && !(data && sketchProfilesProblem(data));
+    setContent(usable ? 'selected' : 'curves');
+  }, [request, store]);
 
   const exported = useMemo(
     () =>
@@ -61,10 +67,14 @@ export function ExportSketchDialog({ store, request, files, onClose }: ExportSke
       : exported?.count === 1
         ? 'profile'
         : 'profiles';
+  // Asked only for profiles: exporting curves needs no detection.
+  const refused = sketch && content !== 'curves' ? sketchProfilesProblem(sketch.data) : undefined;
   const empty =
     content === 'curves'
       ? 'This sketch has no curves to export.'
-      : 'This sketch has no closed profiles. Close a shape to make one.';
+      : refused
+        ? `${refused} All curves can still be exported.`
+        : 'This sketch has no closed profiles. Close a shape to make one.';
 
   const save = () => {
     if (!exported || !feature || !size) return;

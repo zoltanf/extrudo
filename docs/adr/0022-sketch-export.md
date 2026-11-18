@@ -127,3 +127,7 @@ can reuse it, and must not depend on the GPL packages.
 - Profile edges on ellipses and splines start at profile detection's
   polyline vertices, which can be up to the polyline's sagitta (a few
   hundredths of a mm) off the exact curve where curves cross.
+
+## Amendment 2026-11-18: a refused sketch says why
+
+On a sketch whose profiles detection refuses (ADR-0020), the dialog's line shows the refusal's own sentence from `sketchProfilesProblem` and that all curves can still be exported, and a request with selected profiles starts on "All curves".

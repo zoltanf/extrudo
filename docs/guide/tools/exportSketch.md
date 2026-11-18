@@ -47,8 +47,8 @@ Characters a file name can't hold (such as `/`, `:` or `?`) become spaces.
   on a layer named Profiles.
 - **Selected profile** or **Selected profiles (n)**: only the profiles you
   had selected in the sketch. This choice appears only when profiles are
-  selected, and then it is the one the dialog starts on. Otherwise the dialog
-  starts on **All curves**.
+  selected, and then it is the one the dialog starts on. Otherwise, or when
+  the sketch's profiles can't be found, the dialog starts on **All curves**.
 
 The SVG keeps curves exact: circles and arcs as arcs, an ellipse as an
 elliptical arc, a spline as Bézier pieces. The DXF writes ellipses and
@@ -73,4 +73,9 @@ curves.
 - "This sketch has no closed profiles. Close a shape to make one.": **All
   profiles** or **Selected profile** is chosen and no closed region is
   there. Close a shape, or choose **All curves**.
+- "This sketch has too many curve crossings to find its profiles. Remove or
+  simplify curves. All curves can still be exported.": **All profiles** or
+  **Selected profile** is chosen on a sketch too complex to search for
+  profiles. The first sentence says why: too many crossings, too many curves,
+  or coordinates too large. Choose **All curves** to export it as it is.
 <!-- /notes -->
