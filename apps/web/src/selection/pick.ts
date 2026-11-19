@@ -1123,7 +1123,8 @@ export function pickBox(
         const linesOf = scene.curves ?? curveLinesOf;
         const out: SelectionItem[] = [];
         for (const [key, entity] of Object.entries(sketch.data.entities)) {
-          if (!accept(entity)) continue;
+          // A point has no lines: it never was hit here (and the cache keeps nothing for it).
+          if (entity.type === 'point' || !accept(entity)) continue;
           const entityId = key as SketchEntityId;
           // A text (P4-03) is taken whole: any of its glyph curves in the box takes it.
           const hit = linesOf(sketch.data, entity, entityId).lines.some((line) => {

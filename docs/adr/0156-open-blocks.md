@@ -39,10 +39,18 @@ costs tens of milliseconds per pointer move.
    measured against every curve of every shown sketch on each pointer move
    (twice per click: press and click) and sampled each curve again each time
    (`pickEntity` → `entityPolylines`); opening sampled each sketch twice (Fit's
-   bounds, then the drawing). Each `Viewport` keeps one `SketchCurves`: flat
-   `Float64Array` polylines and a box per curve entity, kept **only for data
-   frozen all the way through** (checked once per data object) and **never for a
-   text** (its curves follow the fonts); `retain` lets go of every sketch the
+   bounds, then the drawing). Each `Viewport` keeps one `SketchCurves`: per
+   sketch **one** `Float64Array` of points end to end, with an offset and a box
+   per kept curve and a map from entity to slot, all sampled the first time
+   any curve of the sketch is asked for. It keeps **nothing for a line** (two
+   end points, measured from the data as cheaply as from a copy), **a point**,
+   **a text** (its curves follow the fonts) or **a polyline of fewer than
+   `MIN_KEPT_POINTS` (8) points** (its offset, box and map entry would cost more
+   than twice its drawn segments); those are sampled on each ask, as before.
+   So a view keeps at most twice the bytes the drawing's segments take for the
+   same curves, whatever the mix (`keptBytes`, tested): nothing for a sketch of
+   lines, about 0.7 times the drawing for circles. It is kept **only for data
+   frozen all the way through** (checked once per data object); `retain` lets go of every sketch the
    view no longer shows, so the undo history, which keeps old data objects
    alive, never keeps samples. `sketchSegments` (the drawing and `sketchBoundsOf`)
    and the pick (`sketchHits`, `curveDistance`, `pickBox`'s curves) read it; the
@@ -76,6 +84,10 @@ costs tens of milliseconds per pointer move.
   compares them): a box skip may only leave out curves that can't be within
   reach, and the distances keep `polylineDistance`'s and `curveDistance`'s
   arithmetic.
+- What a view keeps for a sketch stays within twice the drawing's segment
+  bytes for any mix of entities (`pickCurves.test.ts` counts `keptBytes`
+  against `sketchSegments`' arrays): no per-curve typed arrays or objects, no
+  entry for a line, a point or a polyline under `MIN_KEPT_POINTS`.
 - Never keep samples in a cache keyed by data alone without `retain`: the undo
   history keeps old data alive (the rule ADR-0020 gives for fills).
 - Selection changes stay linear in the items picked: no scan of the list per
@@ -92,8 +104,13 @@ costs tens of milliseconds per pointer move.
 - **Picking on the drawing's `Float32Array` segments.** No second copy, but
   distances in single precision could pick another curve at the edge of the
   reach.
-- **`Vec2` arrays in the cache** (what `entityPolylines` returns): about 2.5
-  times the memory of flat arrays.
+- **`Vec2` arrays in the cache** (what `entityPolylines` returns), or **a typed
+  array, box and object per curve** (the first form of this decision): for long
+  polylines such as circles a typed array per curve was about 0.9 times the
+  drawing's bytes, but for lines each such entry cost about 460 bytes (`Vec2`
+  arrays about 285), some 19 times the 24 bytes the drawing keeps for a line
+  and more than the sketch's own data. One array per sketch with nothing kept
+  for lines and short polylines keeps the cache within twice the drawing.
 
 ## Numbers
 
