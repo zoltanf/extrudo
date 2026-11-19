@@ -108,3 +108,61 @@ only to remember the culprit of a crash (`recomputer.ts`, around line 731).
   unchanged).
 - The perf spec (ADR-0100) is the check that the per-frame progress updates
   cost nothing visible: the edit and undo windows' app time must not grow.
+
+## Amendment of 2026-11-19: the opening notice names the running feature
+
+**Context.** A design whose model takes long to compute shows "Preparing your
+design… Computing 9 features" from the moment it opens, and nothing else: the
+bar and the feature's name were drawn only for a later update (§3). Measured on
+a design with a large pattern (the PCB enclosure benchmark with its posts at
+20 × 20): 58 s to the first model in the browser, 27 s of it in one kernel call,
+with nothing on screen saying which feature that was. A plan to let the person
+stop such a feature starts by naming it.
+
+**Decision.**
+
+- The bar and its line ("Rectangular Pattern1 · 5 of 9") show in `preparing`
+  as well as `updating`, once the kernel has reported a feature
+  (`showsBar` in `apps/web/src/viewport/progressRules.ts`); before that the
+  opening notice keeps "Computing n features". When the notice appears is
+  unchanged.
+- `ModelProgress` (core `stores.ts`) carries `since`: when the `Recomputer`
+  first saw the reported feature (`Date.now()`); a feature reported again (one
+  with a prepare step is reported twice) keeps its first time.
+- From `SECONDS_FROM` (3 s) on, the line adds the feature's whole seconds:
+  "· 13 s". The same line serves `updating`, so a long update shows them too
+  (one code path, and the count reads the same there).
+- The count is its own component (`FeatureSeconds` in `ModelProgress.tsx`): its
+  timer wakes once per change (`nextTickIn`: first at 3 s, then on each whole
+  second since `since`), redraws only that span, and exists only while the span
+  is mounted, so no timer runs while the notice or its bar is hidden. A render
+  reads no clock: the timer stores the time it woke.
+- The count is `aria-hidden`. The notice is a polite live region
+  (`role="status"`, `aria-live="polite"`); a text that changed every second
+  would be read out every second. Screen readers keep hearing the feature and
+  its position as before.
+- The name and the position are separate spans (`progressBar` returns `name`
+  and `position` next to `text`): the line is at most `max-w-64` wide, the name
+  is cut with an ellipsis (`min-w-0 truncate`), the position and the count never
+  shrink.
+
+**Rejected.**
+
+- **A one-second interval in the notice itself:** it would redraw the whole
+  notice (and read the stores) every second for a number in one span.
+- **Seconds from the start:** quick features would flash "0 s", "1 s"; 3 s is
+  where a feature starts to stand out (the repository's designs: every feature
+  but B9's threads finishes under 1.5 s cold).
+- **Announcing the seconds:** see above; the bar's `progress` element keeps its
+  value for whoever asks for it.
+
+**Consequences.** `e2e/model-progress.spec.ts`'s last test opens a design built
+in the spec (the PCB enclosure benchmark with its pattern at 12 × 12, 13.9 s in
+one kernel call in Node, and a 60-character name on it) and checks the name, the
+position, the count from 3 s on, that the accessibility tree has no seconds, and
+the ellipsis. It never waits for the model and asserts no time. Unit tests:
+`progressRules.test.ts`, `ModelProgress.test.tsx` (fake timers: the count, the
+wakes, a parent that never redraws, no timer after the notice goes),
+`stores.test.ts`, `recomputer.test.ts` (the start time kept for a feature
+reported twice).
+

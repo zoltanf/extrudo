@@ -575,6 +575,11 @@ export interface ModelProgress {
   total: number;
   /** The feature the kernel just reported. */
   feature: FeatureId;
+  /**
+   * When the kernel reported that feature first (`Date.now()`): how long it has
+   * run, for the notice's seconds (ADR-0105's amendment of 2026-11-19).
+   */
+  since: number;
 }
 
 /**

@@ -322,14 +322,15 @@ describe('model store', () => {
     const feature = fid('f1');
     store.getState().computing();
     expect(store.getState().progress).toBeUndefined();
-    store.getState().setProgress({ done: 1, total: 3, feature });
-    expect(store.getState().progress).toEqual({ done: 1, total: 3, feature });
+    store.getState().setProgress({ done: 1, total: 3, feature, since: 1000 });
+    // The start time travels with the feature (ADR-0105's amendment of 2026-11-19).
+    expect(store.getState().progress).toEqual({ done: 1, total: 3, feature, since: 1000 });
     store.getState().computed({ features: {}, bodies: {} });
     expect(store.getState().progress).toBeUndefined();
-    store.getState().setProgress({ done: 2, total: 3, feature });
+    store.getState().setProgress({ done: 2, total: 3, feature, since: 2000 });
     store.getState().failed('The geometry kernel crashed.');
     expect(store.getState().progress).toBeUndefined();
-    store.getState().setProgress({ done: 2, total: 3, feature });
+    store.getState().setProgress({ done: 2, total: 3, feature, since: 2000 });
     store.getState().reset();
     expect(store.getState().progress).toBeUndefined();
   });

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   activeFeatureCount,
+  featureSeconds,
+  nextTickIn,
   progressBar,
   progressDetail,
   progressMode,
   progressTitle,
+  SECONDS_FROM,
+  showsBar,
   showsCancel,
   UPDATING_AFTER_MS,
   WAITING_AFTER_MS,
@@ -98,8 +102,37 @@ describe('activeFeatureCount and texts', () => {
     expect(progressBar({ done: 3, total: 7, name: 'Thread1' })).toEqual({
       value: 3,
       max: 7,
+      name: 'Thread1',
+      position: '4 of 7',
       text: 'Thread1 · 4 of 7',
     });
+  });
+});
+
+describe("the bar and the feature's seconds (ADR-0105's amendment of 2026-11-19)", () => {
+  it('draws the bar while a design opens and while it updates, once a feature is reported', () => {
+    expect(showsBar('preparing', true)).toBe(true);
+    expect(showsBar('updating', true)).toBe(true);
+    expect(showsBar('preparing', false)).toBe(false);
+    expect(showsBar('updating', false)).toBe(false);
+    expect(showsBar('waiting', true)).toBe(false);
+  });
+  it('counts whole seconds from SECONDS_FROM on', () => {
+    expect(SECONDS_FROM).toBe(3);
+    expect(featureSeconds(10_000, 10_000)).toBeUndefined();
+    expect(featureSeconds(10_000, 12_999)).toBeUndefined();
+    expect(featureSeconds(10_000, 13_000)).toBe(3);
+    expect(featureSeconds(10_000, 13_999)).toBe(3);
+    expect(featureSeconds(10_000, 52_400)).toBe(42);
+    // A clock that went back never shows a count.
+    expect(featureSeconds(10_000, 9_000)).toBeUndefined();
+  });
+  it('wakes once per change: first at SECONDS_FROM, then on each whole second', () => {
+    expect(nextTickIn(10_000, 10_000)).toBe(3000);
+    expect(nextTickIn(10_000, 11_250)).toBe(1750);
+    expect(nextTickIn(10_000, 13_000)).toBe(1000);
+    expect(nextTickIn(10_000, 13_400)).toBe(600);
+    expect(nextTickIn(10_000, 9_000)).toBe(3000);
   });
 });
 
