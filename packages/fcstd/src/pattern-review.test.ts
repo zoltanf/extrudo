@@ -89,7 +89,11 @@ describe('1. the element asked for, not the first', () => {
     expect(body?.mapped.at(-1)?.references).toMatchObject({ found: 1 });
   });
 
-  it('a reply without the element asked is nonsense: a kernel failure', async () => {
+  // 1.9 s alone, 3.2 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 6.3 times that.
+  it('a reply without the element asked is nonsense: a kernel failure', {
+    timeout: 20_000,
+  }, async () => {
     const before = base.restarts;
     const lie = stored((d, ask) => ({
       ...d,

@@ -66,6 +66,12 @@ function entryOf(n: number): SketchEntry {
   } as unknown as SketchEntry;
 }
 
+/** CPU time on this thread, ms: a busy machine doesn't inflate it as it does the clock. */
+function threadMs(): number {
+  const { user, system } = process.threadCpuUsage();
+  return (user + system) / 1000;
+}
+
 const operand = (): ProfileOperand => ({
   id: 30,
   sketch: 5,
@@ -89,25 +95,42 @@ describe('region matching budget', () => {
   });
 
   // Before the budget, 2,000 poles took 40 s and 5,000 minutes; 20,000 overflowed the stack.
-  it.each([5_000, 20_000])('refuses two overlapping %i-pole splines within about a second', (n) => {
-    const t = performance.now();
-    const pieces = sketchPieces(sketchOf(n), new Set());
-    expect(pieces.overBudget).toBe(true);
-    expect(pieces.budget.work).toBeGreaterThan(MAX_PIECE_WORK);
-    expect(regionPieces(pieces, [[{ tag: 110n, secondary: 0n, piece: 1, of: 1 }]])).toBeUndefined();
-    // About a second alone; slack for a loaded machine.
-    expect(performance.now() - t).toBeLessThan(3000);
-  });
+  // 2.9 s at worst beside four busy cores and the rest of the suite (2026-11-18/19): the
+  // timeout is a watchdog, 6.8 times that.
+  it.each([5_000, 20_000])(
+    'refuses two overlapping %i-pole splines within about a second',
+    (n) => {
+      const t = threadMs();
+      const pieces = sketchPieces(sketchOf(n), new Set());
+      expect(pieces.overBudget).toBe(true);
+      expect(pieces.budget.work).toBeGreaterThan(MAX_PIECE_WORK);
+      expect(
+        regionPieces(pieces, [[{ tag: 110n, secondary: 0n, piece: 1, of: 1 }]]),
+      ).toBeUndefined();
+      // CPU time, which a busy machine doesn't inflate as it does the clock: 1.0
+      // to 1.3 s alone and beside four or eight busy cores (2026-11-19), where
+      // the clock gave up to 2.9 s.
+      expect(threadMs() - t).toBeLessThan(3000);
+    },
+    20_000,
+  );
 
   it('leaves a feature on their region unresolved with a reason', () => {
-    const t = performance.now();
+    const t = threadMs();
     const entry = entryOf(20_000);
     expect(selectProfiles([operand()], () => entry)).toBe(TOO_MANY_CROSSINGS);
-    // Asked again (another feature on the same sketch): refused at once.
-    const again = performance.now();
+    // CPU time, which a busy machine doesn't inflate as it does the clock: 0.94
+    // to 0.96 s alone and beside four or eight busy cores (2026-11-19), where
+    // the clock gave up to 2.3 s.
+    expect(threadMs() - t).toBeLessThan(3000);
+    // Asked again (another feature on the same sketch): refused at once, with
+    // the pieces already cut and not a unit more of their budget spent.
+    const { pieces } = entry;
+    const spent = pieces?.budget.work;
+    expect(pieces?.overBudget).toBe(true);
     expect(selectProfiles([operand()], () => entry)).toBe(TOO_MANY_CROSSINGS);
-    expect(performance.now() - again).toBeLessThan(50);
-    expect(performance.now() - t).toBeLessThan(3000);
+    expect(entry.pieces).toBe(pieces);
+    expect(entry.pieces?.budget.work).toBe(spent);
   });
 });
 

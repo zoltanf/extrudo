@@ -66,13 +66,33 @@ afterAll(() => {
 
 type Done = Extract<RecomputeResult, { status: 'done' }>;
 
-const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+const node = (
+  globalThis as {
+    process?: {
+      env: Record<string, string | undefined>;
+      threadCpuUsage(): { user: number; system: number };
+    };
+  }
+).process;
+const env = node?.env;
+
+/** CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
+function threadMs(): number {
+  const used = node?.threadCpuUsage();
+  if (!used) throw new Error('no process.threadCpuUsage');
+  return (used.user + used.system) / 1000;
+}
 
 /**
  * Ceilings on a recompute from scratch, ms (ADR-0100 §5): about three times
  * the laptop's time in the baseline (`docs/plans/perf-baseline-2026-10-23.md`
  * §1.2) and at least a second, so a slower evaluator fails `pnpm check` while
  * a busy CI runner does not. Keyed by the document name's first word.
+ *
+ * They hold the recompute's CPU time on this thread, not the clock's: beside
+ * four or eight busy cores the clock gave B7 1.4 to 2.5 times its time alone,
+ * the thread's CPU time 1.02 (measured 2026-11-19: B5 307 ms alone, 317 ms
+ * loaded; B7 1,105 and 1,128 ms; B8 414 and 443 ms; B9 8.0 and 8.5 s).
  */
 const BUDGET_MS: Record<string, number> = {
   B1: 1000,
@@ -94,13 +114,15 @@ async function recompute(
 ): Promise<Done> {
   engine?.clear();
   engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
-  const start = performance.now();
+  const start = threadMs();
   const result = await engine.recompute({ doc });
-  const ms = Math.round(performance.now() - start);
-  if (env?.BENCH) console.log(`[bench] ${doc.name}: ${ms} ms`);
+  const ms = Math.round(threadMs() - start);
+  if (env?.BENCH) console.log(`[bench] ${doc.name}: ${ms} ms of CPU time`);
   const budget = BUDGET_MS[doc.name.split(' ')[0] ?? ''];
   if (budget === undefined) throw new Error(`no budget for ${doc.name}`);
-  expect(ms, `${doc.name} took ${ms} ms, over its ${budget} ms budget`).toBeLessThan(budget);
+  expect(ms, `${doc.name} took ${ms} ms of CPU time, over its ${budget} ms budget`).toBeLessThan(
+    budget,
+  );
   if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
   const problems = Object.entries(result.features).filter(([, s]) => s.status !== 'ok');
   expect(problems).toEqual(
@@ -391,7 +413,11 @@ describe('B7 knurled knob', () => {
     grooves * lens(15, groove / 2, 15) * 16 -
     Math.PI * 3 * 3 * 10;
 
-  it('is one body: revolved, chamfered, 24 grooves, a shaft hole', async () => {
+  // 1.2 s alone, 2.8 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 5.4 times that.
+  it('is one body: revolved, chamfered, 24 grooves, a shaft hole', {
+    timeout: 15_000,
+  }, async () => {
     const doc = load(b7);
     expect(doc.name).toBe('B7 Knurled knob');
     expect(featureNames(doc)).toEqual([

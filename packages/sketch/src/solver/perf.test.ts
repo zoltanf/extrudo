@@ -50,10 +50,16 @@ interface Measured {
 }
 const results: Record<string, Measured> = {};
 
+/**
+ * CPU time on this thread, ms: a busy machine doesn't inflate it as it does
+ * the clock. The chained drag's median took 13.9 to 14.0 ms of it alone and
+ * beside four busy cores (2026-11-19); the clock gave up to 30 ms under load.
+ */
 const time = (fn: () => void) => {
-  const start = performance.now();
+  const start = process.threadCpuUsage();
   fn();
-  return performance.now() - start;
+  const { user, system } = process.threadCpuUsage(start);
+  return (user + system) / 1000;
 };
 
 const stats = (samples: number[]): Stats => {

@@ -521,7 +521,11 @@ describe('fitControlPoles (P4-12)', () => {
     return best;
   };
 
-  it('follows samples of a smooth curve within the tolerance, ends held', () => {
+  // 0.8 s alone, 2.7 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 5.5 times that.
+  it('follows samples of a smooth curve within the tolerance, ends held', {
+    timeout: 15_000,
+  }, () => {
     // A quarter of an ellipse and a sine wave, sampled densely.
     const curves: Vec2[][] = [
       Array.from({ length: 80 }, (_, i) => {
