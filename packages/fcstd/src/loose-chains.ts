@@ -6,20 +6,31 @@
  * root first. A feature that is the base of several others belongs to several chains: each walks
  * its own copy.
  *
- * A feature's base is, in this order: its `BaseFeature`; a dress-up's `Base`; a pattern's first
- * original; the object its sketch is attached to, when that holds a solid. The base as read is
- * never trusted: the walk checks every feature against the shape the file stores for it.
+ * A feature's base is, in this order: its `BaseFeature`; a dress-up's `Base`; of a pattern's
+ * originals the one no other of them builds on (the first when they aren't in one row); the object
+ * its sketch is attached to, when that holds a solid. The base as read is never trusted: the walk
+ * checks every feature against the shape the file stores for it.
  *
  * No kernel, no recursion on the file's depth. Every chain is followed once and the whole plan is
  * bounded by `maxFile` features and `maxChains` chains, so a file of many tips on one long row
  * costs the caps, not the square of the row.
  */
+import { supportsOf } from './attach';
+import { FEATURE_TYPES, MAX_ORIGINALS } from './features';
 import { type FinalShape, linkedObjects } from './final-shapes';
-import { brepHasSolid, type FcDocument, type FcObject, storedShapeEntry } from './model';
+import {
+  brepBytesHaveSolid,
+  type FcDocument,
+  type FcObject,
+  MAX_STORED_BREP_BYTES,
+  storedShapeEntry,
+} from './model';
 import { cleanName } from './names';
 
-/** The most loose chains one import brings in with their history (the library has 31). */
+/** The most loose chains one import plans at its top (the library has 14). */
 export const MAX_LOOSE_CHAINS = 256;
+/** The most links followed to tell which of a pattern's originals is the last of their row. */
+const MAX_ORIGINAL_STEPS = 500;
 
 /** Which rule gave a feature's base; `none` when it starts a new solid. */
 export type BaseRule = 'base-feature' | 'dress-up' | 'original' | 'support' | 'none';
@@ -32,7 +43,7 @@ export interface LooseChain {
   /** What the root builds on when that is no loose feature: a Part box, a cut, any stored shape. */
   readonly foreignBase?: FcObject;
   /** Why the chain comes in as today (its tip's stored shape). */
-  readonly refused?: { readonly reason: 'chain' | 'limit'; readonly detail: string };
+  readonly refused?: { readonly reason: 'chain' | 'limit' | 'type'; readonly detail: string };
   /** How each feature's base was read, in `features`' order. */
   readonly rules: readonly BaseRule[];
   /** How many features name a `BaseFeature` other than the object their sketch is attached to. */
@@ -82,16 +93,15 @@ function sketchOf(doc: FcDocument, o: FcObject): FcObject | undefined {
   return sketch?.type.startsWith('Sketcher::SketchObject') ? sketch : undefined;
 }
 
-/** The first object a sketch is attached to, in either grammar. */
-function supportOf(sketch: FcObject): string | undefined {
-  const v = sketch.properties.AttachmentSupport?.value ?? sketch.properties.Support?.value;
-  return v ? linkedObjects(v)[0] || undefined : undefined;
-}
+/** Whether the walk has a mapping for this type at all. */
+const walkable = (o: FcObject) => Object.hasOwn(FEATURE_TYPES, o.type);
 
 /** What is read once per file, however many chains ask: who is loose and what each feature builds on. */
 export interface LoosePlanner {
   /** Whether `o` is a PartDesign feature in no body. */
   readonly isLoose: (o: FcObject) => boolean;
+  /** Whether a loose chain can end at `o`: it is loose, and of a type the walk can rebuild. */
+  readonly endsChain: (o: FcObject) => boolean;
   /**
    * The chain ending at `tip`. `used` counts the features planned so far across the calls that
    * share it: past `limits.maxFile` a chain is refused without being followed.
@@ -113,23 +123,81 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
     !members.has(o.name);
 
   const solids = new Map<string, boolean>();
-  /** Whether `o` stores a solid: read once per object, the reader's problems left alone. */
+  /**
+   * Whether `o` stores a solid. Each entry is read once, however many objects name it and whether
+   * or not it can be read; one past what the import's kernel reads is never inflated.
+   */
   const holdsSolid = (o: FcObject): boolean => {
-    const known = solids.get(o.name);
+    const entry = storedShapeEntry(doc, o);
+    if (entry === undefined || entry.endsWith('.bin')) return false;
+    const known = solids.get(entry);
     if (known !== undefined) return known;
     let result = false;
     const before = doc.problems.length;
     try {
-      const entry = storedShapeEntry(doc, o);
-      const bytes = entry === undefined ? undefined : doc.entries.get(entry);
-      if (bytes && bytes.length > 0 && !entry?.endsWith('.bin'))
-        result = brepHasSolid(new TextDecoder('latin1').decode(bytes));
+      if ((doc.entries.size(entry) ?? 0) <= MAX_STORED_BREP_BYTES) {
+        const bytes = doc.entries.get(entry);
+        result = bytes !== undefined && brepBytesHaveSolid(bytes);
+      }
     } catch {
       result = false;
     }
     doc.problems.length = before;
-    solids.set(o.name, result);
+    solids.set(entry, result);
     return result;
+  };
+
+  /** The first object a sketch is attached to, read once per sketch whatever its list holds. */
+  const supports = new Map<string, FcObject | undefined>();
+  const supportOf = (sketch: FcObject): FcObject | undefined => {
+    if (supports.has(sketch.name)) return supports.get(sketch.name);
+    const name = supportsOf(sketch)[0]?.object;
+    const support = name ? doc.byName.get(name) : undefined;
+    supports.set(sketch.name, support);
+    return support;
+  };
+  /** The solid `o`'s sketch is attached to, if any. */
+  const solidSupport = (o: FcObject): FcObject | undefined => {
+    const sketch = sketchOf(doc, o);
+    const support = sketch ? supportOf(sketch) : undefined;
+    return support && !NOT_A_SHAPE.some((x) => support.type.startsWith(x)) && holdsSolid(support)
+      ? support
+      : undefined;
+  };
+
+  /** What `o` links to first, by the rules in order, a pattern by its first original. */
+  const nextLink = (o: FcObject): string | undefined => {
+    const declared = o.properties.BaseFeature?.value;
+    if (declared?.kind === 'link' && declared.object) return declared.object;
+    const dressed = o.properties.Base?.value;
+    if (dressed?.kind === 'linkSub' && dressed.object) return dressed.object;
+    const originals = o.properties.Originals?.value;
+    if (originals?.kind === 'linkList' && originals.objects[0] !== undefined)
+      return originals.objects[0];
+    return solidSupport(o)?.name;
+  };
+
+  /**
+   * The original no other of the list builds on: the last of them in their row. The first when
+   * they aren't in one row, lead back to each other or are too many to follow. Iterative, each
+   * object followed once per list.
+   */
+  const lastOriginal = (list: readonly string[]): string => {
+    const first = list[0] as string;
+    if (list.length < 2 || list.length > MAX_ORIGINALS) return first;
+    const originals = new Set(list);
+    const below = new Set<string>();
+    const visited = new Set<string>();
+    for (const start of originals)
+      for (let at: string | undefined = start; at !== undefined && !visited.has(at); ) {
+        visited.add(at);
+        if (visited.size > MAX_ORIGINAL_STEPS) return first;
+        const o = doc.byName.get(at);
+        at = o ? nextLink(o) : undefined;
+        if (at !== undefined && originals.has(at)) below.add(at);
+      }
+    const last = [...originals].filter((name) => !below.has(name));
+    return last.length === 1 ? (last[0] as string) : first;
   };
 
   /** A base named outright must be something that can hold a shape. */
@@ -146,13 +214,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
     const known = reads.get(o.name);
     if (known) return known;
     const read = ((): BaseRead => {
-      const sketch = sketchOf(doc, o);
-      const supportName = sketch ? supportOf(sketch) : undefined;
-      const support = supportName ? doc.byName.get(supportName) : undefined;
-      const onSolid =
-        support && !NOT_A_SHAPE.some((x) => support.type.startsWith(x)) && holdsSolid(support)
-          ? support
-          : undefined;
+      const onSolid = solidSupport(o);
       const declared = o.properties.BaseFeature?.value;
       if (declared?.kind === 'link' && declared.object)
         return namedBase(
@@ -166,7 +228,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
         return namedBase(dressed.object, 'its base', 'dress-up', false);
       const originals = o.properties.Originals?.value;
       if (originals?.kind === 'linkList' && originals.objects[0] !== undefined)
-        return namedBase(originals.objects[0], 'its first original', 'original', false);
+        return namedBase(lastOriginal(originals.objects), 'its original', 'original', false);
       if (onSolid) return { name: onSolid.name, rule: 'support', conflict: false };
       return { rule: 'none', conflict: false };
     })();
@@ -175,13 +237,14 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
   };
 
   const chain: LoosePlanner['chain'] = (tip, limits, used) => {
-    const refuse = (reason: 'chain' | 'limit', detail: string): LooseChain => ({
-      tip,
-      features: [],
-      refused: { reason, detail },
-      rules: [],
-      conflicts: 0,
-    });
+    const counted = used.features;
+    /** A chain that doesn't come in leaves what it counted to the chains after it. */
+    const refuse = (reason: 'chain' | 'limit' | 'type', detail: string): LooseChain => {
+      used.features = counted;
+      return { tip, features: [], refused: { reason, detail }, rules: [], conflicts: 0 };
+    };
+    // Its last feature could never hold: nothing below it is worth walking.
+    if (!walkable(tip)) return refuse('type', `it is a ${tip.type || 'object of no type'}`);
     const overFile = `the file's rows have more than ${limits.maxFile} features`;
     if (used.features >= limits.maxFile) return refuse('limit', overFile);
     const features: FcObject[] = [];
@@ -217,7 +280,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
       conflicts,
     };
   };
-  return { isLoose, chain };
+  return { isLoose, endsChain: (o) => isLoose(o) && walkable(o), chain };
 }
 
 /**

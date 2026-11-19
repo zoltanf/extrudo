@@ -148,7 +148,7 @@ export async function importFcstd(
   const planner = loosePlanner(doc);
   // S11: the Part workbench's trees, planned from the file alone.
   const plan = partTrees(doc, shapes, {
-    isLoose: planner.isLoose,
+    isLoose: planner.endsChain,
     ...(options.maxTreeNodes !== undefined ? { maxTreeNodes: options.maxTreeNodes } : {}),
     ...(options.maxImportTreeNodes !== undefined
       ? { maxImportNodes: options.maxImportTreeNodes }
@@ -158,7 +158,7 @@ export async function importFcstd(
   const loose = new Map<string, LooseChain>(
     looseChains(
       doc,
-      shapes.filter((s) => s.kind === 'chain-tip'),
+      shapes.filter((s) => s.kind === 'chain-tip' && planner.isLoose(s.object)),
       {
         maxFeatures: options.maxBodyFeatures ?? MAX_BODY_FEATURES,
         maxFile: options.maxFileFeatures ?? MAX_FILE_FEATURES,

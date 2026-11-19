@@ -99,6 +99,16 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     ],
     bodies: ['Mirrored'],
   },
+  pattern_two: {
+    chains: { LinearPattern: 'whole' },
+    features: [
+      ...pair('PadSketch', 'Pad'),
+      ...pair('Sketch001', 'Round'),
+      ...pair('Sketch002', 'Square'),
+      'rectangularPattern LinearPattern',
+    ],
+    bodies: ['LinearPattern'],
+  },
   on_part_box: {
     chains: { Pocket: 'steps:foreign-base' },
     features: ['import Import Box', ...pair('Sketch', 'Pad'), ...pair('Sketch001', 'Pocket')],
@@ -238,9 +248,9 @@ const OLD: readonly (readonly [string, OldVersion])[] = [
   ['pad_pocket', '0.14'],
   ['chain_five', '0.14'],
   ['pad_kinds', '0.14'],
-  ['revolved', '0.14'],
   ['dressups', '0.14'],
   ['patterns', '0.14'],
+  ['pattern_two', '0.14'],
   ['branch', '0.14'],
   ['long_chain', '0.14'],
   ['bound', '0.16'],

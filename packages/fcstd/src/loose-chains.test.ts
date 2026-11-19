@@ -180,6 +180,147 @@ describe('links a file can get wrong', () => {
   });
 });
 
+describe('a pattern of several originals', () => {
+  const pattern = (name: string, originals: string[]) =>
+    object(name, 'PartDesign::LinearPattern', {
+      Originals: { kind: 'linkList', objects: originals } as FcValue,
+    });
+
+  it('builds on the original no other original builds on', () => {
+    const [c] = plan(
+      [pad('A'), pad('B', 'A'), pad('C', 'B'), pattern('P', ['A', 'C', 'B'])],
+      ['P'],
+    );
+    expect(names(c)).toEqual(['A', 'B', 'C', 'P']);
+    expect(c?.rules.at(-1)).toBe('original');
+  });
+
+  it('takes the first when the originals aren’t in one row', () => {
+    const [c] = plan([pad('A'), pad('B'), pattern('P', ['B', 'A'])], ['P']);
+    expect(names(c)).toEqual(['B', 'P']);
+  });
+
+  it('originals that lead back to each other: the first, without recursion', () => {
+    const [c] = plan([pad('A', 'B'), pad('B', 'A'), pattern('P', ['A', 'B'])], ['P']);
+    expect(c?.refused?.reason).toBe('chain');
+  });
+
+  it('a row of patterns, each of two originals, is read without recursion', () => {
+    const n = 20_000;
+    const objects = [pad('P0'), pad('Q0', 'P0')];
+    for (let i = 1; i < n; i++) objects.push(pattern(`P${i}`, [`P${i - 1}`, `Q${i - 1}`]));
+    for (let i = 1; i < n; i++) objects.push(pad(`Q${i}`, `P${i}`));
+    expect(() => plan(objects, [`P${n - 1}`], { maxFeatures: 500, maxFile: 2_000 })).not.toThrow();
+  });
+});
+
+describe('what a hostile file can make the plan read', () => {
+  const shapeObject = (name: string, entry: string) =>
+    object(name, 'Part::Feature', { Shape: { kind: 'shape', entry } as FcValue });
+  const onSupport = (i: number, support: FcValue) => [
+    object(`S${i}`, 'Sketcher::SketchObject', { Support: support }),
+    object(`K${i}`, 'PartDesign::Pocket', { Sketch: link(`S${i}`) }),
+  ];
+  const supportOn = (name: string) =>
+    ({ kind: 'linkSub', object: name, subs: [{ name: 'Face1' }] }) as FcValue;
+  const docWith = (objects: FcObject[], entries: FcDocument['entries']) =>
+    ({ ...doc(objects), entries }) as FcDocument;
+  const tips = (d: FcDocument, n: number) =>
+    Array.from({ length: n }, (_, i) => tip(d.byName.get(`K${i}`) as FcObject));
+  const SOLID = new TextEncoder().encode('CASCADE\nTShapes 1\nSo\n');
+  const wide = { maxFeatures: 500, maxFile: 100_000, maxChains: 100_000 };
+
+  it('one entry many objects name is read once', () => {
+    const n = 2_000;
+    const objects = Array.from({ length: n }, (_, i) => [
+      shapeObject(`F${i}`, 'big.brp'),
+      ...onSupport(i, supportOn(`F${i}`)),
+    ]).flat();
+    let reads = 0;
+    const d = docWith(objects, {
+      get: () => {
+        reads++;
+        return SOLID;
+      },
+      size: () => SOLID.length,
+    } as never);
+    const chains = looseChains(d, tips(d, n), wide);
+    expect(reads).toBe(1);
+    expect(chains[0]?.foreignBase?.name).toBe('F0');
+  });
+
+  it('an entry that can’t be read is tried once', () => {
+    const objects = [0, 1, 2].flatMap((i) => [
+      shapeObject(`F${i}`, 'bad.brp'),
+      ...onSupport(i, supportOn(`F${i}`)),
+    ]);
+    let reads = 0;
+    const d = docWith(objects, {
+      get: () => {
+        reads++;
+        throw new Error('bad CRC');
+      },
+      size: () => 10,
+    } as never);
+    expect(looseChains(d, tips(d, 3), wide).map((c) => c.foreignBase)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(reads).toBe(1);
+  });
+
+  it('an entry past what the kernel reads is never read', () => {
+    const objects = [shapeObject('F0', 'huge.brp'), ...onSupport(0, supportOn('F0'))];
+    let reads = 0;
+    const d = docWith(objects, {
+      get: () => {
+        reads++;
+        return SOLID;
+      },
+      size: () => 128 * 1024 * 1024,
+    } as never);
+    expect(looseChains(d, tips(d, 1), wide)[0]?.foreignBase).toBeUndefined();
+    expect(reads).toBe(0);
+  });
+
+  it('a long support list costs its first item', () => {
+    const items = Array.from({ length: 200_000 }, () => ({
+      object: 'Gone',
+      sub: { name: 'Face1' },
+    }));
+    const list = { kind: 'linkSubList', items } as unknown as FcValue;
+    const sketch = object('S', 'Sketcher::SketchObject', { Support: list });
+    const n = 2_000;
+    const pockets = Array.from({ length: n }, (_, i) =>
+      object(`K${i}`, 'PartDesign::Pocket', { Sketch: link('S') }),
+    );
+    const d = doc([sketch, ...pockets]);
+    const t = performance.now();
+    looseChains(d, tips(d, n), wide);
+    expect(performance.now() - t).toBeLessThan(500);
+  });
+
+  it('a row refused at its cap leaves the plan’s features to the chains after it', () => {
+    const rows = [0, 1, 2, 3].flatMap((r) =>
+      Array.from({ length: 501 }, (_, i) =>
+        pad(`R${r}_${i}`, i > 0 ? `R${r}_${i - 1}` : undefined),
+      ),
+    );
+    const chains = plan(
+      [...rows, pad('A'), pad('B', 'A')],
+      ['R0_500', 'R1_500', 'R2_500', 'R3_500', 'B'],
+    );
+    expect(chains.slice(0, 4).map((c) => c.refused?.reason)).toEqual([
+      'limit',
+      'limit',
+      'limit',
+      'limit',
+    ]);
+    expect(names(chains[4])).toEqual(['A', 'B']);
+  });
+});
+
 describe('the limits', () => {
   /** A row of `n` pads, each on the one before. */
   const row = (n: number) =>

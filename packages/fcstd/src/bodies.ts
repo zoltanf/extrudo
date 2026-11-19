@@ -263,6 +263,8 @@ export interface BodyHistory {
   readonly sketches: readonly SketchOutcome[];
   /** Features tried a second time after the first failed the check with `differs` (S7). */
   readonly secondAttempts: number;
+  /** A loose chain's sketches that didn't hold on their face and came in on their fixed plane (S12a). */
+  readonly faceFallbacks?: number;
   /** The stored-shape steps the body took, in order (S8). */
   readonly steps: readonly HistoryStep[];
   /** How many features held after its last step (all of `mapped` when it took none). */
@@ -312,9 +314,6 @@ export interface BodyWalkOptions {
   readonly loose?: ReadonlyMap<string, LooseChain>;
 }
 
-/** Who owns what a loose chain walks: every chain alike, since each walks its own copy of what they share (S12a). */
-const LOOSE_OWNER = '\u0000loose chain';
-
 /**
  * What every walk of one import counts together (S11): the body walk before the trees and each
  * body a tree uses share one set, so the file's caps hold however the bodies are reached.
@@ -326,7 +325,10 @@ export interface WalkShared {
   stepText: number;
   /** A step's shape didn't fit the design's attachments: no later step of this import converts one. */
   designFull: boolean;
-  /** The body each FreeCAD feature and sketch was walked for: one object, one body, once per file. */
+  /**
+   * The body each FreeCAD feature and sketch was walked for: one object, one body, once per file.
+   * A loose chain neither claims nor is refused here: it walks its own copy of what it uses (S12a).
+   */
   readonly owner: Map<string, string>;
   readonly decodedSketches: Map<string, DecodedSketch>;
   /** The datum lines and planes brought in, by FreeCAD name (S9): one construction per datum per import. */
@@ -858,8 +860,15 @@ export async function importBodies(
             ...(looseChain.foreignBase ? { foreignBase: looseChain.foreignBase } : {}),
           };
     const features = 'features' in chain ? chain.features : [];
-    /** What the walk's ownership is kept under: this body, or every loose chain alike. */
-    const ownerKey = looseChain ? LOOSE_OWNER : body.name;
+    /** The body that already walked `name`, when that stops this walk; a loose chain has its own copy. */
+    const ownedElsewhere = (name: string): string | undefined => {
+      const of = looseChain ? undefined : owner.get(name);
+      return of !== body.name ? of : undefined;
+    };
+    /** Takes `name` for this body; a loose chain takes nothing from anyone. */
+    const claim = (name: string) => {
+      if (!looseChain) owner.set(name, body.name);
+    };
     const foreignBase = 'foreignBase' in chain ? chain.foreignBase : undefined;
     const mapped: MappedFeature[] = [];
     const sketchOutcomes: SketchOutcome[] = [];
@@ -868,6 +877,7 @@ export async function importBodies(
     let mine: string[] = [];
     let stopped: BodyHistory['stop'];
     let secondAttempts = 0;
+    let faceFallbacks = 0;
     let upToTries = 0;
     /** This body's mapped features by FreeCAD name: what a transform's originals become. */
     const mappedBy = new Map<string, { feature: string; kind: FeatureKind }>();
@@ -988,8 +998,8 @@ export async function importBodies(
         return;
       }
       // A sketch is imported for one body only: another body's sketch is not tried again.
-      const of = owner.get(feature.sketch);
-      if (of !== undefined && of !== ownerKey) {
+      const of = ownedElsewhere(feature.sketch);
+      if (of !== undefined) {
         stop(
           f,
           'chain',
@@ -997,7 +1007,7 @@ export async function importBodies(
         );
         return;
       }
-      owner.set(feature.sketch, ownerKey);
+      claim(feature.sketch);
       const drawnCurves = (decodedSketch?.geometry ?? []).filter(
         (g) => g !== undefined && !g.construction && g.internal === 0 && g.kind !== 'point',
       ).length;
@@ -1036,38 +1046,47 @@ export async function importBodies(
         await walkAxis(f, feature, frame.chain, decodedSketch, i, frame.moved);
         return;
       }
-      const attempt = (onFace: boolean) => async (): Promise<Added> => {
-        const mapper = mapperFor(f, i, frame.moved);
-        const extras = await sketchExtras(mapper, feature.sketch, onFace);
-        if ('stop' in extras) return extras;
-        const added = addFeature(
-          doc,
-          design,
-          f,
-          feature,
-          sketches,
-          mine,
-          options.solver,
-          decodedSketch,
-          wantedAxes,
-          extras,
-        );
-        return 'stop' in added ? added : { ...added, ...madeBy(mapper) };
-      };
-      // A loose chain's sketch stays on the face it is attached to where that holds; a try that
-      // doesn't hold there is tried again on the fixed plane its stored placement gives (S12a).
-      const onFace =
-        looseChain !== undefined &&
-        !sketches.has(feature.sketch) &&
-        budget.restarts === restartsAtHold;
       await holdAll(
         f,
         frame.chain,
         feature,
-        onFace ? [attempt(true), attempt(false)] : [attempt(false)],
-        false,
-        onFace,
+        withFace(feature.sketch, (onFace) => async (): Promise<Added> => {
+          const mapper = mapperFor(f, i, frame.moved);
+          const extras = await sketchExtras(mapper, feature.sketch, onFace);
+          if ('stop' in extras) return extras;
+          const added = addFeature(
+            doc,
+            design,
+            f,
+            feature,
+            sketches,
+            mine,
+            options.solver,
+            decodedSketch,
+            wantedAxes,
+            extras,
+          );
+          return 'stop' in added ? added : { ...added, ...madeBy(mapper) };
+        }),
       );
+    };
+
+    /** The tries that put a sketch on its fixed plane after the same try on its face didn't hold. */
+    const fixedPlaneTries = new WeakSet<() => Promise<Added>>();
+    /**
+     * A try of a feature with a new sketch (S12a): a loose chain's sketch stays on the face it is
+     * attached to where that holds, and a try that doesn't hold there is made again on the fixed
+     * plane its stored placement gives. Anything else is the one try.
+     */
+    const withFace = (
+      sketch: string,
+      make: (onFace: boolean) => () => Promise<Added>,
+    ): (() => Promise<Added>)[] => {
+      if (!looseChain || sketches.has(sketch) || budget.restarts !== restartsAtHold)
+        return [make(false)];
+      const fixed = make(false);
+      fixedPlaneTries.add(fixed);
+      return [make(true), fixed];
     };
 
     /**
@@ -1178,54 +1197,56 @@ export async function importBodies(
         f,
         chain,
         feature,
-        pairs.map(([a, b], k) => async (): Promise<Added> => {
-          // A try with another target counts once; its repeats for projections don't.
-          if (counted && !triedTargets.has(k)) {
-            triedTargets.add(k);
-            upToTries++;
-          }
-          // Each try from a fresh mapper: its constructions, checks and tally are its own.
-          const mapper = mapperFor(f, i, moved);
-          const target = async (t: UpToTry | undefined, n: 1 | 2) => {
-            if (!t?.named) return t?.ref;
-            const r = await mapper.face(t.named, n === 1 ? 'face to go up to' : 'second face');
-            if (!('stop' in r)) return r;
-            return {
-              stop: (r.stop === 'transform-reference' ? 'up-to' : r.stop) as HistoryStop,
-              detail: r.detail,
-              ...(r.references ? { references: r.references } : {}),
+        pairs.flatMap(([a, b], k) =>
+          withFace(feature.sketch, (onFace) => async (): Promise<Added> => {
+            // A try with another target counts once; its repeats for projections don't.
+            if (counted && !triedTargets.has(k)) {
+              triedTargets.add(k);
+              upToTries++;
+            }
+            // Each try from a fresh mapper: its constructions, checks and tally are its own.
+            const mapper = mapperFor(f, i, moved);
+            const target = async (t: UpToTry | undefined, n: 1 | 2) => {
+              if (!t?.named) return t?.ref;
+              const r = await mapper.face(t.named, n === 1 ? 'face to go up to' : 'second face');
+              if (!('stop' in r)) return r;
+              return {
+                stop: (r.stop === 'transform-reference' ? 'up-to' : r.stop) as HistoryStop,
+                detail: r.detail,
+                ...(r.references ? { references: r.references } : {}),
+              };
             };
-          };
-          const ra = await target(a, 1);
-          if (ra && 'stop' in ra) return ra;
-          const rb = await target(b, 2);
-          if (rb && 'stop' in rb) return rb;
-          const extras = await sketchExtras(mapper, feature.sketch);
-          if ('stop' in extras) return extras;
-          const added = addFeature(
-            doc,
-            design,
-            f,
-            feature,
-            sketches,
-            mine,
-            options.solver,
-            decodedSketch,
-            wantedAxes,
-            {
-              ...(ra ? { one: ra } : {}),
-              ...(rb ? { two: rb } : {}),
-              ...extras,
-            },
-          );
-          if ('stop' in added) return added;
-          const info = a ?? b;
-          return {
-            ...added,
-            ...(info ? { upTo: { method: info.method, target: info.target, tries: k + 1 } } : {}),
-            ...madeBy(mapper),
-          };
-        }),
+            const ra = await target(a, 1);
+            if (ra && 'stop' in ra) return ra;
+            const rb = await target(b, 2);
+            if (rb && 'stop' in rb) return rb;
+            const extras = await sketchExtras(mapper, feature.sketch, onFace);
+            if ('stop' in extras) return extras;
+            const added = addFeature(
+              doc,
+              design,
+              f,
+              feature,
+              sketches,
+              mine,
+              options.solver,
+              decodedSketch,
+              wantedAxes,
+              {
+                ...(ra ? { one: ra } : {}),
+                ...(rb ? { two: rb } : {}),
+                ...extras,
+              },
+            );
+            if ('stop' in added) return added;
+            const info = a ?? b;
+            return {
+              ...added,
+              ...(info ? { upTo: { method: info.method, target: info.target, tries: k + 1 } } : {}),
+              ...madeBy(mapper),
+            };
+          }),
+        ),
         false,
         true,
       );
@@ -1320,8 +1341,11 @@ export async function importBodies(
         stop(f, 'kernel', 'the kernel was replaced since its body was last rebuilt');
         return;
       }
-      await holdAll(f, chain, feature, [
-        async (): Promise<Added> => {
+      await holdAll(
+        f,
+        chain,
+        feature,
+        withFace(feature.sketch, (onFace) => async (): Promise<Added> => {
           const mapper = mapperFor(f, i, moved);
           const line = await mapper.line(reference, 'axis');
           if ('stop' in line)
@@ -1331,7 +1355,7 @@ export async function importBodies(
               ...(line.references ? { references: line.references } : {}),
             };
           const dot = line.along.reduce((n, v, k) => n + v * (line.fc[k] as number), 0);
-          const extras = await sketchExtras(mapper, feature.sketch);
+          const extras = await sketchExtras(mapper, feature.sketch, onFace);
           if ('stop' in extras) return extras;
           const added = addFeature(
             doc,
@@ -1347,8 +1371,8 @@ export async function importBodies(
           );
           if ('stop' in added) return added;
           return { ...added, ...madeBy(mapper) };
-        },
-      ]);
+        }),
+      );
     };
 
     /** A hole: its sketch, its centres as the sketch's points; counterbore, then countersink where the file doesn't say. */
@@ -1363,42 +1387,45 @@ export async function importBodies(
         f,
         chain,
         feature,
-        cuts.map((cut) => async (): Promise<Added> => {
-          const mapper = mapperFor(f, walkedIndex(f), containerChain(doc, f)?.moved ?? true);
-          const extras = await sketchExtras(mapper, feature.sketch);
-          if ('stop' in extras) return extras;
-          const got = sketchFor(
-            doc,
-            design,
-            feature.sketch,
-            sketches,
-            options.solver,
-            decodedSketch,
-            wantedAxes,
-            undefined,
-            extras.tilted,
-            extras.external,
-            extras.externalCauses,
-          );
-          if ('stop' in got) return got;
-          const added = addHole(
-            design,
-            feature,
-            got.sketch,
-            decodedSketch ?? (sketchOf(feature.sketch) as DecodedSketch),
-            cut,
-            cleanName(f.label, f.name),
-          );
-          if ('stop' in added) return added;
-          return {
-            feature: added.feature,
-            sketch: got.sketch.id,
-            ...(got.newSketch ? { newSketch: got.newSketch } : {}),
-            ...madeBy(mapper),
-            centres: added.centres,
-            ...(feature.threadLost ? { threadLost: true as const } : {}),
-          };
-        }),
+        cuts.flatMap((cut) =>
+          withFace(feature.sketch, (onFace) => async (): Promise<Added> => {
+            const mapper = mapperFor(f, walkedIndex(f), containerChain(doc, f)?.moved ?? true);
+            const extras = await sketchExtras(mapper, feature.sketch, onFace);
+            if ('stop' in extras) return extras;
+            const got = sketchFor(
+              doc,
+              design,
+              feature.sketch,
+              sketches,
+              options.solver,
+              decodedSketch,
+              wantedAxes,
+              undefined,
+              extras.tilted,
+              extras.external,
+              extras.externalCauses,
+            );
+            if ('stop' in got) return got;
+            const added = addHole(
+              design,
+              feature,
+              got.sketch,
+              decodedSketch ?? (sketchOf(feature.sketch) as DecodedSketch),
+              cut,
+              cleanName(f.label, f.name),
+            );
+            if ('stop' in added) return added;
+            return {
+              feature: added.feature,
+              sketch: got.sketch.id,
+              ...(got.newSketch ? { newSketch: got.newSketch } : {}),
+              ...madeBy(mapper),
+              centres: added.centres,
+              ...(feature.threadLost ? { threadLost: true as const } : {}),
+            };
+          }),
+        ),
+        true,
         true,
       );
     };
@@ -1421,7 +1448,7 @@ export async function importBodies(
               : `it repeats ${named(name)}, a ${m.kind === 'fillet' || m.kind === 'chamfer' ? 'dress-up' : 'pattern or mirror'}, which Extrudo can't repeat`
             : at > i
               ? `it repeats ${named(name)}, which comes after it`
-              : owner.has(name) && owner.get(name) !== ownerKey
+              : ownedElsewhere(name) !== undefined
                 ? `it repeats ${named(name)}, a feature of another body`
                 : at < 0
                   ? `it repeats ${named(name)}, which is not a feature of this body`
@@ -1447,7 +1474,7 @@ export async function importBodies(
         return;
       }
       // A MultiTransform's steps are its own: one object, one body, once per file.
-      if (feature.kind === 'multi')
+      if (feature.kind === 'multi' && !looseChain)
         for (const child of feature.children) {
           const of = owner.get(child);
           if (of !== undefined && of !== f.name) {
@@ -1848,12 +1875,18 @@ export async function importBodies(
           feature,
           attempts[k] as () => Promise<Added>,
           others,
-          k > 0,
+          k > 0 && !fixedPlaneTries.has(attempts[k] as () => Promise<Added>),
         );
         if (!failed) return;
         if (failed.again && repeats < MAX_PROJECTION_REPEATS && !budget.broken) {
           repeats++;
           k--;
+          continue;
+        }
+        // A sketch that didn't work out on its face has its fixed plane left, whatever went wrong.
+        const next = attempts[k + 1];
+        if (next && fixedPlaneTries.has(next) && !failed.final && !budget.broken) {
+          faceFallbacks++;
           continue;
         }
         if (
@@ -2067,12 +2100,12 @@ export async function importBodies(
         break;
       }
       // A feature of another body (a chain that crosses bodies) is never mapped twice.
-      const other = owner.get(f.name);
-      if (other !== undefined && other !== ownerKey) {
+      const other = ownedElsewhere(f.name);
+      if (other !== undefined) {
         stop(f, 'chain', `it is a feature of another body, ${named(other)}`);
         break;
       }
-      owner.set(f.name, ownerKey);
+      claim(f.name);
       shared.walked++;
       options.onStep?.();
       noted = false;
@@ -2109,11 +2142,12 @@ export async function importBodies(
             run: open.features.map((x) => namedIn(open, x)),
           };
         }
-      if (undone && !stopped)
-        stopped =
-          open.features.length > 1
-            ? { ...open.first, run: open.features.slice(1).map((x) => namedIn(open, x)) }
-            : open.first;
+      if (undone && !stopped) {
+        const first = firstOf(open);
+        // A foreign base opened the run, but what the chain stopped at is its own feature.
+        const rest = open.features.filter((x) => x !== foreignBase && x.name !== first.object);
+        stopped = rest.length > 0 ? { ...first, run: rest.map((x) => namedIn(open, x)) } : first;
+      }
       // A stop that ended the body inside the run (a limit, the budget) lists the whole run.
       else if (undone && stopped && !stopped.run)
         stopped = { ...stopped, run: open.features.map((x) => namedIn(open, x)) };
@@ -2130,19 +2164,21 @@ export async function importBodies(
       bodies: mapped.length > 0 || taken.length > 0 ? mine : [],
       sketches: sketchOutcomes,
       secondAttempts,
-      steps: taken.map(
-        (st): HistoryStep => ({
+      ...(faceFallbacks > 0 ? { faceFallbacks } : {}),
+      steps: taken.map((st): HistoryStep => {
+        const first = firstOf(st.run);
+        return {
           features: st.features.map((x) => namedIn(st.run, x)),
-          reason: st.first.reason,
-          ...(st.first.detail ? { detail: st.first.detail } : {}),
-          ...(st.first.drift ? { drift: st.first.drift } : {}),
-          ...(st.first.references ? { references: st.first.references } : {}),
+          reason: first.reason,
+          ...(first.detail ? { detail: first.detail } : {}),
+          ...(first.drift ? { drift: first.drift } : {}),
+          ...(first.references ? { references: first.references } : {}),
           shape: st.shape,
           feature: st.feature,
           ...(st.remove !== undefined ? { remove: st.remove } : {}),
           after: st.after,
-        }),
-      ),
+        };
+      }),
       heldAfterLastStep: mapped.length - (taken.at(-1)?.after ?? 0),
       upToTries,
     });
@@ -2186,6 +2222,19 @@ interface Run {
   step?: StepState;
   /** Why each feature tried didn't hold. */
   readonly why: Map<string, NonNullable<BodyHistory['stop']>>;
+}
+
+/**
+ * Why a run stands: the first feature in it that didn't hold. A foreign base opens a loose chain's
+ * run, and stays the reason only while no feature of the chain has failed after it.
+ */
+function firstOf(r: Run): NonNullable<BodyHistory['stop']> {
+  if (r.first.reason !== 'foreign-base') return r.first;
+  for (const x of r.features) {
+    const why = r.why.get(x.name);
+    if (why && why.reason !== 'foreign-base') return why;
+  }
+  return r.first;
 }
 
 /** A run's feature for the report. */

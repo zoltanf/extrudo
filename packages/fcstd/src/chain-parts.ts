@@ -55,13 +55,29 @@ export function chainCase(name: string): ChainFixtureCase {
 /** The names of every S12a fixture document. */
 export const chainDocuments = (): string[] => Object.keys(chainData().cases);
 
+export interface ChainExtraObject {
+  readonly name: string;
+  readonly type: string;
+  readonly xml: string;
+  readonly hidden?: boolean;
+}
+
+/** The B-rep text a fixture object stores. */
+export function chainBrep(name: string, object: string): string {
+  const o = chainCase(name).objects.find((x) => x.object === object);
+  if (o?.stored === undefined) throw new Error(`${name}: ${object} stores no shape`);
+  return chainData().breps[o.stored] as string;
+}
+
 export interface ChainFileOptions {
   /** Changes an object's XML before it is written; `undefined` drops the object. */
   readonly edit?: (object: string, xml: string) => string | undefined;
   /** Replaces an object's stored B-rep text (`undefined` leaves its entry out). */
   readonly brep?: (object: string, text: string) => string | undefined;
   /** Objects added after the case's own: internal name, type and `<Object>` element. */
-  readonly extra?: readonly { name: string; type: string; xml: string; hidden?: boolean }[];
+  readonly extra?: readonly ChainExtraObject[];
+  /** Objects added before the case's own. */
+  readonly before?: readonly ChainExtraObject[];
   /** Archive entries added or replaced. */
   readonly entries?: Readonly<Record<string, string | Uint8Array>>;
   /** The document's `ProgramVersion`. */
@@ -75,7 +91,7 @@ const esc = (s: string) =>
 export function chainFile(name: string, options: ChainFileOptions = {}): Uint8Array {
   const { breps } = chainData();
   const entries: Record<string, string | Uint8Array> = {};
-  const objects: { name: string; type: string; xml: string; hidden?: boolean }[] = [];
+  const objects: ChainExtraObject[] = [...(options.before ?? [])];
   for (const o of chainCase(name).objects) {
     const xml = options.edit ? options.edit(o.object, o.xml) : o.xml;
     if (xml === undefined) continue;
@@ -136,14 +152,22 @@ export const OLD_PROPERTIES: Readonly<Record<string, readonly string[]>> = {
   'Sketcher::SketchObject': [...COMMON, 'Constraints', 'ExternalGeometry', 'Geometry', 'Support'],
 };
 
-/** The property types an old file declares where they differ from what FreeCAD 1.1 wrote. */
-const OLD_TYPES: Readonly<Record<string, string>> = {
-  'PartDesign::LinearPattern.Length': 'App::PropertyFloat',
-  'PartDesign::LinearPattern.Occurrences': 'App::PropertyInteger',
-  'PartDesign::PolarPattern.Occurrences': 'App::PropertyInteger',
-  'PartDesign::PolarPattern.Angle': 'App::PropertyFloat',
-  'PartDesign::Fillet.Radius': 'App::PropertyFloatConstraint',
-  'PartDesign::Chamfer.Size': 'App::PropertyFloatConstraint',
+/** The property types an old file declares where they differ from what FreeCAD 1.1 wrote, by version. */
+const OLD_TYPES: Readonly<Record<OldVersion, Readonly<Record<string, string>>>> = {
+  '0.14': {
+    'PartDesign::LinearPattern.Length': 'App::PropertyFloat',
+    'PartDesign::LinearPattern.Occurrences': 'App::PropertyInteger',
+    'PartDesign::PolarPattern.Occurrences': 'App::PropertyInteger',
+    'PartDesign::PolarPattern.Angle': 'App::PropertyFloat',
+    'PartDesign::Fillet.Radius': 'App::PropertyFloatConstraint',
+    'PartDesign::Chamfer.Size': 'App::PropertyFloatConstraint',
+  },
+  '0.16': {
+    'PartDesign::LinearPattern.Occurrences': 'App::PropertyInteger',
+    'PartDesign::PolarPattern.Occurrences': 'App::PropertyInteger',
+    'PartDesign::Fillet.Radius': 'App::PropertyQuantityConstraint',
+    'PartDesign::Chamfer.Size': 'App::PropertyQuantityConstraint',
+  },
 };
 
 const PROPERTY = /<Property name="([^"]+)" type="([^"]+)"[^>]*?(?:\/>|>(.*?)<\/Property>)/gs;
@@ -160,25 +184,12 @@ const bool = (v: boolean) => `<Bool value="${v ? 'true' : 'false'}"/>`;
 /** FreeCAD 1.1's `SideType`, by index. */
 const SIDE = { one: 0, two: 1, symmetric: 2 };
 
-/** Each sketch's feature and that feature's `BaseFeature`, from the new form. */
-function sketchUsers(name: string): Map<string, string | undefined> {
-  const users = new Map<string, string | undefined>();
-  for (const o of chainCase(name).objects) {
-    const profile = inner(o.xml, 'Profile');
-    const sketch = profile === undefined ? undefined : attr(profile, 'value');
-    if (!sketch) continue;
-    const base = attr(inner(o.xml, 'BaseFeature') ?? '', 'value');
-    users.set(sketch, base || undefined);
-  }
-  return users;
-}
-
 /**
- * The XML of one object as an old FreeCAD writes it. `base`: the feature a sketch's feature
- * builds on, which an old file can only say through the sketch's `Support`: a sketch that has
- * none (it was drawn on a plane of its own) supports on that feature's first face.
+ * The XML of one object as an old FreeCAD writes it. A sketch drawn on no face has an empty
+ * `Support`, as the library's old revolutions do: nothing in such a file says what a feature on
+ * that sketch builds on.
  */
-function oldXml(type: string, xml: string, version: OldVersion, base: string | undefined): string {
+function oldXml(type: string, xml: string, version: OldVersion): string {
   const allowed = OLD_PROPERTIES[type];
   if (!allowed) return xml;
   const keep = new Set([...allowed, ...(version === '0.16' ? ['ExpressionEngine'] : [])]);
@@ -193,8 +204,8 @@ function oldXml(type: string, xml: string, version: OldVersion, base: string | u
       out.push(property('Sketch', 'App::PropertyLink', `<Link value="${sketch}"/>`));
     } else if (name === 'AttachmentSupport') {
       const link = /<Link obj="([^"]*)" sub="([^"]*)"/.exec(body);
-      const object = link?.[1] ?? base ?? '';
-      const sub = link?.[2] ?? (base ? 'Face1' : '');
+      const object = link?.[1] ?? '';
+      const sub = link?.[2] ?? '';
       out.push(
         property(
           'Support',
@@ -207,7 +218,7 @@ function oldXml(type: string, xml: string, version: OldVersion, base: string | u
     else if (name === 'Type' && twoSides)
       out.push(property(name, 'App::PropertyEnumeration', '<Integer value="4"/>'));
     else if (keep.has(name)) {
-      const t = OLD_TYPES[`${type}.${name}`] ?? declared;
+      const t = OLD_TYPES[version][`${type}.${name}`] ?? declared;
       out.push(whole.replace(`type="${declared}"`, `type="${t}"`));
     }
   }
@@ -241,7 +252,6 @@ export function asOldFile(
   options: ChainFileOptions = {},
 ): Uint8Array {
   const types = new Map(chainCase(name).objects.map((o) => [o.object, o.type]));
-  const users = sketchUsers(name);
   const entries: Record<string, string> = {};
   for (const o of chainCase(name).objects) {
     if (o.type === 'PartDesign::Pad' || o.type === 'PartDesign::Revolution')
@@ -254,7 +264,7 @@ export function asOldFile(
     version: version === '0.14' ? '0.14.3703 (Git)' : '0.16.6712 (Git)',
     entries: { ...entries, ...(options.entries ?? {}) },
     edit: (object, xml) => {
-      const old = oldXml(types.get(object) as string, xml, version, users.get(object));
+      const old = oldXml(types.get(object) as string, xml, version);
       return options.edit ? options.edit(object, old) : old;
     },
   });

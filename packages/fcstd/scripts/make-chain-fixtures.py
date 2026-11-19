@@ -493,6 +493,17 @@ def patterns(doc):
     k2 = feature(doc, 'Pocket', 'Corner', s3, base=pp, Type='ThroughAll')
     return [pattern(doc, 'Mirrored', 'Mirrored', k2, [k2], MirrorPlane=(cs, ['V_Axis']))]
 
+def pattern_two(doc):
+    # A linear pattern of two originals, the second built on the first.
+    p = plate(doc, 'Pad', 60, 30, 8)
+    s = face_sketch(doc, 'Sketch001', p, top(8))
+    circle(s, 6, 8, 2)
+    k1 = feature(doc, 'Pocket', 'Round', s, base=p, Length=3)
+    s2 = face_sketch(doc, 'Sketch002', k1, top(8))
+    rect(s2, 4, 18, 8, 24)
+    k2 = feature(doc, 'Pocket', 'Square', s2, base=k1, Length=2)
+    return [pattern(doc, 'LinearPattern', 'LinearPattern', k2, [k1, k2], Direction=(s, ['H_Axis']), Length=30, Occurrences=3)]
+
 case('pad_only', pad_only, 'one pad on a sketch placed off the origin and tilted, no body')
 case('pad_pocket', pad_pocket, 'a pad and a pocket sketched on its top face, no body')
 case('chain_five', chain_five, 'pad, through hole, boss on the top face, recess in the boss, a lug on a side face')
@@ -506,6 +517,7 @@ case('in_part', in_part, 'a chain inside a moved and turned App::Part, and a cha
 case('long_chain', long_chain, 'a pad and twelve pockets, each sketched on the one before')
 case('bound', bound, 'a pad and a pocket whose sizes read a spreadsheet, a bound sketch dimension')
 case('dressups', dressups, 'a fillet on a pad, a pocket in it, a chamfer on the pocket rim; every feature names its BaseFeature')
+case('pattern_two', pattern_two, 'a linear pattern of two pockets, the second built on the first')
 case('patterns', patterns, 'a linear pattern of a pocket, a polar pattern of a boss about a sketch normal, a mirrored through hole')
 
 with open(os.path.join(OUT, 'fixtures.json'), 'w') as fh:

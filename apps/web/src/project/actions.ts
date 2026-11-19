@@ -394,7 +394,7 @@ const TREE_REASON: Record<TreeReason, string> = {
   compound: 'a compound is used as one shape',
   edges: "a fillet or chamfer has edges or sizes Extrudo can't rebuild",
   limit: 'it is larger than Extrudo takes',
-  body: "a body it uses didn't come in with its history",
+  body: "a body or a row of features it uses didn't come in with its history",
   passes: 'it took too many tries to rebuild',
   container: "its containers' placements couldn't be applied",
 };
