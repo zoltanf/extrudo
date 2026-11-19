@@ -360,6 +360,7 @@ Crank or Glide. Since the right button drags, the right-click marking menu
 
 ### 3.2 Selection
 
+  When a design's sketch fills pass their budget (`MAX_FILL_VERTICES`, ADR-0020's amendment of 2026-11-19), the bar says "· 3 sketches not shaded" beside the kernel state; its tooltip says why and what brings the shading back.
 - Hover → pre-highlight (light category tint). Click → select (strong
   highlight). Shift or Ctrl+click → toggle.
 - Drag left-to-right = **window** (fully inside); right-to-left = **crossing**

@@ -95,23 +95,23 @@ test('a sketch past the fill budget draws its curves, says so, and its region st
   // Sketch1 is shaded; inside Sketch2 the view shows what lies around it, and its curves show.
   await page.mouse.move(5, 5);
   const at = await projector(viewport);
-  const shaded = await meanColor(page, at([-40, 0, 0]));
-  const unshaded = await meanColor(page, at([40, 0, 0]));
+  const shaded = await meanColor(page, at([-40, 8, 0]));
+  const unshaded = await meanColor(page, at([40, 8, 0]));
   const around = await meanColor(page, at([40, 32, 0]));
   expect(apart(shaded, around)).toBeGreaterThan(4);
   expect(apart(unshaded, around)).toBeLessThan(3);
-  expect(apart(await meanColor(page, at([20, 0, 0])), around)).toBeGreaterThan(4);
+  expect(apart(await meanColor(page, at([20, 8, 0])), around)).toBeGreaterThan(4);
 
   // Its region picks like any other, and a selected one is outlined.
-  const edgeBefore = await meanColor(page, at([60, 0, 0]));
-  await page.mouse.click(at([40, 0, 0]).x, at([40, 0, 0]).y);
-  await expect(page.getByRole('status', { name: 'Selection' })).toContainText('Profile');
+  const edgeBefore = await meanColor(page, at([60, 8, 0]));
+  await page.mouse.click(at([40, 8, 0]).x, at([40, 8, 0]).y);
+  await expect(page.getByRole('status', { name: 'Selection' })).toHaveText('1 profile ·');
   await page.mouse.move(5, 5);
   await expect
-    .poll(async () => apart(await meanColor(page, at([60, 0, 0])), edgeBefore))
+    .poll(async () => apart(await meanColor(page, at([60, 8, 0])), edgeBefore))
     .toBeGreaterThan(4);
   // No fill came with the selection.
-  expect(apart(await meanColor(page, at([40, 0, 0])), around)).toBeLessThan(3);
+  expect(apart(await meanColor(page, at([40, 8, 0])), around)).toBeLessThan(3);
   await page.keyboard.press('Escape');
 
   // Hiding Sketch1 gives its share to Sketch2.
@@ -122,6 +122,6 @@ test('a sketch past the fill budget draws its curves, says so, and its region st
   await expect(note).toBeHidden();
   await page.mouse.move(5, 5);
   await expect
-    .poll(async () => apart(await meanColor(page, at([40, 0, 0])), around))
+    .poll(async () => apart(await meanColor(page, at([40, 8, 0])), around))
     .toBeGreaterThan(4);
 });
