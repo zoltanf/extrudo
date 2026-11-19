@@ -56,7 +56,7 @@ class FakeWorker implements RegionsWorkerLike {
   }
 }
 
-function setup(options: { spawn?: () => RegionsWorkerLike | undefined } = {}) {
+function setup(options: { spawn?: () => RegionsWorkerLike | undefined; batch?: number } = {}) {
   const workers: FakeWorker[] = [];
   let time = 0;
   const timers = new Map<number, { at: number; run: () => void }>();
@@ -80,6 +80,7 @@ function setup(options: { spawn?: () => RegionsWorkerLike | undefined } = {}) {
     },
     clearTimer: (id) => timers.delete(id as number),
     idle: (run) => idle.push(run),
+    batch: options.batch ?? 0,
   });
   const advance = (ms: number) => {
     time += ms;
@@ -271,5 +272,19 @@ describe('createRegionsClient', () => {
     worker().answer();
     worker().answer();
     expect(client.store.getState().progress).toBeUndefined();
+  });
+
+  it('tells the shell once for results that arrive close together, and at once for the last', () => {
+    const { client, worker, advance } = setup({ batch: 150 });
+    client.want([job('a', a), job('b', b), job('c', c)]);
+    const start = client.store.getState().version;
+    worker().answer();
+    worker().answer();
+    expect(client.store.getState().version).toBe(start);
+    advance(150);
+    expect(client.store.getState().version).toBe(start + 1);
+    worker().answer();
+    expect(client.store.getState().version).toBe(start + 2);
+    expect(client.get(c, 0)?.state).toBe('done');
   });
 });

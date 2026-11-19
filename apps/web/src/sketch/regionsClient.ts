@@ -37,6 +37,13 @@ declare global {
  */
 export const PROFILES_DEADLINE_MS = 10_000;
 
+/**
+ * Results that arrive within this long reach the shell together: each time it hears of
+ * one it lays out every shown sketch again, so a design of many quick sketches would
+ * otherwise do that once a sketch.
+ */
+export const RESULT_BATCH_MS = 150;
+
 /** How long a new worker may take to start before its first job counts as stopped. */
 const START_MS = 20_000;
 
@@ -113,6 +120,8 @@ export interface RegionsClientOptions {
   clearTimer?: (timer: unknown) => void;
   /** Runs `run` in an idle slice of the UI thread. */
   idle?: (run: () => void) => void;
+  /** Results within this many ms reach the shell together (`RESULT_BATCH_MS`); 0 at once. */
+  batch?: number;
 }
 
 export interface RegionsClient {
@@ -176,6 +185,8 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
   const clearTimer =
     options.clearTimer ?? ((t) => clearTimeout(t as ReturnType<typeof setTimeout>));
   const idle = options.idle ?? defaultIdle;
+  const batch = options.batch ?? RESULT_BATCH_MS;
+  let batched: unknown;
 
   const store = createStore<RegionsState>()(() => ({ version: 0, fallback: false }));
   const entries = new Map<SketchData, RegionsEntry>();
@@ -206,6 +217,21 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     if (busy && progress && progress.total !== total) progress = { ...progress, total };
     if (!busy) progress = undefined;
     const state = store.getState();
+    if (result && batch > 0 && busy) {
+      // More results are coming: tell the shell once for all of them, soon.
+      if (batched === undefined) {
+        batched = setTimer(() => {
+          batched = undefined;
+          store.setState((s) => ({ version: s.version + 1, progress, fallback }));
+        }, batch);
+      }
+      if (state.progress !== progress) store.setState({ progress });
+      return;
+    }
+    if (result && batched !== undefined) {
+      clearTimer(batched);
+      batched = undefined;
+    }
     if (!result && state.progress === progress && state.fallback === fallback) return;
     store.setState((s) => ({ version: result ? s.version + 1 : s.version, progress, fallback }));
   };
