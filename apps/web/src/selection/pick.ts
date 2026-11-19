@@ -17,7 +17,6 @@
  */
 import {
   type BodyId,
-  entityPolylines,
   type FeatureId,
   profileRefId,
   type SelectionItem,
@@ -31,11 +30,16 @@ import {
   worldToSketch,
 } from '@extrudo/core';
 import { type BodyMesh, EDGE_MESH, EDGE_SEAM } from '@extrudo/kernel';
-import { pickEntity } from '@extrudo/sketch/inference';
 import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { whenIdle } from '../idle';
 import { clipDistance, isClipped, isClippedAny, type SectionClip } from '../section/clip';
+import {
+  boxWithin,
+  type CurveLinesOf,
+  curveLinesOf,
+  flatPolylineDistance,
+} from '../sketch/curveLines';
 import { type FlatRegions, regionAt, regionOutline } from '../sketch/flatRegions';
 import {
   basis,
@@ -126,6 +130,8 @@ export interface PickScene {
    * picked, and the caps drawn on the cut hide what is behind them.
    */
   clip?: readonly SectionClip[];
+  /** The sketches' polylines, sampled once per data (ADR-0156); sampled on each pick without. */
+  curves?: CurveLinesOf;
 }
 
 export interface PickHit {
@@ -564,6 +570,7 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
   /** The whole texts under the pointer, one pick each however many letters (P4-03). */
   const texts: Near[] = [];
   const taken = new Set<string>();
+  const linesOf = scene.curves ?? curveLinesOf;
   for (const sketch of scene.sketches) {
     const hit = rayPlane(
       { origin: e.ray.origin, direction: e.ray.direction },
@@ -577,9 +584,9 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
     const perPixel = perPixelAt(e, ...at);
     if (filter.sketches || filter.sketchPoints) {
       const reach = (filter.sketchPoints ? VERTEX_PX : EDGE_PX) * perPixel;
-      const id = pickEntity(sketch.data, point, reach, acceptsEntity(filter));
+      const id = nearestEntity(sketch.data, point, reach, acceptsEntity(filter), linesOf);
       if (id) {
-        const px = curveDistance(sketch.data, id, point) / perPixel;
+        const px = curveDistance(sketch.data, id, point, linesOf) / perPixel;
         curves.push({
           item: { kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, id) },
           px,
@@ -616,18 +623,59 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
   return { curves, profiles, texts };
 }
 
+/**
+ * `pickEntity` (`@extrudo/sketch/inference`) on polylines from `linesOf`: the
+ * nearest accepted point within `tolerance`, else the nearest accepted curve,
+ * with its arithmetic and its order, so it picks the same entity. A curve whose
+ * box lies further than `tolerance` is skipped without measuring (ADR-0156).
+ */
+export function nearestEntity(
+  data: SketchData,
+  cursor: Vec2,
+  tolerance: number,
+  accept: (entity: SketchEntity) => boolean,
+  linesOf: CurveLinesOf,
+): SketchEntityId | undefined {
+  let point: { id: SketchEntityId; d: number } | undefined;
+  let curve: { id: SketchEntityId; d: number } | undefined;
+  const [x, y] = cursor;
+  for (const key in data.entities) {
+    const id = key as SketchEntityId;
+    const entity = data.entities[id] as SketchEntity;
+    if (!accept(entity)) continue;
+    if (entity.type === 'point') {
+      const d = Math.hypot(x - entity.x, y - entity.y);
+      if (d <= tolerance && (!point || d < point.d)) point = { id, d };
+      continue;
+    }
+    const { lines, box } = linesOf(data, entity, id);
+    if (lines.length === 0 || !boxWithin(box, x, y, tolerance)) continue;
+    let d = Infinity;
+    for (const line of lines) d = Math.min(d, flatPolylineDistance(line, x, y));
+    if (d <= tolerance && (!curve || d < curve.d)) curve = { id, d };
+  }
+  return (point ?? curve)?.id;
+}
+
 /** How far `p` is from a sketch entity: the nearest of its polylines (P4-03 gives a text many). */
-function curveDistance(data: SketchData, id: SketchEntityId, p: Vec2): number {
+function curveDistance(
+  data: SketchData,
+  id: SketchEntityId,
+  p: Vec2,
+  linesOf: CurveLinesOf,
+): number {
   const entity = data.entities[id];
   if (!entity) return 0;
   if (entity.type === 'point') return Math.hypot(p[0] - entity.x, p[1] - entity.y);
-  const lines = entityPolylines(data, entity, id);
+  const { lines } = linesOf(data, entity, id);
   if (lines.length === 0) return 0;
   let best = Infinity;
   for (const line of lines) {
-    for (let i = 1; i < line.length; i++) {
-      const [ax, ay] = line[i - 1] as Vec2;
-      const [bx, by] = line[i] as Vec2;
+    for (let i = 2; i + 1 < line.length; i += 2) {
+      const ax = line[i - 2] as number;
+      const ay = line[i - 1] as number;
+      const bx = line[i] as number;
+      const by = line[i + 1] as number;
       const vx = bx - ax;
       const vy = by - ay;
       const len2 = vx * vx + vy * vy;
@@ -1072,18 +1120,22 @@ export function pickBox(
     sketches: () =>
       scene.sketches.flatMap((sketch) => {
         const accept = acceptsEntity(filter);
+        const linesOf = scene.curves ?? curveLinesOf;
         const out: SelectionItem[] = [];
         for (const [key, entity] of Object.entries(sketch.data.entities)) {
-          if (!accept(entity)) continue;
+          // A point has no lines: it never was hit here (and the cache keeps nothing for it).
+          if (entity.type === 'point' || !accept(entity)) continue;
           const entityId = key as SketchEntityId;
           // A text (P4-03) is taken whole: any of its glyph curves in the box takes it.
-          const hit = entityPolylines(sketch.data, entity, entityId).some((line) =>
-            polylineIn(
-              line.map((q) => project(...sketchToWorld(sketch.frame, q))),
-              r,
-              mode,
-            ),
-          );
+          const hit = linesOf(sketch.data, entity, entityId).lines.some((line) => {
+            const projected: ReturnType<typeof project>[] = [];
+            for (let i = 0; i + 1 < line.length; i += 2) {
+              projected.push(
+                project(...sketchToWorld(sketch.frame, [line[i] as number, line[i + 1] as number])),
+              );
+            }
+            return polylineIn(projected, r, mode);
+          });
           if (hit) out.push({ kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, entityId) });
         }
         return out;

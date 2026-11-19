@@ -2,16 +2,17 @@ import {
   CIRCLE_SEGMENTS,
   dimensionAnchor,
   entityPoints,
-  entityPolylines,
   isDatumRef,
   projectedEntities,
   type SketchData,
   type SketchEntityId,
   type SketchFrame,
+  sketchFacts,
   sketchToWorld,
   textPolylines,
 } from '@extrudo/core';
 import type { EntityStatus } from '@extrudo/sketch/inference';
+import { type CurveLinesOf, curveLinesOf } from '../sketch/curveLines';
 import type { FlatRegions } from '../sketch/flatRegions';
 import { tangentGrips } from '../sketch/splineEnds';
 import type { Vec3 } from './camera';
@@ -202,6 +203,9 @@ export { CIRCLE_SEGMENTS };
  * The curves of a datum projection (ADR-0093) are not drawn, nor counted for
  * Fit, and not highlighted either (`curveSegments`): the view draws the
  * origin and the axes itself.
+ *
+ * `linesOf` gives each curve's polylines: a view's `SketchCurves` keeps those of the
+ * sketches it shows, so drawing, Fit and picking sample them once (ADR-0156).
  */
 export function sketchSegments(
   data: SketchData,
@@ -209,6 +213,7 @@ export function sketchSegments(
   status?: Readonly<Record<string, EntityStatus>>,
   controlPolygons = false,
   gripSpline?: string,
+  linesOf: CurveLinesOf = curveLinesOf,
 ): SketchSegments {
   const solid: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   const construction: number[] = [];
@@ -238,11 +243,11 @@ export function sketchSegments(
       : isProjected.has(id as keyof SketchData['entities'])
         ? projected
         : solid[group];
-    for (const line of entityPolylines(data, entity, id as SketchEntityId)) {
+    for (const line of linesOf(data, entity, id as SketchEntityId).lines) {
       if (line.length === 0) continue;
-      let prev = sketchToWorld(frame, line[0] as [number, number]);
-      for (let i = 1; i < line.length; i++) {
-        const next = sketchToWorld(frame, line[i] as [number, number]);
+      let prev = sketchToWorld(frame, [line[0] as number, line[1] as number]);
+      for (let i = 2; i + 1 < line.length; i += 2) {
+        const next = sketchToWorld(frame, [line[i] as number, line[i + 1] as number]);
         out.push(...prev, ...next);
         prev = next;
       }
@@ -378,11 +383,11 @@ export function textBoundsSummary(sketches: readonly SketchDrawing[]): string | 
   const span = (v: number[]) => `${r(Math.min(...v))}..${r(Math.max(...v))}`;
   const out: string[] = [];
   for (const { id, data } of sketches) {
-    for (const [entity, text] of Object.entries(data.entities)) {
-      if (text?.type !== 'text') continue;
+    // Only the texts: walking every entity of every sketch on each render blocked large designs.
+    for (const entity of sketchFacts(data).texts) {
       const xs: number[] = [];
       const ys: number[] = [];
-      for (const polyline of textPolylines(data, entity as SketchEntityId).values()) {
+      for (const polyline of textPolylines(data, entity).values()) {
         for (const [x, y] of polyline) {
           xs.push(x);
           ys.push(y);

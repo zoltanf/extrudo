@@ -1,0 +1,1 @@
+- 2026-11-19 · **Large designs**: opening, showing or hiding sketches, hovering and clicking over many large sketches no longer freeze the page for as long.

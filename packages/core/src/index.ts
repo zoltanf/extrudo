@@ -100,6 +100,7 @@ export * from './simplify-for-print';
 export * from './sketch/commands';
 export * from './sketch/curves';
 export * from './sketch/dimensions';
+export * from './sketch/facts';
 export * from './sketch/feature';
 export * from './sketch/planes';
 export * from './sketch/projection';

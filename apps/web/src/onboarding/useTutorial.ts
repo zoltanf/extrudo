@@ -38,7 +38,8 @@ export function useTutorial(options: {
   const mode = useStore(session, (s) => s.mode);
   const activeTool = useStore(session, (s) => s.activeTool);
   const facts = useMemo<TutorialFacts>(() => ({ doc, mode, activeTool }), [doc, mode, activeTool]);
-  const index = currentStep(facts, floor);
+  // Once per change of the facts, not per render: the checks look at every sketch (ADR-0156).
+  const index = useMemo(() => currentStep(facts, floor), [facts, floor]);
   const finished = index >= TUTORIAL_STEPS.length;
 
   const start = useMemo(

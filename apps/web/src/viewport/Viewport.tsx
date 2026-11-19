@@ -68,6 +68,7 @@ import {
   warmPickIndex,
 } from '../selection/pick';
 import { autoProjectSnap } from '../sketch/autoProject';
+import { SketchCurves } from '../sketch/curveLines';
 import { sketchTargetAt } from '../sketch/facePick';
 import { holeCount } from '../sketch/flatRegions';
 import { sketchRegions } from '../sketch/profiles';
@@ -535,9 +536,15 @@ export function Viewport({
     () => (preview?.construction ? [...construction, preview.construction] : construction),
     [construction, preview?.construction],
   );
+  // The polylines of the sketches this view shows, sampled once (ADR-0156).
+  const [curves] = useState(() => new SketchCurves());
+  useEffect(
+    () => curves.retain(sketches.filter((s) => !s.active).map((s) => s.data)),
+    [curves, sketches],
+  );
   const modelScene = useMemo(
-    () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed }),
-    [bodies, meta, sketches, construction, sectionClip, posed],
+    () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed, curves }),
+    [bodies, meta, sketches, construction, sectionClip, posed, curves],
   );
   // Annotations behind the part (ADR-0126 §6): the picking code's occlusion test on what the
   // view draws. Only what hides things (the bodies, a section, a pose, the style) makes a new
@@ -784,6 +791,7 @@ export function Viewport({
               bodies={bodies}
               meta={meta}
               sketches={sketches}
+              curves={curves}
               sketchPlane={sketchPlane}
               carried={carried}
               planePicker={planePicker}
@@ -946,6 +954,7 @@ function Scene({
   bodies,
   meta,
   sketches,
+  curves,
   sketchPlane,
   carried,
   planePicker,
@@ -971,6 +980,7 @@ function Scene({
   bodies: Record<BodyId, BodyMesh>;
   meta: Record<BodyId, BodyMeta>;
   sketches: readonly SketchDrawing[];
+  curves: SketchCurves;
   sketchPlane: SketchFrame | undefined;
   carried: Float32Array | undefined;
   planePicker: PlanePicker | undefined;
@@ -1028,10 +1038,11 @@ function Scene({
   const sketchBounds = useMemo(
     () =>
       sketches.reduce<Bounds | undefined>(
-        (bounds, s) => unionBounds(bounds, sketchBoundsOf(s.data, s.frame)),
+        (bounds, s) =>
+          unionBounds(bounds, sketchBoundsOf(s.data, s.frame, s.active ? undefined : curves)),
         undefined,
       ),
-    [sketches],
+    [sketches, curves],
   );
   useEffect(
     () => viewport.getState().setBounds(unionBounds(bodyBounds, sketchBounds)),
@@ -1150,6 +1161,7 @@ function Scene({
         <Sketches
           store={viewport}
           sketches={sketches}
+          curves={curves}
           colors={sketchColors}
           construction={colors.sketchConstruction}
           showPoints={sketchPoints}
@@ -1551,6 +1563,8 @@ interface ModelScene {
   clip?: readonly SectionClip[] | undefined;
   /** Bodies drawn posed (P6-05 J2): they are not picked while posed. */
   posed?: Readonly<Record<BodyId, Matrix12>> | undefined;
+  /** The shown sketches' polylines (ADR-0156). */
+  curves?: SketchCurves;
 }
 
 /** "Select other…": the stacked items under the pointer, and where the menu opens (client px). */
@@ -1773,6 +1787,7 @@ function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
       })),
     occluding: style !== 'wireframe',
     ...(scene.clip && { clip: scene.clip }),
+    ...(scene.curves && { curves: scene.curves.lines }),
   };
 }
 
@@ -2098,10 +2113,11 @@ const boundsCache = new WeakMap<
 function sketchBoundsOf(
   data: SketchDrawing['data'],
   frame: SketchDrawing['frame'],
+  curves: SketchCurves | undefined,
 ): Bounds | undefined {
   const known = boundsCache.get(data);
   if (known?.frame === frame) return known.bounds;
-  const bounds = sketchSegments(data, frame).bounds;
+  const bounds = sketchSegments(data, frame, undefined, false, undefined, curves?.lines).bounds;
   boundsCache.set(data, { frame, bounds });
   return bounds;
 }

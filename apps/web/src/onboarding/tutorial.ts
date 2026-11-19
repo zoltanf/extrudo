@@ -14,6 +14,7 @@ import {
   FILLET_TYPE,
   readSketch,
   SHELL_TYPE,
+  sketchFacts,
 } from '@extrudo/core';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
@@ -70,10 +71,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     text: ({ mode }) =>
       `${mode === 'sketch' ? '' : reopen}Press **Rectangle**${key('rectangle')}, click one corner, then the opposite one.`,
     target: ({ mode }) => (mode === 'sketch' ? 'rectangle' : undefined),
-    done: ({ doc }) =>
-      sketchesOf(doc).some(
-        (s) => Object.values(s.entities).filter((e) => e.type === 'line').length >= 4,
-      ),
+    done: ({ doc }) => sketchesOf(doc).some((s) => sketchFacts(s).lines >= 4),
   },
   {
     id: 'dimension',
