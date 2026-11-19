@@ -1,0 +1,1 @@
+- 2026-11-19 · **Opening a design**: while a design opens, the notice names the feature being computed and its place in the timeline, and after 3 s counts how long that feature has taken, so a slow one is easy to spot.

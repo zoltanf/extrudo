@@ -72,7 +72,9 @@ keeps a section shows the section icon after its name and, at the right, how man
 ("1 plane", "2 planes") or "box".
 
 While a design opens, the Bodies folder shows the bodies the last session made as faint rows
-and the view says "Preparing your design…". They turn solid when the model has been computed.
+and the view says "Preparing your design…", with the feature being computed and its place in the
+timeline ("Rectangular Pattern1 · 5 of 9"); a feature that takes longer than 3 s gets its seconds
+counted ("· 13 s"). They turn solid when the model has been computed.
 
 ## Working with a body
 

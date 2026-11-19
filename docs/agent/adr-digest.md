@@ -4054,6 +4054,16 @@ throttled to a frame and never survives a result or a failure; the wait notice s
 300 ms, the recompute notice wins over it, and a quiet wait shows neither notice nor cursor; the
 notice keeps `pointer-events: none` and `aria-live="polite"`. e2e:
 `e2e/kernel-waits.spec.ts`.
+**Its amendment (2026-11-19), the opening notice names the running feature:** the bar and
+its line ("Rectangular Pattern1 · 5 of 9") show in `preparing` too once a feature is reported
+(`showsBar`); core's `ModelProgress.since` is when the `Recomputer` first saw that feature (a
+feature reported twice keeps its first time); from `SECONDS_FROM` (3 s) the line adds "· 13 s"
+in both modes. **Rules:** the count is `FeatureSeconds` (`ModelProgress.tsx`), its own timer
+waking once per change (`nextTickIn`) and redrawing only its span, mounted only while the bar
+shows (no timer without a notice); a render reads no clock (the timer stores the time); the
+count is `aria-hidden` so the polite live region never reads a second out; name and position
+are separate spans, the line `max-w-64`, the name `min-w-0 truncate`, position and count never
+shrink. e2e: `e2e/model-progress.spec.ts`'s last test.
 
 ADR-0101 §6.2 (2026-10-24, later): **the trace loop runs on a frame or a timer.** `pathTrace.ts`'s
 `nextFrame` runs the next step on the next animation frame or after `FRAME_FALLBACK_MS` (20 ms),

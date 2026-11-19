@@ -1559,6 +1559,19 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   the cache file in OPFS (`projects/<id>/model-cache.json`, written after the
   recompute, fire and forget) before reloading. Under reduced motion
   `getAnimations({ subtree: true })` on the icon is empty (pass it as a string).
+- **The running feature while a design opens** (the last test, ADR-0105's amendment of
+  2026-11-19): builds its design in the spec from `fixtures/benchmarks/b5-pcb-enclosure.extrudo`
+  (`readArchive`), raising `Rectangular Pattern1` to 12 × 12 (counts `12`, distances
+  `2 * px / 11` / `2 * py / 11`; copy each input and change only `expr`, since a bare
+  `{ kind, expr }` loses its unit and the pattern then fails at once) and renaming it to a
+  60-character name (`renameFeature`); find its position by ID after `applyCommand` (the
+  feature object is a new one). Imports it through Import… and the file chooser. Selectors:
+  `[data-progress-line]`, `[data-progress-feature]` (the name, `truncate`),
+  `[data-feature-seconds]` (" · 13 s", `aria-hidden`), the `progressbar` named "Features
+  computed". The pattern keeps one call busy 13.9 s in Node, so the count (from 3 s) always
+  shows; the test never waits for the model and asserts no time. `notice.ariaSnapshot()` must
+  hold the position and no `\d+ s`. The overflow check is a string `page.evaluate` (no DOM
+  library in e2e/; a string given to `locator.evaluate` is an expression, not a function).
 
 ### `e2e/kernel-waits.spec.ts`
 
