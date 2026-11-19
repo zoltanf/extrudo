@@ -83,7 +83,10 @@ their results on the UI thread, and bounds what the UI thread keeps of detection
    package's memory of frozen sketches) keeps its entries in one budget,
    `MAX_KEPT_PROFILE_BYTES` (64 MB) and `MAX_KEPT_PROFILE_RESULTS` (256), the least
    recently used going first (`KeptResults`); a result let go of is found again
-   when asked. The open sketch's result always stays, outside it. A result is
+   when asked. The open sketch's result always stays, outside it, and is looked
+   up by the sketch's data where it is drawn: the shell's drawings carry no
+   regions of the open sketch, so a drawing that a callback of an old render
+   still holds never holds an old version of them. A result is
    counted by `keptBytes`: 96 bytes a point, 96 an edge, 128 a loop, 256 a region
    and its ID at 2 bytes a character, an upper bound: the heap such results held
    was 12 to 18 % below it in every case measured, without pointer compression.
