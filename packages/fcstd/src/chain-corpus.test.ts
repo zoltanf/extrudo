@@ -87,6 +87,9 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
     const bodies: Record<string, number> = {};
     const parameters: Record<string, number> = {};
     const imports = { finalShapes: 0, chainSteps: 0, bodySteps: 0, all: 0 };
+    const branches: { features: number; chains: number }[] = [];
+    const operands: Record<string, number> = {};
+    const operandFeatures = { held: 0, walked: 0 };
     const references = { found: 0, none: 0, several: 0 };
     const times: number[] = [];
     const lines: string[] = [];
@@ -104,6 +107,11 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
         { maxFeatures: MAX_BODY_FEATURES, maxFile: MAX_FILE_FEATURES },
       );
       if (planned.length > 0) filesWithChains++;
+      const inChains = new Map<string, number>();
+      for (const c of planned)
+        for (const f of c.features) inChains.set(f.name, (inChains.get(f.name) ?? 0) + 1);
+      const shared = [...inChains.values()].filter((n) => n > 1);
+      if (shared.length > 0) branches.push({ features: shared.length, chains: Math.max(...shared) });
       for (const c of planned) {
         bump(lengths, String(c.features.length));
         for (const r of c.rules) bump(rules, r);
@@ -120,6 +128,21 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
       const counts = parameterCounts(report.parameters) as unknown as Record<string, unknown>;
       for (const [k, v] of Object.entries(counts))
         if (typeof v === 'number') bump(parameters, k, v);
+      for (const t of report.trees)
+        for (const n of t.nodes) {
+          if (!n.type.startsWith('PartDesign::') || n.type === 'PartDesign::Body') continue;
+          const held = n.body?.mapped.length ?? 0;
+          bump(
+            operands,
+            n.outcome === 'body'
+              ? (n.body?.steps.length ?? 0) > 0
+                ? 'with steps'
+                : 'whole history'
+              : `leaf: ${n.reason}`,
+          );
+          operandFeatures.held += held;
+          operandFeatures.walked += n.body?.features ?? 0;
+        }
       for (const b of report.bodies) {
         if (!b.loose) {
           bump(bodies, b.outcome === 'history' ? 'history' : b.outcome);
@@ -138,7 +161,10 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
           references.none += m.references?.none ?? 0;
           references.several += m.references?.several ?? 0;
         }
-        for (const s of b.sketches) bump(planes, s.plane ?? 'none');
+        for (const s of b.sketches) {
+          const grammar = doc.byName.get(s.sketch)?.properties.MapMode ? '0.17+' : 'before 0.17';
+          bump(planes, `${grammar}: ${s.plane ?? 'none'}`);
+        }
         if (kind === 'as today') bump(today, b.stop?.reason ?? 'none');
         if (!whole)
           lines.push(
@@ -165,12 +191,15 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
       rules,
       conflicts,
       foreign,
+      branches,
       features,
       steps,
       planes,
       references,
       parameters,
       imports,
+      operands,
+      operandFeatures,
       bodies,
       timeMs: {
         median: Math.round(sorted[Math.floor(sorted.length / 2)] ?? 0),
