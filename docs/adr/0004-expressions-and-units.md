@@ -219,3 +219,13 @@ uses that walk and still goes through the features once, in timeline order. `eva
 only when a range uses a parameter. With 20,000 parameters a question took 8 to 11 seconds and
 now takes about 10 ms; listing 1,000 exposed parameters took 24 s and now takes about 10 ms
 with plain-number slider ranges, and 9 s and now about 90 ms with ranges that use a parameter.
+
+**Correction (2026-11-19):** decision 6 says the incremental recompute (P2-01) uses
+`dependents` and `featuresAffectedBy` to mark features dirty. It calls neither: the recompute
+engine (ADR-0024) keys each feature's cached result by its inputs and the values of its
+expressions, so an edit re-evaluates what changed. Both stay part of `@extrudo/core`'s API;
+`featuresAffectedBy` has no caller in the app, and since this date neither has `dependents`:
+`evaluateRange` walks up from the names a range uses, through what each uses, and stops at the
+parameter, so it costs what the range depends on rather than all that depends on the
+parameter. Its answers are the same as before, message and position included. Listing 1,000
+exposed parameters on a chain, with ranges that use a parameter, took 88 ms and takes 8 ms.

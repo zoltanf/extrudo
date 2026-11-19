@@ -1,0 +1,1 @@
+- 2026-11-19 · **Parameters dialog**: opens and redraws quickly in designs with thousands of model parameters, also when most of them follow a user parameter.
