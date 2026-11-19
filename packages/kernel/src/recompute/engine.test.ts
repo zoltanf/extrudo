@@ -379,7 +379,7 @@ describe('cancellation', () => {
     const doc = chainDocument(10);
     const progress: FeatureId[] = [];
     const older = engine.recompute({ doc }, (id) => {
-      progress.push(id);
+      if (id) progress.push(id);
       // The user edits while f3 is being computed; the request comes in at the next yield.
       if (id === 'f3') {
         queueMicrotask(() => {

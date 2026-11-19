@@ -290,6 +290,14 @@ export interface PreviewToolMesh {
   style: PreviewToolStyle;
 }
 
+/**
+ * The error a feature the person stopped while the design opened carries
+ * (ADR-0155): on its timeline chip, in the browser and in the notification
+ * history, in the user's words.
+ */
+export const STOPPED_MESSAGE =
+  'Stopped: this feature took too long while the design opened. Try again to build it.';
+
 export interface RecomputeRequest {
   doc: ExtrudoDocument;
   /**
@@ -299,6 +307,11 @@ export interface RecomputeRequest {
   have?: Readonly<Record<BodyId, string>>;
   /** Features that crashed the kernel before: they are reported as errors, not evaluated again. */
   crashed?: readonly FeatureId[];
+  /**
+   * Features the person stopped while the design opened (ADR-0155): reported as
+   * errors with `STOPPED_MESSAGE`, not evaluated, until the app forgets them.
+   */
+  stopped?: readonly FeatureId[];
   tessellation?: MeshOptions;
 }
 
@@ -370,5 +383,10 @@ export type RecomputeResult =
   /** A newer request came in; this one stopped between two features. */
   | { status: 'cancelled' };
 
-/** Called with each feature just before it is evaluated (not for cache hits). */
-export type ProgressListener = (feature: FeatureId) => void;
+/**
+ * Called with each feature just before it is evaluated (not for cache hits),
+ * and once with `undefined` when the walk is past its features (the joint and
+ * annotation passes, the meshes): from then on no feature is running, so none
+ * can be stopped (ADR-0155).
+ */
+export type ProgressListener = (feature: FeatureId | undefined) => void;

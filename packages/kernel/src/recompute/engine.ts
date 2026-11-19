@@ -94,7 +94,9 @@ import {
   type ProgressListener,
   type RecomputeRequest,
   type RecomputeResult,
+  STOPPED_MESSAGE,
 } from './types';
+
 
 export const DEFAULT_TESSELLATION: MeshOptions = { linearDeflection: 0.05, angularDeflection: 0.3 };
 
@@ -697,6 +699,7 @@ export class RecomputeEngine {
     const cancelled = () => this.#generation[channel] !== generation;
     const parameters = evaluateParameters(doc);
     const crashed = new Set(request.crashed ?? []);
+    const stopped = new Set(request.stopped ?? []);
     // Where each feature stands in the timeline: a stored one at its index, a
     // feature a script made (P5-02) at a fraction past its script's.
     const index = new Map<FeatureId, number>(doc.features.map((f, i) => [f.id, i]));
@@ -744,6 +747,10 @@ export class RecomputeEngine {
         features[feature.id] = { status: 'error', message };
         passed.set(feature.id, { state: 'failed' });
       };
+      if (stopped.has(feature.id) && !script) {
+        fail(STOPPED_MESSAGE);
+        continue;
+      }
       if (crashed.has(feature.id) && !script) {
         fail('The kernel stopped while computing this feature. Change it to try again.');
         continue;
@@ -923,6 +930,8 @@ export class RecomputeEngine {
     }
 
     if (cancelled()) return { status: 'cancelled' };
+    // No feature runs from here on (ADR-0155: nothing left to stop).
+    onFeature?.(undefined);
     for (const [id, run] of scriptRuns) features[id] = scriptStatus(run, features);
     this.#pinned[channel] = new Set(used);
     let joints: Record<JointId, JointReport> | undefined;

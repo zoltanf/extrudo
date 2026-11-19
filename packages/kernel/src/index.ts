@@ -226,6 +226,7 @@ export type {
   RecomputeResult,
   RecomputeStats,
 } from './recompute/types';
+export { STOPPED_MESSAGE } from './recompute/types';
 export {
   type KernelWaits,
   type Preview,
