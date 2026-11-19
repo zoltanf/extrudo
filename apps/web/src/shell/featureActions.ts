@@ -79,6 +79,10 @@ export interface FeatureActions {
   keepClosest(id: FeatureId): void;
   /** Picks another plane or flat face for a sketch (ADR-0031 open item). */
   redefinePlane(id: FeatureId): void;
+  /** Whether the feature was stopped while the design opened (ADR-0155): the menu offers Try again. */
+  stopped?(id: FeatureId): boolean;
+  /** Try again (ADR-0155): computes a stopped feature, with no limit. */
+  retry?(id: FeatureId): void;
 }
 
 export interface FeatureDialogActions {
@@ -95,6 +99,10 @@ export interface FeatureDialogActions {
   fixFeature?(id: FeatureId, issues: readonly ReferenceIssue[]): boolean;
   /** Starts picking a new plane or face for a sketch (P2-11). */
   redefinePlane?(id: FeatureId): void;
+  /** Whether the kernel holds the feature as stopped (ADR-0155). */
+  isStopped?(id: FeatureId): boolean;
+  /** Computes a stopped feature again (ADR-0155). */
+  retryStopped?(id: FeatureId): void;
 }
 
 export function createFeatureActions(
@@ -129,6 +137,8 @@ export function createFeatureActions(
   };
 
   return {
+    stopped: (id) => dialogs.isStopped?.(id) ?? false,
+    retry: (id) => dialogs.retryStopped?.(id),
     edit(id) {
       const f = feature(id);
       if (!f) return false;

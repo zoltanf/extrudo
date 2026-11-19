@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Pencil,
   RefreshCcwDot,
+  RotateCw,
   SquareDashedMousePointer,
   TextCursorInput,
   Trash2,
@@ -29,6 +30,7 @@ import type { GroupRun } from './timelineGroups';
  * A feature's right-click menu in the timeline and the browser (FR-TL-03):
  * edit sketch or feature, Redefine Plane for a sketch, Fix References and
  * Keep Closest Match when the kernel lost or guessed a reference (FR-TL-05),
+ * Try Again for a feature stopped while the design opened (ADR-0155),
  * rename, show/hide (only for the feature types hiding changes what is
  * drawn, `featureVisibility`), suppress, export a sketch (P1-13), roll the
  * marker to it, move it to the end (P2-11), delete. With two or more chips
@@ -57,7 +59,9 @@ export function FeatureMenuItems({
   const sketch = readSketch(feature) !== undefined;
   const issues = actions.issues(feature.id);
   const guessed = issues.some((i) => i.state === 'guessed' && i.now);
-  const edits = editable || sketch || issues.length > 0;
+  // Stopped while the design opened (ADR-0155): Try again builds it.
+  const stopped = actions.stopped?.(feature.id) ?? false;
+  const edits = editable || sketch || issues.length > 0 || stopped;
   return (
     <>
       {group && (
@@ -83,6 +87,11 @@ export function FeatureMenuItems({
           onSelect={() => actions.redefinePlane(feature.id)}
         >
           Redefine Plane…
+        </MenuItem>
+      )}
+      {stopped && (
+        <MenuItem icon={<RotateCw size={14} />} onSelect={() => actions.retry?.(feature.id)}>
+          Try Again
         </MenuItem>
       )}
       {issues.length > 0 && (
