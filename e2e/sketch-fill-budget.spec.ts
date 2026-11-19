@@ -66,9 +66,7 @@ const apart = (a: readonly number[], b: readonly number[]) =>
 test('a sketch past the fill budget draws its curves, says so, and its region still picks', async ({
   page,
 }, info) => {
-  await page.addInitScript(() => {
-    window.__extrudoFillBudget = 6;
-  });
+  await page.addInitScript('window.__extrudoFillBudget = 6');
   const doc = createDocument({ name: 'Two rectangles' });
   doc.features.push(
     sketch('a', 'Sketch1', rectangle(-60, -20, -20, 20)),
