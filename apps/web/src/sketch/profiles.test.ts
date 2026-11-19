@@ -4,15 +4,18 @@
  * none, and says so, instead of freezing the tab; without those curves its
  * profiles are back.
  */
+import { readFileSync } from 'node:fs';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import {
   keptBytes,
   keptTotals,
   setKeptLimits,
+  stringBytes,
   TOO_LARGE_COORDINATES,
   TOO_MANY_CROSSINGS,
   TOO_MANY_CURVES,
 } from '@extrudo/sketch/profiles';
+import { loadFont } from '@extrudo/sketch/text';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   closeOpenSketch,
@@ -22,6 +25,8 @@ import {
   sketchProfiles,
   sketchProfilesProblem,
 } from './profiles';
+
+const FONTS_DIR = new URL('../../../../packages/fonts/fonts/', import.meta.url);
 
 function sketch(crossing: boolean) {
   const b = new SketchBuilder();
@@ -116,6 +121,29 @@ describe('what the UI thread keeps of detection', () => {
     expect(regionCentroid(data, id, 0)).toBe(centre);
     // The centres keep far less than the profiles would.
     expect(keptTotals().bytes - before).toBeLessThan(full / 4);
+  });
+
+  it("counts the slots of a text's ink centres, one list for the text", () => {
+    loadFont('inter-regular@1', readFileSync(new URL('inter-regular.ttf', FONTS_DIR)));
+    const b = new SketchBuilder();
+    const anchor = b.point(0, 0);
+    const top = b.point(0, 10);
+    b.entities.text = {
+      type: 'text',
+      anchor,
+      top,
+      text: 'I'.repeat(400),
+      font: 'inter-regular@1',
+      align: 'left',
+      construction: false,
+    } as never;
+    const before = keptTotals().bytes;
+    const centres = inkCentroids(b.sketch, 'text', 0);
+    expect(centres).toHaveLength(400);
+    const kept = keptTotals().bytes - before;
+    // Each centre with its ID, and once more as a slot of the text's list.
+    const ids = sketchProfiles(b.sketch, 0).reduce((n, p) => n + stringBytes(p.id) + 96, 0);
+    expect(kept).toBe(128 + ids + stringBytes('text') + 64 + 8 * 400);
   });
 
   it('gives no ink centres for a sketch without text', () => {

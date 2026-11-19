@@ -189,7 +189,10 @@ function marksOf(profiles: readonly Profile[], version: number, text: boolean): 
   for (const p of profiles) {
     const c = profileCentroid(p);
     centroids.set(p.id, c);
-    if (p.text) ink.set(p.text, [...(ink.get(p.text) ?? []), c]);
+    if (!p.text) continue;
+    const list = ink.get(p.text);
+    if (list) list.push(c);
+    else ink.set(p.text, [c]);
   }
   return { version, text, centroids, ink };
 }
@@ -203,7 +206,8 @@ function marks(data: SketchData, version: number): Marks {
   const found = marksOf(entry.profiles, version, entry.text);
   let bytes = 128;
   for (const id of found.centroids.keys()) bytes += stringBytes(id) + 96;
-  for (const id of found.ink.keys()) bytes += stringBytes(id) + 64;
+  // A text's list: its ID, the list and a slot for each centre (the centres are counted above).
+  for (const [id, list] of found.ink) bytes += stringBytes(id) + 64 + 8 * list.length;
   marksCache.set(data, found, bytes);
   return found;
 }
