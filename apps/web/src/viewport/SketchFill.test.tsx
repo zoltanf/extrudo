@@ -5,7 +5,7 @@ import { renderHook } from '@testing-library/react';
 import { type Mesh, MeshBasicMaterial, Vector3 } from 'three';
 import { Earcut } from 'three/src/extras/Earcut.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MAX_FILL_GROUPS, sketchesPastFillBudget } from './profileFills';
+import { fillFailed, MAX_FILL_GROUPS, profileFill } from './profileFills';
 import { useSketchFill } from './SketchFill';
 
 const rectangle = (w: number): SketchData =>
@@ -166,7 +166,16 @@ describe('useSketchFill', () => {
     ] as unknown as Profile[];
     const view = renderHook(() => useSketchFill(broken, xy, undefined, [], materials));
     expect(view.result.current).toBeUndefined();
-    const past = sketchesPastFillBudget([{ id: 'a', active: false, profiles: broken }]);
-    expect([...past]).toEqual(['a']);
+    expect(fillFailed(broken)).toBe(true);
+  });
+
+  it('draws a fill built elsewhere, as the profile worker builds it, without building', () => {
+    const profiles = detectProfiles(rectangle(10));
+    const ready = profileFill(profiles);
+    const build = vi.spyOn(Earcut, 'triangulate');
+    const view = renderHook(() => useSketchFill(ready, xy, undefined, [], materials));
+    expect(build).not.toHaveBeenCalled();
+    const mesh = view.result.current as Mesh;
+    expect(mesh.geometry.getAttribute('position').array).toBe(ready.positions);
   });
 });

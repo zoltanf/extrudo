@@ -69,6 +69,7 @@ import {
 } from '../selection/pick';
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
+import { holeCount } from '../sketch/flatRegions';
 import { tangentGrips } from '../sketch/splineEnds';
 import { type PlanePointer, type SketchBox, SNAP_PIXELS } from '../sketch/tools/host';
 import { applyView } from './applyView';
@@ -684,6 +685,7 @@ export function Viewport({
       data-camera-projection={projection}
       data-sketch-status={sketchStatusSummary(sketches)}
       data-sketch-profiles={sketchProfilesSummary(sketches)}
+      data-sketch-fills={sketchFillsSummary(sketches)}
       data-tangent-grips={tangentGripsSummary(sketches)}
       data-sketches={sketches.map((s) => s.id).join(' ')}
       data-sketch-frames={sketchFramesSummary(sketches)}
@@ -1766,7 +1768,7 @@ function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
         id: s.id as FeatureId,
         frame: s.frame,
         data: s.data,
-        ...(s.profiles && { profiles: s.profiles }),
+        ...(s.regions && { regions: s.regions }),
       })),
     occluding: style !== 'wireframe',
     ...(scene.clip && { clip: scene.clip }),
@@ -2083,11 +2085,25 @@ function tangentGripsSummary(sketches: readonly SketchDrawing[]): string | undef
     .join(' ');
 }
 
+/**
+ * "shaded=3 unshaded=1 waiting=2" while profiles show (e2e tests read it): sketches with a
+ * fill, without one, and still waiting for the profile worker (ADR-0154).
+ */
+function sketchFillsSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const shown = sketches.filter((s) => s.selectedProfiles !== undefined);
+  if (shown.length === 0) return undefined;
+  const shaded = shown.filter((s) => !s.unshaded && (s.fill || s.openProfiles)).length;
+  const unshaded = shown.filter((s) => s.unshaded).length;
+  const waiting = shown.filter(
+    (s) => !s.unshaded && !s.fill && !s.openProfiles && !s.regions,
+  ).length;
+  return `shaded=${shaded} unshaded=${unshaded} waiting=${waiting}`;
+}
+
 function sketchProfilesSummary(sketches: readonly SketchDrawing[]): string | undefined {
-  const profiles = sketches.find((s) => s.active)?.profiles;
-  if (!profiles) return undefined;
-  const holes = profiles.reduce((n, p) => n + p.holes.length, 0);
-  return `profiles=${profiles.length} holes=${holes}`;
+  const regions = sketches.find((s) => s.active)?.regions;
+  if (!regions) return undefined;
+  return `profiles=${regions.ids.length} holes=${holeCount(regions)}`;
 }
 
 function sketchStatusSummary(sketches: readonly SketchDrawing[]): string | undefined {

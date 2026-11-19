@@ -32,11 +32,11 @@ import {
 } from '@extrudo/core';
 import { type BodyMesh, EDGE_MESH, EDGE_SEAM } from '@extrudo/kernel';
 import { pickEntity } from '@extrudo/sketch/inference';
-import { type Profile, profileAt } from '@extrudo/sketch/profiles';
 import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { whenIdle } from '../idle';
 import { clipDistance, isClipped, isClippedAny, type SectionClip } from '../section/clip';
+import { type FlatRegions, regionAt, regionOutline } from '../sketch/flatRegions';
 import {
   basis,
   cameraPosition,
@@ -77,8 +77,8 @@ export interface PickSketch {
   id: FeatureId;
   frame: SketchFrame;
   data: SketchData;
-  /** Shaded profiles; none while "Show profiles" is off. */
-  profiles?: readonly Profile[];
+  /** Its regions, flat (ADR-0154); none while "Show profiles" is off or they aren't there yet. */
+  regions?: FlatRegions;
 }
 
 /** A drawn origin axis (P2-07): picked like an edge, as `{ kind: 'axis', id }`. */
@@ -588,26 +588,28 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
         });
       }
     }
-    if (filter.profiles && sketch.profiles) {
-      const profile = profileAt(sketch.profiles, point);
-      if (profile) {
-        profiles.push({
-          item: { kind: 'profile', id: profileRefId(sketch.id, profile.id) },
+    const found = filter.profiles && sketch.regions ? regionAt(sketch.regions, point) : undefined;
+    if (sketch.regions && found !== undefined) {
+      const profile = {
+        id: sketch.regions.ids[found] as string,
+        text: sketch.regions.texts[found] as SketchEntityId | '',
+      };
+      profiles.push({
+        item: { kind: 'profile', id: profileRefId(sketch.id, profile.id) },
+        px: 0,
+        depth,
+        at,
+      });
+      // Ink belongs to a text (P4-03, ADR-0058 §5): a click takes the whole
+      // text, and "Select other…" still offers the single letter.
+      if (profile.text && !taken.has(profile.text)) {
+        taken.add(profile.text);
+        texts.push({
+          item: { kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, profile.text) },
           px: 0,
           depth,
           at,
         });
-        // Ink belongs to a text (P4-03, ADR-0058 §5): a click takes the whole
-        // text, and "Select other…" still offers the single letter.
-        if (profile.text && !taken.has(profile.text)) {
-          taken.add(profile.text);
-          texts.push({
-            item: { kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, profile.text) },
-            px: 0,
-            depth,
-            at,
-          });
-        }
       }
     }
   }
@@ -1047,8 +1049,13 @@ export function pickBox(
       const out: SelectionItem[] = [];
       const texts = new Set<string>();
       for (const sketch of scene.sketches) {
-        for (const profile of sketch.profiles ?? []) {
-          const outline = profile.outer.polygon.map((q) =>
+        const regions = sketch.regions;
+        for (let i = 0; regions && i < regions.ids.length; i++) {
+          const profile = {
+            id: regions.ids[i] as string,
+            text: regions.texts[i] as SketchEntityId | '',
+          };
+          const outline = regionOutline(regions, i).map((q) =>
             project(...sketchToWorld(sketch.frame, q)),
           );
           if (!polylineIn([...outline, outline[0]], r, mode)) continue;

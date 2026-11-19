@@ -176,6 +176,14 @@ export function putAttachmentBytes(id: AttachmentId, data: Uint8Array): void {
 /** The fonts loaded on the UI thread. */
 const loaded = new Set<string>();
 
+/** Their bytes, for the profile worker (ADR-0154), which shapes text with the same fonts. */
+const loadedBytes = new Map<string, ArrayBuffer>();
+
+/** The fonts loaded on the UI thread and their bytes. */
+export function uiFontBytes(): ReadonlyMap<string, ArrayBuffer> {
+  return loadedBytes;
+}
+
 /** Whether the UI thread can draw with this font. */
 export function hasUiFont(id: string): boolean {
   return loaded.has(id);
@@ -211,6 +219,7 @@ export async function ensureUiFonts(ids: Iterable<string>): Promise<void> {
     try {
       text.loadFont(id, data);
       loaded.add(id);
+      loadedBytes.set(id, data);
       added = true;
     } catch (error) {
       console.warn(`[fonts] ${id} didn't load:`, error);

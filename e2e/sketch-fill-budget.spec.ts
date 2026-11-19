@@ -10,10 +10,9 @@ import {
 import { writeArchive } from '../packages/storage/src/archive';
 import { kernelReady, projector } from './helpers';
 
-// A design's sketch fills share a budget (ADR-0020's amendment of 2026-11-19). The real one
-// takes millions of vertices, so the test sets a small one through `__extrudoFillBudget`: a
-// rectangle's fill takes 6 vertices, so two rectangles under a budget of 6 leave the second
-// with its curves only.
+// A design's regions share a memory budget (ADR-0154). The real one is 256 MB, so the tests
+// set a small one through `__extrudoRegionBudget`: a rectangle keeps 304 bytes, 200 of regions
+// for picking and 104 of fill.
 
 /** A rectangle's corners and lines. */
 function rectangle(x0: number, y0: number, x1: number, y1: number): SketchData {
@@ -63,33 +62,39 @@ async function meanColor(page: Page, at: { x: number; y: number }, size = 14) {
 const apart = (a: readonly number[], b: readonly number[]) =>
   Math.max(...a.map((c, i) => Math.abs(c - (b[i] ?? 0))));
 
-test('a sketch past the fill budget draws its curves, says so, and its region still picks', async ({
-  page,
-}, info) => {
-  await page.addInitScript('window.__extrudoFillBudget = 6');
+/** Opens a design of two rectangles under a budget of `bytes` (a rectangle keeps 304 bytes: 200 of regions, 104 of fill). */
+async function openTwoRectangles(page: Page, bytes: number, path: string) {
+  await page.addInitScript(`window.__extrudoRegionBudget = ${bytes}`);
   const doc = createDocument({ name: 'Two rectangles' });
   doc.features.push(
     sketch('a', 'Sketch1', rectangle(-60, -20, -20, 20)),
     sketch('b', 'Sketch2', rectangle(20, -20, 60, 20)),
   );
   doc.timelineMarker = doc.features.length;
-  const file = info.outputPath('two-rectangles.extrudo');
-  writeFileSync(file, writeArchive(doc));
+  writeFileSync(path, writeArchive(doc));
   await page.goto('./');
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     page.getByRole('button', { name: 'Import…', exact: true }).click(),
   ]);
-  await chooser.setFiles(file);
+  await chooser.setFiles(path);
   await kernelReady(page);
   const viewport = page.getByRole('region', { name: 'Viewport' });
   await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await expect(viewport).toHaveAttribute('data-sketch-fills', /waiting=0$/);
+  return viewport;
+}
+
+test('a sketch past the budget draws its curves, says so, and its region still picks', async ({
+  page,
+}, info) => {
+  const viewport = await openTwoRectangles(page, 504, info.outputPath('two-rectangles.extrudo'));
 
   // The status bar says so, in words.
   const note = page.getByRole('status', { name: 'Sketches not shaded' });
   await expect(note).toHaveText('· 1 sketch not shaded');
   await expect(note).toHaveAttribute('data-unshaded-sketches', '1');
-
+  await expect(note).toHaveAttribute('data-unpickable-sketches', '0');
   // Sketch1 is shaded; inside Sketch2 the view shows what lies around it, and its curves show.
   await page.mouse.move(5, 5);
   const at = await projector(viewport);
@@ -122,4 +127,32 @@ test('a sketch past the fill budget draws its curves, says so, and its region st
   await expect
     .poll(async () => apart(await meanColor(page, at([40, 8, 0])), around))
     .toBeGreaterThan(4);
+});
+
+test("a sketch whose regions don't fit the budget can't be picked in the model, and says so", async ({
+  page,
+}, info) => {
+  const viewport = await openTwoRectangles(page, 450, info.outputPath('two-rectangles.extrudo'));
+  const note = page.getByRole('status', { name: 'Sketches not shaded' });
+  await expect(note).toHaveText("· 1 sketch not shaded, 1 can't be picked");
+  await expect(note).toHaveAttribute('data-unpickable-sketches', '1');
+
+  // A click inside Sketch2 picks no profile there; inside Sketch1 it does.
+  await page.mouse.move(5, 5);
+  const at = await projector(viewport);
+  await page.mouse.click(at([40, 8, 0]).x, at([40, 8, 0]).y);
+  await expect(page.getByRole('status', { name: 'Selection' })).toHaveCount(0);
+  await page.mouse.click(at([-40, 8, 0]).x, at([-40, 8, 0]).y);
+  await expect(page.getByRole('status', { name: 'Selection' })).toHaveText('1 profile ·');
+  await page.keyboard.press('Escape');
+
+  // Hidden, Sketch1 leaves the budget to Sketch2, which picks and shades again.
+  await page
+    .getByRole('complementary', { name: 'Browser' })
+    .getByRole('button', { name: 'Hide Sketch1' })
+    .click();
+  await expect(note).toBeHidden();
+  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=1 unshaded=0 waiting=0');
+  await page.mouse.click(at([40, 8, 0]).x, at([40, 8, 0]).y);
+  await expect(page.getByRole('status', { name: 'Selection' })).toHaveText('1 profile ·');
 });

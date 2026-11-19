@@ -10,6 +10,7 @@ import {
 import { translation } from '@extrudo/kernel/matrix';
 import { detectProfiles, profileAt } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
+import { flattenRegions } from '../sketch/flatRegions';
 import { textProfiles, textSketch } from '../sketch/textTesting';
 import { pickableBodies } from '../viewport/posedBodies';
 import { DEFAULT_FILTER, type SelectionFilter } from './filter';
@@ -156,7 +157,7 @@ describe('sketches in model mode', () => {
   const data: SketchData = { ...emptySketchData(), entities: entities as SketchData['entities'] };
   const sketchScene: PickScene = {
     ...scene,
-    sketches: [{ id: S, frame, data, profiles: detectProfiles(data) }],
+    sketches: [{ id: S, frame, data, regions: flattenRegions(detectProfiles(data)) }],
   };
   const top = cameraFrom([0, 0, 1], { target: [5, 5, 5], size: 100 });
 
@@ -191,7 +192,7 @@ describe('a text in model mode (P4-03)', () => {
   const ink = textProfiles(data).filter((p) => p.text);
   const textScene: PickScene = {
     bodies: [],
-    sketches: [{ id: T, frame, data, profiles: textProfiles(data) }],
+    sketches: [{ id: T, frame, data, regions: flattenRegions(textProfiles(data)) }],
     occluding: false,
   };
   const top = cameraFrom([0, 0, 1], { target: [5, 5, 0], size: 60 });
