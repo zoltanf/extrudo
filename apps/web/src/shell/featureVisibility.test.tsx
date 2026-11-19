@@ -63,6 +63,30 @@ const html = (feature: Feature) =>
     <FeatureMenuItems feature={feature} editable={false} actions={actions} onRename={() => {}} />,
   );
 
+describe('Try Again on a stopped feature (ADR-0155)', () => {
+  it('is offered while the feature is stopped and runs the retry', () => {
+    const feature = {
+      id: 'f1' as FeatureId,
+      type: 'rectangularPattern',
+      name: 'Pattern1',
+      suppressed: false,
+      inputs: {},
+    } as Feature;
+    expect(html(feature)).not.toContain('Try Again');
+    const retry = vi.fn();
+    const stopped = renderToStaticMarkup(
+      <FeatureMenuItems
+        feature={feature}
+        editable={false}
+        actions={{ ...actions, stopped: (id) => id === feature.id, retry }}
+        onRename={() => {}}
+      />,
+    );
+    expect(stopped).toContain('Try Again');
+    expect(stopped.indexOf('Try Again')).toBeLessThan(stopped.indexOf('Rename'));
+  });
+});
+
 describe('feature visibility', () => {
   it('covers exactly the types whose drawn geometry `visible` changes', () => {
     expect(VISIBILITY_FEATURE_TYPES).toContain('sketch');

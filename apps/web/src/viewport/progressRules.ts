@@ -30,6 +30,12 @@ export interface ProgressInput {
   status: 'idle' | 'computing' | 'ready' | 'failed';
   /** A recompute has finished since the project page opened. */
   finished: boolean;
+  /**
+   * The running recompute belongs to opening the design though one has
+   * finished: Try again or Stop started it (ADR-0155). It shows as while the
+   * design opened, at once and with Stop.
+   */
+  opening?: boolean;
   /** How long the running recompute has lasted (ms). */
   elapsed: number;
   /** The oldest non-quiet wait, or undefined when none is running. */
@@ -44,11 +50,12 @@ export interface ProgressInput {
 export function progressMode({
   status,
   finished,
+  opening = false,
   elapsed,
   wait,
 }: ProgressInput): ProgressMode | undefined {
   const recomputing = status === 'idle' || status === 'computing';
-  if (recomputing && !finished) return 'preparing';
+  if (recomputing && (!finished || opening)) return 'preparing';
   if (recomputing && elapsed > UPDATING_AFTER_MS) return 'updating';
   if (wait && wait.elapsed > WAITING_AFTER_MS) return 'waiting';
   return undefined;
@@ -68,6 +75,16 @@ export function activeFeatureCount(
  */
 export function showsCancel(mode: ProgressMode, canRevert: () => boolean): boolean {
   return mode === 'updating' && canRevert();
+}
+
+/**
+ * Whether the notice offers Stop (ADR-0155): only while the design opens (or a
+ * Try again runs, which shows the same way), and only while the kernel is on
+ * a feature it can stop. Cancel (ADR-0111) is for `updating` alone, so the two
+ * never show together.
+ */
+export function showsStop(mode: ProgressMode, stoppable: boolean): boolean {
+  return mode === 'preparing' && stoppable;
 }
 
 export function progressTitle(mode: ProgressMode, wait?: WaitInput): string {

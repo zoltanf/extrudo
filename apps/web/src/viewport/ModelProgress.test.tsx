@@ -7,7 +7,8 @@ import {
   createModelStore,
   type FeatureId,
 } from '@extrudo/core';
-import { act, cleanup, render } from '@testing-library/react';
+import type { StopState } from '@extrudo/kernel';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureSeconds, ModelProgress } from './ModelProgress';
@@ -134,5 +135,107 @@ describe('ModelProgress while a design opens', () => {
     act(() => model.getState().computed({ features: {}, bodies: {} }));
     act(() => vi.advanceTimersByTime(5000));
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('Stop while a design opens (ADR-0155)', () => {
+  /** A stop store the test moves by hand, like the Recomputer's. */
+  function stops(initial: Partial<StopState> = {}) {
+    let state: StopState = {
+      stopped: [],
+      opening: true,
+      stoppable: false,
+      stopping: false,
+      ...initial,
+    };
+    const listeners = new Set<() => void>();
+    return {
+      get: () => state,
+      subscribe: (l: () => void) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+      set(next: Partial<StopState>) {
+        state = { ...state, ...next };
+        for (const l of listeners) l();
+      },
+    };
+  }
+
+  function setup(options: { canCancel?: boolean } = {}) {
+    const id = 'f1' as FeatureId;
+    const store = createDocumentStore({
+      ...createDocument({ name: 'Notice' }),
+      features: [{ id, type: 'box', name: 'Pattern1', suppressed: false, inputs: {} }],
+      timelineMarker: 1,
+    });
+    const model = createModelStore();
+    model.getState().computing();
+    const s = stops();
+    const run = vi.fn();
+    const view = render(
+      <>
+        <button type="button" data-timeline-item="chip" data-feature-id={id}>
+          Pattern1
+        </button>
+        <ModelProgress
+          model={model}
+          store={store}
+          collapsed={false}
+          stop={{ stops: s, run }}
+          cancel={{ can: () => options.canCancel ?? false, run: vi.fn() }}
+        />
+      </>,
+    );
+    return { ...view, model, id, s, run, store };
+  }
+  const stopButton = () => screen.queryByRole('button', { name: /^Stop/ });
+
+  it('offers Stop, named for screen readers, only while a feature can be stopped', () => {
+    const { model, id, s, run } = setup();
+    act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: Date.now() }));
+    expect(stopButton()).toBeNull();
+    act(() => s.set({ stoppable: true }));
+    const button = stopButton();
+    expect(button?.getAttribute('aria-label')).toBe(
+      'Stop: open the design without this feature for now',
+    );
+    expect(button?.textContent).toBe('Stop');
+    // The notice ignores the pointer; the button alone takes it, and the keyboard reaches it.
+    expect(button?.className).toContain('pointer-events-auto');
+    expect(button?.tabIndex).toBe(0);
+    act(() => button?.click());
+    expect(run).toHaveBeenCalledTimes(1);
+    act(() => s.set({ stoppable: false, stopping: true }));
+    expect(stopButton()).toBeNull();
+  });
+
+  it('never shows Stop and Cancel together: after the first result it is Cancel alone', () => {
+    const { model, id, s, store } = setup({ canCancel: true });
+    act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: Date.now() }));
+    act(() => s.set({ stoppable: true }));
+    expect(stopButton()).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /^Cancel/ })).toBeNull();
+    // A result, then an edit's long update: not opening any more.
+    act(() => model.getState().computed({ features: {}, bodies: {}, doc: store.getState().doc }));
+    act(() => s.set({ opening: false, stoppable: false }));
+    act(() => model.getState().computing());
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.queryByRole('button', { name: /^Cancel/ })).not.toBeNull();
+    expect(stopButton()).toBeNull();
+    // A Try again shows as at open: Stop, no Cancel.
+    act(() => s.set({ opening: true, stoppable: true }));
+    expect(stopButton()).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /^Cancel/ })).toBeNull();
+  });
+
+  it('hands the focus to the stopped feature’s chip when the button goes', () => {
+    const { model, id, s } = setup();
+    act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: Date.now() }));
+    act(() => s.set({ stoppable: true }));
+    stopButton()?.focus();
+    expect(document.activeElement).toBe(stopButton());
+    act(() => s.set({ stoppable: false, stopping: true }));
+    expect(document.activeElement?.getAttribute('data-feature-id')).toBe(id);
   });
 });

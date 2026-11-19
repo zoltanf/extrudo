@@ -1,6 +1,6 @@
 import type { DocumentStore, ModelStore } from '@extrudo/core';
-import type { KernelWaits, Wait } from '@extrudo/kernel';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import type { KernelStops, KernelWaits, StopState, Wait } from '@extrudo/kernel';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useStore } from 'zustand';
 import { Button } from '../design-system/Button';
 import {
@@ -13,12 +13,14 @@ import {
   progressTitle,
   showsBar,
   showsCancel,
+  showsStop,
   UPDATING_AFTER_MS,
   WAITING_AFTER_MS,
   type WaitInput,
 } from './progressRules';
 
 const NO_WAITS: readonly Wait[] = [];
+const NO_STOPS: StopState = { stopped: [], opening: false, stoppable: false, stopping: false };
 
 /**
  * A recompute has finished since the model store was last reset (ADR-0078).
@@ -38,6 +40,19 @@ export function useKernelWaits(waits: KernelWaits | undefined): readonly Wait[] 
     waits?.get ?? noWaits,
     waits?.get ?? noWaits,
   );
+}
+
+/** Stop's state (ADR-0155), as an external store like the waits. */
+export function useKernelStops(stops: KernelStops | undefined): StopState {
+  return useSyncExternalStore(
+    stops?.subscribe ?? noSubscribe,
+    stops?.get ?? noStops,
+    stops?.get ?? noStops,
+  );
+}
+
+function noStops(): StopState {
+  return NO_STOPS;
 }
 
 function noSubscribe(): () => void {
@@ -101,6 +116,52 @@ export function FeatureSeconds({ since }: { since: number }) {
 }
 
 /**
+ * Where the keyboard goes when the Stop button leaves while it has the focus
+ * (ADR-0155): the stopped feature's timeline chip, whose menu has Try again,
+ * else the timeline marker. Without it the focus would fall to the page.
+ */
+function stopFocusTarget(feature: string | undefined): HTMLElement | null {
+  const chip =
+    feature === undefined
+      ? null
+      : document.querySelector<HTMLElement>(
+          `[data-timeline-item="chip"][data-feature-id="${CSS.escape(feature)}"]`,
+        );
+  return (
+    chip ?? document.querySelector<HTMLElement>('[role="slider"][aria-label="Timeline marker"]')
+  );
+}
+
+/** The notice's Stop (ADR-0155): a quiet text button where Cancel sits after an edit. */
+function StopButton({ feature, onStop }: { feature: string | undefined; onStop(): void }) {
+  const button = useRef<HTMLButtonElement>(null);
+  const target = useRef(feature);
+  target.current = feature;
+  // Runs before the button leaves the page (Stop hides it at once).
+  useLayoutEffect(
+    () => () => {
+      if (button.current && document.activeElement === button.current) {
+        stopFocusTarget(target.current)?.focus();
+      }
+    },
+    [],
+  );
+  return (
+    <Button
+      ref={button}
+      variant="ghost"
+      data-model-stop
+      title="Stop: open the design without this feature for now"
+      aria-label="Stop: open the design without this feature for now"
+      onClick={onStop}
+      className="pointer-events-auto -my-1 ml-auto h-6 px-2 text-sm"
+    >
+      Stop
+    </Button>
+  );
+}
+
+/**
  * The notice at the view's top left while the design is being prepared, a
  * long recompute runs, or a kernel call the user made is still out (ADR-0078,
  * ADR-0105 §2). It never takes pointer events, so it can't block a pick; a
@@ -113,6 +174,7 @@ export function ModelProgress({
   waits,
   collapsed,
   cancel,
+  stop,
 }: {
   model: ModelStore<unknown>;
   store: DocumentStore;
@@ -122,6 +184,8 @@ export function ModelProgress({
   collapsed: boolean;
   /** Returns the document to the shown model's step (ADR-0111); read at render time. */
   cancel?: { can(): boolean; run(): void };
+  /** Stops the running feature while the design opens (ADR-0155). */
+  stop?: { stops: KernelStops; run(): void };
 }) {
   const status = useStore(model, (s) => s.status);
   const finished = useRecomputeFinished(model);
@@ -130,6 +194,7 @@ export function ModelProgress({
   // Opening a transaction hides Cancel (ADR-0111) without changing the document.
   useStore(store, (s) => s.transactionDepth);
   const live = useKernelWaits(waits);
+  const stops = useKernelStops(stop?.stops);
   const active = live.filter((wait) => !wait.quiet);
   const oldest = active[0];
   const oldestId = oldest?.id;
@@ -170,7 +235,13 @@ export function ModelProgress({
         quiet: oldest.quiet,
       }
     : undefined;
-  const mode = progressMode({ status, finished, elapsed, ...(wait && { wait }) });
+  const mode = progressMode({
+    status,
+    finished,
+    opening: stops.opening,
+    elapsed,
+    ...(wait && { wait }),
+  });
   if (!mode) return null;
 
   const bar =
@@ -193,6 +264,9 @@ export function ModelProgress({
       <div className="flex flex-col leading-tight">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
+          {stop && showsStop(mode, stops.stoppable) && (
+            <StopButton feature={progress?.feature} onStop={stop.run} />
+          )}
           {cancel && showsCancel(mode, cancel.can) && (
             <Button
               variant="ghost"

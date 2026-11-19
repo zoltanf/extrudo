@@ -24,11 +24,13 @@ import {
   testFeatures,
   withExpr,
 } from './testing';
-import type {
-  ExpandContext,
-  KernelFeatureDefinition,
-  RecomputeRequest,
-  RecomputeResult,
+import {
+  type ExpandContext,
+  type KernelFeatureDefinition,
+  type RecomputeRequest,
+  type RecomputeResult,
+  STOPPED_DRAFT_MESSAGE,
+  STOPPED_MESSAGE,
 } from './types';
 
 let oc: OcctModule;
@@ -314,6 +316,43 @@ describe('feature status', () => {
     });
   });
 
+  it("doesn't evaluate a feature the person stopped, says so, and reports the walk's end (ADR-0155)", async () => {
+    const heard: (FeatureId | undefined)[] = [];
+    const result = await done(
+      engine.recompute({ doc: chainDocument(3), stopped: ids('f2') }, (id) => heard.push(id)),
+    );
+    expect(result.stats.evaluated).toEqual(ids('f1', 'f3'));
+    expect(result.features['f2' as FeatureId]).toEqual({
+      status: 'error',
+      message: STOPPED_MESSAGE,
+    });
+    // Each evaluated feature as it starts, then once `undefined`: no feature runs any more.
+    expect(heard).toEqual([...ids('f1', 'f3'), undefined]);
+    // A preview skips it the same way.
+    const preview = await done(
+      engine.preview({
+        doc: chainDocument(3),
+        draft: testFeature('f4', 'test-grow', { height: '1 mm' }),
+        index: 3,
+        stopped: ids('f2'),
+      }),
+    );
+    expect(preview.features['f2' as FeatureId]?.message).toBe(STOPPED_MESSAGE);
+    // Its own dialog, values unchanged (the app keeps it in the list): not built, and said so.
+    const own = await done(
+      engine.preview({
+        doc: chainDocument(3),
+        draft: testFeature('f2', 'test-grow', { height: '1 mm' }),
+        index: 1,
+        stopped: ids('f2'),
+      }),
+    );
+    expect(own.features['f2' as FeatureId]).toEqual({
+      status: 'error',
+      message: STOPPED_DRAFT_MESSAGE,
+    });
+  });
+
   it('checks sketch planes', async () => {
     const sketch = (id: string, plane: string, kind: 'plane' | 'face' = 'plane') => ({
       ...testFeature(id, 'sketch'),
@@ -379,7 +418,7 @@ describe('cancellation', () => {
     const doc = chainDocument(10);
     const progress: FeatureId[] = [];
     const older = engine.recompute({ doc }, (id) => {
-      progress.push(id);
+      if (id) progress.push(id);
       // The user edits while f3 is being computed; the request comes in at the next yield.
       if (id === 'f3') {
         queueMicrotask(() => {

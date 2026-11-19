@@ -4089,6 +4089,33 @@ first opens (`preparing`), for a kernel wait (`waiting`), or inside a transactio
 feature dialog); no keyboard shortcut (Escape must never undo edits); the notice stays
 `pointer-events: none`, only the button takes the pointer. e2e: `e2e/kernel-cancel.spec.ts`.
 
+ADR-0155 (the owner, 2026-11-19): **Stop while a design opens skips the running feature for
+now.** `packages/kernel/src/recomputer.ts` (`stop`, `retry`, `isStopped`, the `stops` external
+store `{ stopped, opening, stoppable, stopping }`, `#stopped` with `#stillStopped`,
+`#stoppedSequence`, `#inFlight`, `#opening`/`#finishedDoc`), `recompute/types.ts`
+(`RecomputeRequest.stopped`, `STOPPED_MESSAGE`; `ProgressListener` also hears `undefined` once
+the walk is past its features), `recompute/engine.ts` (fails a stopped feature like a crashed
+one, reports the end), `apps/web/src/viewport/progressRules.ts` (`showsStop`, `progressMode`'s
+`opening`), `ModelProgress.tsx` (`StopButton`, `[data-model-stop]`, `useKernelStops`),
+`shell/stopFeature.ts` (`stopAndTell`, the toast with Try again), `featureActions.ts`/
+`FeatureMenu.tsx` (Try Again while stopped), `shell/AppShell.tsx` (wiring). **Rules:** Stop
+replaces the worker through `KernelClient.restart` and never changes the document (no command,
+no undo step, nothing saved or stored); only while opening (until a recompute finishes, and for
+the recompute Try again or a Stop starts until the document changes): `showsStop` in
+`preparing`, `showsCancel` in `updating`, never both; a stopped call is no crash (its sequence's
+rejection is dropped, no budget, no `#crashed`), a real crash during Try again is one; `stop()`
+does nothing unless a feature was reported by a call still with the kernel (`#current`, cleared
+when that call settles via `#currentSequence`: a newer send doesn't end it, so Stop stays
+offered), lets the worker's delivered messages land first and gives up when the feature
+finished; it records the feature against the document as it is then (an edited one in its new
+version; one no longer reached is not recorded, but the worker is still replaced); the toast
+only tells of a stop still there; a stop is forgotten when the feature, a feature before it, the
+parameters or the settings change, when the marker no longer reaches it, and on `dispose`;
+previews skip it too, its own dialog while the draft's inputs equal the stopped ones
+(`sameValue`, `STOPPED_DRAFT_MESSAGE`);
+when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight
+during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-stop.spec.ts`.
+
 ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
 `packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a
 second entity; `sideA`/`sideB: 'near' | 'far'`, only on a round; a round with a line may be

@@ -226,11 +226,14 @@ export type {
   RecomputeResult,
   RecomputeStats,
 } from './recompute/types';
+export { STOPPED_DRAFT_MESSAGE, STOPPED_MESSAGE } from './recompute/types';
 export {
+  type KernelStops,
   type KernelWaits,
   type Preview,
   Recomputer,
   type RecomputerOptions,
+  type StopState,
   type Wait,
   type WaitOptions,
 } from './recomputer';

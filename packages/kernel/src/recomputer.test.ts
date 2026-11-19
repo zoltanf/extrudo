@@ -145,6 +145,7 @@ function setup(
             request,
             report
               ? (id) => {
+                  if (id === undefined) return onFeature?.(id);
                   if (!report(id)) return;
                   onFeature?.(id);
                   // A feature with a prepare step is reported twice (engine.ts).

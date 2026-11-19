@@ -205,6 +205,58 @@ export interface KernelWaits {
   subscribe(listener: () => void): () => void;
 }
 
+/**
+ * Stop while a design opens (ADR-0155), as the notice and the chip menu read it:
+ * an external store like `waits`, the same object until something changes.
+ */
+export interface StopState {
+  /** Features skipped for now, in the order they were stopped. */
+  stopped: readonly FeatureId[];
+  /**
+   * The running (or next) recompute belongs to opening the design: none has
+   * finished since it opened, or Try again or Stop started it and the document
+   * hasn't changed since. Only then is Stop offered.
+   */
+  opening: boolean;
+  /** A feature is running in that recompute, so Stop has something to stop. */
+  stoppable: boolean;
+  /** A Stop is under way (the worker is being replaced). */
+  stopping: boolean;
+}
+
+export interface KernelStops {
+  get(): StopState;
+  subscribe(listener: () => void): () => void;
+}
+
+/**
+ * Whether two JSON values are equal, whatever the order of their keys: a dialog
+ * rebuilds a feature's inputs as new objects (ADR-0155's own-dialog rule).
+ */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => sameValue(v, b[i]));
+  }
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return (
+    ka.length === kb.length &&
+    ka.every((k) => sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  );
+}
+
+/** A stopped feature, with what it was computed from when it was stopped (ADR-0155). */
+interface StoppedFeature {
+  feature: Feature;
+  /** The features before it, by identity: an edit to any of them forgets the stop. */
+  before: readonly Feature[];
+  parameters: ExtrudoDocument['parameters'];
+  settings: ExtrudoDocument['settings'];
+}
+
 export interface Preview {
   features: Record<FeatureId, FeatureStatus>;
   /** The bodies after the draft. Unchanged ones are the model store's own meshes (same objects). */
@@ -265,6 +317,19 @@ export class Recomputer {
   #current: FeatureId | undefined;
   /** Features that crashed the kernel, as they were then. */
   readonly #crashed = new Map<FeatureId, Feature>();
+  /** Features the person stopped while the design opened (ADR-0155); never stored. */
+  readonly #stopped = new Map<FeatureId, StoppedFeature>();
+  /** The send whose call reported `#current`: it is cleared when that call settles. */
+  #currentSequence: number | undefined;
+  /** See `StopState.opening`: true until a recompute finishes, again after Try again or Stop. */
+  #opening = true;
+  /** The document of the last finished recompute: a send of another one is an edit. */
+  #finishedDoc: ExtrudoDocument | undefined;
+  /** The sequence a Stop ended: its rejected call is not a crash. */
+  #stoppedSequence: number | undefined;
+  #stopping = false;
+  #stopState: StopState = { stopped: [], opening: true, stoppable: false, stopping: false };
+  readonly #stopListeners = new Set<() => void>();
   /** Meshes held, with the version the kernel gave each. */
   #meshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
   /** The base meshes of the open dialog's last preview (editing), kept while it is open. */
@@ -318,6 +383,17 @@ export class Recomputer {
       this.#waitListeners.add(listener);
       return () => {
         this.#waitListeners.delete(listener);
+      };
+    },
+  };
+
+  /** Stop while a design opens (ADR-0155), as an external store for the notice and the chip menu. */
+  readonly stops: KernelStops = {
+    get: () => this.#stopState,
+    subscribe: (listener) => {
+      this.#stopListeners.add(listener);
+      return () => {
+        this.#stopListeners.delete(listener);
       };
     },
   };
@@ -382,9 +458,142 @@ export class Recomputer {
     return this.#document.getState().revertTo(this.#shown.step);
   }
 
+  /**
+   * Stops the feature the kernel is computing while the design opens (ADR-0155):
+   * the worker is replaced (`KernelClient.restart`, the memory recycle's path),
+   * and the design is computed again without that feature, which fails with
+   * `STOPPED_MESSAGE` until it is tried again or forgotten. The document is not
+   * touched.
+   *
+   * The running feature is the one the kernel last reported, for as long as the
+   * call that reported it is with the kernel: a newer send (an edit, a roll-back)
+   * doesn't end it, the worker finishes the old feature first. The stop is
+   * recorded against the document as it is now: an edited feature in its new
+   * version; a feature the document no longer reaches (rolled past, suppressed,
+   * deleted) is not recorded at all, but the worker is still replaced, which
+   * ends the old call.
+   *
+   * Resolves with the stopped feature; undefined when nothing was recorded, or
+   * nothing could be stopped: not opening, no feature running (resources still
+   * going out, the kernel past its features or restarting), a Stop already
+   * under way, or the feature finished before the worker could be ended (the
+   * kernel's last messages are let in first).
+   */
+  async stop(): Promise<FeatureId | undefined> {
+    if (!this.#canStop()) return undefined;
+    const id = this.#current as FeatureId;
+    this.#stopping = true;
+    this.#notifyStops();
+    try {
+      // The race (ADR-0155): what the worker already said lands first. If the
+      // feature finished meanwhile (another one started, the walk ended, the
+      // call came back), there is nothing to stop. A send that started
+      // meanwhile doesn't matter: the worker is still on the old feature.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (this.#disposed || !this.#opening || this.#current !== id) return undefined;
+      const doc = this.#document.getState().doc;
+      const at = doc.features.findIndex((f) => f.id === id);
+      const feature = doc.features[at];
+      const reached = feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
+      if (reached) {
+        this.#stopped.set(id, {
+          feature,
+          before: doc.features.slice(0, at),
+          parameters: doc.parameters,
+          settings: doc.settings,
+        });
+      }
+      // The send now under way gets the restart's rejection: not a crash.
+      this.#stoppedSequence = this.#sequence;
+      this.#opening = true;
+      this.#notifyStops();
+      try {
+        await this.client.restart();
+      } catch {
+        // A kernel that can't start again says so through the kernel status.
+      }
+      return reached && this.#stopped.has(id) ? id : undefined;
+    } finally {
+      this.#stopping = false;
+      this.#notifyStops();
+    }
+  }
+
+  /**
+   * Whether `stop` would stop something now: opening, and a feature reported by
+   * a call still with the kernel (`#current` is cleared when that call settles).
+   */
+  #canStop(): boolean {
+    return !this.#disposed && !this.#stopping && this.#opening && this.#current !== undefined;
+  }
+
+  /** Whether a feature is stopped for now (ADR-0155): its chip menu offers Try again. */
+  isStopped(id: FeatureId): boolean {
+    return this.#stopped.has(id);
+  }
+
+  /**
+   * Try again (ADR-0155): forgets the stop and computes the design again, with
+   * no limit; the notice shows as while the design opened, with Stop. Returns
+   * whether the feature was stopped.
+   */
+  retry(id: FeatureId): boolean {
+    if (!this.#stopped.delete(id) || this.#disposed) return false;
+    this.#opening = true;
+    this.#notifyStops();
+    // The document hasn't changed, so the send has to be asked for.
+    this.#sent = undefined;
+    this.#schedule();
+    return true;
+  }
+
+  #notifyStops(): void {
+    const next: StopState = {
+      stopped: [...this.#stopped.keys()],
+      opening: this.#opening,
+      stoppable: this.#canStop(),
+      stopping: this.#stopping,
+    };
+    const prev = this.#stopState;
+    if (
+      prev.opening === next.opening &&
+      prev.stoppable === next.stoppable &&
+      prev.stopping === next.stopping &&
+      prev.stopped.length === next.stopped.length &&
+      prev.stopped.every((id, i) => id === next.stopped[i])
+    ) {
+      return;
+    }
+    this.#stopState = next;
+    for (const listener of this.#stopListeners) listener();
+  }
+
+  /**
+   * Stopped features still as they were (ADR-0155); forgets one whose feature,
+   * any feature before it, the parameters or the settings changed, or which
+   * the marker no longer reaches (rolled past, deleted, suppressed).
+   */
+  #stillStopped(doc: ExtrudoDocument): FeatureId[] {
+    for (const [id, stop] of this.#stopped) {
+      const at = doc.features.findIndex((f) => f.id === id);
+      const same =
+        at >= 0 &&
+        at < doc.timelineMarker &&
+        doc.features[at] === stop.feature &&
+        at === stop.before.length &&
+        stop.before.every((f, i) => doc.features[i] === f) &&
+        doc.parameters === stop.parameters &&
+        doc.settings === stop.settings;
+      if (!same) this.#stopped.delete(id);
+    }
+    return [...this.#stopped.keys()];
+  }
+
   /** Stops following the document and shuts the kernel down. */
   dispose(): void {
     this.#disposed = true;
+    // A stop lives as long as the open design (ADR-0155).
+    this.#stopped.clear();
     this.#unsubscribe?.();
     clearTimeout(this.#timer);
     this.#endPreview();
@@ -502,8 +711,24 @@ export class Recomputer {
     // A preview's draft isn't in the document yet, so its file goes now.
     await this.#sendResources(doc, [draft]);
     if (ended()) return undefined;
+    // A stopped feature stays skipped in a dialog's preview too (ADR-0155). In
+    // its own dialog it stays skipped until a value changes: opening Edit
+    // Feature to lower a count must not start the slow computation by itself.
+    const stopped = this.#stillStopped(doc).filter((id) => {
+      if (id !== draft.id) return true;
+      const stop = this.#stopped.get(id);
+      return stop !== undefined && sameValue(stop.feature.inputs, draft.inputs);
+    });
+    this.#notifyStops();
     const result = await this.client.call((api) =>
-      api.preview({ doc, draft, index, have, ...(options.base && { base: true }) }),
+      api.preview({
+        doc,
+        draft,
+        index,
+        have,
+        ...(stopped.length > 0 && { stopped }),
+        ...(options.base && { base: true }),
+      }),
     );
     if (ended() || result.status !== 'done') return undefined;
     const bodies: Record<BodyId, BodyMesh> = {};
@@ -1008,6 +1233,11 @@ export class Recomputer {
     this.#model.getState().computing();
     this.#progress = undefined;
     const crashed = this.#stillCrashed(doc);
+    const stopped = this.#stillStopped(doc);
+    // A send of another document than the last result's is an edit: Stop is
+    // only for opening (ADR-0155), so Cancel (ADR-0111) and Stop never meet.
+    if (this.#finishedDoc !== undefined && doc !== this.#finishedDoc) this.#opening = false;
+    this.#notifyStops();
     // Progress (P6-17, ADR-0105 §3): the active features are the steps; the
     // kernel reports each as it starts, and the reported feature's position
     // among them is how far it is. A script's generated feature isn't in the
@@ -1024,9 +1254,13 @@ export class Recomputer {
       await this.#sendResources(doc);
       if (sequence !== this.#sequence || this.#disposed) return;
       result = await this.client.call((api) =>
-        api.recompute({ doc, have: this.#have(), crashed }, (id) => {
+        api.recompute({ doc, have: this.#have(), crashed, stopped }, (id) => {
           if (sequence !== this.#sequence) return;
           this.#current = id;
+          this.#currentSequence = id === undefined ? undefined : sequence;
+          this.#notifyStops();
+          // Past the last feature (joints, meshes): nothing runs, the bar stays.
+          if (id === undefined) return;
           const at = stepOf.get(id);
           if (at !== undefined) done = at;
           if (id !== reported) {
@@ -1039,6 +1273,9 @@ export class Recomputer {
     } catch (error) {
       if (sequence !== this.#sequence || this.#disposed) return;
       this.#progress = undefined;
+      // A Stop ended this call by replacing the worker (ADR-0155): not a crash,
+      // nothing to blame; the restart's resend computes without the feature.
+      if (isKernelCrash(error) && this.#stoppedSequence === sequence) return;
       if (isKernelCrash(error)) {
         const culprit = this.#current && doc.features.find((f) => f.id === this.#current);
         if (culprit) this.#crashed.set(culprit.id, culprit);
@@ -1048,7 +1285,12 @@ export class Recomputer {
       this.#model.getState().failed(error instanceof Error ? error.message : String(error));
       return;
     } finally {
-      if (sequence === this.#sequence) this.#current = undefined;
+      // The call that reported the running feature came back: it isn't running.
+      if (this.#currentSequence === sequence) {
+        this.#current = undefined;
+        this.#currentSequence = undefined;
+      }
+      this.#notifyStops();
     }
     if (sequence !== this.#sequence || result.status !== 'done' || this.#disposed) return;
     this.#progress = undefined;
@@ -1093,6 +1335,11 @@ export class Recomputer {
     }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));
     this.#shown = step;
+    // A finished result ends opening (ADR-0155): later sends are edits unless
+    // Try again or Stop asks for one.
+    this.#finishedDoc = doc;
+    this.#opening = false;
+    this.#notifyStops();
     this.#model.getState().computed({
       features: sameStatuses(previous.features, features) ? previous.features : features,
       bodies: sameRecord(previous.bodies, bodies) ? previous.bodies : bodies,
