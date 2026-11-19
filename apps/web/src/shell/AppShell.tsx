@@ -246,6 +246,7 @@ import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useKernelWaits, useRecomputeFinished } from '../viewport/ModelProgress';
 import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
+import { sketchesPastFillBudget } from '../viewport/profileFills';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -2684,6 +2685,8 @@ function Shell({
         });
       }
     });
+    const past = sketchesPastFillBudget(out);
+    for (const sketch of out) if (past.has(sketch.id)) sketch.unshaded = true;
     return out;
   }, [
     doc.features,
@@ -3592,6 +3595,7 @@ function Shell({
           pluginHint={pluginHint}
           macro={macro}
           notifications={history}
+          unshadedSketches={sketches.filter((s) => s.unshaded).length}
           selectionSize={
             measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
           }

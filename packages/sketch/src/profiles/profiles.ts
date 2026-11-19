@@ -123,6 +123,16 @@ export const MAX_PROFILE_POINTS = 2_000_000;
  */
 export const MAX_PROFILE_TESTS = 10_000_000;
 
+/**
+ * The most vertices the fills of a design's shown sketches may take together
+ * (ADR-0020's amendment of 2026-11-19). Three 32-bit coordinates a vertex make
+ * this 192 MB, kept once in memory and once on the graphics card: room for
+ * about 500 ordinary sketches (a plate with 30 holes takes about 31,000
+ * vertices). A sketch past it draws its curves only; its regions are found and
+ * picked as ever, so this limits the shading and never what a design can do.
+ */
+export const MAX_FILL_VERTICES = 16_000_000;
+
 /** Why a sketch has no regions when its curves cut each other too often (`MAX_PROFILE_CUTS`), in the user's words. */
 export const TOO_MANY_CROSSINGS =
   'This sketch has too many curve crossings to find its profiles. Remove or simplify curves.';

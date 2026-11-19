@@ -52,13 +52,22 @@ function detected(data: SketchData, version: number): Entry {
   if (cached && cached.version === version) return cached;
   let entry: Entry;
   try {
-    entry = { profiles: detectProfiles(data), version };
+    const profiles = detectProfiles(data);
+    // New fonts leave a sketch without text as it was: the same list, so its fill stays.
+    entry = {
+      profiles: cached && sameList(cached.profiles, profiles) ? cached.profiles : profiles,
+      version,
+    };
   } catch (error) {
     if (!(error instanceof ProfilesRefusedError)) throw error;
     entry = { profiles: [], version, refused: error.message };
   }
   cache.set(data, entry);
   return entry;
+}
+
+function sameList(a: readonly Profile[], b: readonly Profile[]): boolean {
+  return a.length === b.length && a.every((profile, i) => profile === b[i]);
 }
 
 /** The regions of `feature` among selection items (IDs within the sketch). */

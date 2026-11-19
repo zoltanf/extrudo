@@ -94,6 +94,8 @@ export interface TimelineProps {
   macro?: MacroStore;
   /** The notification store (ADR-0041): its bell is the row's last item. */
   notifications?: NotificationStore;
+  /** How many shown sketches draw their curves only: the design's fills are past their budget. */
+  unshadedSketches?: number;
 }
 
 /** A chip being dragged to a new place (FR-TL-04). */
@@ -184,6 +186,7 @@ export function Timeline({
   selectionSize,
   macro,
   notifications,
+  unshadedSketches = 0,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
@@ -410,6 +413,7 @@ export function Timeline({
         {errors > 0 && ` · ${errors} ${errors === 1 ? 'error' : 'errors'}`}
       </output>
       {model && <KernelState model={model} />}
+      {unshadedSketches > 0 && <UnshadedSketches count={unshadedSketches} />}
       {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
       {notifications && <NotificationHistory store={notifications} />}
@@ -1037,6 +1041,24 @@ function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
         className={`-ml-1 font-mono text-[11px] whitespace-nowrap tabular-nums ${status === 'failed' ? 'text-error' : 'text-muted'}`}
       >
         · {kernelText(status, stats, progress)}
+      </output>
+    </Tooltip>
+  );
+}
+
+/** Says that some sketches draw their curves only (ADR-0020's amendment of 2026-11-19). */
+function UnshadedSketches({ count }: { count: number }) {
+  return (
+    <Tooltip
+      label="Sketches not shaded"
+      hint="This design has more profiles than the view can shade at once. These sketches show their curves, and their profiles can still be picked. Hide other sketches to shade them."
+    >
+      <output
+        aria-label="Sketches not shaded"
+        data-unshaded-sketches={count}
+        className="-ml-1 font-mono text-[11px] whitespace-nowrap text-muted"
+      >
+        · {count} {count === 1 ? 'sketch' : 'sketches'} not shaded
       </output>
     </Tooltip>
   );

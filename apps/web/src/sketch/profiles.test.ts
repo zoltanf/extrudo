@@ -61,4 +61,18 @@ describe('sketchProfiles', () => {
     expect(sketchProfiles(b.sketch, 0)).toEqual([]);
     expect(sketchProfilesProblem(b.sketch, 0)).toBe(TOO_MANY_CURVES);
   });
+
+  it('keeps the list of a frozen sketch without text when fonts arrive: its fill stays', () => {
+    const data = Object.freeze({
+      ...sketch(false),
+      entities: Object.freeze(
+        Object.fromEntries(
+          Object.entries(sketch(false).entities).map(([id, e]) => [id, Object.freeze(e)]),
+        ),
+      ),
+    }) as ReturnType<typeof sketch>;
+    const first = sketchProfiles(data, 1);
+    expect(first.length).toBeGreaterThan(0);
+    expect(sketchProfiles(data, 2)).toBe(first);
+  });
 });
