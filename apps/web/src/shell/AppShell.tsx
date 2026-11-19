@@ -199,7 +199,7 @@ import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
-import { type FlatRegions, openRegions, regionsBytes } from '../sketch/flatRegions';
+import { type FlatRegions, regionsBytes } from '../sketch/flatRegions';
 import { attachmentBytes, fontsStore, uiFontBytes } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
@@ -225,15 +225,24 @@ import {
   TextPanel,
 } from '../sketch/panels';
 import { pickDrawing } from '../sketch/pickDrawing';
-import { profileIdsIn, sketchProfiles, sketchProfilesProblem } from '../sketch/profiles';
+import {
+  closeOpenSketch,
+  hasText,
+  openSketchProfiles,
+  profileIdsIn,
+  sketchProfilesProblem,
+  sketchRegions,
+} from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import {
+  closedSketchShows,
   createRegionsClient,
-  FILL_BYTES_PER_VERTEX,
-  hasText,
+  idleRegions,
+  type RegionsClient,
   type RegionsEntry,
   type RegionsJob,
 } from '../sketch/regionsClient';
+import { fillBytes } from '../sketch/regionsJob';
 import {
   deleteSelection,
   selectedConstraints,
@@ -2675,9 +2684,14 @@ function Shell({
   // A fill that could not be built takes its sketch out of the budget.
   const unbuiltFill = useStore(unbuiltFills, (s) => s.version);
   // The regions of sketches that aren't open are found in a worker (ADR-0154).
-  const regionsClient = useMemo(() => createRegionsClient(), []);
-  useEffect(() => () => regionsClient.dispose(), [regionsClient]);
-  const regionsVersion = useStore(regionsClient.store, (s) => s.version);
+  // Made in an effect, so a remount (StrictMode's too) never keeps a disposed client in use.
+  const [regionsClient, setRegionsClient] = useState<RegionsClient>();
+  useEffect(() => {
+    const client = createRegionsClient();
+    setRegionsClient(client);
+    return () => client.dispose();
+  }, []);
+  const regionsVersion = useStore(regionsClient?.store ?? idleRegions, (s) => s.version);
   // What the open sketch was granted when it was opened (`regionVerdicts`' `held`).
   const heldRegions = useRef<{ id: string; bytes: number } | undefined>(undefined);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `unbuiltFill` and `regionsVersion` say when to ask again.
@@ -2716,14 +2730,14 @@ function Shell({
       if (!showProfiles) return;
       if (active) {
         // The open sketch stays synchronous: its regions are found here, as the tools need them.
-        const profiles = sketchProfiles(sketch.data, fontsVersion);
-        const regions = openRegions(profiles);
+        const profiles = openSketchProfiles(sketch.data, fontsVersion);
+        const regions = sketchRegions(sketch.data, fontsVersion);
         open.set(feature.id, { profiles, regions });
         claims.push({
           id: feature.id,
           active: true,
           regionBytes: regionsBytes(regions),
-          fillBytes: FILL_BYTES_PER_VERTEX * fillCost(profiles) + 4 * (profiles.length + 1),
+          fillBytes: fillBytes(fillCost(profiles), profiles.length),
           fillable: fillWork(profiles) <= MAX_FILL_WORK && !fillFailed(profiles),
         });
         return;
@@ -2734,7 +2748,7 @@ function Shell({
         version: fontsVersion,
         text: hasText(sketch.data),
       };
-      const entry = regionsClient.get(sketch.data, fontsVersion);
+      const entry = regionsClient?.get(sketch.data, fontsVersion);
       if (!entry) {
         jobs.push(job);
         return;
@@ -2760,6 +2774,7 @@ function Shell({
     const grantedTo = new Map(claims.map((c) => [c.id, grantedBytes(c, verdicts.get(c.id))]));
     const left = Math.max(0, budget - [...grantedTo.values()].reduce((n, b) => n + b, 0));
     const openClaim = claims.find((c) => c.active);
+    if (!openClaim) closeOpenSketch();
     heldRegions.current =
       openClaim === undefined
         ? undefined
@@ -2783,33 +2798,23 @@ function Shell({
       }
       const entry = entries.get(drawing.id);
       if (!entry) continue;
-      if (entry.state === 'stopped' || entry.state === 'failed') {
+      const shows = closedSketchShows(entry, verdict);
+      if (entry.state === 'done' && verdict) granted.set(drawing.data, verdict);
+      if (shows.regions) drawing.regions = shows.regions;
+      if (shows.fill) drawing.fill = shows.fill;
+      if (shows.unshaded) {
         drawing.unshaded = true;
         unshaded++;
-        unpickable++;
-        continue;
       }
-      if (entry.state !== 'done' || !verdict) continue;
-      granted.set(drawing.data, verdict);
+      if (shows.unpickable) unpickable++;
       // What the budget grants but was let go of before is asked for again.
-      const missing =
-        (verdict !== 'none' && !entry.regions) ||
-        (verdict === 'shaded' && entry.fillable && !entry.fill);
-      if (missing) {
+      if (shows.ask) {
         jobs.push({
           key: drawing.id,
           data: drawing.data,
           version: fontsVersion,
           text: hasText(drawing.data),
         });
-        continue;
-      }
-      if (verdict !== 'none') drawing.regions = entry.regions;
-      if (verdict === 'shaded' && entry.fill) drawing.fill = entry.fill;
-      else {
-        drawing.unshaded = true;
-        unshaded++;
-        if (verdict === 'none') unpickable++;
       }
     }
     for (const job of jobs) job.allowance = left + (grantedTo.get(job.key) ?? 0);
@@ -2834,11 +2839,11 @@ function Shell({
   // Fonts reach the worker before the jobs that need them.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new fonts' version means new fonts.
   useEffect(() => {
-    for (const [id, bytes] of uiFontBytes()) regionsClient.addFont(id, bytes);
+    for (const [id, bytes] of uiFontBytes()) regionsClient?.addFont(id, bytes);
   }, [fontsVersion, regionsClient]);
-  useEffect(() => regionsClient.want(shownSketches.jobs), [shownSketches.jobs, regionsClient]);
+  useEffect(() => regionsClient?.want(shownSketches.jobs), [shownSketches.jobs, regionsClient]);
   useEffect(
-    () => regionsClient.keep(shownSketches.granted),
+    () => regionsClient?.keep(shownSketches.granted),
     [shownSketches.granted, regionsClient],
   );
   // A hovered sketch is found first.
@@ -2846,7 +2851,8 @@ function Shell({
     () =>
       session.subscribe((s, prev) => {
         if (s.hover === prev.hover) return;
-        for (const id of hoveredFeatureIds(store.getState().doc, s.hover)) regionsClient.prefer(id);
+        for (const id of hoveredFeatureIds(store.getState().doc, s.hover))
+          regionsClient?.prefer(id);
       }),
     [session, store, regionsClient],
   );
@@ -3746,7 +3752,7 @@ function Shell({
           notifications={history}
           unshadedSketches={shownSketches.unshaded}
           unpickableSketches={shownSketches.unpickable}
-          profilesProgress={regionsClient.store}
+          profilesProgress={regionsClient?.store}
           selectionSize={
             measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
           }

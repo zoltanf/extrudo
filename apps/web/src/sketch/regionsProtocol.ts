@@ -1,6 +1,6 @@
 /** What the UI thread and the profile worker (`regionsWorker.ts`, ADR-0154) say to each other. */
 import type { SketchData } from '@extrudo/core';
-import type { FlatRegions } from './flatRegions';
+import type { WireRegions } from './flatRegions';
 
 export type RegionsRequest =
   | { type: 'font'; id: string; bytes: ArrayBuffer }
@@ -23,7 +23,7 @@ export type RegionsReply =
    */
   | {
       job: number;
-      regions?: FlatRegions;
+      regions?: WireRegions;
       regionBytes: number;
       /** How many regions there are. */
       count: number;

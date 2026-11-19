@@ -12,9 +12,9 @@
 import type { SketchData } from '@extrudo/core';
 import { MAX_DESIGN_FILL_WORK, MAX_FILL_WORK } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import { fillWork, type ProfileFill } from '../viewport/profileFills';
-import { type FlatRegions, regionIndex } from './flatRegions';
-import { logProfileWork } from './profiles';
+import { fillWork, type ProfileFill, type RegionVerdict } from '../viewport/profileFills';
+import { type FlatRegions, fromWire, regionIndex } from './flatRegions';
+import { hasText, logProfileWork } from './profiles';
 import { buildFill, FILL_BYTES_PER_VERTEX, fillBytes, findRegions } from './regionsJob';
 
 export { FILL_BYTES_PER_VERTEX };
@@ -53,8 +53,9 @@ const START_MS = 20_000;
 /** A job that is no longer wanted keeps running this long before the worker is restarted. */
 const DROP_AFTER_MS = 250;
 
-/** What results of sketches no longer shown are kept for an undo, at most. */
+/** What results of sketches no longer shown are kept for an undo, at most: bytes, and how many. */
 const SPARE_BYTES = 64 * 1024 * 1024;
+const MAX_SPARE = 64;
 
 /** Deaths (not deadlines) after which the worker is given up for idle slices. */
 const MAX_DEATHS = 3;
@@ -142,6 +143,44 @@ export interface RegionsClient {
   dispose(): void;
 }
 
+/**
+ * What a sketch that isn't open shows of its result under the budget's verdict
+ * (ADR-0154): its regions as soon as they are here and granted (a fill on its
+ * way doesn't hold them back), its fill when shaded, and whether to ask again for
+ * what the budget grants but was let go of.
+ */
+export function closedSketchShows(
+  entry: RegionsEntry,
+  verdict: RegionVerdict | undefined,
+): {
+  regions?: FlatRegions;
+  fill?: ProfileFill;
+  unshaded: boolean;
+  unpickable: boolean;
+  ask: boolean;
+} {
+  if (entry.state === 'stopped' || entry.state === 'failed') {
+    return { unshaded: true, unpickable: true, ask: false };
+  }
+  if (entry.state !== 'done' || !verdict) return { unshaded: false, unpickable: false, ask: false };
+  const regions = verdict !== 'none' ? entry.regions : undefined;
+  const ask =
+    (verdict !== 'none' && !entry.regions) ||
+    (verdict === 'shaded' && entry.fillable && !entry.fill);
+  if (ask) return { ...(regions && { regions }), unshaded: false, unpickable: false, ask };
+  const fill = verdict === 'shaded' ? entry.fill : undefined;
+  return {
+    ...(regions && { regions }),
+    ...(fill && { fill }),
+    unshaded: !fill,
+    unpickable: verdict === 'none',
+    ask: false,
+  };
+}
+
+/** A store with nothing in it, for while the shell has no client yet. */
+export const idleRegions = createStore<RegionsState>()(() => ({ version: 0, fallback: false }));
+
 function defaultSpawn(): RegionsWorkerLike | undefined {
   if (typeof Worker === 'undefined') return undefined;
   if (typeof window !== 'undefined' && window.__extrudoNoProfilesWorker) return undefined;
@@ -168,14 +207,7 @@ function defaultIdle(run: () => void): void {
   else setTimeout(run, 0);
 }
 
-/** Whether the sketch has text that isn't construction: its regions depend on the fonts. */
-export function hasText(data: SketchData): boolean {
-  for (const id in data.entities) {
-    const e = data.entities[id as keyof typeof data.entities];
-    if (e?.type === 'text' && !e.construction) return true;
-  }
-  return false;
-}
+export { hasText };
 
 export function createRegionsClient(options: RegionsClientOptions = {}): RegionsClient {
   const spawn = options.spawn ?? defaultSpawn;
@@ -260,9 +292,13 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     worker = undefined;
   };
 
+  /** What results have kept since the shell last shared out the budget: later jobs get that much less. */
+  let accepted = 0;
+
   const store_ = (job: RegionsJob, entry: Omit<RegionsEntry, 'version' | 'text'>) => {
     entries.delete(job.data);
     entries.set(job.data, { ...entry, version: job.version, text: job.text });
+    accepted += (entry.regions ? entry.regionBytes : 0) + (entry.fill ? entry.fillBytes : 0);
   };
 
   const finish = () => {
@@ -289,7 +325,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     const { job } = current;
     if (!wanted.has(job.data)) return finish(); // dropped
     if ('regionBytes' in reply) {
-      const { regions } = reply;
+      const regions = reply.regions && fromWire(reply.regions);
       store_(job, {
         state: 'done',
         ...(regions && { regions }),
@@ -307,6 +343,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       const entry = entries.get(job.data);
       if (entry?.regions) {
         const { fill } = reply;
+        if (fill) accepted += entry.fillBytes;
         entries.set(job.data, {
           ...entry,
           ...(fill && {
@@ -367,7 +404,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       return;
     }
     const { regions, regionBytes, vertices } = found;
-    const allowance = job.allowance ?? Number.POSITIVE_INFINITY;
+    const allowance = Math.max(0, (job.allowance ?? Number.POSITIVE_INFINITY) - accepted);
     const bytes = fillBytes(vertices, regions.ids.length);
     const used = [...inlineWork].reduce((n, [data, w]) => n + (wanted.has(data) ? w : 0), 0);
     const work =
@@ -424,7 +461,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       type: 'job',
       job: id,
       data: job.data,
-      maxBytes: job.allowance ?? Number.POSITIVE_INFINITY,
+      maxBytes: Math.max(0, (job.allowance ?? Number.POSITIVE_INFINITY) - accepted),
       ...(wait && { delay: wait }),
     });
   }
@@ -438,6 +475,8 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       return valid(entries.get(data), version);
     },
     want(jobs) {
+      // The shell's allowances count every result it has seen.
+      accepted = 0;
       const before = wanted;
       wanted = new Set(jobs.map((j) => j.data));
       // The running job isn't queued again; a newly shown sketch goes before the others.
@@ -470,10 +509,12 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       }
       // Results of sketches no longer shown stay for an undo, the newest first, within a bound.
       let spare = 0;
+      let count = 0;
       for (const [data, entry] of [...entries].reverse()) {
-        if (granted.has(data)) continue;
-        spare += entry.regionBytes + (entry.fill ? entry.fillBytes : 0);
-        if (spare > SPARE_BYTES) entries.delete(data);
+        if (granted.has(data) || wanted.has(data)) continue;
+        spare += (entry.regions ? entry.regionBytes : 0) + (entry.fill ? entry.fillBytes : 0);
+        count++;
+        if (spare > SPARE_BYTES || count > MAX_SPARE) entries.delete(data);
       }
       for (const data of [...inlineWork.keys()]) if (!entries.has(data)) inlineWork.delete(data);
     },

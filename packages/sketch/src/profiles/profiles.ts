@@ -49,6 +49,7 @@ import {
   TAU,
 } from '../inference/geometry';
 import { interiorPoint, type WindingRings, windingNumberOf, windingRings } from './ink';
+import { KeptResults, keptBytes } from './kept';
 import { BoxesAt, nearPairsWithin, type PairSearchStats } from './pairs';
 
 /** Positions closer than this (mm) are the same vertex. */
@@ -1051,15 +1052,18 @@ export function detectProfiles(data: SketchData): Profile[] {
   try {
     found = detect(data, false);
   } catch (error) {
-    if (error instanceof ProfilesRefusedError) remembered.set(data, error.reason);
+    if (error instanceof ProfilesRefusedError) remembered.set(data, error.reason, 64);
     throw error;
   }
-  remembered.set(data, freezeProfiles(found));
+  remembered.set(data, freezeProfiles(found), keptBytes(found));
   return found.slice();
 }
 
-/** Each frozen sketch data object's regions, or why they were refused; entries go with their sketch. */
-const remembered = new WeakMap<SketchData, readonly Profile[] | ProfilesRefusal>();
+/**
+ * Each frozen sketch data object's regions, or why they were refused: entries go with
+ * their sketch, and all of them within the thread's budget (`MAX_KEPT_PROFILE_BYTES`).
+ */
+const remembered = new KeptResults<SketchData, readonly Profile[] | ProfilesRefusal>();
 
 /** Whether `value` and everything in it is frozen. */
 function frozenThrough(value: unknown): boolean {

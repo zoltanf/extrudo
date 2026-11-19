@@ -5,6 +5,15 @@
 
 export { interiorPoint, windingNumber } from './ink';
 export {
+  KeptResults,
+  keptBytes,
+  keptTotals,
+  MAX_KEPT_PROFILE_BYTES,
+  MAX_KEPT_PROFILE_RESULTS,
+  setKeptLimits,
+  stringBytes,
+} from './kept';
+export {
   detectProfiles,
   detectProfilesWork,
   insidePolygon,

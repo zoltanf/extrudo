@@ -5,6 +5,7 @@
 // this worker) still leaves its regions to pick. Arrays the budget can't keep are
 // neither sent nor built.
 
+import { toWire, wireBuffers } from './flatRegions';
 import { buildFill, fillBytes, findRegions } from './regionsJob';
 import type { RegionsReply, RegionsRequest } from './regionsProtocol';
 
@@ -37,6 +38,7 @@ async function handle(request: RegionsRequest): Promise<void> {
     const sendRegions = regionBytes <= request.maxBytes;
     const fill =
       sendRegions && regionBytes + fillBytes(vertices, regions.ids.length) <= request.maxBytes;
+    const wire = sendRegions ? toWire(regions) : undefined;
     post(
       {
         job,
@@ -44,17 +46,9 @@ async function handle(request: RegionsRequest): Promise<void> {
         count: regions.ids.length,
         vertices,
         fill,
-        ...(sendRegions && { regions }),
+        ...(wire && { regions: wire }),
       },
-      sendRegions
-        ? [
-            regions.areas.buffer,
-            regions.loops.buffer,
-            regions.points.buffer,
-            regions.xy.buffer,
-            regions.boxes.buffer,
-          ]
-        : [],
+      wire ? wireBuffers(wire) : [],
     );
     if (!fill) return;
     const built = buildFill(found);

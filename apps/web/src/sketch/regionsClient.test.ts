@@ -1,10 +1,12 @@
 import type { SketchData } from '@extrudo/core';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
-import { flattenRegions } from './flatRegions';
+import { flattenRegions, toWire } from './flatRegions';
 import {
+  closedSketchShows,
   createRegionsClient,
   hasText,
+  type RegionsEntry,
   type RegionsJob,
   type RegionsWorkerLike,
 } from './regionsClient';
@@ -51,7 +53,14 @@ class FakeWorker implements RegionsWorkerLike {
     const profiles = detectProfiles(job.data);
     const regions = flattenRegions(profiles);
     const count = regions.ids.length;
-    const reply = { job: job.job, regions, regionBytes: 200, count, vertices: 6, fill };
+    const reply = {
+      job: job.job,
+      regions: toWire(regions),
+      regionBytes: 200,
+      count,
+      vertices: 6,
+      fill,
+    };
     this.onmessage?.({ data: reply } as MessageEvent<RegionsReply>);
   }
   /** Sends the fill after the regions. */
@@ -336,5 +345,92 @@ describe('createRegionsClient', () => {
     const { client, worker } = setup();
     client.want([{ ...job('a', a), allowance: 1234 }]);
     expect(worker().jobs()[0]?.maxBytes).toBe(1234);
+  });
+
+  it('keeps no more than a bounded number of results of sketches no longer shown', () => {
+    const { client, worker } = setup();
+    const versions = Array.from({ length: 300 }, (_, i) => rectangle(10 + i));
+    for (const [i, data] of versions.entries()) {
+      client.want([job(`v${i}`, data)]);
+      const last = worker().jobs().at(-1) as Extract<RegionsRequest, { type: 'job' }>;
+      if (i % 2) worker().answer(last);
+      else
+        worker().onmessage?.({
+          data: { job: last.job, refused: 'no' },
+        } as MessageEvent<RegionsReply>);
+      client.keep(new Map());
+    }
+    client.want([]);
+    client.keep(new Map());
+    const kept = versions.filter((data) => client.get(data, 0) !== undefined);
+    expect(kept.length).toBeLessThanOrEqual(64);
+    // The newest are the ones kept, for an undo.
+    expect(client.get(versions.at(-1) as SketchData, 0)).toBeDefined();
+  });
+
+  it('takes what results kept since the last pass off the room of the next jobs', () => {
+    const { client, worker } = setup();
+    client.want([
+      { ...job('a', a), allowance: 1000 },
+      { ...job('b', b), allowance: 1000 },
+    ]);
+    // The first result keeps its regions (200 bytes by the fake worker).
+    worker().answer();
+    expect(worker().jobs().at(-1)?.maxBytes).toBe(800);
+    // A new pass has counted it: the shell's allowance holds again.
+    client.want([
+      { ...job('b', b), allowance: 700 },
+      { ...job('c', c), allowance: 700 },
+    ]);
+    worker().answer();
+    expect(worker().jobs().at(-1)?.maxBytes).toBe(500);
+  });
+});
+
+describe('closedSketchShows', () => {
+  const entry = (more: Partial<RegionsEntry>): RegionsEntry => ({
+    state: 'done',
+    version: 0,
+    text: false,
+    regionBytes: 10,
+    fillBytes: 10,
+    fillable: true,
+    ...more,
+  });
+  const regions = flattenRegions(detectProfiles(rectangle(1)));
+
+  it('shows the regions while the fill is still on its way', () => {
+    const shows = closedSketchShows(entry({ regions }), 'shaded');
+    expect(shows.regions).toBe(regions);
+    expect(shows.fill).toBeUndefined();
+    expect(shows.ask).toBe(true);
+  });
+
+  it('shows regions and fill when shaded, regions alone when pickable, nothing when neither', () => {
+    const fill = {
+      positions: new Float32Array(),
+      starts: new Uint32Array(),
+      ids: [],
+      regions: new Map(),
+    };
+    expect(closedSketchShows(entry({ regions, fill }), 'shaded')).toMatchObject({
+      regions,
+      fill,
+      unshaded: false,
+    });
+    expect(closedSketchShows(entry({ regions, fill }), 'pickable')).toMatchObject({
+      regions,
+      unshaded: true,
+    });
+    const none = closedSketchShows(entry({ regions }), 'none');
+    expect(none.regions).toBeUndefined();
+    expect(none).toMatchObject({ unshaded: true, unpickable: true });
+  });
+
+  it('counts a stopped sketch as not shaded and not pickable', () => {
+    expect(closedSketchShows(entry({ state: 'stopped' }), undefined)).toMatchObject({
+      unshaded: true,
+      unpickable: true,
+    });
   });
 });

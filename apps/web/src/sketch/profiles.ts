@@ -1,19 +1,36 @@
 /**
- * A sketch's profiles (P1-11), detected once per version of its content.
- * The document is immutable, so the content object is the cache key: the
- * viewport's fills, the tool host's picking and the properties panel share
- * one detection. Text (P4-03) needs its font before it has ink, so the loaded
- * fonts' version is part of the key: fonts that arrive later redraw it.
+ * A sketch's profiles (P1-11) on the UI thread, detected once per version of
+ * its content. The document is immutable, so the content object is the key.
+ * Text (P4-03) needs its font before it has ink, so for a sketch with text the
+ * loaded fonts' version is part of the key: fonts that arrive later redraw it.
  * A sketch whose curves cross too often, lie too far out or are too many has no profiles
  * (`sketchProfilesProblem` says why; ADR-0020's amendment of 2026-11-15).
+ *
+ * What is kept is bounded (ADR-0154): the open sketch's result always stays
+ * (`openSketchProfiles`); other results share the thread's budget of detection
+ * results (`MAX_KEPT_PROFILE_BYTES`, `KeptResults`) and are found again when let
+ * go of. A feature dialog's handles need only where each region's centre is
+ * (`regionCentroid`, `inkCentroids`): for a sketch that isn't open those are
+ * kept, not its profiles.
  */
 import {
   type FeatureId,
   parseProfileRefId,
   type SelectionItem,
   type SketchData,
+  type SketchEntityId,
+  type Vec2,
 } from '@extrudo/core';
-import { detectProfiles, type Profile, ProfilesRefusedError } from '@extrudo/sketch/profiles';
+import {
+  detectProfilesWork,
+  KeptResults,
+  keptBytes,
+  type Profile,
+  ProfilesRefusedError,
+  profileCentroid,
+  stringBytes,
+} from '@extrudo/sketch/profiles';
+import { type FlatRegions, flatBytesOf, flattenRegions } from './flatRegions';
 import { fontsStore } from './fonts';
 
 export { TOO_MANY_CROSSINGS } from '@extrudo/sketch/profiles';
@@ -22,11 +39,26 @@ interface Entry {
   profiles: readonly Profile[];
   /** The fonts' version the profiles were detected with. */
   version: number;
-  /** Why `detectProfiles` refused the sketch (`ProfilesRefusedError`): there are no profiles. */
+  /** The sketch has text: only then does the version matter. */
+  text: boolean;
+  /** Why detection refused the sketch (`ProfilesRefusedError`): there are no profiles. */
   refused?: string;
+  /** The regions flat, made when first asked for (counted from the start). */
+  flat?: FlatRegions;
 }
 
-const cache = new WeakMap<SketchData, Entry>();
+/** Each region's centre, and the text whose ink it is: all a dialog's handles need. */
+interface Marks {
+  version: number;
+  text: boolean;
+  centroids: ReadonlyMap<string, Vec2>;
+  ink: ReadonlyMap<string, readonly Vec2[]>;
+}
+
+const cache = new KeptResults<SketchData, Entry>();
+const marksCache = new KeptResults<SketchData, Marks>();
+/** The open sketch's entry: kept whatever the budget says. */
+let pinned: { data: SketchData; entry: Entry } | undefined;
 
 declare global {
   interface Window {
@@ -44,6 +76,15 @@ export function logProfileWork(since: number): void {
   if (Array.isArray(log)) log.push(Math.round(performance.now() - since));
 }
 
+/** Whether the sketch has text that isn't construction: its regions depend on the fonts. */
+export function hasText(data: SketchData): boolean {
+  for (const id in data.entities) {
+    const e = data.entities[id as SketchEntityId];
+    if (e?.type === 'text' && !e.construction) return true;
+  }
+  return false;
+}
+
 export function sketchProfiles(
   data: SketchData,
   version: number = fontsStore.getState().version,
@@ -51,10 +92,36 @@ export function sketchProfiles(
   return detected(data, version).profiles;
 }
 
+/** The open sketch's profiles: found here, as sketch mode needs them at once, and always kept. */
+export function openSketchProfiles(
+  data: SketchData,
+  version: number = fontsStore.getState().version,
+): readonly Profile[] {
+  const entry = detected(data, version);
+  pinned = { data, entry };
+  return entry.profiles;
+}
+
+/** No sketch is open: its result goes back to the budget. */
+export function closeOpenSketch(): void {
+  if (pinned) cache.set(pinned.data, pinned.entry, entryBytes(pinned.entry));
+  pinned = undefined;
+}
+
+/** The sketch's regions, flat (the open sketch's, for picking and the budget). */
+export function sketchRegions(
+  data: SketchData,
+  version: number = fontsStore.getState().version,
+): FlatRegions {
+  const entry = detected(data, version);
+  entry.flat ??= flattenRegions(entry.profiles);
+  return entry.flat;
+}
+
 /**
- * Why the sketch has no profiles when `detectProfiles` refused it (its
- * curves cut each other too often, lie too far out or are too many), in the user's
- * words; `undefined` when it found them.
+ * Why the sketch has no profiles when detection refused it (its curves cut each
+ * other too often, lie too far out or are too many), in the user's words;
+ * `undefined` when it found them.
  */
 export function sketchProfilesProblem(
   data: SketchData,
@@ -63,29 +130,82 @@ export function sketchProfilesProblem(
   return detected(data, version).refused;
 }
 
-function detected(data: SketchData, version: number): Entry {
-  const cached = cache.get(data);
-  if (cached && cached.version === version) return cached;
-  let entry: Entry;
+/** The centre of the region `id` (a feature dialog's handle), or `undefined`. */
+export function regionCentroid(
+  data: SketchData,
+  id: string,
+  version: number = fontsStore.getState().version,
+): Vec2 | undefined {
+  return marks(data, version).centroids.get(id);
+}
+
+/** The centres of the regions that are ink of the text `entity`. */
+export function inkCentroids(
+  data: SketchData,
+  entity: string,
+  version: number = fontsStore.getState().version,
+): readonly Vec2[] {
+  return marks(data, version).ink.get(entity) ?? [];
+}
+
+function valid<T extends { text: boolean; version: number }>(
+  entry: T | undefined,
+  version: number,
+): T | undefined {
+  return entry && (!entry.text || entry.version === version) ? entry : undefined;
+}
+
+function entryBytes(entry: Entry): number {
+  return keptBytes(entry.profiles) + flatBytesOf(entry.profiles);
+}
+
+function detect(data: SketchData, version: number): Entry {
   const since = performance.now();
+  const text = hasText(data);
+  let entry: Entry;
   try {
-    const profiles = detectProfiles(data);
-    // New fonts leave a sketch without text as it was: the same list, so its fill stays.
-    entry = {
-      profiles: cached && sameList(cached.profiles, profiles) ? cached.profiles : profiles,
-      version,
-    };
+    // Never the package's remembered copy: what the app keeps, it counts here.
+    const profiles = detectProfilesWork(data, { segments: 0, points: 0, tests: 0 });
+    entry = { profiles, version, text };
   } catch (error) {
     if (!(error instanceof ProfilesRefusedError)) throw error;
-    entry = { profiles: [], version, refused: error.message };
+    entry = { profiles: [], version, text, refused: error.message };
   }
   logProfileWork(since);
-  cache.set(data, entry);
   return entry;
 }
 
-function sameList(a: readonly Profile[], b: readonly Profile[]): boolean {
-  return a.length === b.length && a.every((profile, i) => profile === b[i]);
+function detected(data: SketchData, version: number): Entry {
+  const known = valid(pinned?.data === data ? pinned.entry : cache.get(data), version);
+  if (known) return known;
+  const entry = detect(data, version);
+  cache.set(data, entry, entryBytes(entry));
+  return entry;
+}
+
+function marksOf(profiles: readonly Profile[], version: number, text: boolean): Marks {
+  const centroids = new Map<string, Vec2>();
+  const ink = new Map<string, Vec2[]>();
+  for (const p of profiles) {
+    const c = profileCentroid(p);
+    centroids.set(p.id, c);
+    if (p.text) ink.set(p.text, [...(ink.get(p.text) ?? []), c]);
+  }
+  return { version, text, centroids, ink };
+}
+
+function marks(data: SketchData, version: number): Marks {
+  const known = valid(marksCache.get(data), version);
+  if (known) return known;
+  // A result already at hand (the open sketch's, or one still kept) needs no detection.
+  const entry =
+    valid(pinned?.data === data ? pinned.entry : cache.get(data), version) ?? detect(data, version);
+  const found = marksOf(entry.profiles, version, entry.text);
+  let bytes = 128;
+  for (const id of found.centroids.keys()) bytes += stringBytes(id) + 96;
+  for (const id of found.ink.keys()) bytes += stringBytes(id) + 64;
+  marksCache.set(data, found, bytes);
+  return found;
 }
 
 /** The regions of `feature` among selection items (IDs within the sketch). */

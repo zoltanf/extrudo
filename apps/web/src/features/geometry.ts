@@ -19,9 +19,8 @@ import {
   type Vec3,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { profileCentroid } from '@extrudo/sketch/profiles';
 import { sketchFrame } from '../sketch/frame';
-import { sketchProfiles } from '../sketch/profiles';
+import { regionCentroid } from '../sketch/profiles';
 
 export interface Frame {
   /** The area centroid, world mm. */
@@ -181,9 +180,10 @@ export function profileFrame(
   const feature = parsed && doc.features.find((f) => f.id === parsed.feature);
   const sketch = feature && readSketch(feature);
   const frame = sketch && feature && sketchFrame(feature.id, sketch.plane, sketches, construction);
-  const profile = sketch && sketchProfiles(sketch.data).find((p) => p.id === parsed?.profile);
-  if (!frame || !profile) return undefined;
-  return { origin: sketchToWorld(frame, profileCentroid(profile)), normal: frame.normal };
+  // Only the region's centre is kept, not the sketch's profiles (ADR-0154).
+  const centre = sketch && parsed && regionCentroid(sketch.data, parsed.profile);
+  if (!frame || !centre) return undefined;
+  return { origin: sketchToWorld(frame, centre), normal: frame.normal };
 }
 
 /** The mean of the frames' origins, with the first one's normal (several picks). */

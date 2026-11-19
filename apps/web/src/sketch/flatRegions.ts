@@ -6,7 +6,7 @@
  * The arrays cross from the worker as transfers.
  */
 import type { Vec2 } from '@extrudo/core';
-import type { Profile } from '@extrudo/sketch/profiles';
+import { type Profile, stringBytes } from '@extrudo/sketch/profiles';
 
 export interface FlatRegions {
   /** Region IDs, in detection order (largest first, as `detectProfiles` gives them). */
@@ -25,8 +25,26 @@ export interface FlatRegions {
   boxes: Float64Array;
 }
 
-/** What a string of the lists keeps, by estimate: the string and its slot. */
-const STRING_BYTES = 40;
+/** Bytes a region keeps besides its strings and points: area, box, loop offset, two slots, its index entry. */
+const REGION_BYTES = 8 + 32 + 4 + 16 + 64;
+
+/** What the distinct strings among these keep, each once (they are shared, and cross once). */
+function stringsBytes(lists: readonly (readonly string[])[]): number {
+  const seen = new Set<string>();
+  let bytes = 0;
+  for (const list of lists) {
+    for (const text of list) {
+      if (text === '' || seen.has(text)) continue;
+      seen.add(text);
+      bytes += stringBytes(text);
+    }
+  }
+  return bytes;
+}
+
+function flatBytes(regions: number, loops: number, points: number, strings: number): number {
+  return 16 * points + 4 * (loops + 1) + regions * REGION_BYTES + 4 + strings;
+}
 
 /** What the flat form of these regions will keep, known before it is made. */
 export function flatBytesOf(profiles: readonly Profile[]): number {
@@ -37,16 +55,68 @@ export function flatBytesOf(profiles: readonly Profile[]): number {
     points += p.outer.polygon.length;
     for (const h of p.holes) points += h.polygon.length;
   }
-  return flatBytes(profiles.length, loops, points);
-}
-
-function flatBytes(regions: number, loops: number, points: number): number {
-  return 16 * points + 4 * (loops + 1) + regions * (8 + 4 + 32 + 2 * STRING_BYTES) + 4;
+  const ids = profiles.map((p) => p.id);
+  const texts = profiles.map((p) => p.text ?? '');
+  return flatBytes(profiles.length, loops, points, stringsBytes([ids, texts]));
 }
 
 /** What these flat regions keep. */
 export function regionsBytes(regions: FlatRegions): number {
-  return flatBytes(regions.ids.length, regions.points.length - 1, regions.xy.length / 2);
+  return flatBytes(
+    regions.ids.length,
+    regions.points.length - 1,
+    regions.xy.length / 2,
+    stringsBytes([regions.ids, regions.texts]),
+  );
+}
+
+/**
+ * The regions as they cross from the worker: each distinct ID or text once, and
+ * indexes into them, so a text's ID shared by many glyphs crosses once.
+ */
+export interface WireRegions extends Omit<FlatRegions, 'ids' | 'texts'> {
+  strings: readonly string[];
+  /** Each region's ID: its place in `strings`. */
+  idOf: Uint32Array;
+  /** Each region's text: its place in `strings`, -1 for none. */
+  textOf: Int32Array;
+}
+
+export function toWire(regions: FlatRegions): WireRegions {
+  const strings: string[] = [];
+  const at = new Map<string, number>();
+  const place = (text: string) => {
+    let i = at.get(text);
+    if (i === undefined) {
+      i = strings.length;
+      strings.push(text);
+      at.set(text, i);
+    }
+    return i;
+  };
+  const { ids, texts, ...arrays } = regions;
+  return {
+    ...arrays,
+    strings,
+    idOf: Uint32Array.from(ids, place),
+    textOf: Int32Array.from(texts, (t) => (t === '' ? -1 : place(t))),
+  };
+}
+
+export function fromWire(wire: WireRegions): FlatRegions {
+  const { strings, idOf, textOf, ...arrays } = wire;
+  return {
+    ...arrays,
+    ids: Array.from(idOf, (i) => strings[i] as string),
+    texts: Array.from(textOf, (i) => (i < 0 ? '' : (strings[i] as string))),
+  };
+}
+
+/** The buffers to transfer with a wire form. */
+export function wireBuffers(wire: WireRegions): ArrayBuffer[] {
+  return [wire.areas, wire.loops, wire.points, wire.xy, wire.boxes, wire.idOf, wire.textOf].map(
+    (a) => a.buffer as ArrayBuffer,
+  );
 }
 
 /** The regions as flat arrays. */
@@ -171,15 +241,4 @@ export function regionIndex(regions: FlatRegions): ReadonlyMap<string, number> {
     indexes.set(regions, known);
   }
   return known;
-}
-
-let lastOpen: { profiles: readonly Profile[]; regions: FlatRegions } | undefined;
-
-/**
- * The open sketch's regions, flat: made again only for a new list of regions,
- * and only the last list is kept (the undo history keeps old lists alive).
- */
-export function openRegions(profiles: readonly Profile[]): FlatRegions {
-  if (lastOpen?.profiles !== profiles) lastOpen = { profiles, regions: flattenRegions(profiles) };
-  return lastOpen.regions;
 }

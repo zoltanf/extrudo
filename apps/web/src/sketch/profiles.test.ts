@@ -6,12 +6,22 @@
  */
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import {
+  keptBytes,
+  keptTotals,
+  setKeptLimits,
   TOO_LARGE_COORDINATES,
   TOO_MANY_CROSSINGS,
   TOO_MANY_CURVES,
 } from '@extrudo/sketch/profiles';
-import { describe, expect, it } from 'vitest';
-import { sketchProfiles, sketchProfilesProblem } from './profiles';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  closeOpenSketch,
+  inkCentroids,
+  openSketchProfiles,
+  regionCentroid,
+  sketchProfiles,
+  sketchProfilesProblem,
+} from './profiles';
 
 function sketch(crossing: boolean) {
   const b = new SketchBuilder();
@@ -74,5 +84,62 @@ describe('sketchProfiles', () => {
     const first = sketchProfiles(data, 1);
     expect(first.length).toBeGreaterThan(0);
     expect(sketchProfiles(data, 2)).toBe(first);
+  });
+});
+
+/** A plate with `holes` holes, `dx` mm to the right. */
+function plate(holes: number, dx = 0) {
+  const b = new SketchBuilder();
+  b.line(dx, 0, dx + 200, 0);
+  b.line(dx + 200, 0, dx + 200, 100);
+  b.line(dx + 200, 100, dx, 100);
+  b.line(dx, 100, dx, 0);
+  for (let i = 0; i < holes; i++)
+    b.circle(dx + 10 + (i % 18) * 10, 10 + Math.floor(i / 18) * 10, 3);
+  return b.sketch;
+}
+
+describe('what the UI thread keeps of detection', () => {
+  afterEach(() => {
+    closeOpenSketch();
+    setKeptLimits();
+  });
+
+  it('keeps only the centres a dialog needs for a sketch that is not open, and finds them once', () => {
+    const reference = sketchProfiles(plate(40), 0);
+    const full = keptBytes(reference);
+    const id = reference[0]?.id as string;
+    const data = plate(40);
+    const before = keptTotals().bytes;
+    const centre = regionCentroid(data, id, 0);
+    expect(centre).toBeDefined();
+    expect(regionCentroid(data, id, 0)).toBe(centre);
+    // The centres keep far less than the profiles would.
+    expect(keptTotals().bytes - before).toBeLessThan(full / 4);
+  });
+
+  it('gives no ink centres for a sketch without text', () => {
+    expect(inkCentroids(plate(2), 'no-such-text', 0)).toEqual([]);
+  });
+
+  it('keeps what all callers ask for within the budget, whatever many sketches are asked about', () => {
+    setKeptLimits(200_000, 1000);
+    for (let i = 0; i < 40; i++) {
+      const data = plate(30, i * 300);
+      sketchProfiles(data, 0);
+      regionCentroid(data, 'x', 0);
+    }
+    expect(keptTotals().bytes).toBeLessThanOrEqual(200_000);
+  });
+
+  it('always keeps the open sketch, whatever else is asked for', () => {
+    setKeptLimits(50_000, 4);
+    const open = plate(60);
+    const profiles = openSketchProfiles(open, 0);
+    for (let i = 0; i < 20; i++) sketchProfiles(plate(30, (i + 1) * 300), 0);
+    expect(sketchProfiles(open, 0)).toBe(profiles);
+    closeOpenSketch();
+    for (let i = 0; i < 20; i++) sketchProfiles(plate(30, (i + 30) * 300), 0);
+    expect(sketchProfiles(open, 0)).not.toBe(profiles);
   });
 });

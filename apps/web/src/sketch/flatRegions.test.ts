@@ -1,15 +1,18 @@
 import type { SketchData, Vec2 } from '@extrudo/core';
+import type { Profile } from '@extrudo/sketch/profiles';
 import { detectProfiles, profileAt } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import { profileFill } from '../viewport/profileFills';
 import {
   flatBytesOf,
   flattenRegions,
+  fromWire,
   holeCount,
   regionAt,
   regionIndex,
   regionOutline,
   regionsBytes,
+  toWire,
 } from './flatRegions';
 import { buildFill, findRegions } from './regionsJob';
 
@@ -121,5 +124,79 @@ describe('findRegions and buildFill, as the profile worker runs them', () => {
   it('says why detection refused a sketch', () => {
     const far = sketch(square('f', 1e12, 0, 10));
     expect(findRegions(far)).toEqual({ refused: expect.stringMatching(/too large/) });
+  });
+});
+
+describe('strings in flat regions', () => {
+  /** Regions by hand: `n` unit squares with these IDs and texts. */
+  const made = (n: number, id: (i: number) => string, text: (i: number) => string | undefined) =>
+    Array.from({ length: n }, (_, i) => {
+      const polygon: Vec2[] = [
+        [i, 0],
+        [i + 0.5, 0],
+        [i + 0.5, 1],
+        [i, 1],
+      ];
+      const t = text(i);
+      return {
+        id: id(i),
+        area: 0.5,
+        holes: [],
+        outer: { edges: [], polygon, area: 0.5 },
+        ...(t && { text: t }),
+      } as unknown as Profile;
+    });
+
+  /** What the strings really keep on the receiving side: two bytes a character at most, once each. */
+  const realStrings = (regions: ReturnType<typeof flattenRegions>) =>
+    [...new Set([...regions.ids, ...regions.texts].filter((t) => t !== ''))].reduce(
+      (n, t) => n + 2 * t.length,
+      0,
+    );
+
+  for (const [name, n, length] of [
+    ['100 glyph regions of a text with a 100,000-character ID', 100, 100_000],
+    ['400 glyph regions of a text with a 20,000-character ID', 400, 20_000],
+  ] as const) {
+    it(`sends a shared text ID once and counts it at its size: ${name}`, () => {
+      const long = 't'.repeat(length);
+      const regions = flattenRegions(
+        made(
+          n,
+          (i) => `r${i}`,
+          () => long,
+        ),
+      );
+      const wire = toWire(regions);
+      expect(wire.strings.filter((s) => s === long)).toHaveLength(1);
+      expect(fromWire(wire).texts).toEqual(regions.texts);
+      expect(regionsBytes(regions)).toBeGreaterThanOrEqual(realStrings(regions));
+      expect(regionsBytes(regions)).toBe(
+        flatBytesOf(
+          made(
+            n,
+            (i) => `r${i}`,
+            () => long,
+          ),
+        ),
+      );
+    });
+  }
+
+  it('counts long region IDs at their size too', () => {
+    const regions = flattenRegions(
+      made(
+        50,
+        (i) => `${'r'.repeat(10_000)}${i}`,
+        () => undefined,
+      ),
+    );
+    expect(regionsBytes(regions)).toBeGreaterThanOrEqual(realStrings(regions));
+    expect(fromWire(toWire(regions)).ids).toEqual(regions.ids);
+  });
+
+  it('gives region IDs a fixed short length, as detection hashes them', () => {
+    const ids = detectProfiles(FIXTURES['a plate with holes'] as SketchData).map((p) => p.id);
+    expect(Math.max(...ids.map((id) => id.length))).toBeLessThanOrEqual(11);
   });
 });

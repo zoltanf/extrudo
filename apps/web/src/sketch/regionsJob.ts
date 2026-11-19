@@ -11,9 +11,13 @@ import { type FlatRegions, flattenRegions, regionsBytes } from './flatRegions';
 /** Bytes a fill keeps a vertex: 12 for its position, 4 for a drawing order (`fillLayout`). */
 export const FILL_BYTES_PER_VERTEX = 16;
 
-/** What a fill of `vertices` vertices over `regions` regions keeps. */
+/**
+ * What a fill of `vertices` vertices over `regions` regions keeps: the vertices,
+ * each region's start (4 bytes) and its entry in the fill's index of regions
+ * (a map entry and an ID slot, 64 bytes at most).
+ */
 export function fillBytes(vertices: number, regions: number): number {
-  return FILL_BYTES_PER_VERTEX * vertices + 4 * (regions + 1);
+  return FILL_BYTES_PER_VERTEX * vertices + 68 * (regions + 1);
 }
 
 export interface FoundRegions {
