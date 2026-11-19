@@ -2949,9 +2949,12 @@ kind `face`, `TransformMapper.sketchFace`) and follows the model: lengthen the p
 stays on its top. Extrudo's frame on a flat face depends only on the plane and its outward normal
 (`faceSketchFrame`), and the matcher compares normals, so the frame the importer writes in is the
 one the kernel computes. S9 kept body sketches on fixed planes because it couldn't prove that
-before the rebuild; here a try that doesn't work out on the face, for any reason, is made again on
-the fixed plane its stored placement gives (S4's planes, else S9's plane through three points). The
-report counts those apart (`faceFallbacks`), not among a feature's second attempts. **Bodies are unchanged**:
+before the rebuild; here a try that doesn't hold on the face is made again on the fixed plane its
+stored placement gives (S4's planes, else S9's plane through three points). It isn't made again when
+no face was found (the same try would only repeat), when the failure is final, or when the kernel
+call failed, ran out of time or restarted the kernel. `faceFallbacks` counts the features whose try
+on the fixed plane held after their try on the face didn't; a feature's second attempts count its
+other targets (an up-to pair, a hole's cut), and a body's features are tried as before. **Bodies are unchanged**:
 their sketches stay on S9's planes, so their standing numbers don't move.
 
 ### The old grammar, as read
@@ -2987,6 +2990,8 @@ foreign base stays the stored-shape step, and what comes after it is live.
 | Chains at an import's top | 256 (`MAX_LOOSE_CHAINS`, the library has 14) | the rest as today (`limit`) |
 | Features the top's chains plan | 2,000 (`MAX_FILE_FEATURES`), shared features counted per chain; a refused chain gives back what it counted | later tips as today, unfollowed |
 | Features one chain under a tree plans | 500 a call, the tree's nodes and passes bounding the calls | a stored leaf |
+| Features the planner visits, refused chains included | 4 × `MAX_FILE_FEATURES` (`PLAN_VISITS_PER_FEATURE`) | as today (`limit`) |
+| Links followed among patterns' originals, in the whole file | 20,000 (`MAX_ORIGINAL_LINKS`; the library needs none) | as today (`limit`) |
 | A stored shape read to tell whether it holds a solid | 32 MB (`MAX_STORED_BREP_BYTES`), each entry scanned once however many objects name it or whether it can be read | no solid, so no base |
 | A sketch's supports read | the first of 16 (`supportsOf`), once per sketch | |
 | Originals compared for a pattern's base | 100, 500 links followed | the first original |
@@ -3004,7 +3009,9 @@ a feature with neither `Profile` nor `Sketch` (`profile`); a sketch `Placement` 
 **Measured** (Ubuntu machine, shared and loaded; `chain-import.test.ts`, `BENCH=1`): a comb of 1,500
 tips on one row, which by the links alone is 1.1 million walked features, stops at the cap in
 **0.73 s**; a row of 10,000 features is refused at the cap in **0.53 s**, the file's own reading
-included; 200 objects naming one stored shape of 30 MB take **0.25 s**, the entry read once.
+included; 200 objects naming one stored shape of 30 MB take **0.25 s**, the entry read once; 256 rows
+of 501 patterns of two originals each, about 64 million links without the budgets, are planned in
+**0.13 s**.
 
 ### The report and the app
 
@@ -3021,11 +3028,11 @@ features after it come in with their history."
   3, one of 4, one of 7, two of 8. **8 with their whole history; 5 with a stored-shape step (4 on a
   foreign base: a Part chamfer, a cut, a revolve and a plain stored shape; 1 where a pattern
   touches another shape of the file, so S7's rule takes it out); 1 as today**: its last feature is
-  a fillet whose three edges are all found and whose volume, area and box agree, but whose centre of
-  mass is 0.52 mm from the stored shape's. The three edges are among those the stored fillet
-  consumed and the body before it is equal, but the stored fillet's own centre lies 2.6 mm from its
-  base's where a fillet of its 0.34 mm³ could move a body of 885 mm³ by 0.01 mm: the centre the
-  kernel reads for that shape isn't a sound solid's, so the check can't prove the feature.
+  a fillet whose edges are all found and whose volume, area and box agree, while its centre of mass
+  differs by more than the check allows. The edges are among those the stored fillet consumed and
+  the body before it is equal, but the stored fillet's centre lies further from its base's than a
+  fillet of its size could move it: the centre the kernel reads for that shape isn't a sound solid's,
+  so the check can't prove the feature.
 - **Bases:** 26 by a sketch's support, 7 by a pattern's original (each of the library's 8 old patterns
   has one), 4 by a dress-up's `Base`,
   none by `BaseFeature`, 10 roots with no base; no file names two different bases.

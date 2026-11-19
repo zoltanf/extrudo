@@ -5154,10 +5154,13 @@ checked against its stored shape; one that doesn't hold is S8's step; a chain th
 (`foreign-base`), which stays the reason only until a feature of the chain fails. Each tip of a branch walks **its own
 copy** of what it shares, and **a loose chain never claims from or is refused by `WalkShared.owner`**: it takes nothing from a
 body. A loose chain's sketch **stays on the flat face its support names** on every path that adds a sketch (`withFace`) when
-S6's matcher finds that face and the stored frame lies in its plane, else on the fixed plane (`faceFallbacks`); a body's
+S6's matcher finds that face and the stored frame lies in its plane, else on the fixed plane. A try that found no face isn't made
+twice, and none is made again after a kernel call failed or restarted the kernel; `faceFallbacks` counts fixed-plane tries that
+held after their face try didn't; a body's
 sketches stay on S9's planes (their standing numbers must not move). A loose feature of a mapped type a Part boolean uses is a
 tree node of kind `loose`, walked through `walkBody`. Limits: `MAX_BODY_FEATURES` a chain; `MAX_LOOSE_CHAINS` (256) and
-`MAX_FILE_FEATURES` planned for the chains at the top, a refused chain giving back what it counted; a chain under a tree plans
+`MAX_FILE_FEATURES` planned for the chains at the top, a refused chain giving back what it counted, with one planner budget for
+all visits (`PLAN_VISITS_PER_FEATURE` × `MAX_FILE_FEATURES`) and one for links among originals (`MAX_ORIGINAL_LINKS`); a chain under a tree plans
 on its own count (500 a call) and is bounded by the walk's shared `MAX_FILE_FEATURES`; a stored shape is scanned once per entry,
 never past `MAX_STORED_BREP_BYTES`. Report: `BodyHistory.loose`; the library's bodies' numbers count real bodies only (`!b.loose`).
 
