@@ -10,6 +10,7 @@
 import type { SketchEntityId } from '../ids';
 import type { ExtrudoDocument } from '../schema';
 import { curvePolyline, splinePolyline } from './curves';
+import { sketchFacts } from './facts';
 import { readSketch } from './feature';
 import type { Vec2 } from './planes';
 import type { SketchData, SketchEntity } from './schema';
@@ -44,9 +45,7 @@ export function usedFonts(doc: ExtrudoDocument): Set<string> {
   for (const feature of doc.features) {
     const sketch = readSketch(feature)?.data;
     if (!sketch) continue;
-    for (const entity of Object.values(sketch.entities)) {
-      if (entity.type === 'text') out.add(entity.font);
-    }
+    for (const font of sketchFacts(sketch).fonts) out.add(font);
   }
   return out;
 }

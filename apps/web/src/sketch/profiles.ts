@@ -18,7 +18,7 @@ import {
   parseProfileRefId,
   type SelectionItem,
   type SketchData,
-  type SketchEntityId,
+  sketchFacts,
   type Vec2,
 } from '@extrudo/core';
 import {
@@ -78,11 +78,7 @@ export function logProfileWork(since: number): void {
 
 /** Whether the sketch has text that isn't construction: its regions depend on the fonts. */
 export function hasText(data: SketchData): boolean {
-  for (const id in data.entities) {
-    const e = data.entities[id as SketchEntityId];
-    if (e?.type === 'text' && !e.construction) return true;
-  }
-  return false;
+  return sketchFacts(data).text;
 }
 
 export function sketchProfiles(

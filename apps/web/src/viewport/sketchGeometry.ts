@@ -8,6 +8,7 @@ import {
   type SketchData,
   type SketchEntityId,
   type SketchFrame,
+  sketchFacts,
   sketchToWorld,
   textPolylines,
 } from '@extrudo/core';
@@ -378,11 +379,11 @@ export function textBoundsSummary(sketches: readonly SketchDrawing[]): string | 
   const span = (v: number[]) => `${r(Math.min(...v))}..${r(Math.max(...v))}`;
   const out: string[] = [];
   for (const { id, data } of sketches) {
-    for (const [entity, text] of Object.entries(data.entities)) {
-      if (text?.type !== 'text') continue;
+    // Only the texts: walking every entity of every sketch on each render blocked large designs.
+    for (const entity of sketchFacts(data).texts) {
       const xs: number[] = [];
       const ys: number[] = [];
-      for (const polyline of textPolylines(data, entity as SketchEntityId).values()) {
+      for (const polyline of textPolylines(data, entity).values()) {
         for (const [x, y] of polyline) {
           xs.push(x);
           ys.push(y);
