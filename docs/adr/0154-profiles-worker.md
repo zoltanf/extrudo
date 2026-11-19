@@ -43,8 +43,10 @@ their results on the UI thread, and bounds what the UI thread keeps of detection
    that is no longer wanted is dropped (the worker restarted if it had run
    250 ms), an answer to an old job is ignored, and results are kept by the
    exact sketch data object (and the fonts' version, for a sketch with text),
-   so undo finds them again; results of sketches no longer shown are kept up to
-   64 MB and 64 results, the newest first. Results that arrive within 150 ms reach the shell together
+   so undo finds them again. The entry of every shown sketch stays, whatever
+   its state (done, refused, stopped or failed: the shell names them all to
+   `keep`), so a sketch is asked for once per version of its data; results of
+   sketches no longer shown are kept up to 64 MB and 64 results, the newest first. Results that arrive within 150 ms reach the shell together
    (`RESULT_BATCH_MS`): the shell lays out every shown sketch for each, so
    telling it once a sketch would cost a design of many quick sketches as much
    as finding them.
@@ -83,8 +85,12 @@ their results on the UI thread, and bounds what the UI thread keeps of detection
    package's memory of frozen sketches) keeps its entries in one budget,
    `MAX_KEPT_PROFILE_BYTES` (64 MB) and `MAX_KEPT_PROFILE_RESULTS` (256), the least
    recently used going first (`KeptResults`); a result let go of is found again
-   when asked. The open sketch's result always stays, outside it, and is looked
-   up by the sketch's data where it is drawn: the shell's drawings carry no
+   when asked. A result larger than the whole budget isn't kept and lets go of
+   nothing else. The open sketch's result always stays, outside the budget, while
+   the sketch is open (profiles shown or hidden): it is found once per version of
+   the sketch's data, whatever its size, and goes to the budget, if it fits, when
+   the sketch closes or its data is replaced. It is looked up by the sketch's
+   data where it is drawn: the shell's drawings carry no
    regions of the open sketch, so a drawing that a callback of an old render
    still holds never holds an old version of them. A result is
    counted by `keptBytes`: 96 bytes a point, 96 an edge, 128 a loop, 256 a region
