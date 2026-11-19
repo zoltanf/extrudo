@@ -92,8 +92,8 @@ export const stringBytes = (text: string) => 2 * text.length + 32;
 /**
  * An upper bound of what a list of regions keeps: per point (its `[x, y]` array,
  * its slot in an edge's list and in the polygon), per edge, loop and region (the
- * objects, their lists and the region's ID). Measured against the heap it holds:
- * 79 bytes a point for the largest lists without pointer compression, so 96 leaves room.
+ * objects, their lists and the region's ID). The heap such lists held was 12 to 18 %
+ * below it in every case measured, without pointer compression (larger than with it).
  */
 export function keptBytes(profiles: readonly Profile[]): number {
   let bytes = 64;

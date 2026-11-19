@@ -1,6 +1,7 @@
 // The profile worker (ADR-0154): finds the regions of a sketch that isn't open
 // and builds its fill, off the UI thread. One job at a time, in the order the
-// client sends them; nothing is kept between jobs but the fonts. The regions go
+// client sends them; nothing is kept between jobs but the fonts and the text
+// shaper's cache of layouts (at most 500). The regions go
 // back first, then the fill: a job stopped at its deadline (the client terminates
 // this worker) still leaves its regions to pick. Arrays the budget can't keep are
 // neither sent nor built.
