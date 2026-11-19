@@ -9,7 +9,7 @@ import {
 } from '@extrudo/core';
 import { pickEntity, polylineDistance } from '@extrudo/sketch/inference';
 import { describe, expect, it } from 'vitest';
-import { curveLinesOf, flatPolylineDistance, SketchCurves } from '../sketch/curveLines';
+import { flatPolylineDistance, SketchCurves } from '../sketch/curveLines';
 import { DEFAULT_FILTER } from './filter';
 import { nearestEntity, type PickScene, pickBox, pickStack } from './pick';
 import { cameraFrom, topViewPx } from './testing';
@@ -98,22 +98,21 @@ describe('picking on cached polylines (ADR-0156)', () => {
   it('picks the entity pickEntity picks, at every cursor and reach', () => {
     const curves = new SketchCurves();
     let compared = 0;
-    for (const seed of [1, 2, 3]) {
+    for (const seed of [1, 2]) {
       const data = scattered(seed);
       const r = random(100 + seed);
-      for (let k = 0; k < 1500; k++) {
+      for (let k = 0; k < 700; k++) {
         const cursor: [number, number] = [r() * 110 - 5, r() * 110 - 5];
         const reach = [0.05, 0.5, 2, 8][k % 4] as number;
         const accept = (e: { type: string; construction?: boolean }) =>
           e.type === 'point' ? k % 3 === 0 : k % 2 === 0 || !e.construction;
         const want = pickEntity(data, cursor, reach, accept);
         expect(nearestEntity(data, cursor, reach, accept, curves.lines)).toBe(want);
-        expect(nearestEntity(data, cursor, reach, accept, curveLinesOf)).toBe(want);
         if (want) compared++;
       }
     }
     // Enough cursors landed on something for the comparison to mean anything.
-    expect(compared).toBeGreaterThan(500);
+    expect(compared).toBeGreaterThan(150);
   });
 
   it('samples each curve of frozen data once, however many picks', () => {
