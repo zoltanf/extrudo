@@ -1,0 +1,1 @@
+- 2026-11-19 · **Sketch shading**: a sketch's shading is built once, so hovering and selecting stay quick; a sketch that is too detailed to shade, or past the design's shading budget, shows its curves only, its profiles still pick, and the status bar says how many.

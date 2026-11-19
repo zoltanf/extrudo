@@ -123,6 +123,35 @@ export const MAX_PROFILE_POINTS = 2_000_000;
  */
 export const MAX_PROFILE_TESTS = 10_000_000;
 
+/**
+ * The most vertices the fills of a design's shown sketches may take together
+ * (ADR-0020's amendment of 2026-11-19): room for about 500 ordinary sketches (a
+ * plate with 30 holes takes about 31,000 vertices). A vertex keeps 12 bytes in
+ * memory and 12 on the graphics card, 384 MB at this budget; a fill whose
+ * selection lies in many pieces also keeps an order of 4 bytes a vertex in each
+ * place, 512 MB at most. Building a large fill peaks at about 30 to 60 bytes a
+ * vertex while it lasts. A sketch past the budget draws its curves only; its
+ * regions are found and picked as ever, so this limits the shading and never
+ * what a design can do.
+ */
+export const MAX_FILL_VERTICES = 16_000_000;
+
+/**
+ * The most work one sketch's fill may take to build, in the units of the app's
+ * `fillWork`, which are known before anything is built. Measured on a four-core
+ * desktop, the slowest fill just inside this limit built in 1.8 to 2.9 s (best
+ * and worst of three runs); a plate with 500 round holes of 5 mm takes 77 % of it
+ * and built in 0.8 to 1.6 s, one with 30 holes takes 3 %.
+ * A sketch past it draws its curves only, as one past `MAX_FILL_VERTICES` does.
+ */
+export const MAX_FILL_WORK = 100_000_000;
+
+/**
+ * The most work the fills of a design's shown sketches may take together:
+ * eight fills at `MAX_FILL_WORK`, or about 280 plates with 30 holes.
+ */
+export const MAX_DESIGN_FILL_WORK = 8 * MAX_FILL_WORK;
+
 /** Why a sketch has no regions when its curves cut each other too often (`MAX_PROFILE_CUTS`), in the user's words. */
 export const TOO_MANY_CROSSINGS =
   'This sketch has too many curve crossings to find its profiles. Remove or simplify curves.';

@@ -3306,3 +3306,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   dialog re-lays out when the picture appears; the Draft and Render clicks are below the frame).
   The dialog is opened before the recording starts. Playwright's ffmpeg cannot write PNGs: to look
   at frames, play the webm in a page and screenshot at `currentTime` steps.
+
+### `e2e/sketch-fill-budget.spec.ts`
+
+- **The budget for sketch fills** (ADR-0020's amendment of 2026-11-19): `page.addInitScript` sets
+  `window.__extrudoFillBudget = 6` (a rectangle's fill costs 6 vertices), so of two rectangles on XY
+  (`writeArchive`, **Import…**) the second is past the budget. The note is
+  `getByRole('status', { name: 'Sketches not shaded' })` (`data-unshaded-sketches`). `meanColor`
+  reads the mean of a 14 px square from a screenshot; keep sample points **off the axes** (y = 8: the
+  red X axis runs through y = 0) and move the pointer away first. A region past the budget picks in the
+  model (`getByRole('status', { name: 'Selection' })` reads "1 profile ·") and is outlined, not filled.

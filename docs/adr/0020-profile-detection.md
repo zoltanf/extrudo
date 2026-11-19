@@ -648,3 +648,84 @@ the 500 rings of the FreeCAD importer's concentric-circles test went from
 0.6 s to 4.4 s, that test from 2.1 s to 19 s; frozen to the edges, it
 takes 2.2 s, and freezing costs nothing measurable. No caller writes into
 the points: the whole Vitest suite passed with them frozen.
+
+## Amendment 2026-11-19: fills are built once, and a design's fills share a budget
+
+**What.** The viewport built a sketch's fill again whenever the shell handed it
+a new selection list or frame: on every kernel report and every selection, for
+every shown sketch, and for the hovered sketch on every hover. Now
+`viewport/profileFills.ts` builds a region list's triangles once, in the
+sketch's own coordinates, with the range of vertices each region owns.
+`SketchFill.tsx` keeps them in one mesh, and the frame only sets the mesh's
+matrix. The triangles are the ones the view drew before.
+
+**Shades.** Hover and selection set the mesh's draw groups, never its triangles.
+A fill is drawn in at most `MAX_FILL_GROUPS` (32) groups, 64 draw calls, whatever
+is selected. While a selection leaves few stretches of one shade, the groups
+follow the order the fill was built in. Past that, `fillLayout` writes an order of
+the vertices with the plain regions first and the selected ones after them: one
+pass over the fill, on a selection change only, and 4 bytes a vertex for as long
+as the fill lives. A hover cuts the hovered region out of the group that holds it
+(`fillGroups`) and costs the same in a fill of any size.
+
+**The budget.** `MAX_FILL_VERTICES` (16,000,000 vertices) is shared by a design's
+shown sketches. `fillCost` knows a sketch's cost before anything is built, from
+its regions' corners: a polygon of n corners is n − 2 triangles, and a hole adds
+its corners and two for the bridge to it, so the cost is never under what is
+built. The open sketch is served first, then the shown sketches in timeline
+order; a sketch that doesn't fit is passed over and those after it may still fit.
+A hidden sketch counts nothing.
+
+**Time to build.** A sketch whose fill would take too long to build is not shaded
+either. Vertices don't say how long a fill takes, so `fillWork` estimates it from
+the corners before anything is built: every corner counts once for each hole of
+its region, for three corners of the average hole (a region with one hole costs a
+near constant instead), and for how thin and winding the outline is, up to once
+per corner. It followed the measured time within a factor of about six across
+plates, rings, outlines and sheets of parts. `MAX_FILL_WORK` is the limit for one
+sketch, and `MAX_DESIGN_FILL_WORK` (eight times that) for a design's shown
+sketches together, served in the same order as the budget. On the machine it was
+calibrated on, the slowest fill just inside the limit built in 1.8 to 2.9 s (best
+and worst of three runs).
+
+**Past a limit.** The sketch draws its curves only, the status bar says "· 3
+sketches not shaded", and its regions are detected and picked as before. A hovered
+or selected region of such a sketch is outlined in the accent (`regionOutlines`),
+at most `MAX_OUTLINE_POINTS` segments a sketch: long loops are drawn coarser, and
+loops that no longer fit are left out. A fill that can't be built for want of memory
+costs its sketch the shading in the same way (`noteUnbuiltFill`), not the view.
+
+None of the repository's 65 designs comes within a tenth of a limit: the largest
+takes 2,934 vertices and 0.2 % of `MAX_FILL_WORK`. A plate with 500 round holes of
+5 mm takes 77 % of it and built in 0.8 to 1.6 s.
+
+**Memory.** A vertex keeps 12 bytes in memory and 12 on the graphics card, 384 MB
+at the budget, and 512 MB when every fill also keeps an order. Building a large
+fill peaks at about 30 to 60 bytes a vertex while it lasts. Handing the
+triangulator flat numbers instead of an object per corner did not lower that peak.
+
+**Numbers** (Chrome, one machine, alone):
+
+| Design | Fill work while opening, before | After |
+|---|--:|--:|
+| 30 sketches, a plate with 30 holes each | 957 ms (60 builds) | 461 ms (30 builds) |
+| 100 such sketches | 3,043 ms (200 builds) | 1,404 ms (100 builds) |
+
+A hover or a selection in those designs now builds no fill at all.
+
+**Rejected.** Keeping built fills in a cache by region list: the undo history
+keeps old sketch data, and with it old lists, alive, so every version of a dragged
+sketch would keep its triangles. The fill lives in the component, outside the
+fonts' key, and `sketchProfiles` keeps the same list when new fonts leave a sketch
+as it was. One material with a shade per vertex: it needs a patched shader to keep
+the three shades' colours exact, and memory for every fill, selected or not.
+Building triangles for the marked regions of a sketch past a limit: selecting all
+of them would build what the limit left out. A budget of vertices per sketch: many
+small sketches add up the same. Holes × corners alone as the work: it misses large
+holes, single holes and outlines without holes.
+
+**Not covered.** The budget counts fills only. The regions themselves stay in
+memory for picking, and detection still runs on the UI thread. `fillWork` is an
+estimate: a very finely serrated outline can count as more work than it is. Near
+the budget, a drag in the open sketch can switch another sketch's shading on and
+off.

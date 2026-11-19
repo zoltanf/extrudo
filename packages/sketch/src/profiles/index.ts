@@ -7,6 +7,9 @@ export { interiorPoint, windingNumber } from './ink';
 export {
   detectProfiles,
   insidePolygon,
+  MAX_DESIGN_FILL_WORK,
+  MAX_FILL_VERTICES,
+  MAX_FILL_WORK,
   MAX_PROFILE_COORDINATE,
   MAX_PROFILE_CUTS,
   MAX_PROFILE_POINTS,

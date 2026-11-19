@@ -1,14 +1,6 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useMemo } from 'react';
-import {
-  BufferAttribute,
-  BufferGeometry,
-  Color,
-  DoubleSide,
-  MeshBasicMaterial,
-  type Plane,
-  PointsMaterial,
-} from 'three';
+import { Fragment, useEffect, useMemo } from 'react';
+import { BufferAttribute, BufferGeometry, Color, type Plane, PointsMaterial } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
@@ -16,13 +8,13 @@ import { useStore } from 'zustand';
 import { fontsStore } from '../sketch/fonts';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
+import { LineMarks } from './LineMarks';
+import { SketchFill } from './SketchFill';
 import {
   curveSegments,
   type EntityStatus,
-  PROFILE_SHADES,
   type ProfileShade,
   pointPositions,
-  profileTriangles,
   type SketchDrawing,
   STATUSES,
   sketchSegments,
@@ -81,18 +73,21 @@ export function Sketches({
   // version is in the key: a font that arrives later redraws every sketch.
   const fontsVersion = useStore(fontsStore, (s) => s.version);
   return sketches.map((s) => (
-    <Sketch
-      key={`${s.id}:${fontsVersion}`}
-      store={store}
-      drawing={s}
-      colors={s.highlight ? { free: highlight, fixed: highlight, conflict: highlight } : colors}
-      construction={s.highlight ? { ...highlight, a: 0.7 } : construction}
-      showPoints={showPoints}
-      profileColors={profileColors}
-      highlight={highlight}
-      projected={s.highlight ? highlight : projected}
-      clip={clip}
-    />
+    <Fragment key={s.id}>
+      {/* Outside the fonts' key: new fonts leave the fill of a sketch without text alone. */}
+      <SketchFill drawing={s} colors={profileColors} highlight={highlight} />
+      <Sketch
+        key={fontsVersion}
+        store={store}
+        drawing={s}
+        colors={s.highlight ? { free: highlight, fixed: highlight, conflict: highlight } : colors}
+        construction={s.highlight ? { ...highlight, a: 0.7 } : construction}
+        showPoints={showPoints}
+        highlight={highlight}
+        projected={s.highlight ? highlight : projected}
+        clip={clip}
+      />
+    </Fragment>
   ));
 }
 
@@ -104,7 +99,6 @@ function Sketch({
   colors,
   construction,
   showPoints,
-  profileColors,
   highlight,
   projected,
   clip,
@@ -114,58 +108,16 @@ function Sketch({
   colors: Readonly<Record<EntityStatus, Rgba>>;
   construction: Rgba;
   showPoints: boolean;
-  profileColors: Readonly<Record<ProfileShade, Rgba>>;
   highlight: Rgba;
   projected: Rgba;
   clip: Plane[] | null;
 }) {
-  const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
+  const { data, frame, active, status } = drawing;
   // Control polygons show while the sketch is open (P4-05, ADR-0063 §4).
   const gripSpline = active ? drawing.gripSpline : undefined;
   const segments = useMemo(
     () => sketchSegments(data, frame, status, active, gripSpline),
     [data, frame, status, active, gripSpline],
-  );
-
-  const fills = useMemo(() => {
-    const triangles = profileTriangles(profiles ?? [], frame, hoverProfile, selectedProfiles);
-    return Object.fromEntries(
-      PROFILE_SHADES.map((shade) => {
-        const g = new BufferGeometry();
-        g.setAttribute('position', new BufferAttribute(triangles[shade], 3));
-        return [shade, g];
-      }),
-    ) as Record<ProfileShade, BufferGeometry>;
-  }, [profiles, frame, hoverProfile, selectedProfiles]);
-  useEffect(
-    () => () => {
-      for (const g of Object.values(fills)) g.dispose();
-    },
-    [fills],
-  );
-  const fillMaterials = useMemo(
-    () =>
-      Object.fromEntries(
-        PROFILE_SHADES.map((shade) => [
-          shade,
-          // Coplanar with the grid and the curves: drawn after the grid, under the curves.
-          new MeshBasicMaterial({
-            transparent: true,
-            depthWrite: false,
-            side: DoubleSide,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
-          }),
-        ]),
-      ) as Record<ProfileShade, MeshBasicMaterial>,
-    [],
-  );
-  useEffect(
-    () => () => {
-      for (const m of Object.values(fillMaterials)) m.dispose();
-    },
-    [fillMaterials],
   );
 
   const geometries = useMemo(() => {
@@ -281,11 +233,6 @@ function Sketch({
     m.dots.uniforms.uColor.value = color(c);
     m.dots.uniforms.uAlpha.value = c.a;
   }
-  for (const shade of PROFILE_SHADES) {
-    const c = profileColors[shade];
-    fillMaterials[shade].color = color(c);
-    fillMaterials[shade].opacity = c.a * alpha;
-  }
   materials.dashed.color = color(construction);
   materials.dashed.opacity = construction.a * alpha;
   materials.polygons.color = color(construction);
@@ -308,20 +255,6 @@ function Sketch({
 
   return (
     <group>
-      {PROFILE_SHADES.map(
-        (shade) =>
-          (fills[shade].getAttribute('position')?.count ?? 0) > 0 && (
-            <mesh
-              key={shade}
-              geometry={fills[shade]}
-              material={fillMaterials[shade]}
-              renderOrder={3}
-              frustumCulled={false}
-              // Picking profiles is the tool host's (sketch plane maths), not R3F's.
-              raycast={() => null}
-            />
-          ),
-      )}
       {STATUSES.map(
         (s) => segments.curves[s].length > 0 && <primitive key={s} object={lines.solid[s]} />,
       )}
@@ -385,6 +318,7 @@ function Sketch({
 }
 
 const NONE: readonly string[] = [];
+const EMPTY = new Float32Array();
 
 /** Points picked in model mode (a hole's), drawn as dots in the accent over the sketch. */
 function PointMarks({
@@ -443,28 +377,11 @@ function CurveMarks({
 }) {
   const key = ids.join();
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`.
-  const line = useMemo(() => {
-    if (ids.length === 0) return undefined;
-    const positions = curveSegments(data, frame, ids);
-    if (positions.length === 0) return undefined;
-    const g = new LineSegmentsGeometry();
-    g.setPositions(positions);
-    const l = new LineSegments2(g, new LineMaterial({ linewidth: width, transparent: true }));
-    l.renderOrder = 5;
-    l.frustumCulled = false;
-    return l;
-  }, [data, frame, key, width]);
-  useEffect(
-    () => () => {
-      line?.geometry.dispose();
-      line?.material.dispose();
-    },
-    [line],
+  const positions = useMemo(
+    () => (ids.length === 0 ? EMPTY : curveSegments(data, frame, ids)),
+    [data, frame, key],
   );
-  if (!line) return null;
-  line.material.color = color(c);
-  line.material.opacity = c.a;
-  return <primitive object={line} />;
+  return <LineMarks positions={positions} color={c} width={width} />;
 }
 
 /**

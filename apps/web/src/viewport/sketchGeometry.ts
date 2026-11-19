@@ -13,7 +13,6 @@ import {
 } from '@extrudo/core';
 import type { EntityStatus } from '@extrudo/sketch/inference';
 import type { Profile } from '@extrudo/sketch/profiles';
-import { ShapeUtils, Vector2 } from 'three';
 import { tangentGrips } from '../sketch/splineEnds';
 import type { Vec3 } from './camera';
 import type { Bounds } from './store';
@@ -34,6 +33,8 @@ export interface SketchDrawing {
   status?: Readonly<Record<string, EntityStatus>>;
   /** Closed regions to shade (P1-11); none while "Show profiles" is off. */
   profiles?: readonly Profile[];
+  /** Past the design's budget for fills (`MAX_FILL_VERTICES`): the regions are outlined when marked, never filled. */
+  unshaded?: boolean;
   /** The region under the pointer (its ID within the sketch). */
   hoverProfile?: string;
   /** Selected regions (IDs within the sketch). */
@@ -382,40 +383,4 @@ export function textBoundsSummary(sketches: readonly SketchDrawing[]): string | 
     }
   }
   return out.length > 0 ? out.join(' ') : undefined;
-}
-
-/**
- * Profiles as world-space triangles (P1-11): xyz per vertex, three
- * vertices per triangle, grouped by how each region is shaded. A selected
- * region under the pointer stays `selected`.
- */
-export function profileTriangles(
-  profiles: readonly Profile[],
-  frame: SketchFrame,
-  hover?: string,
-  selected: readonly string[] = [],
-): Record<ProfileShade, Float32Array> {
-  const out: Record<ProfileShade, number[]> = { normal: [], hover: [], selected: [] };
-  for (const profile of profiles) {
-    const shade: ProfileShade = selected.includes(profile.id)
-      ? 'selected'
-      : profile.id === hover
-        ? 'hover'
-        : 'normal';
-    const contour = profile.outer.polygon.map((p) => new Vector2(p[0], p[1]));
-    const holes = profile.holes.map((h) => h.polygon.map((p) => new Vector2(p[0], p[1])));
-    const all = [...contour, ...holes.flat()];
-    const list = out[shade];
-    for (const triangle of ShapeUtils.triangulateShape(contour, holes)) {
-      for (const index of triangle) {
-        const v = all[index] as Vector2;
-        list.push(...sketchToWorld(frame, [v.x, v.y]));
-      }
-    }
-  }
-  return {
-    normal: new Float32Array(out.normal),
-    hover: new Float32Array(out.hover),
-    selected: new Float32Array(out.selected),
-  };
 }
