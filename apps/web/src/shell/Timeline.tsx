@@ -56,6 +56,7 @@ import {
 } from './featureStatus';
 import type { GroupActions } from './groupActions';
 import { kernelText } from './kernelText';
+import { useSketchShading } from './shownSketches';
 import { chipSelection, edgeScrollStep } from './timelineDrag';
 import {
   dropAt,
@@ -96,10 +97,6 @@ export interface TimelineProps {
   macro?: MacroStore;
   /** The notification store (ADR-0041): its bell is the row's last item. */
   notifications?: NotificationStore;
-  /** How many shown sketches draw their curves only (ADR-0020, ADR-0154). */
-  unshadedSketches?: number;
-  /** How many of those can't have their profiles picked in the model. */
-  unpickableSketches?: number;
   /** The profile worker's progress, for "Finding profiles 12 of 30…" (ADR-0154). */
   profilesProgress?: StoreApi<RegionsState>;
 }
@@ -192,8 +189,6 @@ export function Timeline({
   selectionSize,
   macro,
   notifications,
-  unshadedSketches = 0,
-  unpickableSketches = 0,
   profilesProgress,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
@@ -422,9 +417,7 @@ export function Timeline({
       </output>
       {model && <KernelState model={model} />}
       {profilesProgress && <FindingProfiles store={profilesProgress} />}
-      {unshadedSketches > 0 && (
-        <UnshadedSketches count={unshadedSketches} unpickable={unpickableSketches} />
-      )}
+      <UnshadedSketches />
       {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
       {notifications && <NotificationHistory store={notifications} />}
@@ -1084,8 +1077,14 @@ function FindingProfiles({ store }: { store: StoreApi<RegionsState> }) {
   );
 }
 
-/** Says that some sketches draw their curves only (ADR-0020, ADR-0154), and if some can't be picked. */
-function UnshadedSketches({ count, unpickable }: { count: number; unpickable: number }) {
+/**
+ * Says that some sketches draw their curves only (ADR-0020, ADR-0154), and if some can't be
+ * picked. It reads the counts itself (ADR-0156's amendment of 2026-11-19), so profile results
+ * render this note and not the timeline.
+ */
+function UnshadedSketches() {
+  const { unshaded: count, unpickable } = useSketchShading();
+  if (count === 0) return null;
   const them = unpickable === 1 ? 'one of them' : `${unpickable} of them`;
   return (
     <Tooltip

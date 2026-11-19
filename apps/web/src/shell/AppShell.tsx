@@ -32,12 +32,11 @@ import {
   type SelectionItem,
   type SessionStore,
   type SheetId,
-  type SketchData,
   type ViewId,
 } from '@extrudo/core';
 import { type BodyMesh, type Recomputer, shownBodies as shownBodyIds } from '@extrudo/kernel';
 import type { Matrix12 } from '@extrudo/kernel/matrix';
-import { MAX_FILL_WORK, type Profile } from '@extrudo/sketch/profiles';
+import { MAX_FILL_WORK } from '@extrudo/sketch/profiles';
 import {
   type ComponentProps,
   type CSSProperties,
@@ -199,8 +198,8 @@ import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
-import { type FlatRegions, regionsBytes } from '../sketch/flatRegions';
-import { attachmentBytes, fontsStore, uiFontBytes } from '../sketch/fonts';
+import { regionsBytes } from '../sketch/flatRegions';
+import { attachmentBytes, fontsStore } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
 import { importDrawingStore } from '../sketch/importDraft';
@@ -235,14 +234,7 @@ import {
   sketchRegions,
 } from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
-import {
-  closedSketchShows,
-  createRegionsClient,
-  idleRegions,
-  type RegionsClient,
-  type RegionsEntry,
-  type RegionsJob,
-} from '../sketch/regionsClient';
+import { createRegionsClient, type RegionsClient } from '../sketch/regionsClient';
 import { fillBytes } from '../sketch/regionsJob';
 import {
   deleteSelection,
@@ -266,17 +258,7 @@ import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useKernelWaits, useRecomputeFinished } from '../viewport/ModelProgress';
 import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
-import {
-  fillCost,
-  fillFailed,
-  fillWork,
-  grantedBytes,
-  type RegionClaim,
-  type RegionVerdict,
-  regionBudget,
-  regionVerdicts,
-  unbuiltFills,
-} from '../viewport/profileFills';
+import { fillCost, fillFailed, fillWork } from '../viewport/profileFills';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -315,6 +297,12 @@ import { MODES, perMode } from './modes';
 import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
+import {
+  type ShownSketchBase,
+  ShownSketchesProvider,
+  type ShownSketchItem,
+  useShownDrawings,
+} from './shownSketches';
 import { Timeline } from './Timeline';
 import { lastHoveredTool, Toolbar, ToolbarTabs, useToolbarTab } from './Toolbar';
 import {
@@ -353,16 +341,16 @@ function DialogViewport({
   dialog,
   session,
   doc,
-  sketches,
   ghostsFor,
   ...props
 }: Omit<ComponentProps<typeof Viewport>, 'preview' | 'hover' | 'sketches' | 'ghosts'> & {
   dialog: DialogController | undefined;
   session: SessionStore;
   doc: Parameters<typeof hoveredFeatureIds>[0];
-  sketches: readonly SketchDrawing[];
   ghostsFor: (hovered: ReadonlySet<FeatureId>) => ReturnType<typeof ghostsOf>;
 }) {
+  // The shown sketches with their profile results (ADR-0156's amendment of 2026-11-19).
+  const sketches = useShownDrawings();
   const preview = useViewPreview(dialog);
   const hover = useStore(session, (s) => s.hover);
   // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the
@@ -2682,8 +2670,6 @@ function Shell({
     }
     return shown;
   }, [doc.joints, hoveredJoint, jointReports, jointOpen]);
-  // A fill that could not be built takes its sketch out of the budget.
-  const unbuiltFill = useStore(unbuiltFills, (s) => s.version);
   // The regions of sketches that aren't open are found in a worker (ADR-0154).
   // Made in an effect, so a remount (StrictMode's too) never keeps a disposed client in use.
   const [regionsClient, setRegionsClient] = useState<RegionsClient>();
@@ -2692,16 +2678,11 @@ function Shell({
     setRegionsClient(client);
     return () => client.dispose();
   }, []);
-  const regionsVersion = useStore(regionsClient?.store ?? idleRegions, (s) => s.version);
-  // What the open sketch was granted when it was opened (`regionVerdicts`' `held`).
-  const heldRegions = useRef<{ id: string; bytes: number } | undefined>(undefined);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `unbuiltFill` and `regionsVersion` say when to ask again.
-  const shownSketches = useMemo(() => {
-    const out: SketchDrawing[] = [];
-    const claims: RegionClaim[] = [];
-    const jobs: RegionsJob[] = [];
-    const entries = new Map<string, RegionsEntry>();
-    const open = new Map<string, { profiles: readonly Profile[]; regions: FlatRegions }>();
+  // The shown sketches from the document. Their results are added below the shell
+  // (`ShownSketchesProvider`, ADR-0156's amendment of 2026-11-19), so a batch of them
+  // renders the viewport and the status bar's note, not the shell.
+  const sketchBase = useMemo((): ShownSketchBase => {
+    const items: ShownSketchItem[] = [];
     doc.features.forEach((feature, index) => {
       if (index >= doc.timelineMarker || feature.suppressed) return;
       const active = feature.id === activeSketchId;
@@ -2711,7 +2692,7 @@ function Shell({
       const frame =
         sketch && sketchFrame(feature.id, sketch.plane, sketchReports, constructionReports);
       if (!sketch || !frame) return;
-      out.push({
+      const drawing: SketchDrawing = {
         id: feature.id,
         name: feature.name,
         frame,
@@ -2727,102 +2708,44 @@ function Shell({
         // One selected open fit spline shows its tangent grips (ADR-0063's third amendment).
         ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
         ...(showProfiles && { selectedProfiles: profileIdsIn(shownSelection, feature.id) }),
-      });
+      };
       // Its result stays while it is open, profiles shown or not.
       if (active) pinOpenSketch(sketch.data);
-      if (!showProfiles) return;
+      if (!showProfiles) {
+        items.push({ drawing, kind: 'plain' });
+        return;
+      }
       if (active) {
         // The open sketch stays synchronous: its regions are found here, as the tools need them.
+        // Only its claim is kept: its regions stay in the profile cache (ADR-0154).
         const profiles = openSketchProfiles(sketch.data, fontsVersion);
         const regions = sketchRegions(sketch.data, fontsVersion);
-        open.set(feature.id, { profiles, regions });
-        claims.push({
-          id: feature.id,
-          active: true,
-          regionBytes: regionsBytes(regions),
-          fillBytes: fillBytes(fillCost(profiles), profiles.length),
-          fillable: fillWork(profiles) <= MAX_FILL_WORK && !fillFailed(profiles),
+        items.push({
+          drawing,
+          kind: 'open',
+          claim: {
+            id: feature.id,
+            active: true,
+            regionBytes: regionsBytes(regions),
+            fillBytes: fillBytes(fillCost(profiles), profiles.length),
+            fillable: fillWork(profiles) <= MAX_FILL_WORK && !fillFailed(profiles),
+          },
         });
         return;
       }
-      const job = {
-        key: feature.id,
-        data: sketch.data,
-        version: fontsVersion,
-        text: hasText(sketch.data),
-      };
-      const entry = regionsClient?.get(sketch.data, fontsVersion);
-      if (!entry) {
-        jobs.push(job);
-        return;
-      }
-      entries.set(feature.id, entry);
-      if (entry.state === 'done') {
-        claims.push({
-          id: feature.id,
-          active: false,
-          regionBytes: entry.regionBytes,
-          fillBytes: entry.fillBytes,
-          fillable: entry.fillable,
-        });
-      }
-    });
-    const held =
-      activeSketchId && heldRegions.current?.id === activeSketchId
-        ? heldRegions.current.bytes
-        : undefined;
-    const budget = regionBudget();
-    const verdicts = regionVerdicts(claims, budget, held);
-    // What the budget has left, for the worker: arrays that wouldn't fit aren't even made.
-    const grantedTo = new Map(claims.map((c) => [c.id, grantedBytes(c, verdicts.get(c.id))]));
-    const left = Math.max(0, budget - [...grantedTo.values()].reduce((n, b) => n + b, 0));
-    const openClaim = claims.find((c) => c.active);
-    if (!out.some((d) => d.active)) closeOpenSketch();
-    heldRegions.current =
-      openClaim === undefined
-        ? undefined
-        : held !== undefined
-          ? heldRegions.current
-          : { id: openClaim.id, bytes: grantedBytes(openClaim, verdicts.get(openClaim.id)) };
-    const granted = new Map<SketchData, RegionVerdict>();
-    let unshaded = 0;
-    let unpickable = 0;
-    for (const drawing of out) {
-      const verdict = verdicts.get(drawing.id);
-      const mine = open.get(drawing.id);
-      if (mine) {
-        // The open sketch's regions stay in the profile cache, looked up by its data where
-        // they are drawn: a drawing an old render keeps must not keep them too.
-        if (verdict !== 'shaded') {
-          drawing.unshaded = true;
-          unshaded++;
-        }
-        continue;
-      }
-      const entry = entries.get(drawing.id);
-      if (!entry) continue;
-      const shows = closedSketchShows(entry, verdict);
-      // Every shown sketch's entry stays, refused, stopped or failed too: only others are spare.
-      granted.set(drawing.data, shows.keep);
-      if (shows.regions) drawing.regions = shows.regions;
-      if (shows.fill) drawing.fill = shows.fill;
-      if (shows.unshaded) {
-        drawing.unshaded = true;
-        unshaded++;
-      }
-      if (shows.unpickable) unpickable++;
-      // What the budget grants but was let go of before is asked for again.
-      if (shows.ask) {
-        jobs.push({
-          key: drawing.id,
-          data: drawing.data,
+      items.push({
+        drawing,
+        kind: 'closed',
+        job: {
+          key: feature.id,
+          data: sketch.data,
           version: fontsVersion,
-          text: hasText(drawing.data),
-        });
-      }
-    }
-    for (const job of jobs) job.allowance = left + (grantedTo.get(job.key) ?? 0);
-    return { drawings: out, jobs, granted, unshaded, unpickable };
+          text: hasText(sketch.data),
+        },
+      });
+    });
+    if (!items.some((item) => item.drawing.active)) closeOpenSketch();
+    return { items, fontsVersion, activeSketchId };
   }, [
     doc.features,
     doc.timelineMarker,
@@ -2835,21 +2758,7 @@ function Shell({
     sketchReports,
     constructionReports,
     fontsVersion,
-    unbuiltFill,
-    regionsVersion,
-    regionsClient,
   ]);
-  const sketches = shownSketches.drawings;
-  // Fonts reach the worker before the jobs that need them.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: a new fonts' version means new fonts.
-  useEffect(() => {
-    for (const [id, bytes] of uiFontBytes()) regionsClient?.addFont(id, bytes);
-  }, [fontsVersion, regionsClient]);
-  // The effects take the small parts: a closure that keeps the drawings would keep their arrays.
-  const regionJobs = shownSketches.jobs;
-  const grantedRegions = shownSketches.granted;
-  useEffect(() => regionsClient?.want(regionJobs), [regionJobs, regionsClient]);
-  useEffect(() => regionsClient?.keep(grantedRegions), [grantedRegions, regionsClient]);
   // A hovered sketch is found first.
   useEffect(
     () =>
@@ -2912,7 +2821,7 @@ function Shell({
       notify('error', error.message);
     }
   };
-  const sketchPlane = sketches.find((s) => s.active)?.frame;
+  const sketchPlane = sketchBase.items.find((item) => item.drawing.active)?.drawing.frame;
   // The open sketch's notes are drawn through its plane, live (ADR-0126 §7).
   const openSketch = useMemo(
     () =>
@@ -3121,828 +3030,833 @@ function Shell({
   );
 
   return (
-    <div
-      className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-bg text-ink"
-      data-kernel-busy={kernelBusy ? '' : undefined}
-    >
-      <AppBar
-        store={store}
-        autosave={autosave}
-        file={fileActions}
-        tabs={<ToolbarTabs mode={mode} tab={toolbarTab} onTab={setToolbarTab} />}
-        theme={choice}
-        onThemeChange={setChoice}
-        onUndo={undo}
-        onRedo={redo}
-        dialogOpen={dialogOpen !== undefined || jointOpen !== undefined}
-        onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
-        onTutorial={startTutorial}
-        onDocs={(page) => platform.openDocs(docsPath(page))}
-        helpTool={() => {
-          const tool = lastHoveredTool();
-          const label = tool && commands.find((c) => c.id === tool)?.label;
-          return label
-            ? { label, onHelp: () => platform.openDocs(docsPath({ tool: tool as string })) }
-            : undefined;
-        }}
-        version={BUILD.version}
-        updates={updates}
-        {...(platform.updates?.check && { onCheckUpdates: () => platform.updates?.check?.() })}
-        onApplyUpdate={updates && (() => void applyUpdate(updates, notify))}
-        markingRadial={markingStyle.radial}
-        onMarkingRadial={(radial) => {
-          if (radial !== markingStyle.radial) markingStyle.toggle();
-        }}
-        display={displayAccess}
-        onSettings={() => setSettingsOpen(true)}
-        onAbout={() => setAboutOpen(true)}
-        onReportBug={() => void openBugReport()}
-        onSource={() => platform.openSite('repo')}
-        onQuit={platform.menus ? () => void quitApp() : undefined}
-        onCloseDesign={platform.menus ? undefined : fileActions.home}
-        agent={platform.agent}
-      />
-      <TutorialCard tutorial={tutorial} />
-      <Toolbar
-        mode={mode}
-        tab={toolbarTab}
-        activeTool={
-          picking
-            ? 'sketch'
-            : drawing ||
-                projecting ||
-                measuring ||
-                sectioning ||
-                printing ||
-                overhanging ||
-                thickening ||
-                customizing ||
-                sheetToolRunning
-              ? (activeTool as ToolId)
-              : dialogOpen && typeof dialogOpen.spec.command === 'string'
-                ? dialogOpen.spec.command
-                : undefined
-        }
-        onRun={run}
-        onChangeShortcut={changeShortcut}
-        ready={ready}
-        hidden={macroHidden}
-        pluginItems={pluginItems}
-        {...(recentFiles && { recentFiles })}
-      />
-      {/* The view fills the area; the browser floats over its left edge (glass, like the nav
+    <ShownSketchesProvider base={sketchBase} client={regionsClient}>
+      <div
+        className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-bg text-ink"
+        data-kernel-busy={kernelBusy ? '' : undefined}
+      >
+        <AppBar
+          store={store}
+          autosave={autosave}
+          file={fileActions}
+          tabs={<ToolbarTabs mode={mode} tab={toolbarTab} onTab={setToolbarTab} />}
+          theme={choice}
+          onThemeChange={setChoice}
+          onUndo={undo}
+          onRedo={redo}
+          dialogOpen={dialogOpen !== undefined || jointOpen !== undefined}
+          onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
+          onTutorial={startTutorial}
+          onDocs={(page) => platform.openDocs(docsPath(page))}
+          helpTool={() => {
+            const tool = lastHoveredTool();
+            const label = tool && commands.find((c) => c.id === tool)?.label;
+            return label
+              ? { label, onHelp: () => platform.openDocs(docsPath({ tool: tool as string })) }
+              : undefined;
+          }}
+          version={BUILD.version}
+          updates={updates}
+          {...(platform.updates?.check && { onCheckUpdates: () => platform.updates?.check?.() })}
+          onApplyUpdate={updates && (() => void applyUpdate(updates, notify))}
+          markingRadial={markingStyle.radial}
+          onMarkingRadial={(radial) => {
+            if (radial !== markingStyle.radial) markingStyle.toggle();
+          }}
+          display={displayAccess}
+          onSettings={() => setSettingsOpen(true)}
+          onAbout={() => setAboutOpen(true)}
+          onReportBug={() => void openBugReport()}
+          onSource={() => platform.openSite('repo')}
+          onQuit={platform.menus ? () => void quitApp() : undefined}
+          onCloseDesign={platform.menus ? undefined : fileActions.home}
+          agent={platform.agent}
+        />
+        <TutorialCard tutorial={tutorial} />
+        <Toolbar
+          mode={mode}
+          tab={toolbarTab}
+          activeTool={
+            picking
+              ? 'sketch'
+              : drawing ||
+                  projecting ||
+                  measuring ||
+                  sectioning ||
+                  printing ||
+                  overhanging ||
+                  thickening ||
+                  customizing ||
+                  sheetToolRunning
+                ? (activeTool as ToolId)
+                : dialogOpen && typeof dialogOpen.spec.command === 'string'
+                  ? dialogOpen.spec.command
+                  : undefined
+          }
+          onRun={run}
+          onChangeShortcut={changeShortcut}
+          ready={ready}
+          hidden={macroHidden}
+          pluginItems={pluginItems}
+          {...(recentFiles && { recentFiles })}
+        />
+        {/* The view fills the area; the browser floats over its left edge (glass, like the nav
           bar), so showing, hiding or resizing it never resizes the view. Overlays anchored to
           the view's left or centre keep clear of it through --x-browser-inset. */}
-      <main
-        className="relative flex min-h-0"
-        style={
-          {
-            '--x-browser-inset': browser.collapsed ? '0px' : `${browser.size}px`,
-          } as CSSProperties
-        }
-      >
-        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex">
-          <BrowserPanel
-            store={store}
-            viewport={viewport}
-            activeSketchId={activeSketchId}
-            actions={featureActions}
-            bodies={browserBodies}
-            bodyActions={bodyActions}
-            viewActions={viewActions}
-            {...(mode === 'model' && {
-              annotations: annotationActions,
-              selectedAnnotations,
-              sheetsFolder: <SheetsFolder sheets={doc.sheets ?? []} actions={sheetActions} />,
-            })}
-            {...(sheetMode && {
-              sheetTree: (
-                <SheetsTree
-                  sheets={doc.sheets ?? []}
-                  active={activeSheetId}
-                  selected={sheetTargets}
-                  actions={sheetActions}
-                />
-              ),
-            })}
-            componentActions={componentActions}
-            {...(jointActions && {
-              joints: {
-                rows: jointRowsOf,
-                actions: jointActions,
-                onHover: setHoveredJoint,
-                onCheckClearance: (id) => openJointCheck(id),
-              },
-            })}
-            activeComponent={activeComponent}
-            isolatedComponent={isolatedComponent}
-            placementActions={placementActions}
-            {...(assemblyHint &&
-              mode === 'model' && {
-                assemblyHint: {
-                  onNewComponent: () => run('newComponent'),
-                  onDismiss: dismissAssemblyHint,
+        <main
+          className="relative flex min-h-0"
+          style={
+            {
+              '--x-browser-inset': browser.collapsed ? '0px' : `${browser.size}px`,
+            } as CSSProperties
+          }
+        >
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex">
+            <BrowserPanel
+              store={store}
+              viewport={viewport}
+              activeSketchId={activeSketchId}
+              actions={featureActions}
+              bodies={browserBodies}
+              bodyActions={bodyActions}
+              viewActions={viewActions}
+              {...(mode === 'model' && {
+                annotations: annotationActions,
+                selectedAnnotations,
+                sheetsFolder: <SheetsFolder sheets={doc.sheets ?? []} actions={sheetActions} />,
+              })}
+              {...(sheetMode && {
+                sheetTree: (
+                  <SheetsTree
+                    sheets={doc.sheets ?? []}
+                    active={activeSheetId}
+                    selected={sheetTargets}
+                    actions={sheetActions}
+                  />
+                ),
+              })}
+              componentActions={componentActions}
+              {...(jointActions && {
+                joints: {
+                  rows: jointRowsOf,
+                  actions: jointActions,
+                  onHover: setHoveredJoint,
+                  onCheckClearance: (id) => openJointCheck(id),
                 },
               })}
-            selectedBodies={selectedBodies}
-            statuses={featureStatuses}
-            recomputeFinished={recomputeFinished}
-            onPickBody={
-              modelSelect
-                ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
-                : undefined
-            }
-            onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
-            {...(projecting &&
-              modelSelect && {
-                onPickFeature: (id, toggle) => modelSelect.onClick({ kind: 'feature', id }, toggle),
-              })}
-            {...(sectionEntry && { section: sectionEntry })}
-            {...(overhang.state && {
-              overhang: {
-                label: `Overhangs · ${overhang.downLabel} · ${
-                  overhang.degrees === undefined ? '?' : Math.round(overhang.degrees)
-                }°`,
-                on: overhang.state.on,
-                active: overhanging,
-                onToggle: () => overhang.setOn(!overhang.state?.on),
-                onEdit: openOverhang,
-                onRemove: () => {
-                  overhang.remove();
-                  if (overhanging) session.getState().setTool(undefined);
-                },
-              },
-            })}
-            {...(thickness.state && {
-              thickness: {
-                label: `Wall thickness · ${
-                  thickness.min === undefined
-                    ? '?'
-                    : formatQuantity(thickness.min, LENGTH, {
-                        ...doc.settings,
-                        precision: 1,
-                      })
-                }`,
-                on: thickness.state.on,
-                active: thickening,
-                onToggle: () => thickness.setOn(!thickness.state?.on),
-                onEdit: openThickness,
-                onRemove: () => {
-                  thickness.remove();
-                  if (thickening) session.getState().setTool(undefined);
-                },
-              },
-            })}
-            {...(jointCheck.state &&
-              jointCheck.joint && {
-                jointCheck: {
-                  label: `Clearance · ${jointCheck.joint.name}`,
-                  on: jointCheck.state.on,
-                  active: poseJointId === jointCheck.state.joint,
-                  onToggle: () => jointCheck.controller.setOn(!jointCheck.state?.on),
-                  onEdit: () => openJointCheck(undefined, false),
-                  onRemove: () => jointCheck.controller.remove(),
+              activeComponent={activeComponent}
+              isolatedComponent={isolatedComponent}
+              placementActions={placementActions}
+              {...(assemblyHint &&
+                mode === 'model' && {
+                  assemblyHint: {
+                    onNewComponent: () => run('newComponent'),
+                    onDismiss: dismissAssemblyHint,
+                  },
+                })}
+              selectedBodies={selectedBodies}
+              statuses={featureStatuses}
+              recomputeFinished={recomputeFinished}
+              onPickBody={
+                modelSelect
+                  ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
+                  : undefined
+              }
+              onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
+              {...(projecting &&
+                modelSelect && {
+                  onPickFeature: (id, toggle) =>
+                    modelSelect.onClick({ kind: 'feature', id }, toggle),
+                })}
+              {...(sectionEntry && { section: sectionEntry })}
+              {...(overhang.state && {
+                overhang: {
+                  label: `Overhangs · ${overhang.downLabel} · ${
+                    overhang.degrees === undefined ? '?' : Math.round(overhang.degrees)
+                  }°`,
+                  on: overhang.state.on,
+                  active: overhanging,
+                  onToggle: () => overhang.setOn(!overhang.state?.on),
+                  onEdit: openOverhang,
+                  onRemove: () => {
+                    overhang.remove();
+                    if (overhanging) session.getState().setTool(undefined);
+                  },
                 },
               })}
-            width={browser.size}
-            collapsed={browser.collapsed}
-            animate={browser.animate}
-            onToggle={browser.toggle}
-          />
-          {!browser.collapsed && (
-            <Splitter
-              label="Resize browser"
-              controls={BROWSER_ID}
-              size={browser.size}
-              min={browser.min}
-              max={browser.max}
+              {...(thickness.state && {
+                thickness: {
+                  label: `Wall thickness · ${
+                    thickness.min === undefined
+                      ? '?'
+                      : formatQuantity(thickness.min, LENGTH, {
+                          ...doc.settings,
+                          precision: 1,
+                        })
+                  }`,
+                  on: thickness.state.on,
+                  active: thickening,
+                  onToggle: () => thickness.setOn(!thickness.state?.on),
+                  onEdit: openThickness,
+                  onRemove: () => {
+                    thickness.remove();
+                    if (thickening) session.getState().setTool(undefined);
+                  },
+                },
+              })}
+              {...(jointCheck.state &&
+                jointCheck.joint && {
+                  jointCheck: {
+                    label: `Clearance · ${jointCheck.joint.name}`,
+                    on: jointCheck.state.on,
+                    active: poseJointId === jointCheck.state.joint,
+                    onToggle: () => jointCheck.controller.setOn(!jointCheck.state?.on),
+                    onEdit: () => openJointCheck(undefined, false),
+                    onRemove: () => jointCheck.controller.remove(),
+                  },
+                })}
+              width={browser.size}
               collapsed={browser.collapsed}
-              onResize={browser.resize}
+              animate={browser.animate}
               onToggle={browser.toggle}
             />
-          )}
-        </div>
-        <ModelProgress
-          model={model}
-          store={store}
-          waits={kernel?.waits}
-          collapsed={browser.collapsed}
-          {...(kernel?.canRevertToShown &&
-            kernel.revertToShown && {
-              cancel: {
-                can: () => kernel.canRevertToShown?.() ?? false,
-                run: () => {
-                  if (kernel.revertToShown?.())
-                    notify(
-                      'info',
-                      'Update cancelled: your last changes were undone. Redo brings them back.',
-                    );
+            {!browser.collapsed && (
+              <Splitter
+                label="Resize browser"
+                controls={BROWSER_ID}
+                size={browser.size}
+                min={browser.min}
+                max={browser.max}
+                collapsed={browser.collapsed}
+                onResize={browser.resize}
+                onToggle={browser.toggle}
+              />
+            )}
+          </div>
+          <ModelProgress
+            model={model}
+            store={store}
+            waits={kernel?.waits}
+            collapsed={browser.collapsed}
+            {...(kernel?.canRevertToShown &&
+              kernel.revertToShown && {
+                cancel: {
+                  can: () => kernel.canRevertToShown?.() ?? false,
+                  run: () => {
+                    if (kernel.revertToShown?.())
+                      notify(
+                        'info',
+                        'Update cancelled: your last changes were undone. Redo brings them back.',
+                      );
+                  },
                 },
-              },
-            })}
-        />
-        {/* In the drawing the sheet covers the view, which stays mounted but inert. */}
-        <div className="contents" inert={sheetMode}>
-          <ViewportBoundary>
+              })}
+          />
+          {/* In the drawing the sheet covers the view, which stays mounted but inert. */}
+          <div className="contents" inert={sheetMode}>
+            <ViewportBoundary>
+              <Suspense
+                fallback={
+                  <section
+                    aria-label="Viewport"
+                    aria-busy="true"
+                    className="min-w-0 flex-1"
+                    style={{ background: 'var(--x-viewport-glow)' }}
+                  />
+                }
+              >
+                <DialogViewport
+                  dialog={dialog}
+                  viewport={viewport}
+                  namedViews={namedViewEntries}
+                  bodies={shownBodies}
+                  meta={bodyMeta}
+                  components={componentsSummary(componentList)}
+                  joints={jointsSummary(doc, jointReports, componentOfBody)}
+                  jointAxes={jointAxes}
+                  {...(posing && {
+                    posed: posing.matrices,
+                    jointPose: posing.summary,
+                    poseBar: {
+                      text: posing.text,
+                      onReset: () =>
+                        viewport.getState().setJointPose(jointPose && { ...jointPose, value: 0 }),
+                    },
+                  })}
+                  activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
+                  isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
+                  onExitIsolation={() => session.getState().isolateComponent(undefined)}
+                  session={session}
+                  doc={doc}
+                  sketchPlane={sketchPlane}
+                  planePicker={planePicker}
+                  construction={constructionDrawings}
+                  ghostsFor={ghostsFor}
+                  canvases={canvasList}
+                  calibration={calibration}
+                  sketchInput={sketchInput}
+                  commandRunning={drawing || picking || projecting || measuring || section.choosing}
+                  onStopCommand={stopCommand}
+                  selection={jointItems ?? dialogItems ?? selection}
+                  modelSelect={modelSelect}
+                  viewMenu={viewMenu}
+                  sectionClips={section.clips}
+                  {...(section.box?.value && {
+                    sectionBox: { box: section.box.value, on: section.box.state.on },
+                  })}
+                  {...(overhang.summary !== undefined && {
+                    overhang: { view: overhang.view, summary: overhang.summary },
+                  })}
+                  {...(thickness.summary !== undefined && {
+                    thickness: { thin: thickness.shading, summary: thickness.summary },
+                  })}
+                  {...(jointCheck.summary !== undefined && {
+                    jointCheck: {
+                      summary: jointCheck.summary,
+                      ...(jointMarks.collisions && { collisions: jointMarks.collisions }),
+                    },
+                  })}
+                >
+                  {chordPrefix !== undefined && (
+                    <ChordHint prefix={chordPrefix} commands={commands} />
+                  )}
+                  {dialogOpen && dialog && (
+                    <DialogOverlay
+                      controller={dialog}
+                      viewport={viewport}
+                      settings={doc.settings}
+                      bodies={shownBodies}
+                    />
+                  )}
+                  {jointMarks.leader && (
+                    <ClearanceOverlay
+                      {...jointMarks.leader}
+                      viewport={viewport}
+                      settings={doc.settings}
+                    />
+                  )}
+                  {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
+                    <JointHandle
+                      viewport={viewport}
+                      joint={poseJoint}
+                      report={poseReport}
+                      centre={poseCentre}
+                      value={jointPose.value}
+                      onChange={(value) =>
+                        viewport.getState().setJointPose({
+                          joint: poseJoint.id,
+                          value: clampPose(poseJoint, poseRange, value),
+                        })
+                      }
+                    />
+                  )}
+                  {thickness.spot && (
+                    <ThicknessOverlay
+                      spot={thickness.spot}
+                      viewport={viewport}
+                      settings={doc.settings}
+                      {...(section.clips.length > 0 && { clip: section.clips })}
+                    />
+                  )}
+                  {sectioning && (
+                    <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
+                  )}
+                  {measuring && measured.measurement?.pair && (
+                    <MeasureOverlay
+                      pair={measured.measurement.pair}
+                      viewport={viewport}
+                      settings={doc.settings}
+                    />
+                  )}
+                  {(mode === 'model' || sketchPlane) && (
+                    <AnnotationsOverlay
+                      store={store}
+                      session={session}
+                      model={model}
+                      viewport={viewport}
+                      ui={annotationsUi}
+                      {...(openSketch && { openSketch })}
+                      reanchor={reanchor}
+                      interactive={
+                        !picking &&
+                        !dialogOpen &&
+                        !jointOpen &&
+                        !drawing &&
+                        (!activeTool || annotating) &&
+                        !section.choosing
+                      }
+                      onError={(message) => notify('error', message)}
+                    />
+                  )}
+                  {showConstraints && tools && activeSketchId && sketchPlane && (
+                    <tools.Glyphs
+                      store={store}
+                      session={session}
+                      viewport={viewport}
+                      sketchId={activeSketchId}
+                      frame={sketchPlane}
+                      interactive={!drawing && !annotating}
+                      over={status?.over}
+                      onDelete={remove}
+                    />
+                  )}
+                  {showDimensions && tools && activeSketchId && sketchPlane && (
+                    <tools.Labels
+                      store={store}
+                      session={session}
+                      viewport={viewport}
+                      host={tools.host}
+                      sketchId={activeSketchId}
+                      frame={sketchPlane}
+                      interactive={!drawing && !annotating}
+                      notify={notify}
+                      onDelete={remove}
+                    />
+                  )}
+                  {!drawing && tools && activeSketchId && sketchPlane && (
+                    <tools.Selection
+                      store={store}
+                      session={session}
+                      viewport={viewport}
+                      sketchId={activeSketchId}
+                      frame={sketchPlane}
+                    />
+                  )}
+                  {mode === 'sketch' && activeSketch && !drawing && (
+                    <SelectionPanel
+                      store={store}
+                      session={session}
+                      host={host}
+                      onDelete={remove}
+                      fonts={fontPicker}
+                      notify={notify}
+                    />
+                  )}
+                  {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
+                  {mode === 'sketch' && activeTool === 'text' && textOpen && (
+                    <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
+                  )}
+                  {/* The Import Drawing tool's panel (P4-06), likewise. */}
+                  {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
+                    <ImportDrawingPanel store={store} host={host} />
+                  )}
+                  {drawing && tools && activeSketchId && sketchPlane && (
+                    <tools.Overlay
+                      host={tools.host}
+                      store={store}
+                      viewport={viewport}
+                      sketchId={activeSketchId}
+                      frame={sketchPlane}
+                    />
+                  )}
+                </DialogViewport>
+                {appearancePopover}
+              </Suspense>
+            </ViewportBoundary>
+          </div>
+          {/* The drawing's sheet (P6-24) covers the 3D view, which stays mounted underneath:
+            thumbnails and (later) shaded views use its snapshot. */}
+          {sheetMode && activeSheetId && (
             <Suspense
               fallback={
-                <section
-                  aria-label="Viewport"
+                <div
                   aria-busy="true"
-                  className="min-w-0 flex-1"
+                  className="absolute inset-0 z-[5]"
                   style={{ background: 'var(--x-viewport-glow)' }}
                 />
               }
             >
-              <DialogViewport
-                dialog={dialog}
-                viewport={viewport}
-                namedViews={namedViewEntries}
-                bodies={shownBodies}
-                meta={bodyMeta}
-                components={componentsSummary(componentList)}
-                joints={jointsSummary(doc, jointReports, componentOfBody)}
-                jointAxes={jointAxes}
-                {...(posing && {
-                  posed: posing.matrices,
-                  jointPose: posing.summary,
-                  poseBar: {
-                    text: posing.text,
-                    onReset: () =>
-                      viewport.getState().setJointPose(jointPose && { ...jointPose, value: 0 }),
-                  },
-                })}
-                activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
-                isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
-                onExitIsolation={() => session.getState().isolateComponent(undefined)}
+              <SheetWorkspace
+                stores={stores}
+                store={store}
                 session={session}
-                doc={doc}
-                sketches={sketches}
-                sketchPlane={sketchPlane}
-                planePicker={planePicker}
-                construction={constructionDrawings}
-                ghostsFor={ghostsFor}
-                canvases={canvasList}
-                calibration={calibration}
-                sketchInput={sketchInput}
-                commandRunning={drawing || picking || projecting || measuring || section.choosing}
-                onStopCommand={stopCommand}
-                selection={jointItems ?? dialogItems ?? selection}
-                modelSelect={modelSelect}
-                viewMenu={viewMenu}
-                sectionClips={section.clips}
-                {...(section.box?.value && {
-                  sectionBox: { box: section.box.value, on: section.box.state.on },
+                viewport={viewport}
+                sheetId={activeSheetId}
+                browserInset={browser.collapsed ? 0 : browser.size}
+                control={sheetControl}
+                nameField={sheetNameField}
+                preferences={platform.preferences}
+                notify={notify}
+                model={model}
+                {...(kernel?.sheetViews &&
+                  kernel.cancelSheetViews &&
+                  kernel.bodyVersions && {
+                    kernel: kernel as SheetViewsKernel,
+                  })}
+                {...(kernel?.resolveSheet && {
+                  anchorsKernel: kernel as unknown as DimensionKernel,
                 })}
-                {...(overhang.summary !== undefined && {
-                  overhang: { view: overhang.view, summary: overhang.summary },
-                })}
-                {...(thickness.summary !== undefined && {
-                  thickness: { thin: thickness.shading, summary: thickness.summary },
-                })}
-                {...(jointCheck.summary !== undefined && {
-                  jointCheck: {
-                    summary: jointCheck.summary,
-                    ...(jointMarks.collisions && { collisions: jointMarks.collisions }),
-                  },
-                })}
-              >
-                {chordPrefix !== undefined && (
-                  <ChordHint prefix={chordPrefix} commands={commands} />
-                )}
-                {dialogOpen && dialog && (
-                  <DialogOverlay
-                    controller={dialog}
-                    viewport={viewport}
+                {...(kernel?.sheetParts && { partsKernel: kernel as SheetPartsKernel })}
+                {...(sheetVersion !== undefined && { version: sheetVersion })}
+                onMenu={(at) => {
+                  const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
+                  if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
+                }}
+              />
+            </Suspense>
+          )}
+          <MarkingMenu
+            at={sheetMode ? sheetMenu?.at : undefined}
+            slots={sheetMenu?.slots ?? []}
+            entries={[]}
+            radial={sheetMenu?.radial ?? true}
+            onClose={() => setSheetMenu(undefined)}
+          />
+          {picking && (
+            <PlanePrompt
+              session={session}
+              {...(redefining && {
+                title: 'Redefine Plane',
+                hint: `Pick a plane or a flat face for ${doc.features.find((f) => f.id === redefining)?.name ?? 'the sketch'}, in the view or here.`,
+              })}
+              planes={constructionDrawings
+                .filter((c) => c.report.kind === 'plane')
+                .map((c) => ({ id: c.id, name: c.name }))}
+              onPick={pickPlane}
+              onCancel={() => cancelCreateSketch(stores)}
+            />
+          )}
+          {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
+          {jointDialog && <JointDialog controller={jointDialog} doc={doc} />}
+          {poseJoint && !jointOpen && (
+            <JointPanel
+              doc={doc}
+              joint={poseJoint}
+              report={poseReport}
+              range={poseRange}
+              value={jointPose?.joint === poseJoint.id ? jointPose.value : 0}
+              onPose={(value) => viewport.getState().setJointPose({ joint: poseJoint.id, value })}
+              onClose={closePose}
+              {...(poseJoint.type !== 'rigid' && {
+                clearance: (
+                  <ClearanceSection
+                    key={poseJoint.id}
+                    tool={jointCheck}
+                    joint={poseJoint.id}
+                    defaultMin={defaultMinGap(doc)}
                     settings={doc.settings}
-                    bodies={shownBodies}
-                  />
-                )}
-                {jointMarks.leader && (
-                  <ClearanceOverlay
-                    {...jointMarks.leader}
-                    viewport={viewport}
-                    settings={doc.settings}
-                  />
-                )}
-                {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
-                  <JointHandle
-                    viewport={viewport}
-                    joint={poseJoint}
-                    report={poseReport}
-                    centre={poseCentre}
-                    value={jointPose.value}
-                    onChange={(value) =>
+                    onShow={(value) =>
                       viewport.getState().setJointPose({
                         joint: poseJoint.id,
                         value: clampPose(poseJoint, poseRange, value),
                       })
                     }
                   />
-                )}
-                {thickness.spot && (
-                  <ThicknessOverlay
-                    spot={thickness.spot}
-                    viewport={viewport}
-                    settings={doc.settings}
-                    {...(section.clips.length > 0 && { clip: section.clips })}
-                  />
-                )}
-                {sectioning && (
-                  <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
-                )}
-                {measuring && measured.measurement?.pair && (
-                  <MeasureOverlay
-                    pair={measured.measurement.pair}
-                    viewport={viewport}
-                    settings={doc.settings}
-                  />
-                )}
-                {(mode === 'model' || sketchPlane) && (
-                  <AnnotationsOverlay
-                    store={store}
-                    session={session}
-                    model={model}
-                    viewport={viewport}
-                    ui={annotationsUi}
-                    {...(openSketch && { openSketch })}
-                    reanchor={reanchor}
-                    interactive={
-                      !picking &&
-                      !dialogOpen &&
-                      !jointOpen &&
-                      !drawing &&
-                      (!activeTool || annotating) &&
-                      !section.choosing
-                    }
-                    onError={(message) => notify('error', message)}
-                  />
-                )}
-                {showConstraints && tools && activeSketchId && sketchPlane && (
-                  <tools.Glyphs
-                    store={store}
-                    session={session}
-                    viewport={viewport}
-                    sketchId={activeSketchId}
-                    frame={sketchPlane}
-                    interactive={!drawing && !annotating}
-                    over={status?.over}
-                    onDelete={remove}
-                  />
-                )}
-                {showDimensions && tools && activeSketchId && sketchPlane && (
-                  <tools.Labels
-                    store={store}
-                    session={session}
-                    viewport={viewport}
-                    host={tools.host}
-                    sketchId={activeSketchId}
-                    frame={sketchPlane}
-                    interactive={!drawing && !annotating}
-                    notify={notify}
-                    onDelete={remove}
-                  />
-                )}
-                {!drawing && tools && activeSketchId && sketchPlane && (
-                  <tools.Selection
-                    store={store}
-                    session={session}
-                    viewport={viewport}
-                    sketchId={activeSketchId}
-                    frame={sketchPlane}
-                  />
-                )}
-                {mode === 'sketch' && activeSketch && !drawing && (
-                  <SelectionPanel
-                    store={store}
-                    session={session}
-                    host={host}
-                    onDelete={remove}
-                    fonts={fontPicker}
-                    notify={notify}
-                  />
-                )}
-                {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
-                {mode === 'sketch' && activeTool === 'text' && textOpen && (
-                  <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
-                )}
-                {/* The Import Drawing tool's panel (P4-06), likewise. */}
-                {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
-                  <ImportDrawingPanel store={store} host={host} />
-                )}
-                {drawing && tools && activeSketchId && sketchPlane && (
-                  <tools.Overlay
-                    host={tools.host}
-                    store={store}
-                    viewport={viewport}
-                    sketchId={activeSketchId}
-                    frame={sketchPlane}
-                  />
-                )}
-              </DialogViewport>
-              {appearancePopover}
-            </Suspense>
-          </ViewportBoundary>
-        </div>
-        {/* The drawing's sheet (P6-24) covers the 3D view, which stays mounted underneath:
-            thumbnails and (later) shaded views use its snapshot. */}
-        {sheetMode && activeSheetId && (
-          <Suspense
-            fallback={
-              <div
-                aria-busy="true"
-                className="absolute inset-0 z-[5]"
-                style={{ background: 'var(--x-viewport-glow)' }}
-              />
-            }
-          >
-            <SheetWorkspace
-              stores={stores}
-              store={store}
-              session={session}
-              viewport={viewport}
-              sheetId={activeSheetId}
-              browserInset={browser.collapsed ? 0 : browser.size}
-              control={sheetControl}
-              nameField={sheetNameField}
-              preferences={platform.preferences}
-              notify={notify}
-              model={model}
-              {...(kernel?.sheetViews &&
-                kernel.cancelSheetViews &&
-                kernel.bodyVersions && {
-                  kernel: kernel as SheetViewsKernel,
-                })}
-              {...(kernel?.resolveSheet && { anchorsKernel: kernel as unknown as DimensionKernel })}
-              {...(kernel?.sheetParts && { partsKernel: kernel as SheetPartsKernel })}
-              {...(sheetVersion !== undefined && { version: sheetVersion })}
-              onMenu={(at) => {
-                const content = viewMenu?.open({ mode: 'sheet', stack: [] }, at);
-                if (content) setSheetMenu({ at, slots: content.slots, radial: content.radial });
-              }}
+                ),
+              })}
             />
-          </Suspense>
-        )}
-        <MarkingMenu
-          at={sheetMode ? sheetMenu?.at : undefined}
-          slots={sheetMenu?.slots ?? []}
-          entries={[]}
-          radial={sheetMenu?.radial ?? true}
-          onClose={() => setSheetMenu(undefined)}
-        />
-        {picking && (
-          <PlanePrompt
-            session={session}
-            {...(redefining && {
-              title: 'Redefine Plane',
-              hint: `Pick a plane or a flat face for ${doc.features.find((f) => f.id === redefining)?.name ?? 'the sketch'}, in the view or here.`,
-            })}
-            planes={constructionDrawings
-              .filter((c) => c.report.kind === 'plane')
-              .map((c) => ({ id: c.id, name: c.name }))}
-            onPick={pickPlane}
-            onCancel={() => cancelCreateSketch(stores)}
-          />
-        )}
-        {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
-        {jointDialog && <JointDialog controller={jointDialog} doc={doc} />}
-        {poseJoint && !jointOpen && (
-          <JointPanel
-            doc={doc}
-            joint={poseJoint}
-            report={poseReport}
-            range={poseRange}
-            value={jointPose?.joint === poseJoint.id ? jointPose.value : 0}
-            onPose={(value) => viewport.getState().setJointPose({ joint: poseJoint.id, value })}
-            onClose={closePose}
-            {...(poseJoint.type !== 'rigid' && {
-              clearance: (
-                <ClearanceSection
-                  key={poseJoint.id}
-                  tool={jointCheck}
-                  joint={poseJoint.id}
-                  defaultMin={defaultMinGap(doc)}
-                  settings={doc.settings}
-                  onShow={(value) =>
-                    viewport.getState().setJointPose({
-                      joint: poseJoint.id,
-                      value: clampPose(poseJoint, poseRange, value),
-                    })
-                  }
+          )}
+          {sectioning && (
+            <SectionPanel
+              tool={section}
+              settings={doc.settings}
+              planeLabel={sectionPlane}
+              constructionPlanes={constructionDrawings
+                .filter((c) => c.report.kind === 'plane')
+                .map((c) => ({ id: c.id, name: c.name }))}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {printing && (
+            <PrintInfoPanel
+              info={printInfo}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {tolerancing && (
+            <TolerancePanel
+              tolerance={tolerance}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {overhanging && (
+            <OverhangPanel
+              tool={overhang}
+              settings={doc.settings}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {thickening && (
+            <WallThicknessPanel
+              tool={thickness}
+              settings={doc.settings}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {customizing && (
+            <CustomizerPanel
+              tool={customizer}
+              onOpenParameters={() => setParametersOpen(true)}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {measuring && (
+            <MeasurePanel
+              state={measured}
+              settings={doc.settings}
+              others={selection.length - measured.count}
+              onClear={() => session.getState().clearSelection()}
+              onClose={() => session.getState().setTool(undefined)}
+            />
+          )}
+          {mode === 'sketch' && activeSketch && (
+            <PanelColumn>
+              {projecting && isProjectTool(activeTool) && (
+                <ProjectPanel
+                  tool={activeTool}
+                  linked={keepLinked}
+                  onLinked={setKeepLinked}
+                  onDone={() => session.getState().setTool(undefined)}
                 />
-              ),
-            })}
-          />
-        )}
-        {sectioning && (
-          <SectionPanel
-            tool={section}
-            settings={doc.settings}
-            planeLabel={sectionPlane}
-            constructionPlanes={constructionDrawings
-              .filter((c) => c.report.kind === 'plane')
-              .map((c) => ({ id: c.id, name: c.name }))}
-            onClose={() => session.getState().setTool(undefined)}
-          />
-        )}
-        {printing && (
-          <PrintInfoPanel info={printInfo} onClose={() => session.getState().setTool(undefined)} />
-        )}
-        {tolerancing && (
-          <TolerancePanel
-            tolerance={tolerance}
-            onClose={() => session.getState().setTool(undefined)}
-          />
-        )}
-        {overhanging && (
-          <OverhangPanel
-            tool={overhang}
-            settings={doc.settings}
-            onClose={() => session.getState().setTool(undefined)}
-          />
-        )}
-        {thickening && (
-          <WallThicknessPanel
-            tool={thickness}
-            settings={doc.settings}
-            onClose={() => session.getState().setTool(undefined)}
-          />
-        )}
-        {customizing && (
-          <CustomizerPanel
-            tool={customizer}
-            onOpenParameters={() => setParametersOpen(true)}
-            onClose={() => session.getState().setTool(undefined)}
-          />
-        )}
-        {measuring && (
-          <MeasurePanel
-            state={measured}
-            settings={doc.settings}
-            others={selection.length - measured.count}
-            onClear={() => session.getState().clearSelection()}
-            onClose={() => session.getState().setTool(undefined)}
-          />
-        )}
-        {mode === 'sketch' && activeSketch && (
-          <PanelColumn>
-            {projecting && isProjectTool(activeTool) && (
-              <ProjectPanel
-                tool={activeTool}
-                linked={keepLinked}
-                onLinked={setKeepLinked}
-                onDone={() => session.getState().setTool(undefined)}
+              )}
+              <SketchPalette
+                name={activeSketch.name}
+                viewport={viewport}
+                host={host}
+                outline={outline}
+                onOutline={setOutline}
+                onLookAt={() => lookAtSketch(stores)}
+                onFinish={() => finishSketch(stores)}
+                problem={sketchProblem}
               />
-            )}
-            <SketchPalette
-              name={activeSketch.name}
-              viewport={viewport}
-              host={host}
-              outline={outline}
-              onOutline={setOutline}
-              onLookAt={() => lookAtSketch(stores)}
-              onFinish={() => finishSketch(stores)}
-              problem={sketchProblem}
-            />
-            {toasts && (
-              <Toasts
-                place="column"
-                toasts={toasts.toasts}
-                onDismiss={toasts.onDismiss}
-                onKeep={toasts.onKeep}
-              />
-            )}
-          </PanelColumn>
-        )}
-        {/* Clear of the open dialog's column: a toast over its OK button swallows the
+              {toasts && (
+                <Toasts
+                  place="column"
+                  toasts={toasts.toasts}
+                  onDismiss={toasts.onDismiss}
+                  onKeep={toasts.onKeep}
+                />
+              )}
+            </PanelColumn>
+          )}
+          {/* Clear of the open dialog's column: a toast over its OK button swallows the
             click (the "Sketch1 is hidden…" notice lives 12 seconds). */}
-        {toasts && !(mode === 'sketch' && activeSketch) && (
-          <Toasts
-            place="view"
-            clearRight={dialogOpen || sheetMode ? DIALOG_COLUMN : undefined}
-            toasts={toasts.toasts}
-            onDismiss={toasts.onDismiss}
-            onKeep={toasts.onKeep}
+          {toasts && !(mode === 'sketch' && activeSketch) && (
+            <Toasts
+              place="view"
+              clearRight={dialogOpen || sheetMode ? DIALOG_COLUMN : undefined}
+              toasts={toasts.toasts}
+              onDismiss={toasts.onDismiss}
+              onKeep={toasts.onKeep}
+            />
+          )}
+        </main>
+        {sheetMode ? (
+          <SheetTabs
+            sheets={doc.sheets ?? []}
+            session={session}
+            units={doc.settings.units}
+            notify={notify}
+            marker={{ at: doc.timelineMarker, of: doc.features.length }}
+            {...(history && { notifications: history })}
+            actions={{
+              ...sheetActions,
+              add: () => addNewSheet(stores),
+              move: (id, index) => moveSheetTo(stores, id, index),
+            }}
+          />
+        ) : (
+          <Timeline
+            store={store}
+            activeSketch={activeSketch?.name}
+            actions={featureActions}
+            groups={groups}
+            selection={timelineSelection}
+            viewport={viewport}
+            model={model}
+            session={session}
+            editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
+            pluginHint={pluginHint}
+            macro={macro}
+            notifications={history}
+            profilesProgress={regionsClient?.store}
+            selectionSize={
+              measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
+            }
           />
         )}
-      </main>
-      {sheetMode ? (
-        <SheetTabs
-          sheets={doc.sheets ?? []}
-          session={session}
-          units={doc.settings.units}
+        <SheetExportDialog
+          request={sheetExport}
+          doc={doc}
+          files={platform.files}
+          {...(kernel?.sheetViews &&
+            kernel.cancelSheetViews &&
+            kernel.bodyVersions && {
+              views: {
+                kernel: kernel as SheetViewsKernel,
+                bodies: () => Object.keys(model.getState().bodies) as BodyId[],
+                ...(kernel.resolveSheet && { anchors: kernel as SheetAnchorsKernel }),
+                ...(kernel.sheetParts && { parts: kernel as SheetPartsKernel }),
+              },
+            })}
+          fields={sheetFields}
+          preferences={platform.preferences}
           notify={notify}
-          marker={{ at: doc.timelineMarker, of: doc.features.length }}
-          {...(history && { notifications: history })}
-          actions={{
-            ...sheetActions,
-            add: () => addNewSheet(stores),
-            move: (id, index) => moveSheetTo(stores, id, index),
+          onClose={() => setSheetExport(undefined)}
+        />
+        <NewSheetsDialog
+          open={newSheetsOpen}
+          onOpenChange={setNewSheetsOpen}
+          bodies={newSheetBodies}
+          {...(sheetViewsKernel && {
+            plan: (start, request) =>
+              import('../sheets/standardViews').then((m) =>
+                m.planSheetStart(
+                  sheetViewsKernel,
+                  store.getState().doc,
+                  Object.keys(model.getState().bodies) as BodyId[],
+                  start,
+                  request,
+                ),
+              ),
+          })}
+          onCreate={(options, start, plan) => {
+            setNewSheetsOpen(false);
+            createSheet(
+              stores,
+              options,
+              new Date(),
+              plan ? { scale: plan.scale, views: plan.views } : {},
+            );
+            // One view: Base View places it (and carries on as Projected View).
+            if (start === 'one') session.getState().setTool('baseView');
           }}
         />
-      ) : (
-        <Timeline
+        <MacroDialog
+          recorded={recorded}
           store={store}
-          activeSketch={activeSketch?.name}
-          actions={featureActions}
-          groups={groups}
-          selection={timelineSelection}
-          viewport={viewport}
-          model={model}
           session={session}
-          editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
-          pluginHint={pluginHint}
-          macro={macro}
-          notifications={history}
-          unshadedSketches={shownSketches.unshaded}
-          unpickableSketches={shownSketches.unpickable}
-          profilesProgress={regionsClient?.store}
-          selectionSize={
-            measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
-          }
+          notify={notify}
+          onClose={() => setRecorded(undefined)}
         />
-      )}
-      <SheetExportDialog
-        request={sheetExport}
-        doc={doc}
-        files={platform.files}
-        {...(kernel?.sheetViews &&
-          kernel.cancelSheetViews &&
-          kernel.bodyVersions && {
-            views: {
-              kernel: kernel as SheetViewsKernel,
-              bodies: () => Object.keys(model.getState().bodies) as BodyId[],
-              ...(kernel.resolveSheet && { anchors: kernel as SheetAnchorsKernel }),
-              ...(kernel.sheetParts && { parts: kernel as SheetPartsKernel }),
-            },
-          })}
-        fields={sheetFields}
-        preferences={platform.preferences}
-        notify={notify}
-        onClose={() => setSheetExport(undefined)}
-      />
-      <NewSheetsDialog
-        open={newSheetsOpen}
-        onOpenChange={setNewSheetsOpen}
-        bodies={newSheetBodies}
-        {...(sheetViewsKernel && {
-          plan: (start, request) =>
-            import('../sheets/standardViews').then((m) =>
-              m.planSheetStart(
-                sheetViewsKernel,
-                store.getState().doc,
-                Object.keys(model.getState().bodies) as BodyId[],
-                start,
-                request,
-              ),
-            ),
-        })}
-        onCreate={(options, start, plan) => {
-          setNewSheetsOpen(false);
-          createSheet(
-            stores,
-            options,
-            new Date(),
-            plan ? { scale: plan.scale, views: plan.views } : {},
-          );
-          // One view: Base View places it (and carries on as Projected View).
-          if (start === 'one') session.getState().setTool('baseView');
-        }}
-      />
-      <MacroDialog
-        recorded={recorded}
-        store={store}
-        session={session}
-        notify={notify}
-        onClose={() => setRecorded(undefined)}
-      />
-      <OverConstrainedDialog host={host} />
-      <ParametersDialog
-        store={store}
-        apply={apply}
-        open={parametersOpen}
-        onOpenChange={setParametersOpen}
-      />
-      <SettingsDialog
-        open={settingsOpen !== false}
-        onOpenChange={(open) => {
-          setSettingsOpen(open);
-          if (!open) setRecordKey(undefined);
-        }}
-        section={typeof settingsOpen === 'string' ? settingsOpen : undefined}
-        recordKey={recordKey}
-        plugins={{ plugins, files: platform.files, inDesign, onUpdate: updatePlugin }}
-        preferences={platform.preferences}
-        display={displayAccess}
-        doc={doc}
-        theme={choice}
-        onThemeChange={setChoice}
-        markingRadial={markingStyle.radial}
-        onMarkingRadial={markingStyle.toggle}
-        marking={{
-          overrides: markingSlots.overrides,
-          commands: markingCommands,
-          assign: markingSlots.assign,
-          resetAll: markingSlots.resetAll,
-        }}
-        desktop={platform.desktop !== undefined}
-        installedSlicers={platform.installedSlicers}
-        agent={platform.agent}
-      />
-      <AboutDialog
-        open={aboutOpen}
-        onOpenChange={setAboutOpen}
-        desktop={platform.desktop !== undefined}
-        kernelInfo={kernelInfo}
-        openLink={platform.openLink}
-        onReportBug={() => void openBugReport()}
-      />
-      <WhatsNewDialog />
-      <BugReportDialog
-        open={bugReport.open}
-        onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}
-        screenshot={bugReport.screenshot}
-        onRetake={retakeBugReport}
-        desktop={platform.desktop !== undefined}
-        kernelInfo={kernelInfo}
-        openLink={platform.openLink}
-        download={platform.files.download}
-        doc={doc}
-        notify={notify}
-      />
-      <CommandSearch
-        open={search}
-        commands={commands}
-        recent={recent}
-        pinned={pinned}
-        onTogglePin={togglePin}
-        onChangeShortcut={(id) => {
-          setSearch(undefined);
-          changeShortcut(id);
-        }}
-        onRun={runCommand}
-        onClose={() => setSearch(undefined)}
-      />
-      <ExportModelDialog
-        store={store}
-        session={session}
-        model={model}
-        bodies={bodyList}
-        kernel={kernel}
-        request={modelExport}
-        files={platform.files}
-        preferences={platform.preferences}
-        openInSlicer={platform.openInSlicer}
-        installedSlicers={platform.installedSlicers}
-        notify={notify}
-        onClose={() => setModelExport(undefined)}
-      />
-      <RenderDialog
-        store={store}
-        session={session}
-        model={model}
-        bodies={bodyList}
-        kernel={kernel}
-        request={renderRequest}
-        files={platform.files}
-        appRender={appRenderer}
-        traceRisk={refusesAntialiasing}
-        {...(platform.render && { render: platform.render })}
-        viewportCamera={() => {
-          const { view, projection } = viewport.getState();
-          return viewToCamera(view, projection);
-        }}
-        groundLevel={() => viewport.getState().bounds?.box?.min[2]}
-        openLink={platform.openLink}
-        notify={notify}
-        onClose={() => setRenderRequest(undefined)}
-      />
-      <ExportScriptDialog
-        store={store}
-        session={session}
-        model={model}
-        bodies={bodyList}
-        kernel={kernel}
-        open={scriptExportOpen}
-        files={platform.files}
-        preferences={platform.preferences}
-        notify={notify}
-        onClose={() => setScriptExportOpen(false)}
-      />
-      <ExportSketchDialog
-        store={store}
-        request={exportRequest}
-        files={platform.files}
-        onClose={() => setExportRequest(undefined)}
-      />
-      <VersionsDialog
-        open={versionsOpen}
-        onOpenChange={setVersionsOpen}
-        ctx={versionContext}
-        notify={notify}
-        beforeRestore={endTransaction}
-        onOpenCopy={(id) => navigate(projectHref(id))}
-      />
-    </div>
+        <OverConstrainedDialog host={host} />
+        <ParametersDialog
+          store={store}
+          apply={apply}
+          open={parametersOpen}
+          onOpenChange={setParametersOpen}
+        />
+        <SettingsDialog
+          open={settingsOpen !== false}
+          onOpenChange={(open) => {
+            setSettingsOpen(open);
+            if (!open) setRecordKey(undefined);
+          }}
+          section={typeof settingsOpen === 'string' ? settingsOpen : undefined}
+          recordKey={recordKey}
+          plugins={{ plugins, files: platform.files, inDesign, onUpdate: updatePlugin }}
+          preferences={platform.preferences}
+          display={displayAccess}
+          doc={doc}
+          theme={choice}
+          onThemeChange={setChoice}
+          markingRadial={markingStyle.radial}
+          onMarkingRadial={markingStyle.toggle}
+          marking={{
+            overrides: markingSlots.overrides,
+            commands: markingCommands,
+            assign: markingSlots.assign,
+            resetAll: markingSlots.resetAll,
+          }}
+          desktop={platform.desktop !== undefined}
+          installedSlicers={platform.installedSlicers}
+          agent={platform.agent}
+        />
+        <AboutDialog
+          open={aboutOpen}
+          onOpenChange={setAboutOpen}
+          desktop={platform.desktop !== undefined}
+          kernelInfo={kernelInfo}
+          openLink={platform.openLink}
+          onReportBug={() => void openBugReport()}
+        />
+        <WhatsNewDialog />
+        <BugReportDialog
+          open={bugReport.open}
+          onOpenChange={(open) => setBugReport((s) => ({ ...s, open }))}
+          screenshot={bugReport.screenshot}
+          onRetake={retakeBugReport}
+          desktop={platform.desktop !== undefined}
+          kernelInfo={kernelInfo}
+          openLink={platform.openLink}
+          download={platform.files.download}
+          doc={doc}
+          notify={notify}
+        />
+        <CommandSearch
+          open={search}
+          commands={commands}
+          recent={recent}
+          pinned={pinned}
+          onTogglePin={togglePin}
+          onChangeShortcut={(id) => {
+            setSearch(undefined);
+            changeShortcut(id);
+          }}
+          onRun={runCommand}
+          onClose={() => setSearch(undefined)}
+        />
+        <ExportModelDialog
+          store={store}
+          session={session}
+          model={model}
+          bodies={bodyList}
+          kernel={kernel}
+          request={modelExport}
+          files={platform.files}
+          preferences={platform.preferences}
+          openInSlicer={platform.openInSlicer}
+          installedSlicers={platform.installedSlicers}
+          notify={notify}
+          onClose={() => setModelExport(undefined)}
+        />
+        <RenderDialog
+          store={store}
+          session={session}
+          model={model}
+          bodies={bodyList}
+          kernel={kernel}
+          request={renderRequest}
+          files={platform.files}
+          appRender={appRenderer}
+          traceRisk={refusesAntialiasing}
+          {...(platform.render && { render: platform.render })}
+          viewportCamera={() => {
+            const { view, projection } = viewport.getState();
+            return viewToCamera(view, projection);
+          }}
+          groundLevel={() => viewport.getState().bounds?.box?.min[2]}
+          openLink={platform.openLink}
+          notify={notify}
+          onClose={() => setRenderRequest(undefined)}
+        />
+        <ExportScriptDialog
+          store={store}
+          session={session}
+          model={model}
+          bodies={bodyList}
+          kernel={kernel}
+          open={scriptExportOpen}
+          files={platform.files}
+          preferences={platform.preferences}
+          notify={notify}
+          onClose={() => setScriptExportOpen(false)}
+        />
+        <ExportSketchDialog
+          store={store}
+          request={exportRequest}
+          files={platform.files}
+          onClose={() => setExportRequest(undefined)}
+        />
+        <VersionsDialog
+          open={versionsOpen}
+          onOpenChange={setVersionsOpen}
+          ctx={versionContext}
+          notify={notify}
+          beforeRestore={endTransaction}
+          onOpenCopy={(id) => navigate(projectHref(id))}
+        />
+      </div>
+    </ShownSketchesProvider>
   );
 }
