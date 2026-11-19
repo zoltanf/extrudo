@@ -1630,6 +1630,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   disabled and the save status stays "Saved". Try Again is a `menuitem` of the chip's right-click
   menu; the second Stop is pressed with Enter on the focused button, after which the chip has the
   focus. Leaving for the home screen and opening the URL again shows the pattern running again.
+  "Nothing saved" is checked on the stored file: `storedDocument(page)` reads OPFS
+  `projects/<id>/document.json` (text and `lastModified`) before the click and 1.5 s after the
+  toast (past the autosave's 800 ms); they must be equal. The last step stops once more and
+  double-clicks the chip: the `Edit Rectangular Pattern1 dialog` region gets
+  `data-preview-status="error"` and its "Feature status" line the own-dialog message; the first
+  `Count` textbox (there are two, one per direction) set to `2` gives `ok`, then OK builds it.
   No time is asserted; the pattern keeps one call busy 13.9 s in Node.
 
 ### `e2e/kernel-prewarm.spec.ts`

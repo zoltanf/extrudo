@@ -4104,10 +4104,15 @@ no undo step, nothing saved or stored); only while opening (until a recompute fi
 the recompute Try again or a Stop starts until the document changes): `showsStop` in
 `preparing`, `showsCancel` in `updating`, never both; a stopped call is no crash (its sequence's
 rejection is dropped, no budget, no `#crashed`), a real crash during Try again is one; `stop()`
-does nothing without a running document feature in a recompute call with the kernel, lets the
-worker's delivered messages land first and gives up when the feature finished; a stop is
-forgotten when the feature, a feature before it, the parameters or the settings change, when
-the marker no longer reaches it, and on `dispose`; previews skip it too unless the draft is it;
+does nothing unless a feature was reported by a call still with the kernel (`#current`, cleared
+when that call settles via `#currentSequence`: a newer send doesn't end it, so Stop stays
+offered), lets the worker's delivered messages land first and gives up when the feature
+finished; it records the feature against the document as it is then (an edited one in its new
+version; one no longer reached is not recorded, but the worker is still replaced); the toast
+only tells of a stop still there; a stop is forgotten when the feature, a feature before it, the
+parameters or the settings change, when the marker no longer reaches it, and on `dispose`;
+previews skip it too, its own dialog while the draft's inputs equal the stopped ones
+(`sameValue`, `STOPPED_DRAFT_MESSAGE`);
 when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight
 during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-stop.spec.ts`.
 

@@ -40,6 +40,13 @@ edit), once the kernel is on a feature. Stop:
    browser row) while it is stopped.
 5. **Try again** forgets the stop and computes the design again with no limit. That recompute
    counts as opening: the notice shows "Preparing your design…" at once, with Stop.
+   **Edit Feature** on a stopped feature (to lower a count, say) doesn't start the slow
+   computation by itself: its own dialog keeps it skipped while the draft's inputs equal the
+   stopped feature's (compared by value, whatever the key order), and the dialog's Feature status
+   line says "Stopped while the design opened, so there is no preview yet. Change a value to
+   build it." (`STOPPED_DRAFT_MESSAGE`; OK stays off, as for any refused draft, since there is
+   nothing to commit). Once a value changes the preview builds it; OK commits the change, which
+   forgets the stop.
 6. **A stop is forgotten** when the feature changes, when a feature before it, the parameters or
    the settings change (the stop keeps them by identity: a conservative stand-in for "what it
    depends on"), when the marker no longer reaches it (rolled back, deleted, suppressed: the
@@ -55,18 +62,30 @@ edit), once the kernel is on a feature. Stop:
   dropped without blaming a feature; `restart()` doesn't touch the crash budget or
   `client.restarts`. A real crash during a Try again is handled as a crash (the feature goes to
   `#crashed`, the crash message, the budget counts).
+- **The running feature** is the one the kernel last reported, for as long as the call that
+  reported it is with the kernel (`#current` is cleared when that call settles, by
+  `#currentSequence`). A newer send (an edit, a roll-back, a suppress during opening) doesn't
+  end it: the worker finishes the old feature first, so Stop stays offered meanwhile (review
+  finding 1 of 2026-11-19). The stop is recorded against the document as it is when the worker
+  is replaced: an edited feature in its new version (Try again builds that one); a feature the
+  document no longer reaches (rolled past, suppressed, deleted) is not recorded, but the worker
+  is still replaced, which ends the old call, and no toast shows.
 - **Nothing to stop → nothing happens.** `stop()` returns undefined when not opening, when no
   recompute call is with the kernel (resources still going out, a restart under way), when a
   Stop is already under way, or when the feature finished first. The race: `stop()` lets the
   worker's messages already delivered land (one macrotask) and gives up when another feature
-  started, the walk got past its features, or the result came. The engine reports the end of
+  started, the walk got past its features, or the call came back. A send that starts during
+  that turn doesn't cancel the Stop (review finding 7). The engine reports the end of
   its features with `onFeature(undefined)` (joints, annotations, meshes follow), so the last
   feature is never blamed for the meshing. A feature that finishes in the few milliseconds
   between that turn and the terminate is still marked stopped; Try again builds it.
+- **The toast tells only of a stop that is still there** when the restart ends: none after a
+  Try Again during the restart or when nothing was recorded. Its Try again does nothing once the
+  stop is gone (the history copy no longer offers it).
 - **Disposal wins.** A design closed mid-Stop sends nothing more: the restart's resend checks
   `#disposed`, the old model store is never written, the next design has its own kernel.
-- **Previews skip it too** (the request's `stopped`), except a dialog of the stopped feature
-  itself, which computes it.
+- **Previews skip it too** (the request's `stopped`); its own dialog too, until a value changes
+  (see 5).
 - **The button is reachable and named** ("Stop: open the design without this feature for
   now"); it alone takes the pointer, the notice stays `pointer-events: none`. When it leaves
   while it has the focus, the focus goes to the stopped feature's timeline chip (else the
@@ -103,9 +122,24 @@ edit), once the kernel is on a feature. Stop:
   fake kernel: stop, first and last feature, five stops without a give-up, a crash during Try
   again, two Stops, Stop during the restart, the three races, fonts still going out, disposal,
   only while opening, Try again and an edit during it, forgetting, previews),
-  `recompute/engine.test.ts` (the skip and the walk's end), `progressRules.test.ts`,
+  `recompute/engine.test.ts` (the skip, the walk's end, the own-dialog message), `progressRules.test.ts`,
   `ModelProgress.test.tsx` (the button, never with Cancel, the focus), `stopFeature.test.ts` (the
-  toast and Try again), `featureVisibility.test.tsx` (Try Again in the menu).
+  toast and Try again, none for a stop already gone), `featureVisibility.test.tsx` (Try Again in
+  the menu). The review of 2026-11-19 added: Stop after an edit, a roll-back, a suppress or a
+  delete of the running feature; Stop not swallowed by a send in its first turn; Try Again during
+  the restart; the own dialog (`recomputer-stop.test.ts`, `engine.test.ts`); and in the e2e the
+  stored `document.json` compared before Stop and after it (text and write time), and Stop →
+  Edit Feature → no build until a value changes → OK builds it.
+
+## Limits (known, for later steps)
+
+- **An edit after a Stop builds the stopped feature in full, without Stop.** An edit to a
+  feature before the stopped one forgets the stop (rule 6); the update that follows computes the
+  stopped feature again with no Stop (Stop is only for opening) and Cancel can't bring the
+  stopped state back (the stop was forgotten, and Cancel returns to the step the model was shown
+  at). This belongs to the next step, Stop during an update after an edit.
+- **Export after a Stop** gives the model without the stopped feature, as after any failed
+  feature: the export dialog doesn't warn about it.
 
 ## Rejected
 

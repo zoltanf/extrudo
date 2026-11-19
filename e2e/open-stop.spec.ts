@@ -47,6 +47,20 @@ function manyPosts(path: string): void {
   writeFileSync(path, writeArchive({ ...doc, name: 'Many posts' }));
 }
 
+/**
+ * The stored project's document file as the project store keeps it in OPFS
+ * (`projects/<id>/document.json`): its text and when it was written.
+ */
+async function storedDocument(page: Page): Promise<{ text: string; modified: number }> {
+  const id = page.url().split('#/p/')[1]?.split(/[/?]/)[0] ?? '';
+  return page.evaluate(`(async () => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await (await root.getDirectoryHandle('projects')).getDirectoryHandle(${JSON.stringify(id)});
+    const file = await (await dir.getFileHandle('document.json')).getFile();
+    return { text: await file.text(), modified: file.lastModified };
+  })()`);
+}
+
 /** Waits until the pattern is the running feature and Stop is offered. */
 async function patternRunning(page: Page) {
   await expect(notice(page).locator('[data-progress-feature]')).toHaveText(PATTERN, {
@@ -74,6 +88,8 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   // The notice offers Stop alone: no Cancel while a design opens (ADR-0111).
   await expect(page.locator('[data-model-cancel]')).toHaveCount(0);
   await expect(saveStatus(page)).toContainText('Saved');
+  const before = await storedDocument(page);
+  expect(before.text).toContain(PATTERN);
   await stopButton(page).click();
 
   // The toast says what happened and offers Try again.
@@ -95,9 +111,12 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   );
   await page.mouse.move(700, 450);
 
-  // Nothing in the document changed: nothing to undo, nothing to save.
+  // Nothing in the document changed: nothing to undo, nothing saved. The stored file is the
+  // same text, written at the same time, well past the autosave's delay (800 ms).
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
   await expect(saveStatus(page)).toContainText('Saved');
+  await page.waitForTimeout(1500);
+  expect(await storedDocument(page)).toEqual(before);
 
   // Try again from the chip's menu: the pattern runs again, shown as at open, with Stop.
   await chip(page).click({ button: 'right' });
@@ -115,4 +134,24 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   await page.goto('./');
   await page.goto(url);
   await patternRunning(page);
+
+  // Stop, then Edit Feature to lower the count: the dialog doesn't start the long
+  // computation by itself; it says so until a value changes, and OK builds the new one.
+  await stopButton(page).click();
+  await kernelReady(page, 60_000);
+  await expect(chip(page)).toHaveAttribute('data-feature-status', 'error');
+  await chip(page).dblclick();
+  const edit = page.getByRole('region', { name: `Edit ${PATTERN} dialog` });
+  await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 30_000 });
+  await expect(edit.getByRole('status', { name: 'Feature status' })).toContainText(
+    'Stopped while the design opened, so there is no preview yet. Change a value to build it.',
+  );
+  await edit.getByRole('textbox', { name: 'Count', exact: true }).first().fill('2');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await expect(edit).toHaveAttribute('data-dialog-valid', 'true');
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page, 60_000);
+  await expect(chip(page)).not.toHaveAttribute('data-feature-status', 'error');
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 });
