@@ -45,14 +45,20 @@ class FakeWorker implements RegionsWorkerLike {
     if (!job) throw new Error('no job');
     this.onmessage?.({ data: { job: job.job, started: true } } as MessageEvent<RegionsReply>);
   }
-  /** Answers the last job as the real worker would. */
-  answer(job = this.jobs().at(-1)) {
+  /** Answers the last job as the real worker would: its regions, and a fill when `fill`. */
+  answer(job = this.jobs().at(-1), fill = false) {
     if (!job) throw new Error('no job');
     const profiles = detectProfiles(job.data);
     const regions = flattenRegions(profiles);
-    this.onmessage?.({
-      data: { job: job.job, regions, vertices: 6 },
-    } as MessageEvent<RegionsReply>);
+    const count = regions.ids.length;
+    const reply = { job: job.job, regions, regionBytes: 200, count, vertices: 6, fill };
+    this.onmessage?.({ data: reply } as MessageEvent<RegionsReply>);
+  }
+  /** Sends the fill after the regions. */
+  fill(job = this.jobs().at(-1)) {
+    if (!job) throw new Error('no job');
+    const fill = { positions: new Float32Array(18), starts: new Uint32Array([0, 6]) };
+    this.onmessage?.({ data: { job: job.job, fill } } as MessageEvent<RegionsReply>);
   }
 }
 
@@ -188,6 +194,8 @@ describe('createRegionsClient', () => {
     advance(999);
     expect(workers[0]?.terminated).toBe(false);
     advance(1);
+    // One more look, for an answer that waited behind a busy page.
+    advance(0);
     expect(workers[0]?.terminated).toBe(true);
     expect(client.get(a, 0)?.state).toBe('stopped');
     expect(workers[1]?.sent[0]).toMatchObject({ type: 'font', id: 'f@1' });
@@ -286,5 +294,47 @@ describe('createRegionsClient', () => {
     worker().answer();
     expect(client.store.getState().version).toBe(start + 2);
     expect(client.get(c, 0)?.state).toBe('done');
+  });
+
+  it('keeps the regions to pick while the fill is still being built, then takes the fill', () => {
+    const { client, worker } = setup();
+    client.want([job('a', a), job('b', b)]);
+    worker().answer(undefined, true);
+    expect(client.get(a, 0)?.regions).toBeDefined();
+    expect(client.get(a, 0)?.fill).toBeUndefined();
+    expect(worker().jobs()).toHaveLength(1);
+    worker().fill();
+    expect(client.get(a, 0)?.fill?.positions).toHaveLength(18);
+    expect(worker().jobs().at(-1)?.data).toBe(b);
+  });
+
+  it('keeps the regions when the fill is stopped at the deadline', () => {
+    const { client, workers, advance } = setup();
+    client.want([job('a', a), job('b', b)]);
+    workers[0]?.start();
+    workers[0]?.answer(undefined, true);
+    advance(1000);
+    advance(0);
+    expect(workers[0]?.terminated).toBe(true);
+    expect(client.get(a, 0)).toMatchObject({ state: 'done', fillable: false });
+    expect(client.get(a, 0)?.regions).toBeDefined();
+    expect(workers[1]?.jobs().map((j) => j.data)).toEqual([b]);
+  });
+
+  it('takes an answer that waited behind a busy page past the deadline', () => {
+    const { client, workers, advance } = setup();
+    client.want([job('a', a)]);
+    workers[0]?.start();
+    advance(1000);
+    workers[0]?.answer();
+    advance(0);
+    expect(workers[0]?.terminated).toBe(false);
+    expect(client.get(a, 0)?.state).toBe('done');
+  });
+
+  it('tells the worker what the budget has left for the sketch', () => {
+    const { client, worker } = setup();
+    client.want([{ ...job('a', a), allowance: 1234 }]);
+    expect(worker().jobs()[0]?.maxBytes).toBe(1234);
   });
 });

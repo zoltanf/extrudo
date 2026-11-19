@@ -13,9 +13,12 @@ import type { SketchData } from '@extrudo/core';
 import { MAX_DESIGN_FILL_WORK, MAX_FILL_WORK } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { fillWork, type ProfileFill } from '../viewport/profileFills';
-import { type FlatRegions, regionIndex, regionsBytes } from './flatRegions';
+import { type FlatRegions, regionIndex } from './flatRegions';
 import { logProfileWork } from './profiles';
-import { regionsOf } from './regionsJob';
+import { buildFill, FILL_BYTES_PER_VERTEX, fillBytes, findRegions } from './regionsJob';
+
+export { FILL_BYTES_PER_VERTEX };
+
 import type { RegionsReply, RegionsRequest } from './regionsProtocol';
 
 declare global {
@@ -56,11 +59,12 @@ const SPARE_BYTES = 64 * 1024 * 1024;
 /** Deaths (not deadlines) after which the worker is given up for idle slices. */
 const MAX_DEATHS = 3;
 
-/** Bytes a fill keeps a vertex: 12 for its position, 4 for a drawing order (`fillLayout`). */
-export const FILL_BYTES_PER_VERTEX = 16;
-
 export interface RegionsEntry {
-  /** done: found; refused: detection refused; stopped: past the deadline; failed: the worker died on it. */
+  /**
+   * done: found (its fill may have been stopped at the deadline: `fillable` false);
+   * refused: detection refused; stopped: past the deadline before its regions were
+   * found; failed: the worker died on it.
+   */
   state: 'done' | 'refused' | 'stopped' | 'failed';
   /** The fonts' version it was found with; only a sketch with text depends on it. */
   version: number;
@@ -82,6 +86,8 @@ export interface RegionsJob {
   version: number;
   /** The sketch has text: its result depends on the fonts. */
   text: boolean;
+  /** What the budget has left for it, bytes: arrays that don't fit aren't sent or built. */
+  allowance?: number;
 }
 
 /** What the client needs of a `Worker` (a fake one in tests). */
@@ -112,8 +118,6 @@ export interface RegionsClientOptions {
   /** Starts a worker; `undefined` when none can start. */
   spawn?: () => RegionsWorkerLike | undefined;
   deadline?: () => number;
-  /** The most vertices a fill may have to be built at all. */
-  maxFillVertices?: () => number;
   delay?: () => number | undefined;
   now?: () => number;
   setTimer?: (run: () => void, ms: number) => unknown;
@@ -176,7 +180,6 @@ export function hasText(data: SketchData): boolean {
 export function createRegionsClient(options: RegionsClientOptions = {}): RegionsClient {
   const spawn = options.spawn ?? defaultSpawn;
   const deadline = options.deadline ?? profilesDeadline;
-  const maxFillVertices = options.maxFillVertices ?? (() => Number.POSITIVE_INFINITY);
   const delay =
     options.delay ??
     (() => (typeof window !== 'undefined' ? window.__extrudoProfilesDelay : undefined));
@@ -193,7 +196,9 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
   const fonts = new Map<string, ArrayBuffer>();
   let queue: RegionsJob[] = [];
   let wanted = new Set<SketchData>();
-  let current: { job: RegionsJob; id: number; started: number; timer: unknown } | undefined;
+  let current:
+    | { job: RegionsJob; id: number; started: number; timer: unknown; awaitingFill?: boolean }
+    | undefined;
   let worker: RegionsWorkerLike | undefined;
   let nextId = 1;
   let deaths = 0;
@@ -283,18 +288,37 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     }
     const { job } = current;
     if (!wanted.has(job.data)) return finish(); // dropped
-    if ('regions' in reply) {
-      const { regions, fill, vertices } = reply;
+    if ('regionBytes' in reply) {
+      const { regions } = reply;
       store_(job, {
         state: 'done',
-        regions,
-        ...(fill && {
-          fill: { ...fill, ids: regions.ids, regions: regionIndex(regions) as Map<string, number> },
-        }),
-        regionBytes: regionsBytes(regions),
-        fillBytes: FILL_BYTES_PER_VERTEX * vertices + 4 * (regions.ids.length + 1),
-        fillable: fill !== undefined,
+        ...(regions && { regions }),
+        regionBytes: reply.regionBytes,
+        fillBytes: fillBytes(reply.vertices, reply.count),
+        fillable: reply.fill,
       });
+      // The regions can be picked already; the fill follows.
+      if (reply.fill) {
+        current.awaitingFill = true;
+        notify();
+        return;
+      }
+    } else if ('fill' in reply) {
+      const entry = entries.get(job.data);
+      if (entry?.regions) {
+        const { fill } = reply;
+        entries.set(job.data, {
+          ...entry,
+          ...(fill && {
+            fill: {
+              ...fill,
+              ids: entry.regions.ids,
+              regions: regionIndex(entry.regions) as Map<string, number>,
+            },
+          }),
+          fillable: fill !== null,
+        });
+      }
     } else if ('refused' in reply) {
       store_(job, { state: 'refused', regionBytes: 0, fillBytes: 0, fillable: false });
     } else {
@@ -317,35 +341,49 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
 
   function timedOut(id: number) {
     if (!current || current.id !== id) return;
+    // A page busy past the deadline may hold the answer in its queue: look once more first.
+    current.timer = setTimer(() => stop(id), 0);
+  }
+
+  function stop(id: number) {
+    if (!current || current.id !== id) return;
     stopWorker();
-    store_(current.job, { state: 'stopped', regionBytes: 0, fillBytes: 0, fillable: false });
+    const entry = entries.get(current.job.data);
+    if (current.awaitingFill && entry) {
+      // The regions came in time: they still pick; the sketch goes without a fill.
+      entries.set(current.job.data, { ...entry, fillable: false });
+    } else {
+      store_(current.job, { state: 'stopped', regionBytes: 0, fillBytes: 0, fillable: false });
+    }
     finish();
   }
 
   function runInline(job: RegionsJob) {
-    const used = [...inlineWork].reduce((n, [data, w]) => n + (wanted.has(data) ? w : 0), 0);
-    let work = 0;
     const since = performance.now();
-    const result = regionsOf(job.data, maxFillVertices(), (profiles) => {
-      work = fillWork(profiles);
-      return work <= MAX_FILL_WORK && used + work <= MAX_DESIGN_FILL_WORK;
-    });
+    const found = findRegions(job.data);
     logProfileWork(since);
-    if (result.fill) inlineWork.set(job.data, work);
-    if (!result.regions) {
+    if ('refused' in found) {
       store_(job, { state: 'refused', regionBytes: 0, fillBytes: 0, fillable: false });
       return;
     }
-    const { regions, fill } = result;
+    const { regions, regionBytes, vertices } = found;
+    const allowance = job.allowance ?? Number.POSITIVE_INFINITY;
+    const bytes = fillBytes(vertices, regions.ids.length);
+    const used = [...inlineWork].reduce((n, [data, w]) => n + (wanted.has(data) ? w : 0), 0);
+    const work =
+      regionBytes + bytes <= allowance ? fillWork(found.profiles) : Number.POSITIVE_INFINITY;
+    const mayFill = work <= MAX_FILL_WORK && used + work <= MAX_DESIGN_FILL_WORK;
+    const fill = mayFill ? buildFill(found) : null;
+    if (fill) inlineWork.set(job.data, work);
     store_(job, {
       state: 'done',
-      regions,
+      ...(regionBytes <= allowance && { regions }),
       ...(fill && {
         fill: { ...fill, ids: regions.ids, regions: regionIndex(regions) as Map<string, number> },
       }),
-      regionBytes: regionsBytes(regions),
-      fillBytes: FILL_BYTES_PER_VERTEX * result.vertices + 4 * (regions.ids.length + 1),
-      fillable: fill !== undefined,
+      regionBytes,
+      fillBytes: bytes,
+      fillable: fill !== null,
     });
   }
 
@@ -386,7 +424,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       type: 'job',
       job: id,
       data: job.data,
-      maxFillVertices: maxFillVertices(),
+      maxBytes: job.allowance ?? Number.POSITIVE_INFINITY,
       ...(wait && { delay: wait }),
     });
   }

@@ -127,13 +127,12 @@ test('while profiles take a moment, the status bar says so', async ({ page }, in
 });
 
 test('a quick design never says it is finding profiles', async ({ page }, info) => {
-  await page.addInitScript(() => {
-    const seen: string[] = [];
-    (window as unknown as { __seen: string[] }).__seen = seen;
+  await page.addInitScript(`
+    window.__seen = [];
     new MutationObserver(() => {
-      if (document.querySelector('[data-finding-profiles]')) seen.push('finding');
+      if (document.querySelector('[data-finding-profiles]')) window.__seen.push('finding');
     }).observe(document, { subtree: true, childList: true });
-  });
+  `);
   const path = info.outputPath('rectangles.extrudo');
   writeDesign(path, [
     sketch('a', 'Sketch1', rectangle(0, 0, 40, 20)),
@@ -142,7 +141,7 @@ test('a quick design never says it is finding profiles', async ({ page }, info) 
   const viewport = await importDesign(page, path);
   await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=2 unshaded=0 waiting=0');
   await kernelReady(page);
-  expect(await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen)).toEqual([]);
+  expect(await page.evaluate('window.__seen')).toEqual([]);
 });
 
 test('an edit while the sketch is in the worker never shows the old regions', async ({

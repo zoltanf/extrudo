@@ -11,7 +11,7 @@ import {
   regionOutline,
   regionsBytes,
 } from './flatRegions';
-import { regionsOf } from './regionsJob';
+import { buildFill, findRegions } from './regionsJob';
 
 /** A square's four lines. */
 function square(id: string, x: number, y: number, s: number): Record<string, unknown> {
@@ -102,29 +102,24 @@ describe('flattenRegions', () => {
   });
 });
 
-describe('regionsOf, as the profile worker runs it', () => {
+describe('findRegions and buildFill, as the profile worker runs them', () => {
   it('builds the same triangles as profileFill, bit for bit, also after a transfer', () => {
     for (const data of Object.values(FIXTURES)) {
-      const result = regionsOf(data, Number.POSITIVE_INFINITY);
-      const fill = result.fill as NonNullable<typeof result.fill>;
+      const found = findRegions(data);
+      if ('refused' in found) throw new Error('refused');
+      const fill = buildFill(found) as NonNullable<ReturnType<typeof buildFill>>;
       const crossed = structuredClone(fill, {
         transfer: [fill.positions.buffer, fill.starts.buffer],
       });
       const reference = profileFill(detectProfiles(data));
       expect(crossed.positions).toEqual(reference.positions);
       expect(crossed.starts).toEqual(reference.starts);
+      expect(found.regionBytes).toBe(regionsBytes(found.regions));
     }
-  });
-
-  it('builds no fill larger than allowed, and keeps the regions', () => {
-    const result = regionsOf(FIXTURES['a plate with holes'] as SketchData, 10);
-    expect(result.fill).toBeUndefined();
-    expect(result.regions?.ids.length).toBeGreaterThan(0);
-    expect(result.vertices).toBeGreaterThan(10);
   });
 
   it('says why detection refused a sketch', () => {
     const far = sketch(square('f', 1e12, 0, 10));
-    expect(regionsOf(far, 1e9).refused).toMatch(/too large/);
+    expect(findRegions(far)).toEqual({ refused: expect.stringMatching(/too large/) });
   });
 });

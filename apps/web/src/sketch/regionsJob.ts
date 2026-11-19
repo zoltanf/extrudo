@@ -6,42 +6,45 @@
 import type { SketchData } from '@extrudo/core';
 import { detectProfilesWork, type Profile, profilesRefusal } from '@extrudo/sketch/profiles';
 import { fillCost, profileFill } from '../viewport/profileFills';
-import { type FlatRegions, flattenRegions } from './flatRegions';
+import { type FlatRegions, flattenRegions, regionsBytes } from './flatRegions';
 
-export interface RegionsResult {
-  regions?: FlatRegions;
-  /** The most vertices the fill takes (`fillCost`), built or not. */
-  vertices: number;
-  fill?: { positions: Float32Array; starts: Uint32Array };
-  /** Why detection refused the sketch. */
-  refused?: string;
+/** Bytes a fill keeps a vertex: 12 for its position, 4 for a drawing order (`fillLayout`). */
+export const FILL_BYTES_PER_VERTEX = 16;
+
+/** What a fill of `vertices` vertices over `regions` regions keeps. */
+export function fillBytes(vertices: number, regions: number): number {
+  return FILL_BYTES_PER_VERTEX * vertices + 4 * (regions + 1);
 }
 
-/**
- * The sketch's regions, flat, and its fill when it has at most
- * `maxFillVertices` and `mayBuild` agrees. A failed fill (no memory) leaves
- * the regions without one.
- */
-export function regionsOf(
-  data: SketchData,
-  maxFillVertices: number,
-  mayBuild: (profiles: readonly Profile[]) => boolean = () => true,
-): RegionsResult {
+export interface FoundRegions {
+  profiles: Profile[];
+  regions: FlatRegions;
+  regionBytes: number;
+  vertices: number;
+}
+
+/** The sketch's regions, flat, or why detection refused it. */
+export function findRegions(data: SketchData): FoundRegions | { refused: string } {
   let profiles: Profile[];
   try {
     profiles = detectProfilesWork(data, { segments: 0, points: 0, tests: 0 });
   } catch (error) {
     const refusal = profilesRefusal(error);
     if (!refusal) throw error;
-    return { vertices: 0, refused: refusal.message };
+    return { refused: refusal.message };
   }
   const regions = flattenRegions(profiles);
-  const vertices = fillCost(profiles);
-  if (vertices > maxFillVertices || !mayBuild(profiles)) return { regions, vertices };
+  return { profiles, regions, regionBytes: regionsBytes(regions), vertices: fillCost(profiles) };
+}
+
+/** The fill of found regions, or `null` when it can't be built (no memory). */
+export function buildFill(
+  found: FoundRegions,
+): { positions: Float32Array; starts: Uint32Array } | null {
   try {
-    const built = profileFill(profiles);
-    return { regions, vertices, fill: { positions: built.positions, starts: built.starts } };
+    const built = profileFill(found.profiles);
+    return { positions: built.positions, starts: built.starts };
   } catch {
-    return { regions, vertices };
+    return null;
   }
 }

@@ -2675,13 +2675,7 @@ function Shell({
   // A fill that could not be built takes its sketch out of the budget.
   const unbuiltFill = useStore(unbuiltFills, (s) => s.version);
   // The regions of sketches that aren't open are found in a worker (ADR-0154).
-  const regionsClient = useMemo(
-    () =>
-      createRegionsClient({
-        maxFillVertices: () => Math.floor(regionBudget() / FILL_BYTES_PER_VERTEX),
-      }),
-    [],
-  );
+  const regionsClient = useMemo(() => createRegionsClient(), []);
   useEffect(() => () => regionsClient.dispose(), [regionsClient]);
   const regionsVersion = useStore(regionsClient.store, (s) => s.version);
   // What the open sketch was granted when it was opened (`regionVerdicts`' `held`).
@@ -2760,7 +2754,11 @@ function Shell({
       activeSketchId && heldRegions.current?.id === activeSketchId
         ? heldRegions.current.bytes
         : undefined;
-    const verdicts = regionVerdicts(claims, regionBudget(), held);
+    const budget = regionBudget();
+    const verdicts = regionVerdicts(claims, budget, held);
+    // What the budget has left, for the worker: arrays that wouldn't fit aren't even made.
+    const grantedTo = new Map(claims.map((c) => [c.id, grantedBytes(c, verdicts.get(c.id))]));
+    const left = Math.max(0, budget - [...grantedTo.values()].reduce((n, b) => n + b, 0));
     const openClaim = claims.find((c) => c.active);
     heldRegions.current =
       openClaim === undefined
@@ -2814,6 +2812,7 @@ function Shell({
         if (verdict === 'none') unpickable++;
       }
     }
+    for (const job of jobs) job.allowance = left + (grantedTo.get(job.key) ?? 0);
     return { drawings: out, jobs, granted, unshaded, unpickable };
   }, [
     doc.features,
