@@ -2897,18 +2897,21 @@ in FreeCAD 1.1's grammar or, through `asOldFile`, a 0.14 or 0.16 file's.
 
 A **loose feature** is an object of a PartDesign feature type (not a body, a datum or a binder)
 that no body holds. A **loose chain** is a tip and the loose features reached from it by following
-each one's base, root first. Its tips are S3's `chain-tip` final shapes, and any loose feature a
-Part boolean uses. A feature's **base** is, in this order:
+each one's base, root first. Its tips are those of S3's `chain-tip` final shapes that are loose
+features, and any loose feature of a type the walk maps that a Part boolean uses; a binder at the
+top stays the plain shape it was. A tip of a type the walk has no mapping for (a Python feature, a
+draft) comes in as today without its chain being walked. A feature's **base** is, in this order:
 
 1. its `BaseFeature`, when the property names an object;
 2. a dress-up's `Base`;
-3. a pattern's or mirror's first original;
+3. of a pattern's or mirror's originals, the one no other of them builds on (the last of them in
+   their row); the first when they aren't in one row;
 4. the object its sketch is attached to, when that object stores a solid.
 
 A sketch with no support, or on a plane or a datum, gives no base: the feature starts a new solid.
 Where rules 1 and 4 name different objects rule 1 wins and the plan counts it. The base as read is
-never trusted: a base read wrong gives a feature that doesn't hold. **A pattern whose first original
-isn't the feature before it** builds on that original, and what lies between is in no chain of its.
+never trusted: a base read wrong gives a feature that doesn't hold. **A pattern whose base isn't the
+feature before it** builds on that original, and what lies between is in no chain of its.
 
 - **The walk is the body's.** `importBodies` takes its ordered features from a body (`bodyChain`) or
   a loose chain (`BodyWalkOptions.loose`); nothing else about it differs. A chain has no `Origin`,
@@ -2917,12 +2920,15 @@ isn't the feature before it** builds on that original, and what lies between is 
   them is (`containerChain`).
 - **Branches.** A feature that is the base of several others belongs to several chains, and each
   chain walks its **own copy** of what they share: the sketches and features come in once per
-  chain, under the same names (`branch`: two tips, a pad and its sketch twice). What a walk owns
-  (`WalkShared.owner`) is kept under one key for all loose chains, so a chain may walk what another
-  walked; the import's counters count every copy.
+  chain, under the same names (`branch`: two tips, a pad and its sketch twice). **A loose chain
+  takes nothing from a body:** it neither claims an object in `WalkShared.owner` nor is refused by
+  a claim, so a sketch a body and a loose feature share comes in once for each, in either document
+  order and for a body a Part tree uses. The import's counters count every copy.
 - **A foreign base.** A root that builds on an object that is no loose feature (a Part box, a cut,
   any stored shape) starts with S8's stored-shape step holding that object's stored shape (reason
   `foreign-base`), and the features after it are live. The base object is consumed as it always was.
+  That reason stands only while no feature of the chain has failed after it: a step that moved on
+  past the base, and a chain that ends as today, report the first feature that didn't hold.
 - **As today.** A chain that can't come in (a broken link, a cycle, past a limit, or a last feature
   that doesn't hold) comes in as S3 brought it: the tip's stored shape as one `import`, with the
   reason in the report. No shape that came in before is lost or changed, and the count of final
@@ -2934,7 +2940,8 @@ isn't the feature before it** builds on that original, and what lies between is 
 A sketch's frame is its stored `Placement` in its containers (S4), in both grammars. Before 0.17 a
 sketch has no `MapMode` and `Support` is one link; the placement is what FreeCAD last wrote.
 
-**A loose chain's sketch stays on the flat face its support names** when that face is on a feature
+**A loose chain's sketch stays on the flat face its support names**, whichever feature it is for (a
+pad or pocket, up to a face or not, a revolution, a groove, a hole), when that face is on a feature
 walked before, S6's matcher finds exactly one counterpart on the rebuilt body, and the stored frame
 lies in the face's plane (parallel to 1e-9 as a sine, within 1e-7 mm + 1e-9 of the distance from
 the origin: S9's tolerances for a datum). The sketch is then written on the face (`GivenPlane` of
@@ -2942,8 +2949,9 @@ kind `face`, `TransformMapper.sketchFace`) and follows the model: lengthen the p
 stays on its top. Extrudo's frame on a flat face depends only on the plane and its outward normal
 (`faceSketchFrame`), and the matcher compares normals, so the frame the importer writes in is the
 one the kernel computes. S9 kept body sketches on fixed planes because it couldn't prove that
-before the rebuild; here a try that doesn't hold on the face is tried again on the fixed plane its
-stored placement gives (S4's planes, else S9's plane through three points). **Bodies are unchanged**:
+before the rebuild; here a try that doesn't work out on the face, for any reason, is made again on
+the fixed plane its stored placement gives (S4's planes, else S9's plane through three points). The
+report counts those apart (`faceFallbacks`), not among a feature's second attempts. **Bodies are unchanged**:
 their sketches stay on S9's planes, so their standing numbers don't move.
 
 ### The old grammar, as read
@@ -2951,14 +2959,16 @@ their sketches stay on S9's planes, so their standing numbers don't move.
 `FORMAT.md` has the table. S4's sketch reader and S5 to S7's decoders needed **nothing new**: they
 already read `Sketch` for `Profile`, the integer `Type`, `Midplane`, the single `Support` and the
 constraints without `IsDriving`. A census test (`chain-corpus.test.ts`, counts only) checks that
-every property `asOldFile` writes has the name and declared type the library's old files use, which
-found `Occurrences`' `App::PropertyInteger`. An old file can say what a feature builds on only
-through its sketch's `Support`, so the helper gives a sketch drawn on a plane of its own a support
-on its feature's base (`revolved`'s groove): the placement stays what decides where the sketch is.
+every property `asOldFile` writes has the declared type the library's files of that version use.
+An old file can say what a feature builds on only through its sketch's `Support`. In the library
+every old pocket's sketch is on a face and the two old revolutions on no face start their solids;
+there is no old groove. A groove whose sketch has an empty `Support` says nothing of what it cuts:
+it starts a new solid, is refused (`no-base`) and comes in as today.
 
 ### Part trees (S11)
 
-A loose feature a Part boolean uses was a stored leaf. It is now a node of kind `loose`, walked when
+A loose feature of a type the walk maps that a Part boolean uses was a stored leaf. It is now a node
+of kind `loose`, walked when
 the tree reaches it as a PartDesign body is (`walkBody`): the chain comes in with its history and
 the boolean is live above it. The import's counters and S11's feature cap count its features, and a
 cancelled pass gives them back. A chain that doesn't come in whole, one under a moved container, or
@@ -2974,15 +2984,19 @@ foreign base stays the stored-shape step, and what comes after it is live.
 | Limit | Value | Past it |
 |---|---|---|
 | Features one chain | 500 (`MAX_BODY_FEATURES`, the library's longest is 8) | as today (`limit`) |
-| Chains one import | 256 (`MAX_LOOSE_CHAINS`, the library has 14 at the top) | the rest as today (`limit`) |
-| Features the chains of one import plan | 2,000 (`MAX_FILE_FEATURES`), shared features counted per chain | later tips as today, unfollowed |
+| Chains at an import's top | 256 (`MAX_LOOSE_CHAINS`, the library has 14) | the rest as today (`limit`) |
+| Features the top's chains plan | 2,000 (`MAX_FILE_FEATURES`), shared features counted per chain; a refused chain gives back what it counted | later tips as today, unfollowed |
+| Features one chain under a tree plans | 500 a call, the tree's nodes and passes bounding the calls | a stored leaf |
+| A stored shape read to tell whether it holds a solid | 32 MB (`MAX_STORED_BREP_BYTES`), each entry scanned once however many objects name it or whether it can be read | no solid, so no base |
+| A sketch's supports read | the first of 16 (`supportsOf`), once per sketch | |
+| Originals compared for a pattern's base | 100, 500 links followed | the first original |
 | Features one import walks | 2,000, bodies, chains and trees' operands together (`WalkShared.walked`) | the chain ends (`limit`), as today |
 | Steps one chain | 8 (`MAX_BODY_STEPS`) | as today (`limit`) |
 
 Also clean, each with its reason: a base cycle (two features on each other, a feature on itself, a
-pattern its own original) and a base that isn't in the file, or is a sketch, a sheet or a container
-(`chain`, as today); a body or a body's feature as a base (a foreign base); `Originals` empty or
-naming something that isn't a feature (`original`); a support whose sub-name isn't a face, or a face
+pattern its own original) and a base or first original that isn't in the file, or is a sketch, a
+spreadsheet or a container (`chain`, as today); a body, a body's feature or a Part object as a base (a
+foreign base); `Originals` empty or listing the pattern itself (`original`); a support whose sub-name isn't a face, or a face
 number past the base's faces (the fixed plane); one sketch used by two features (the check decides);
 a feature with neither `Profile` nor `Sketch` (`profile`); a sketch `Placement` that isn't finite
 (`sketch`). The plan is iterative and reads each feature's base once.
@@ -2990,12 +3004,13 @@ a feature with neither `Profile` nor `Sketch` (`profile`); a sketch `Placement` 
 **Measured** (Ubuntu machine, shared and loaded; `chain-import.test.ts`, `BENCH=1`): a comb of 1,500
 tips on one row, which by the links alone is 1.1 million walked features, stops at the cap in
 **0.73 s**; a row of 10,000 features is refused at the cap in **0.53 s**, the file's own reading
-included.
+included; 200 objects naming one stored shape of 30 MB take **0.25 s**, the entry read once.
 
 ### The report and the app
 
 `FcstdImportReport.bodies` lists a chain as it lists a body, with `loose` set (and `foreignBase`
-naming what its root builds on); `HistoryStop` gains `foreign-base`. `fcstdNotices` needed no new
+naming what its root builds on); `HistoryStop` gains `foreign-base`. S11's reason for an operand that
+doesn't come in reads "a body or a row of features it uses didn't come in with its history". `fcstdNotices` needed no new
 sentence: a chain counts as a shape "with its history (sketches and features)". The new reason reads
 "Starts from the file's own shape: *Name*, because it is built on another shape in the file. The
 features after it come in with their history."
@@ -3007,8 +3022,12 @@ features after it come in with their history."
   foreign base: a Part chamfer, a cut, a revolve and a plain stored shape; 1 where a pattern
   touches another shape of the file, so S7's rule takes it out); 1 as today**: its last feature is
   a fillet whose three edges are all found and whose volume, area and box agree, but whose centre of
-  mass is 0.52 mm from the stored shape's.
-- **Bases:** 26 by a sketch's support, 7 by a pattern's first original, 4 by a dress-up's `Base`,
+  mass is 0.52 mm from the stored shape's. The three edges are among those the stored fillet
+  consumed and the body before it is equal, but the stored fillet's own centre lies 2.6 mm from its
+  base's where a fillet of its 0.34 mm³ could move a body of 885 mm³ by 0.01 mm: the centre the
+  kernel reads for that shape isn't a sound solid's, so the check can't prove the feature.
+- **Bases:** 26 by a sketch's support, 7 by a pattern's original (each of the library's 8 old patterns
+  has one), 4 by a dress-up's `Base`,
   none by `BaseFeature`, 10 roots with no base; no file names two different bases.
 - **Features held:** 13 pads, 22 pockets, 4 polar and 2 linear patterns, 2 fillets, 1 chamfer, 1
   revolution: 45 of 47. **Sketches:** 24 stay on a face (23 before 0.17), 12 on fixed planes (11
@@ -3022,7 +3041,7 @@ features after it come in with their history."
   loose feature or its sketch, so this slice binds none in it.
 - **The standing numbers did not move:** 25 bodies with their history, 6 from the file's shape, 4
   empty; 131 references found; 50 parameters; 52 expressions kept; 383 final shapes; no restart.
-- **Time per file** on the shared machine: median 0.28 s, slowest 61 s (0.17 s and 57 s after S11,
+- **Time per file** on the shared machine: median 0.26 s, slowest 54 s (0.17 s and 57 s after S11,
   measured alone).
 
 ### What S12b and S13 inherit

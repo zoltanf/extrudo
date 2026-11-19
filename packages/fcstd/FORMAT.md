@@ -693,14 +693,16 @@ feature's base, root first.
 
 1. `BaseFeature` (`App::PropertyLink`), when the file has it and it names an object;
 2. a dress-up's `Base` (`App::PropertyLinkSub`, with the edges and faces it works on);
-3. a pattern's or mirror's first entry of `Originals`;
+3. of a pattern's or mirror's `Originals`, the one no other of them builds on (the first when they
+   aren't in one row);
 4. the object its sketch is attached to (`AttachmentSupport`, before 1.0 `Support`), when that
    object stores a solid. A sketch with no support, or on a plane or a datum, gives no base: the
    feature starts a new solid.
 
 Where the first and the fourth name different objects, the first is taken and the import counts
 it. How 0.14 to 0.16 found the base isn't stored anywhere else: the shape stored for the feature
-is the judge of a base read wrong.
+is the judge of a base read wrong. A sketch with an empty `Support` says nothing of what a feature
+on it builds on: in the library's old files only revolutions that start their solid have one.
 
 **The grammar before 0.17**, against what 1.1 writes (counted on the library's 16 files of 0.14
 to 0.16 without bodies, for the features and sketches outside a body):
