@@ -1051,7 +1051,7 @@ function UnshadedSketches({ count }: { count: number }) {
   return (
     <Tooltip
       label="Sketches not shaded"
-      hint="This design has more profiles than the view can shade at once. These sketches show their curves, and their profiles can still be picked. Hide other sketches to shade them."
+      hint="Some sketches are too detailed for the view to shade. They show their curves, and their profiles can still be picked. Hiding other sketches may bring the shading back."
     >
       <output
         aria-label="Sketches not shaded"

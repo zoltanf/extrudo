@@ -246,7 +246,7 @@ import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useKernelWaits, useRecomputeFinished } from '../viewport/ModelProgress';
 import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
-import { sketchesPastFillBudget } from '../viewport/profileFills';
+import { sketchesPastFillBudget, unbuiltFills } from '../viewport/profileFills';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -2652,6 +2652,9 @@ function Shell({
     }
     return shown;
   }, [doc.joints, hoveredJoint, jointReports, jointOpen]);
+  // A fill that could not be built takes its sketch out of the budget.
+  const unbuiltFill = useStore(unbuiltFills, (s) => s.version);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `unbuiltFill` says when to ask the budget again.
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -2700,6 +2703,7 @@ function Shell({
     sketchReports,
     constructionReports,
     fontsVersion,
+    unbuiltFill,
   ]);
   // Shown construction planes, axes and points the kernel has reported (P3-05); the one a dialog
   // edits is drawn as its preview instead.

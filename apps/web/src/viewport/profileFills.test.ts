@@ -1,13 +1,24 @@
 import { planeFrame, type SketchData, type SketchFrame, sketchToWorld } from '@extrudo/core';
-import { detectProfiles, MAX_FILL_VERTICES, type Profile } from '@extrudo/sketch/profiles';
+import {
+  detectProfiles,
+  MAX_DESIGN_FILL_WORK,
+  MAX_FILL_VERTICES,
+  MAX_FILL_WORK,
+  type Profile,
+} from '@extrudo/sketch/profiles';
 import { ShapeUtils, Vector2, Vector3 } from 'three';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fillBudget,
   fillCost,
+  fillGroups,
+  fillLayout,
   fillMatrix,
   fillRuns,
+  fillWork,
+  MAX_FILL_GROUPS,
   MAX_OUTLINE_POINTS,
+  noteUnbuiltFill,
   profileFill,
   regionOutlines,
   sketchesPastFillBudget,
@@ -287,5 +298,272 @@ describe('regionOutlines', () => {
     const lines = regionOutlines([long], ['long'], frame('origin:xy'));
     expect(lines.length / 6).toBeLessThanOrEqual(MAX_OUTLINE_POINTS);
     expect(lines.length / 6).toBeGreaterThan(MAX_OUTLINE_POINTS / 2);
+  });
+});
+
+/** A region by hand: an outline and holes, with no curves behind them. */
+function handmade(
+  id: string,
+  outer: [number, number][],
+  holes: [number, number][][] = [],
+): Profile {
+  const loop = (polygon: [number, number][]) => ({ edges: [], polygon, area: 1 });
+  return { id, area: 1, outer: loop(outer), holes: holes.map(loop) } as Profile;
+}
+
+const ring = (x: number, y: number, r: number, n: number) =>
+  Array.from({ length: n }, (_, i) => {
+    const t = (i / n) * 2 * Math.PI;
+    return [x + r * Math.cos(t), y + r * Math.sin(t)] as [number, number];
+  });
+
+/** A plate with `holes` round holes of `corners` corners each. */
+function plate(holes: number, corners: number): Profile[] {
+  const side = Math.ceil(Math.sqrt(holes));
+  const size = (side + 1) * 100;
+  return [
+    handmade(
+      'plate',
+      [
+        [0, 0],
+        [size, 0],
+        [size, size],
+        [0, size],
+      ],
+      Array.from({ length: holes }, (_, i) =>
+        ring(100 + (i % side) * 100, 100 + Math.floor(i / side) * 100, 40, corners),
+      ),
+    ),
+  ];
+}
+
+describe('fillWork', () => {
+  it('is known without building, and grows with the holes faster than with the corners', () => {
+    expect(fillWork(plate(200, 64))).toBeGreaterThan(2.5 * fillWork(plate(100, 64)));
+  });
+
+  it('counts the work of every region', () => {
+    const one = plate(10, 16);
+    const two = [...one, ...plate(10, 16)];
+    expect(fillWork(two)).toBeCloseTo(2 * fillWork(one), 3);
+  });
+
+  it('counts a thin winding outline far above a round one of as many corners', () => {
+    const n = 8000;
+    const round = [handmade('round', ring(0, 0, 1000, n))];
+    const side = Array.from({ length: n / 2 }, (_, i) => {
+      const t = (i / (n / 2)) * 40 * Math.PI;
+      const r = 10 + t * 2;
+      return [r * Math.cos(t), r * Math.sin(t)] as [number, number];
+    });
+    const back = side.map(([x, y]) => [x * 1.02, y * 1.02] as [number, number]).reverse();
+    const thin = [handmade('thin', [...side, ...back])];
+    expect(fillWork(thin)).toBeGreaterThan(100 * fillWork(round));
+  });
+
+  it('keeps an ordinary perforated plate inside the limit', () => {
+    expect(fillWork(plate(30, 172))).toBeLessThan(MAX_FILL_WORK / 10);
+    expect(fillWork(plate(500, 64))).toBeLessThan(MAX_FILL_WORK);
+    expect(fillWork(plate(500, 100))).toBeLessThan(MAX_FILL_WORK);
+  });
+
+  it('puts a plate of many large holes past the limit', () => {
+    expect(fillWork(plate(100, 2048))).toBeGreaterThan(MAX_FILL_WORK);
+  });
+
+  it('survives an outline with no area', () => {
+    const flat = [
+      handmade('flat', [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+      ]),
+    ];
+    expect(Number.isFinite(fillWork(flat))).toBe(true);
+  });
+});
+
+describe('sketchesPastFillBudget and the work limits', () => {
+  const light = plate(4, 16);
+  const heavy = plate(40, 16);
+  const limit = fillWork(heavy);
+  const sketch = (id: string, profiles: readonly Profile[], active = false) => ({
+    id,
+    active,
+    profiles,
+  });
+  const past = (
+    list: Parameters<typeof sketchesPastFillBudget>[0],
+    work: { sketch: number; design: number },
+  ) => [...sketchesPastFillBudget(list, MAX_FILL_VERTICES, work)];
+
+  it('passes a fill exactly at the limit and refuses one past it', () => {
+    expect(past([sketch('a', heavy)], { sketch: limit, design: 1e12 })).toEqual([]);
+    expect(past([sketch('a', heavy)], { sketch: limit - 1, design: 1e12 })).toEqual(['a']);
+  });
+
+  it('shares the design limit in the budget order, the open sketch first', () => {
+    const work = { sketch: 1e12, design: limit * 1.5 };
+    expect(past([sketch('a', heavy), sketch('b', heavy)], work)).toEqual(['b']);
+    expect(past([sketch('a', heavy), sketch('b', heavy, true)], work)).toEqual(['a']);
+  });
+
+  it('leaves what a refused sketch would have taken to the ones after it', () => {
+    const work = { sketch: limit - 1, design: limit };
+    expect(past([sketch('a', heavy), sketch('b', light)], work)).toEqual(['a']);
+  });
+
+  it('allows the design many fills at the sketch limit', () => {
+    expect(MAX_DESIGN_FILL_WORK).toBeGreaterThan(MAX_FILL_WORK);
+  });
+
+  it('takes a sketch whose fill could not be built out of the budget', () => {
+    const lost = plate(3, 8);
+    noteUnbuiltFill(lost);
+    const work = { sketch: 1e12, design: 1e12 };
+    expect(past([sketch('a', lost), sketch('b', light)], work)).toEqual(['a']);
+  });
+});
+
+describe('fillBudget', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const withHook = (value: unknown) => {
+    vi.stubGlobal('window', { __extrudoFillBudget: value });
+    return fillBudget();
+  };
+
+  it('lets a test lower the budget', () => {
+    expect(withHook(6)).toBe(6);
+  });
+
+  it('never lets the hook raise it or switch it off', () => {
+    for (const value of [Number.POSITIVE_INFINITY, 1e15, MAX_FILL_VERTICES + 1]) {
+      expect(withHook(value)).toBe(MAX_FILL_VERTICES);
+    }
+  });
+
+  it('ignores what is not a positive number', () => {
+    for (const value of [-1, 0, Number.NaN, '6', null]) {
+      expect(withHook(value)).toBe(MAX_FILL_VERTICES);
+    }
+  });
+});
+
+describe('fillLayout and fillGroups', () => {
+  const squares = Array.from({ length: 10_000 }, (_, i) =>
+    handmade(`r${i}`, [
+      [i, 0],
+      [i + 0.5, 0],
+      [i + 0.5, 1],
+      [i, 1],
+    ]),
+  );
+  const fill = profileFill(squares);
+  const alternate = squares.filter((_, i) => i % 2 === 0).map((p) => p.id);
+
+  /** Each shade's vertices as the groups draw them. */
+  function drawn(layout: ReturnType<typeof fillLayout>, hover?: string) {
+    const out = { normal: [] as number[], hover: [] as number[], selected: [] as number[] };
+    for (const run of fillGroups(layout, fill, hover)) {
+      for (let k = run.start; k < run.start + run.count; k++) {
+        out[run.shade].push(layout.order ? (layout.order[k] as number) : k);
+      }
+    }
+    return out;
+  }
+
+  /** The same from the plain list of runs. */
+  function expected(hover?: string) {
+    const out = { normal: [] as number[], hover: [] as number[], selected: [] as number[] };
+    for (const run of fillRuns(fill, hover, alternate)) {
+      for (let k = run.start; k < run.start + run.count; k++) out[run.shade].push(k);
+    }
+    return out;
+  }
+
+  const sorted = (list: number[]) => [...list].sort((a, b) => a - b);
+
+  it('draws an alternating selection of 10,000 regions in a bounded number of groups', () => {
+    expect(fillRuns(fill, undefined, alternate).length).toBe(10_000);
+    const layout = fillLayout(fill, alternate);
+    expect(fillGroups(layout, fill, undefined).length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+    expect(fillGroups(layout, fill, 'r1').length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+    // The renderer draws each double-sided transparent group twice.
+    expect(MAX_FILL_GROUPS * 2).toBeLessThanOrEqual(64);
+  });
+
+  it('gives each shade the same triangles as the plain runs', () => {
+    const layout = fillLayout(fill, alternate);
+    for (const hover of [undefined, 'r1', 'r0', 'r9999']) {
+      const got = drawn(layout, hover);
+      const want = expected(hover);
+      expect(sorted(got.normal)).toEqual(want.normal);
+      expect(sorted(got.hover)).toEqual(want.hover);
+      expect(sorted(got.selected)).toEqual(want.selected);
+    }
+  });
+
+  it('keeps the built order while few groups do', () => {
+    const layout = fillLayout(fill, ['r3', 'r4', 'r5']);
+    expect(layout.order).toBeUndefined();
+    expect(fillGroups(layout, fill, 'r100').length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+    const got = drawn(layout, 'r100');
+    const want = fillRuns(fill, 'r100', ['r3', 'r4', 'r5']);
+    expect(got.hover).toHaveLength(want.find((r) => r.shade === 'hover')?.count ?? 0);
+  });
+
+  it('stays bounded at the most runs that keep the built order', () => {
+    const picks = Array.from({ length: 14 }, (_, i) => `r${i * 4 + 1}`);
+    const layout = fillLayout(fill, picks);
+    expect(layout.order).toBeUndefined();
+    for (const hover of ['r0', 'r2', 'r9000']) {
+      expect(fillGroups(layout, fill, hover).length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+    }
+  });
+
+  it('keeps an order once it has one, and reuses its memory', () => {
+    const first = fillLayout(fill, alternate);
+    const next = fillLayout(fill, ['r1'], first.order);
+    expect(next.order).toBe(first.order);
+    expect(next.runs.map((r) => r.shade)).toEqual(['normal', 'selected']);
+    expect(sorted([...(next.order as Uint32Array)])).toEqual(
+      Array.from({ length: fill.positions.length / 3 }, (_, i) => i),
+    );
+  });
+
+  it('finds a hovered region without passing over the others', () => {
+    const layout = fillLayout(fill, alternate);
+    const watched = new Proxy(fill, {
+      get(target, key, receiver) {
+        if (key === 'ids') throw new Error('a hover read every region');
+        return Reflect.get(target, key, receiver);
+      },
+    });
+    expect(fillGroups(layout, watched, 'r1').some((g) => g.shade === 'hover')).toBe(true);
+  });
+
+  it('leaves a selected region under the pointer selected', () => {
+    const layout = fillLayout(fill, alternate);
+    expect(fillGroups(layout, fill, 'r0')).toBe(layout.runs);
+    expect(fillGroups(layout, fill, 'nothing')).toBe(layout.runs);
+  });
+});
+
+describe('regionOutlines, its bound', () => {
+  it('never draws more than the bound, however many small loops there are', () => {
+    const many = Array.from({ length: 70_000 }, (_, i) =>
+      handmade(`t${i}`, [
+        [i, 0],
+        [i + 0.5, 0],
+        [i, 1],
+      ]),
+    );
+    const lines = regionOutlines(
+      many,
+      many.map((p) => p.id),
+      frame('origin:xy'),
+    );
+    expect(lines.length / 6).toBeLessThanOrEqual(MAX_OUTLINE_POINTS);
+    expect(lines.length).toBeGreaterThan(0);
   });
 });

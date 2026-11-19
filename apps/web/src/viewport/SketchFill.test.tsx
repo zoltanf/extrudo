@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { planeFrame, type SketchData, type SketchFrame } from '@extrudo/core';
-import { detectProfiles } from '@extrudo/sketch/profiles';
+import { detectProfiles, type Profile } from '@extrudo/sketch/profiles';
 import { renderHook } from '@testing-library/react';
-import { type Mesh, MeshBasicMaterial, ShapeUtils, Vector3 } from 'three';
+import { type Mesh, MeshBasicMaterial, Vector3 } from 'three';
+import { Earcut } from 'three/src/extras/Earcut.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MAX_FILL_GROUPS, sketchesPastFillBudget } from './profileFills';
 import { useSketchFill } from './SketchFill';
 
 const rectangle = (w: number): SketchData =>
@@ -28,7 +30,7 @@ const materials = [new MeshBasicMaterial(), new MeshBasicMaterial(), new MeshBas
 afterEach(() => vi.restoreAllMocks());
 
 function setup() {
-  const build = vi.spyOn(ShapeUtils, 'triangulateShape');
+  const build = vi.spyOn(Earcut, 'triangulate');
   const profiles = detectProfiles(rectangle(10));
   const id = (profiles[0] as { id: string }).id;
   interface Props {
@@ -95,9 +97,76 @@ describe('useSketchFill', () => {
   });
 
   it('builds nothing for a sketch past the budget', () => {
-    const build = vi.spyOn(ShapeUtils, 'triangulateShape');
+    const build = vi.spyOn(Earcut, 'triangulate');
     const view = renderHook(() => useSketchFill(undefined, xy, undefined, [], materials));
     expect(view.result.current).toBeUndefined();
     expect(build).not.toHaveBeenCalled();
+  });
+
+  it('draws a scattered selection in few groups, and a hover touches no vertex order', () => {
+    const squares = Array.from(
+      { length: 2000 },
+      (_, i) =>
+        ({
+          id: `r${i}`,
+          area: 1,
+          holes: [],
+          outer: {
+            edges: [],
+            area: 1,
+            polygon: [
+              [i, 0],
+              [i + 0.5, 0],
+              [i + 0.5, 1],
+              [i, 1],
+            ],
+          },
+        }) as unknown as Profile,
+    );
+    const picked = squares.filter((_, i) => i % 2 === 0).map((p) => p.id);
+    interface Props {
+      hover?: string;
+      selected: readonly string[];
+    }
+    const initialProps: Props = { selected: picked };
+    const view = renderHook(
+      (p: Props) => useSketchFill(squares, xy, p.hover, p.selected, materials),
+      { initialProps },
+    );
+    const { geometry } = view.result.current as Mesh;
+    expect(geometry.groups.length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+    expect(geometry.index).not.toBeNull();
+    const version = geometry.index?.version;
+    view.rerender({ selected: picked, hover: 'r1' });
+    expect(geometry.groups.length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+    expect(geometry.groups.some((g) => g.materialIndex === 1)).toBe(true);
+    expect(geometry.index?.version).toBe(version);
+    view.rerender({ selected: ['r1'] });
+    expect(geometry.index?.version).toBe((version ?? 0) + 1);
+    expect(geometry.groups.length).toBeLessThanOrEqual(MAX_FILL_GROUPS);
+  });
+
+  it('costs a sketch its shading, not the view, when its fill cannot be built', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const broken = [
+      {
+        id: 'broken',
+        area: 1,
+        outer: {
+          edges: [],
+          area: 1,
+          polygon: [
+            [0, 0],
+            [9, 0],
+            [0, 9],
+          ],
+        },
+        holes: [{ edges: [], area: 0, polygon: [] }],
+      },
+    ] as unknown as Profile[];
+    const view = renderHook(() => useSketchFill(broken, xy, undefined, [], materials));
+    expect(view.result.current).toBeUndefined();
+    const past = sketchesPastFillBudget([{ id: 'a', active: false, profiles: broken }]);
+    expect([...past]).toEqual(['a']);
   });
 });

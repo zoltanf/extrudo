@@ -1,10 +1,19 @@
 import type { SketchFrame } from '@extrudo/core';
 import type { Profile } from '@extrudo/sketch/profiles';
-import { useEffect, useLayoutEffect, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Mesh, MeshBasicMaterial } from 'three';
 import type { Rgba } from './colors';
 import { LineMarks } from './LineMarks';
-import { fillMatrix, fillRuns, profileFill, regionOutlines } from './profileFills';
+import {
+  type FillLayout,
+  fillGroups,
+  fillLayout,
+  fillMatrix,
+  noteUnbuiltFill,
+  type ProfileFill,
+  profileFill,
+  regionOutlines,
+} from './profileFills';
 import { PROFILE_SHADES, type ProfileShade, type SketchDrawing } from './sketchGeometry';
 
 const NONE: readonly string[] = [];
@@ -20,7 +29,19 @@ export function useSketchFill(
   selected: readonly string[],
   materials: readonly MeshBasicMaterial[],
 ): Mesh | undefined {
-  const fill = useMemo(() => (profiles ? profileFill(profiles) : undefined), [profiles]);
+  // No memory for the fill costs this sketch its shading, not the view.
+  const fill = useMemo((): ProfileFill | null | undefined => {
+    if (!profiles) return undefined;
+    try {
+      return profileFill(profiles);
+    } catch (error) {
+      console.warn('[sketch] no fill for a sketch:', error);
+      return null;
+    }
+  }, [profiles]);
+  useEffect(() => {
+    if (fill === null && profiles) noteUnbuiltFill(profiles);
+  }, [fill, profiles]);
   const mesh = useMemo(() => {
     if (!fill || fill.positions.length === 0) return undefined;
     const geometry = new BufferGeometry();
@@ -42,12 +63,31 @@ export function useSketchFill(
     mesh.matrixWorldNeedsUpdate = true;
   }, [mesh, frame]);
 
+  const layout = useRef<FillLayout | undefined>(undefined);
   const key = selected.join();
+  // A selection lays the fill out: at most one pass over its vertices.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `selected`.
   useLayoutEffect(() => {
     if (!mesh || !fill) return;
+    const { geometry } = mesh;
+    try {
+      layout.current = fillLayout(fill, selected, geometry.index?.array as Uint32Array | undefined);
+    } catch (error) {
+      console.warn('[sketch] no fill for a sketch:', error);
+      layout.current = undefined;
+      if (profiles) noteUnbuiltFill(profiles);
+      return;
+    }
+    const { order } = layout.current;
+    if (order && geometry.index) geometry.index.needsUpdate = true;
+    else if (order) geometry.setIndex(new BufferAttribute(order, 1));
+  }, [mesh, fill, profiles, key]);
+  // A hover only cuts the hovered region out of its group.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `selected`.
+  useLayoutEffect(() => {
+    if (!mesh || !fill || !layout.current) return;
     mesh.geometry.clearGroups();
-    for (const run of fillRuns(fill, hover, selected)) {
+    for (const run of fillGroups(layout.current, fill, hover)) {
       mesh.geometry.addGroup(run.start, run.count, PROFILE_SHADES.indexOf(run.shade));
     }
   }, [mesh, fill, hover, key]);
