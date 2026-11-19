@@ -87,6 +87,134 @@ const INTER = 'inter-regular@1';
 
 loadBundled(INTER, 'inter-regular.ttf');
 
+/** Longer than any glyph's own outline: a list this long grew with the text. */
+const LONG_LIST = 256;
+
+/** The array methods that copy or walk the whole list they are given. */
+const WHOLE_LIST = [
+  'concat',
+  'entries',
+  'every',
+  'fill',
+  'filter',
+  'find',
+  'findIndex',
+  'findLast',
+  'findLastIndex',
+  'flat',
+  'flatMap',
+  'forEach',
+  'includes',
+  'indexOf',
+  'join',
+  'lastIndexOf',
+  'map',
+  'reduce',
+  'reduceRight',
+  'reverse',
+  'shift',
+  'some',
+  'sort',
+  'splice',
+  'toReversed',
+  'toSorted',
+  'toSpliced',
+  'unshift',
+  'values',
+  'with',
+] as const;
+
+type Method = (this: unknown, ...args: unknown[]) => unknown;
+
+/**
+ * The limit on `countWork` per character of a 1000-character text. Shaping does
+ * 9.9; a list copied or re-read per glyph does 380 to 4000.
+ */
+const WORK_PER_CHARACTER = 40;
+
+let countedTexts = 0;
+
+/**
+ * Counts the work `run` does that grows with the text, with no clock involved:
+ * elements of long lists copied or walked, glyphs read from the font's list,
+ * characters the font turns into glyphs, and kerning lookups. What the font does
+ * inside those calls doesn't count. A list copied by assigning one index at a
+ * time is the one copy it can't see. Every patch is undone before this returns.
+ */
+function countWork(run: () => void): number {
+  let count = 0;
+  let muted = 1;
+  const long = (list: unknown) =>
+    (Array.isArray(list) || typeof list === 'string') && list.length >= LONG_LIST ? list.length : 0;
+  const undo: (() => void)[] = [];
+  const patch = (owner: object, key: PropertyKey, wrap: (original: Method) => Method) => {
+    const original = Reflect.get(owner, key) as Method;
+    Reflect.set(owner, key, wrap(original));
+    undo.push(() => Reflect.set(owner, key, original));
+  };
+  const walks = (original: Method): Method =>
+    function (this: unknown, ...args) {
+      if (!muted) {
+        count += long(this);
+        for (let i = 0; i < args.length; i++) count += long(args[i]);
+      }
+      return original.apply(this, args);
+    };
+  for (const name of WHOLE_LIST) patch(Array.prototype, name, walks);
+  patch(Array.prototype, Symbol.iterator, walks);
+  patch(String.prototype, Symbol.iterator, walks);
+  patch(
+    Array.prototype,
+    'slice',
+    (original) =>
+      function (this: unknown, ...args) {
+        const part = original.apply(this, args);
+        if (!muted) count += long(part);
+        return part;
+      },
+  );
+  patch(
+    Array.prototype,
+    'push',
+    (original) =>
+      function (this: unknown, ...args) {
+        if (!muted && long(this)) count += args.length;
+        return original.apply(this, args);
+      },
+  );
+  const glyphReads: ProxyHandler<opentype.Glyph[]> = {
+    get(list, key, receiver) {
+      if (!muted && typeof key === 'string' && key !== 'length') count++;
+      return Reflect.get(list, key, receiver);
+    },
+  };
+  const inFont = (original: Method, charge: (args: unknown[]) => number): Method =>
+    function (this: unknown, ...args) {
+      if (!muted) count += charge(args);
+      muted++;
+      try {
+        return original.apply(this, args);
+      } finally {
+        muted--;
+      }
+    };
+  patch(opentype.Font.prototype, 'getKerningValue', (original) => inFont(original, () => 1));
+  patch(opentype.Font.prototype, 'stringToGlyphs', (original) => {
+    const read = inFont(original, (args) => String(args[0]).length);
+    return function (this: unknown, ...args) {
+      return new Proxy(read.apply(this, args) as opentype.Glyph[], glyphReads);
+    };
+  });
+  try {
+    muted = 0;
+    run();
+  } finally {
+    muted = 1;
+    for (const restore of undo) restore();
+  }
+  return count;
+}
+
 describe('shapeText', () => {
   it('shapes H with the cap height as 1', () => {
     const box = bbox(shape(INTER, 'H', 'left'));
@@ -247,67 +375,33 @@ describe('shapeText', () => {
     );
   });
 
-  // 1.1 s at worst beside four busy cores: the timeout is a watchdog, 27 times that.
-  it('memoises a layout and shapes 1000 fresh characters for what their glyphs cost', {
-    timeout: 30_000,
-  }, () => {
+  it('memoises a layout and shapes 1000 fresh characters with work that grows with the text', () => {
     const first = shape(INTER, 'memo', 'left');
     expect(shapeText(INTER, 'memo', 'left')).toBe(first);
+    const length = 1000;
     let pangrams = '';
-    while (pangrams.length < 1100) pangrams += 'The quick brown fox jumps over the lazy dog. ';
-    // A new text each time, or the memo would answer.
-    let texts = 0;
-    const fresh = (length: number) => {
-      texts++;
-      const from = texts % 45;
-      return String(texts).padStart(4, '0') + pangrams.slice(from, from + length - 4);
-    };
-    // The yardstick: the font's own work for a text, without any layout.
-    const font = parseFont('inter-regular.ttf');
-    let sum = 0;
-    const readGlyphs = (text: string) => {
-      const glyphs = font.stringToGlyphs(text);
-      for (let pass = 0; pass < 2; pass++) {
-        for (let i = 0; i + 1 < glyphs.length; i++) {
-          sum += font.getKerningValue(glyphs[i] as opentype.Glyph, glyphs[i + 1] as opentype.Glyph);
-        }
-      }
-      const points: number[][] = [];
-      for (const glyph of glyphs) {
-        for (const c of glyph.path.commands) if (c.type !== 'Z') points.push([c.x, c.y]);
-      }
-      sum += points.length;
-    };
-    // CPU time, which a busy machine doesn't inflate as it does the clock.
-    const cost = (work: () => void) => {
-      const before = process.cpuUsage();
-      work();
-      const { user, system } = process.cpuUsage(before);
-      return user + system;
-    };
-    let [shaped, read, short] = [Infinity, Infinity, Infinity];
-    for (let i = 0; i < 25; i++) {
-      const text = fresh(1000);
-      shaped = Math.min(
-        shaped,
-        cost(() => expect(shape(INTER, text, 'left').missing).toEqual([])),
-      );
-      read = Math.min(
-        read,
-        cost(() => readGlyphs(text)),
-      );
-      const tenth = fresh(100);
-      short = Math.min(
-        short,
-        cost(() => shape(INTER, tenth, 'left')),
-      );
+    while (pangrams.length < length + 1) {
+      pangrams += 'The quick brown fox jumps over the lazy dog. 0123456789 ';
     }
+    // The font parses an outline when it is first read: that is not the layout's work.
+    shape(INTER, pangrams.slice(1, length + 1), 'left');
+    // A new text each time, or the memo would answer.
+    const text = String(++countedTexts).padStart(4, '0') + pangrams.slice(0, length - 4);
+    let layout: UnitLayout | undefined;
+    const work = countWork(() => {
+      layout = shape(INTER, text, 'left');
+    });
+    expect(layout?.missing).toEqual([]);
+    const sum = layout?.contours.reduce((n, contour) => n + contour.segments.length, 0) ?? 0;
     expect(sum).toBeGreaterThan(0);
-    // Measured alone and beside four busy cores: 1.7 to 2.4 times the yardstick
-    // and 9.6 to 12.6 times the tenth of the text. A list copied per glyph comes
-    // to 4.2 and 16.
-    expect(shaped / read).toBeLessThan(3.5);
-    expect(shaped / short).toBeLessThan(15);
+    // The count sees the text at all, and sees a list copied per element.
+    expect(work).toBeGreaterThanOrEqual(length);
+    let copied: number[] = [];
+    const copying = countWork(() => {
+      for (let i = 0; i < length; i++) copied = [...copied, i];
+    });
+    expect(copying).toBeGreaterThan(WORK_PER_CHARACTER * length);
+    expect(work).toBeLessThan(WORK_PER_CHARACTER * length);
   });
 });
 
