@@ -11,7 +11,7 @@ import { loadManifold, type Manifold } from './manifold';
 import { expectStepRoundTrip } from './mesh-to-solid-test-support';
 import { loadOcct } from './occt/load';
 
-/** The CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
+/** CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
 function threadMs(): number {
   const node = (globalThis as { process?: { threadCpuUsage(): { user: number; system: number } } })
     .process;

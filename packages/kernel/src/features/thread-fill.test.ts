@@ -578,8 +578,8 @@ describe('thread fill', { timeout: 300_000 }, () => {
     expect(Math.abs(nominal - tapDrill) / tapDrill).toBeLessThan(0.01);
   });
 
-  // 79 s alone, 152 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
-  // timeout is a watchdog, 5.9 times that.
+  // 79 s alone, 152 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 5.9 times that.
   it('builds a Ø4 pin up to M5 and says so', { timeout: 900_000 }, async () => {
     const pin = async (diameter: number) => {
       engine.clear();

@@ -95,7 +95,7 @@ describe('region matching budget', () => {
   });
 
   // Before the budget, 2,000 poles took 40 s and 5,000 minutes; 20,000 overflowed the stack.
-  // 2.9 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
+  // 2.9 s at worst beside four busy cores and the rest of the suite (2026-11-18/19): the
   // timeout is a watchdog, 6.8 times that.
   it.each([5_000, 20_000])(
     'refuses two overlapping %i-pole splines within about a second',

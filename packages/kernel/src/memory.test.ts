@@ -735,8 +735,8 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
-  // 166 s alone, 324 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
-  // timeout is a watchdog, 5.6 times that.
+  // 166 s alone, 324 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 5.6 times that.
   it(`shelling ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
     timeout: 1_800_000,
   }, () => {
@@ -776,8 +776,8 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
-  // 96 s alone, 184 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
-  // timeout is a watchdog, 6.5 times that.
+  // 96 s alone, 184 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 6.5 times that.
   it(`shelling with wall sets and plugs ${OFFSET_REBUILDS} times, failing ones included, does not grow the heap`, {
     timeout: 1_200_000,
   }, () => {
@@ -845,8 +845,8 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
-  // 85 s alone, 162 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
-  // timeout is a watchdog, 5.6 times that.
+  // 85 s alone, 162 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 5.6 times that.
   it(`offsetting faces ${OFFSET_REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
     timeout: 900_000,
   }, () => {

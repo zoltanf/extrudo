@@ -193,8 +193,8 @@ describe('references', () => {
     expect(body?.stop?.references).toMatchObject({ none: 1 });
   });
 
-  // 1.1 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
-  // timeout is a watchdog, six times that.
+  // 1.1 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, six times that.
   it('an edge that a later feature split has no counterpart: the history stops there', {
     timeout: 20_000,
   }, async () => {

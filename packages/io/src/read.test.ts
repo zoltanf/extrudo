@@ -178,8 +178,8 @@ describe('SVG round trip', () => {
 });
 
 describe('DXF round trip', () => {
-  // 1.4 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
-  // timeout is a watchdog, six times that.
+  // 1.4 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, six times that.
   it('brings lines, arcs and circles back', { timeout: 20_000 }, () => {
     const original = drawing(EXACT);
     const back = readDxf(writeDxf(original)).drawing;

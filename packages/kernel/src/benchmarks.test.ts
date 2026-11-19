@@ -76,7 +76,7 @@ const node = (
 ).process;
 const env = node?.env;
 
-/** The CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
+/** CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
 function threadMs(): number {
   const used = node?.threadCpuUsage();
   if (!used) throw new Error('no process.threadCpuUsage');
@@ -413,8 +413,8 @@ describe('B7 knurled knob', () => {
     grooves * lens(15, groove / 2, 15) * 16 -
     Math.PI * 3 * 3 * 10;
 
-  // 1.2 s alone, 2.8 s at worst beside four busy cores and the rest of the
-  // suite (2026-11-18 and -19): the timeout is a watchdog, 5.4 times that.
+  // 1.2 s alone, 2.8 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, 5.4 times that.
   it('is one body: revolved, chamfered, 24 grooves, a shaft hole', {
     timeout: 15_000,
   }, async () => {

@@ -155,7 +155,7 @@ describe('multi-start threads', { timeout: 120_000 }, () => {
     expect(r.status.message).toBe('Starts must be a whole number from 1 to 8.');
   });
 
-  // 37 s alone, 70 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
+  // 37 s alone, 70 s at worst beside four busy cores and the rest of the suite (2026-11-18/19): the
   // timeout is a watchdog, 5.1 times that.
   it('counts MAX_TURNS per helix', { timeout: 360_000 }, async () => {
     const numbers = { diameter: '4 mm', pitch: '0.25 mm' };

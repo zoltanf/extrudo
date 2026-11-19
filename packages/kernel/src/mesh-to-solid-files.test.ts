@@ -24,7 +24,7 @@ import { loadOcct } from './occt/load';
 const env =
   (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 
-/** The CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
+/** CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
 function threadMs(): number {
   const node = (globalThis as { process?: { threadCpuUsage(): { user: number; system: number } } })
     .process;
