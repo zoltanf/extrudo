@@ -12,9 +12,10 @@ import {
   textPolylines,
 } from '@extrudo/core';
 import type { EntityStatus } from '@extrudo/sketch/inference';
-import type { Profile } from '@extrudo/sketch/profiles';
+import type { FlatRegions } from '../sketch/flatRegions';
 import { tangentGrips } from '../sketch/splineEnds';
 import type { Vec3 } from './camera';
+import type { ProfileFill } from './profileFills';
 import type { Bounds } from './store';
 
 export type { EntityStatus };
@@ -31,9 +32,17 @@ export interface SketchDrawing {
   highlight?: boolean;
   /** Constraint status by entity (P1-08), for the sketch being edited once the solver is in. */
   status?: Readonly<Record<string, EntityStatus>>;
-  /** Closed regions to shade (P1-11); none while "Show profiles" is off. */
-  profiles?: readonly Profile[];
-  /** Past the design's budget for fills (`MAX_FILL_VERTICES`): the regions are outlined when marked, never filled. */
+  /**
+   * The regions to pick and outline, flat, as the profile worker found them
+   * (ADR-0154). None while "Show profiles" is off, while the worker is still at
+   * it, or when even they are past the budget. The open sketch has none here: its
+   * regions are looked up by its data (`sketchProfiles`, `sketchRegions`), so a
+   * drawing kept by an old render never keeps an old version of them.
+   */
+  regions?: FlatRegions;
+  /** A fill the profile worker built. */
+  fill?: ProfileFill;
+  /** No fill: past the regions' budget, too slow to build or stopped. Marked regions are outlined. */
   unshaded?: boolean;
   /** The region under the pointer (its ID within the sketch). */
   hoverProfile?: string;

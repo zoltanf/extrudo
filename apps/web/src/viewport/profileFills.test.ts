@@ -1,27 +1,29 @@
 import { planeFrame, type SketchData, type SketchFrame, sketchToWorld } from '@extrudo/core';
 import {
   detectProfiles,
-  MAX_DESIGN_FILL_WORK,
-  MAX_FILL_VERTICES,
   MAX_FILL_WORK,
+  MAX_REGION_BYTES,
   type Profile,
 } from '@extrudo/sketch/profiles';
 import { ShapeUtils, Vector2, Vector3 } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flattenRegions } from '../sketch/flatRegions';
 import {
-  fillBudget,
   fillCost,
+  fillFailed,
   fillGroups,
   fillLayout,
   fillMatrix,
   fillRuns,
   fillWork,
+  grantedBytes,
   MAX_FILL_GROUPS,
   MAX_OUTLINE_POINTS,
   noteUnbuiltFill,
   profileFill,
+  regionBudget,
   regionOutlines,
-  sketchesPastFillBudget,
+  regionVerdicts,
 } from './profileFills';
 
 const frame = (id: string) => planeFrame({ kind: 'plane', id }) as SketchFrame;
@@ -206,72 +208,12 @@ describe('fillRuns', () => {
   });
 });
 
-describe('sketchesPastFillBudget', () => {
-  const square10 = FIXTURES['a square'] as Profile[]; // 6 vertices
-  const cost = fillCost(square10);
-  const sketch = (
-    id: string,
-    active = false,
-    profiles: readonly Profile[] | undefined = square10,
-  ) => ({
-    id,
-    active,
-    ...(profiles && { profiles }),
-  });
-  const past = (list: Parameters<typeof sketchesPastFillBudget>[0], budget: number) => [
-    ...sketchesPastFillBudget(list, budget),
-  ];
-
-  it('is the limit of the design unless a test sets another', () => {
-    expect(fillBudget()).toBe(MAX_FILL_VERTICES);
-    expect(MAX_FILL_VERTICES).toBe(16_000_000);
-  });
-
-  it('fits sketches exactly at the budget and refuses one vertex past it', () => {
-    expect(cost).toBe(6);
-    expect(past([sketch('a'), sketch('b')], cost * 2)).toEqual([]);
-    expect(past([sketch('a'), sketch('b')], cost * 2 - 1)).toEqual(['b']);
-  });
-
-  it('serves sketches in timeline order', () => {
-    expect(past([sketch('a'), sketch('b'), sketch('c')], cost)).toEqual(['b', 'c']);
-  });
-
-  it('serves the open sketch first', () => {
-    expect(past([sketch('a'), sketch('b', true), sketch('c')], cost)).toEqual(['a', 'c']);
-  });
-
-  it('leaves what a sketch past the budget would take to the ones after it', () => {
-    const big = FIXTURES['a plate with holes'] as Profile[];
-    expect(past([sketch('a', false, big), sketch('b')], cost)).toEqual(['a']);
-  });
-
-  it('counts only the sketches it is given: hiding one gives its share back', () => {
-    const shown = [sketch('a'), sketch('b'), sketch('c')];
-    expect(past(shown, cost * 2)).toEqual(['c']);
-    expect(
-      past(
-        shown.filter((s) => s.id !== 'a'),
-        cost * 2,
-      ),
-    ).toEqual([]);
-  });
-
-  it('counts nothing for a sketch whose profiles are not shown', () => {
-    expect(past([{ id: 'a', active: false }, sketch('b')], cost)).toEqual([]);
-  });
-
-  it('holds the open sketch to the budget too', () => {
-    expect(past([sketch('a', true)], cost - 1)).toEqual(['a']);
-  });
-});
-
 describe('regionOutlines', () => {
   const profiles = FIXTURES['a square with a square hole'] as Profile[];
   const [ring] = profiles as [Profile];
 
   it('draws every boundary of the region, closed', () => {
-    const lines = regionOutlines(profiles, [ring.id], frame('origin:xy'));
+    const lines = regionOutlines(flattenRegions(profiles), [ring.id], frame('origin:xy'));
     // Four sides outside and four around the hole, two xyz points each.
     expect(lines.length).toBe(8 * 2 * 3);
     expect([...lines.subarray(0, 3)]).toEqual([
@@ -280,7 +222,7 @@ describe('regionOutlines', () => {
   });
 
   it('draws nothing for no regions', () => {
-    expect(regionOutlines(profiles, [], frame('origin:xy'))).toHaveLength(0);
+    expect(regionOutlines(flattenRegions(profiles), [], frame('origin:xy'))).toHaveLength(0);
   });
 
   it('draws a very long boundary coarser, inside the bound', () => {
@@ -295,7 +237,7 @@ describe('regionOutlines', () => {
       holes: [],
       outer: { edges: [], polygon, area: 1 },
     } as Profile;
-    const lines = regionOutlines([long], ['long'], frame('origin:xy'));
+    const lines = regionOutlines(flattenRegions([long]), ['long'], frame('origin:xy'));
     expect(lines.length / 6).toBeLessThanOrEqual(MAX_OUTLINE_POINTS);
     expect(lines.length / 6).toBeGreaterThan(MAX_OUTLINE_POINTS / 2);
   });
@@ -380,72 +322,6 @@ describe('fillWork', () => {
       ]),
     ];
     expect(Number.isFinite(fillWork(flat))).toBe(true);
-  });
-});
-
-describe('sketchesPastFillBudget and the work limits', () => {
-  const light = plate(4, 16);
-  const heavy = plate(40, 16);
-  const limit = fillWork(heavy);
-  const sketch = (id: string, profiles: readonly Profile[], active = false) => ({
-    id,
-    active,
-    profiles,
-  });
-  const past = (
-    list: Parameters<typeof sketchesPastFillBudget>[0],
-    work: { sketch: number; design: number },
-  ) => [...sketchesPastFillBudget(list, MAX_FILL_VERTICES, work)];
-
-  it('passes a fill exactly at the limit and refuses one past it', () => {
-    expect(past([sketch('a', heavy)], { sketch: limit, design: 1e12 })).toEqual([]);
-    expect(past([sketch('a', heavy)], { sketch: limit - 1, design: 1e12 })).toEqual(['a']);
-  });
-
-  it('shares the design limit in the budget order, the open sketch first', () => {
-    const work = { sketch: 1e12, design: limit * 1.5 };
-    expect(past([sketch('a', heavy), sketch('b', heavy)], work)).toEqual(['b']);
-    expect(past([sketch('a', heavy), sketch('b', heavy, true)], work)).toEqual(['a']);
-  });
-
-  it('leaves what a refused sketch would have taken to the ones after it', () => {
-    const work = { sketch: limit - 1, design: limit };
-    expect(past([sketch('a', heavy), sketch('b', light)], work)).toEqual(['a']);
-  });
-
-  it('allows the design many fills at the sketch limit', () => {
-    expect(MAX_DESIGN_FILL_WORK).toBeGreaterThan(MAX_FILL_WORK);
-  });
-
-  it('takes a sketch whose fill could not be built out of the budget', () => {
-    const lost = plate(3, 8);
-    noteUnbuiltFill(lost);
-    const work = { sketch: 1e12, design: 1e12 };
-    expect(past([sketch('a', lost), sketch('b', light)], work)).toEqual(['a']);
-  });
-});
-
-describe('fillBudget', () => {
-  afterEach(() => vi.unstubAllGlobals());
-  const withHook = (value: unknown) => {
-    vi.stubGlobal('window', { __extrudoFillBudget: value });
-    return fillBudget();
-  };
-
-  it('lets a test lower the budget', () => {
-    expect(withHook(6)).toBe(6);
-  });
-
-  it('never lets the hook raise it or switch it off', () => {
-    for (const value of [Number.POSITIVE_INFINITY, 1e15, MAX_FILL_VERTICES + 1]) {
-      expect(withHook(value)).toBe(MAX_FILL_VERTICES);
-    }
-  });
-
-  it('ignores what is not a positive number', () => {
-    for (const value of [-1, 0, Number.NaN, '6', null]) {
-      expect(withHook(value)).toBe(MAX_FILL_VERTICES);
-    }
   });
 });
 
@@ -559,11 +435,109 @@ describe('regionOutlines, its bound', () => {
       ]),
     );
     const lines = regionOutlines(
-      many,
+      flattenRegions(many),
       many.map((p) => p.id),
       frame('origin:xy'),
     );
     expect(lines.length / 6).toBeLessThanOrEqual(MAX_OUTLINE_POINTS);
     expect(lines.length).toBeGreaterThan(0);
+  });
+});
+
+describe('regionVerdicts', () => {
+  const claim = (
+    id: string,
+    regionBytes: number,
+    fillBytes: number,
+    active = false,
+    fillable = true,
+  ) => ({
+    id,
+    active,
+    regionBytes,
+    fillBytes,
+    fillable,
+  });
+  const of = (m: Map<string, string>) => Object.fromEntries(m);
+
+  it('is the limit of the design unless a test lowers it', () => {
+    expect(regionBudget()).toBe(MAX_REGION_BYTES);
+    expect(MAX_REGION_BYTES).toBe(256 * 1024 * 1024);
+  });
+
+  it('gives a sketch its fill and regions exactly at the budget, its regions alone one byte short', () => {
+    expect(of(regionVerdicts([claim('a', 10, 90)], 100))).toEqual({ a: 'shaded' });
+    expect(of(regionVerdicts([claim('a', 10, 90)], 99))).toEqual({ a: 'pickable' });
+    expect(of(regionVerdicts([claim('a', 10, 90)], 9))).toEqual({ a: 'none' });
+  });
+
+  it('serves the open sketch first, then the timeline order, passing over what does not fit', () => {
+    const list = [claim('a', 10, 50), claim('b', 10, 50, true), claim('c', 5, 5)];
+    expect(of(regionVerdicts(list, 80))).toEqual({ b: 'shaded', a: 'pickable', c: 'shaded' });
+  });
+
+  it('counts only the sketches it is given: hiding one gives its share back', () => {
+    const list = [claim('a', 10, 40), claim('b', 10, 40)];
+    expect(of(regionVerdicts(list, 60))).toEqual({ a: 'shaded', b: 'pickable' });
+    expect(of(regionVerdicts(list.slice(1), 60))).toEqual({ b: 'shaded' });
+  });
+
+  it('never shades a sketch that may not have a fill', () => {
+    expect(of(regionVerdicts([claim('a', 10, 10, false, false)], 100))).toEqual({ a: 'pickable' });
+  });
+
+  it('keeps the others as they were when the open sketch grows during a drag', () => {
+    const at = (open: number) => [
+      claim('a', 10, 30),
+      claim('o', 10, open, true),
+      claim('b', 10, 30),
+    ];
+    const first = regionVerdicts(at(20), 100);
+    const held = grantedBytes(at(20)[1] as never, first.get('o'));
+    expect(of(first)).toEqual({ o: 'shaded', a: 'shaded', b: 'pickable' });
+    for (const open of [25, 35, 60, 15]) {
+      const next = regionVerdicts(at(open), 100, held);
+      expect(next.get('a')).toBe('shaded');
+      expect(next.get('b')).toBe('pickable');
+    }
+    // The open sketch alone loses its fill when it outgrows what it had.
+    expect(regionVerdicts(at(60), 100, held).get('o')).toBe('pickable');
+  });
+
+  it('notes a fill that could not be built', () => {
+    const lost = [
+      detectProfiles({
+        entities: square('z', 0, 0, 1),
+        constraints: {},
+        dimensions: {},
+      } as SketchData),
+    ];
+    expect(fillFailed(lost[0] as never)).toBe(false);
+    noteUnbuiltFill(lost[0] as never);
+    expect(fillFailed(lost[0] as never)).toBe(true);
+  });
+});
+
+describe('regionBudget', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const withHook = (value: unknown) => {
+    vi.stubGlobal('window', { __extrudoRegionBudget: value });
+    return regionBudget();
+  };
+
+  it('lets a test lower the budget', () => {
+    expect(withHook(600)).toBe(600);
+  });
+
+  it('never lets the hook raise it or switch it off', () => {
+    for (const value of [Number.POSITIVE_INFINITY, 1e15, MAX_REGION_BYTES + 1]) {
+      expect(withHook(value)).toBe(MAX_REGION_BYTES);
+    }
+  });
+
+  it('ignores what is not a positive number', () => {
+    for (const value of [-1, 0, Number.NaN, '6', null]) {
+      expect(withHook(value)).toBe(MAX_REGION_BYTES);
+    }
   });
 });

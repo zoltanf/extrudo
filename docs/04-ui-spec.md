@@ -360,7 +360,12 @@ Crank or Glide. Since the right button drags, the right-click marking menu
 
 ### 3.2 Selection
 
-  When a sketch's fill is past the design's budget or would take too long to build (`MAX_FILL_VERTICES`, `MAX_FILL_WORK`, ADR-0020's amendment of 2026-11-19), the bar says "· 3 sketches not shaded" beside the kernel state; its tooltip says why and what brings the shading back.
+  While the profile worker has been finding the profiles of sketches that aren't open for
+  more than 400 ms, the bar says "· Finding profiles 12 of 30…" beside the kernel state
+  (ADR-0154). When a sketch's fill is past the design's memory budget, too slow to build or
+  stopped (`MAX_REGION_BYTES`, ADR-0154), the bar says "· 3 sketches not shaded"; when even
+  some sketches' regions don't fit, it adds ", 1 can't be picked", and its tooltip says why
+  and that opening the sketch picks them there.
 - Hover → pre-highlight (light category tint). Click → select (strong
   highlight). Shift or Ctrl+click → toggle.
 - Drag left-to-right = **window** (fully inside); right-to-left = **crossing**

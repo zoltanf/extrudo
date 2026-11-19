@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
+import type { StoreApi } from 'zustand/vanilla';
 import { AnnotationHint } from '../annotations/AnnotationHint';
 import {
   ContextMenu,
@@ -39,6 +40,7 @@ import {
 } from '../design-system';
 import { type MacroStore, recordedCount } from '../macro/macro';
 import { selectionSummary } from '../selection/items';
+import type { RegionsState } from '../sketch/regionsClient';
 import { formatLongTasks, formatRenderStats } from '../viewport/renderMeter';
 import { SoftwareRendering } from '../viewport/SoftwareRendering';
 import type { ViewportStore } from '../viewport/store';
@@ -94,8 +96,12 @@ export interface TimelineProps {
   macro?: MacroStore;
   /** The notification store (ADR-0041): its bell is the row's last item. */
   notifications?: NotificationStore;
-  /** How many shown sketches draw their curves only: the design's fills are past their budget. */
+  /** How many shown sketches draw their curves only (ADR-0020, ADR-0154). */
   unshadedSketches?: number;
+  /** How many of those can't have their profiles picked in the model. */
+  unpickableSketches?: number;
+  /** The profile worker's progress, for "Finding profiles 12 of 30…" (ADR-0154). */
+  profilesProgress?: StoreApi<RegionsState>;
 }
 
 /** A chip being dragged to a new place (FR-TL-04). */
@@ -187,6 +193,8 @@ export function Timeline({
   macro,
   notifications,
   unshadedSketches = 0,
+  unpickableSketches = 0,
+  profilesProgress,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
@@ -413,7 +421,10 @@ export function Timeline({
         {errors > 0 && ` · ${errors} ${errors === 1 ? 'error' : 'errors'}`}
       </output>
       {model && <KernelState model={model} />}
-      {unshadedSketches > 0 && <UnshadedSketches count={unshadedSketches} />}
+      {profilesProgress && <FindingProfiles store={profilesProgress} />}
+      {unshadedSketches > 0 && (
+        <UnshadedSketches count={unshadedSketches} unpickable={unpickableSketches} />
+      )}
       {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
       {notifications && <NotificationHistory store={notifications} />}
@@ -1046,19 +1057,53 @@ function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
   );
 }
 
-/** Says that some sketches draw their curves only (ADR-0020's amendment of 2026-11-19). */
-function UnshadedSketches({ count }: { count: number }) {
+/** How long the profile worker must be busy before the status bar says so. */
+const FINDING_DELAY_MS = 400;
+
+/** "· Finding profiles 12 of 30…" while the profile worker is busy for more than a moment (ADR-0154). */
+function FindingProfiles({ store }: { store: StoreApi<RegionsState> }) {
+  const progress = useStore(store, (s) => s.progress);
+  const [, setTick] = useState(0);
+  const since = progress?.since;
+  useEffect(() => {
+    if (since === undefined) return;
+    const wait = FINDING_DELAY_MS - (performance.now() - since);
+    if (wait <= 0) return;
+    const timer = setTimeout(() => setTick((t) => t + 1), wait);
+    return () => clearTimeout(timer);
+  }, [since]);
+  if (!progress || since === undefined || performance.now() - since < FINDING_DELAY_MS) return null;
+  return (
+    <output
+      aria-label="Finding profiles"
+      data-finding-profiles={`${progress.done}/${progress.total}`}
+      className="-ml-1 font-mono text-[11px] whitespace-nowrap text-muted"
+    >
+      · Finding profiles {progress.done} of {progress.total}…
+    </output>
+  );
+}
+
+/** Says that some sketches draw their curves only (ADR-0020, ADR-0154), and if some can't be picked. */
+function UnshadedSketches({ count, unpickable }: { count: number; unpickable: number }) {
+  const them = unpickable === 1 ? 'one of them' : `${unpickable} of them`;
   return (
     <Tooltip
       label="Sketches not shaded"
-      hint="Some sketches are too detailed for the view to shade. They show their curves, and their profiles can still be picked. Hiding other sketches may bring the shading back."
+      hint={`Some sketches are too detailed for the view to shade. They show their curves, and their profiles can still be picked. Hiding other sketches may bring the shading back.${
+        unpickable > 0
+          ? ` The profiles of ${them} can't be picked in the model: open the sketch to pick them there.`
+          : ''
+      }`}
     >
       <output
         aria-label="Sketches not shaded"
         data-unshaded-sketches={count}
+        data-unpickable-sketches={unpickable}
         className="-ml-1 font-mono text-[11px] whitespace-nowrap text-muted"
       >
         · {count} {count === 1 ? 'sketch' : 'sketches'} not shaded
+        {unpickable > 0 && `, ${unpickable} can't be picked`}
       </output>
     </Tooltip>
   );

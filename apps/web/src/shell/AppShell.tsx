@@ -32,10 +32,12 @@ import {
   type SelectionItem,
   type SessionStore,
   type SheetId,
+  type SketchData,
   type ViewId,
 } from '@extrudo/core';
 import { type BodyMesh, type Recomputer, shownBodies as shownBodyIds } from '@extrudo/kernel';
 import type { Matrix12 } from '@extrudo/kernel/matrix';
+import { MAX_FILL_WORK, type Profile } from '@extrudo/sketch/profiles';
 import {
   type ComponentProps,
   type CSSProperties,
@@ -197,7 +199,8 @@ import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { constructionDatumSources } from '../sketch/datums';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
-import { attachmentBytes, fontsStore } from '../sketch/fonts';
+import { type FlatRegions, regionsBytes } from '../sketch/flatRegions';
+import { attachmentBytes, fontsStore, uiFontBytes } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
 import { importDrawingStore } from '../sketch/importDraft';
@@ -222,8 +225,25 @@ import {
   TextPanel,
 } from '../sketch/panels';
 import { pickDrawing } from '../sketch/pickDrawing';
-import { profileIdsIn, sketchProfiles, sketchProfilesProblem } from '../sketch/profiles';
+import {
+  closeOpenSketch,
+  hasText,
+  openSketchProfiles,
+  pinOpenSketch,
+  profileIdsIn,
+  sketchProfilesProblem,
+  sketchRegions,
+} from '../sketch/profiles';
 import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
+import {
+  closedSketchShows,
+  createRegionsClient,
+  idleRegions,
+  type RegionsClient,
+  type RegionsEntry,
+  type RegionsJob,
+} from '../sketch/regionsClient';
+import { fillBytes } from '../sketch/regionsJob';
 import {
   deleteSelection,
   selectedConstraints,
@@ -246,7 +266,17 @@ import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useKernelWaits, useRecomputeFinished } from '../viewport/ModelProgress';
 import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
-import { sketchesPastFillBudget, unbuiltFills } from '../viewport/profileFills';
+import {
+  fillCost,
+  fillFailed,
+  fillWork,
+  grantedBytes,
+  type RegionClaim,
+  type RegionVerdict,
+  regionBudget,
+  regionVerdicts,
+  unbuiltFills,
+} from '../viewport/profileFills';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -2654,9 +2684,24 @@ function Shell({
   }, [doc.joints, hoveredJoint, jointReports, jointOpen]);
   // A fill that could not be built takes its sketch out of the budget.
   const unbuiltFill = useStore(unbuiltFills, (s) => s.version);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `unbuiltFill` says when to ask the budget again.
-  const sketches = useMemo(() => {
+  // The regions of sketches that aren't open are found in a worker (ADR-0154).
+  // Made in an effect, so a remount (StrictMode's too) never keeps a disposed client in use.
+  const [regionsClient, setRegionsClient] = useState<RegionsClient>();
+  useEffect(() => {
+    const client = createRegionsClient();
+    setRegionsClient(client);
+    return () => client.dispose();
+  }, []);
+  const regionsVersion = useStore(regionsClient?.store ?? idleRegions, (s) => s.version);
+  // What the open sketch was granted when it was opened (`regionVerdicts`' `held`).
+  const heldRegions = useRef<{ id: string; bytes: number } | undefined>(undefined);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `unbuiltFill` and `regionsVersion` say when to ask again.
+  const shownSketches = useMemo(() => {
     const out: SketchDrawing[] = [];
+    const claims: RegionClaim[] = [];
+    const jobs: RegionsJob[] = [];
+    const entries = new Map<string, RegionsEntry>();
+    const open = new Map<string, { profiles: readonly Profile[]; regions: FlatRegions }>();
     doc.features.forEach((feature, index) => {
       if (index >= doc.timelineMarker || feature.suppressed) return;
       const active = feature.id === activeSketchId;
@@ -2665,32 +2710,119 @@ function Shell({
       // Origin planes have fixed frames; a face's follows the face (P2-09).
       const frame =
         sketch && sketchFrame(feature.id, sketch.plane, sketchReports, constructionReports);
-      if (sketch && frame) {
-        out.push({
+      if (!sketch || !frame) return;
+      out.push({
+        id: feature.id,
+        name: feature.name,
+        frame,
+        data: sketch.data,
+        active,
+        // The hover (`highlight`, `hoverEntity`, `hoverProfile`) is added by `DialogViewport`.
+        status: active ? status?.entities : undefined,
+        // Curves picked in model mode (P2-03).
+        ...(!active && pickingSketchPoints && { showPoints: true }),
+        ...(!active && {
+          selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
+        }),
+        // One selected open fit spline shows its tangent grips (ADR-0063's third amendment).
+        ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
+        ...(showProfiles && { selectedProfiles: profileIdsIn(shownSelection, feature.id) }),
+      });
+      // Its result stays while it is open, profiles shown or not.
+      if (active) pinOpenSketch(sketch.data);
+      if (!showProfiles) return;
+      if (active) {
+        // The open sketch stays synchronous: its regions are found here, as the tools need them.
+        const profiles = openSketchProfiles(sketch.data, fontsVersion);
+        const regions = sketchRegions(sketch.data, fontsVersion);
+        open.set(feature.id, { profiles, regions });
+        claims.push({
           id: feature.id,
-          name: feature.name,
-          frame,
-          data: sketch.data,
-          active,
-          // The hover (`highlight`, `hoverEntity`, `hoverProfile`) is added by `DialogViewport`.
-          status: active ? status?.entities : undefined,
-          // Curves picked in model mode (P2-03).
-          ...(!active && pickingSketchPoints && { showPoints: true }),
-          ...(!active && {
-            selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
-          }),
-          // One selected open fit spline shows its tangent grips (ADR-0063's third amendment).
-          ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
-          ...(showProfiles && {
-            profiles: sketchProfiles(sketch.data, fontsVersion),
-            selectedProfiles: profileIdsIn(shownSelection, feature.id),
-          }),
+          active: true,
+          regionBytes: regionsBytes(regions),
+          fillBytes: fillBytes(fillCost(profiles), profiles.length),
+          fillable: fillWork(profiles) <= MAX_FILL_WORK && !fillFailed(profiles),
+        });
+        return;
+      }
+      const job = {
+        key: feature.id,
+        data: sketch.data,
+        version: fontsVersion,
+        text: hasText(sketch.data),
+      };
+      const entry = regionsClient?.get(sketch.data, fontsVersion);
+      if (!entry) {
+        jobs.push(job);
+        return;
+      }
+      entries.set(feature.id, entry);
+      if (entry.state === 'done') {
+        claims.push({
+          id: feature.id,
+          active: false,
+          regionBytes: entry.regionBytes,
+          fillBytes: entry.fillBytes,
+          fillable: entry.fillable,
         });
       }
     });
-    const past = sketchesPastFillBudget(out);
-    for (const sketch of out) if (past.has(sketch.id)) sketch.unshaded = true;
-    return out;
+    const held =
+      activeSketchId && heldRegions.current?.id === activeSketchId
+        ? heldRegions.current.bytes
+        : undefined;
+    const budget = regionBudget();
+    const verdicts = regionVerdicts(claims, budget, held);
+    // What the budget has left, for the worker: arrays that wouldn't fit aren't even made.
+    const grantedTo = new Map(claims.map((c) => [c.id, grantedBytes(c, verdicts.get(c.id))]));
+    const left = Math.max(0, budget - [...grantedTo.values()].reduce((n, b) => n + b, 0));
+    const openClaim = claims.find((c) => c.active);
+    if (!out.some((d) => d.active)) closeOpenSketch();
+    heldRegions.current =
+      openClaim === undefined
+        ? undefined
+        : held !== undefined
+          ? heldRegions.current
+          : { id: openClaim.id, bytes: grantedBytes(openClaim, verdicts.get(openClaim.id)) };
+    const granted = new Map<SketchData, RegionVerdict>();
+    let unshaded = 0;
+    let unpickable = 0;
+    for (const drawing of out) {
+      const verdict = verdicts.get(drawing.id);
+      const mine = open.get(drawing.id);
+      if (mine) {
+        // The open sketch's regions stay in the profile cache, looked up by its data where
+        // they are drawn: a drawing an old render keeps must not keep them too.
+        if (verdict !== 'shaded') {
+          drawing.unshaded = true;
+          unshaded++;
+        }
+        continue;
+      }
+      const entry = entries.get(drawing.id);
+      if (!entry) continue;
+      const shows = closedSketchShows(entry, verdict);
+      // Every shown sketch's entry stays, refused, stopped or failed too: only others are spare.
+      granted.set(drawing.data, shows.keep);
+      if (shows.regions) drawing.regions = shows.regions;
+      if (shows.fill) drawing.fill = shows.fill;
+      if (shows.unshaded) {
+        drawing.unshaded = true;
+        unshaded++;
+      }
+      if (shows.unpickable) unpickable++;
+      // What the budget grants but was let go of before is asked for again.
+      if (shows.ask) {
+        jobs.push({
+          key: drawing.id,
+          data: drawing.data,
+          version: fontsVersion,
+          text: hasText(drawing.data),
+        });
+      }
+    }
+    for (const job of jobs) job.allowance = left + (grantedTo.get(job.key) ?? 0);
+    return { drawings: out, jobs, granted, unshaded, unpickable };
   }, [
     doc.features,
     doc.timelineMarker,
@@ -2704,7 +2836,30 @@ function Shell({
     constructionReports,
     fontsVersion,
     unbuiltFill,
+    regionsVersion,
+    regionsClient,
   ]);
+  const sketches = shownSketches.drawings;
+  // Fonts reach the worker before the jobs that need them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new fonts' version means new fonts.
+  useEffect(() => {
+    for (const [id, bytes] of uiFontBytes()) regionsClient?.addFont(id, bytes);
+  }, [fontsVersion, regionsClient]);
+  // The effects take the small parts: a closure that keeps the drawings would keep their arrays.
+  const regionJobs = shownSketches.jobs;
+  const grantedRegions = shownSketches.granted;
+  useEffect(() => regionsClient?.want(regionJobs), [regionJobs, regionsClient]);
+  useEffect(() => regionsClient?.keep(grantedRegions), [grantedRegions, regionsClient]);
+  // A hovered sketch is found first.
+  useEffect(
+    () =>
+      session.subscribe((s, prev) => {
+        if (s.hover === prev.hover) return;
+        for (const id of hoveredFeatureIds(store.getState().doc, s.hover))
+          regionsClient?.prefer(id);
+      }),
+    [session, store, regionsClient],
+  );
   // Shown construction planes, axes and points the kernel has reported (P3-05); the one a dialog
   // edits is drawn as its preview instead.
   const editedId = dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined;
@@ -3599,7 +3754,9 @@ function Shell({
           pluginHint={pluginHint}
           macro={macro}
           notifications={history}
-          unshadedSketches={sketches.filter((s) => s.unshaded).length}
+          unshadedSketches={shownSketches.unshaded}
+          unpickableSketches={shownSketches.unpickable}
+          profilesProgress={regionsClient?.store}
           selectionSize={
             measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
           }

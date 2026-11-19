@@ -7,22 +7,17 @@
  * (`MAX_FILL_WORK`, `MAX_DESIGN_FILL_WORK`) is not built.
  */
 import { type SketchFrame, sketchToWorld } from '@extrudo/core';
-import {
-  MAX_DESIGN_FILL_WORK,
-  MAX_FILL_VERTICES,
-  MAX_FILL_WORK,
-  type Profile,
-  type ProfileLoop,
-} from '@extrudo/sketch/profiles';
+import { MAX_REGION_BYTES, type Profile } from '@extrudo/sketch/profiles';
 import { Matrix4, Vector3 } from 'three';
 import { Earcut } from 'three/src/extras/Earcut.js';
 import { createStore } from 'zustand/vanilla';
+import { type FlatRegions, regionIndex } from '../sketch/flatRegions';
 import type { ProfileShade } from './sketchGeometry';
 
 declare global {
   interface Window {
-    /** A smaller budget for fills, set by e2e tests before the app loads. */
-    __extrudoFillBudget?: number;
+    /** A smaller budget for a design's regions, in bytes, set by e2e tests before the app loads. */
+    __extrudoRegionBudget?: number;
   }
 }
 
@@ -272,12 +267,12 @@ export function fillMatrix(frame: SketchFrame): Matrix4 {
     .setPosition(...frame.origin);
 }
 
-/** The budget for a design's fills. A test may only lower it. */
-export function fillBudget(): number {
-  const lower = typeof window !== 'undefined' ? window.__extrudoFillBudget : undefined;
+/** The budget for what a design's regions keep on the UI thread, bytes. A test may only lower it. */
+export function regionBudget(): number {
+  const lower = typeof window !== 'undefined' ? window.__extrudoRegionBudget : undefined;
   return typeof lower === 'number' && Number.isFinite(lower) && lower > 0
-    ? Math.min(lower, MAX_FILL_VERTICES)
-    : MAX_FILL_VERTICES;
+    ? Math.min(lower, MAX_REGION_BYTES)
+    : MAX_REGION_BYTES;
 }
 
 const unbuilt = new WeakSet<readonly Profile[]>();
@@ -292,40 +287,72 @@ export function noteUnbuiltFill(profiles: readonly Profile[]): void {
   unbuiltFills.setState((s) => ({ version: s.version + 1 }));
 }
 
+/** Whether a fill of these regions failed to build before. */
+export function fillFailed(profiles: readonly Profile[]): boolean {
+  return unbuilt.has(profiles);
+}
+
+/** What a sketch shows of its regions: filled and picked, picked only, or neither. */
+export type RegionVerdict = 'shaded' | 'pickable' | 'none';
+
+/** What a shown sketch's regions would keep. */
+export interface RegionClaim {
+  id: string;
+  active: boolean;
+  /** Its flat regions (what picking reads). */
+  regionBytes: number;
+  /** Its fill, on top of the regions. */
+  fillBytes: number;
+  /** Whether it may have a fill at all (not too large, too slow or failed). */
+  fillable: boolean;
+}
+
 /**
- * The sketches without a fill: past the design's budget of vertices, or with a
- * fill that would take too long to build, alone or added to the fills before
- * it. The open sketch is served first, then the others in the order given (the
- * timeline's); a sketch that doesn't fit leaves what it would have taken to
- * those after it. Only the sketches passed in count: a hidden one is not drawn,
- * so it takes nothing.
+ * Shares the budget among the shown sketches (ADR-0154): the open sketch is
+ * served first, then the others in the order given (the timeline's). A sketch
+ * gets its fill and its regions if both fit, else its regions alone, else
+ * nothing; what it doesn't take is left to those after it. A hidden sketch is
+ * not passed in, so it takes nothing. While a sketch is open, `held` is what it
+ * was granted when it was opened: the others keep what they had then, so a
+ * drag in the open sketch never switches another sketch's shading.
  */
-export function sketchesPastFillBudget(
-  sketches: readonly { id: string; active: boolean; profiles?: readonly Profile[] }[],
-  budget: number = fillBudget(),
-  work: { sketch: number; design: number } = {
-    sketch: MAX_FILL_WORK,
-    design: MAX_DESIGN_FILL_WORK,
-  },
-): ReadonlySet<string> {
-  const past = new Set<string>();
-  let left = budget;
-  let workLeft = work.design;
-  const take = (sketch: (typeof sketches)[number]) => {
-    const { profiles } = sketch;
-    const cost = profiles ? fillCost(profiles) : 0;
-    const effort = profiles ? fillWork(profiles) : 0;
-    const fits = cost <= left && effort <= work.sketch && effort <= workLeft;
-    if (!fits || (profiles && unbuilt.has(profiles))) {
-      past.add(sketch.id);
-      return;
+export function regionVerdicts(
+  claims: readonly RegionClaim[],
+  budget: number = regionBudget(),
+  held?: number,
+): Map<string, RegionVerdict> {
+  const out = new Map<string, RegionVerdict>();
+  const grant = (claim: RegionClaim, left: number): number => {
+    if (claim.fillable && claim.fillBytes + claim.regionBytes <= left) {
+      out.set(claim.id, 'shaded');
+      return claim.fillBytes + claim.regionBytes;
     }
-    left -= cost;
-    workLeft -= effort;
+    if (claim.regionBytes <= left) {
+      out.set(claim.id, 'pickable');
+      return claim.regionBytes;
+    }
+    out.set(claim.id, 'none');
+    return 0;
   };
-  for (const sketch of sketches) if (sketch.active) take(sketch);
-  for (const sketch of sketches) if (!sketch.active) take(sketch);
-  return past;
+  const active = claims.find((c) => c.active);
+  const others = claims.filter((c) => !c.active);
+  if (active && held !== undefined) {
+    let left = budget - held;
+    for (const claim of others) left -= grant(claim, left);
+    grant(active, held + left);
+    return out;
+  }
+  let left = budget;
+  if (active) left -= grant(active, left);
+  for (const claim of others) left -= grant(claim, left);
+  return out;
+}
+
+/** What an open sketch's verdict granted it, for `held`. */
+export function grantedBytes(claim: RegionClaim, verdict: RegionVerdict | undefined): number {
+  if (verdict === 'shaded') return claim.fillBytes + claim.regionBytes;
+  if (verdict === 'pickable') return claim.regionBytes;
+  return 0;
 }
 
 /** The most segments of a sketch's outlines drawn at once. */
@@ -338,31 +365,39 @@ export const MAX_OUTLINE_POINTS = 100_000;
  * fit are left out.
  */
 export function regionOutlines(
-  profiles: readonly Profile[],
+  regions: FlatRegions,
   ids: readonly string[],
   frame: SketchFrame,
 ): Float32Array {
-  const chosen = new Set(ids);
-  const loops: ProfileLoop[] = [];
+  const index = regionIndex(regions);
+  const loops: number[] = [];
   let points = 0;
-  for (const profile of profiles) {
-    if (!chosen.has(profile.id)) continue;
-    for (const loop of [profile.outer, ...profile.holes]) {
-      loops.push(loop);
-      points += loop.polygon.length;
+  for (const id of new Set(ids)) {
+    const i = index.get(id);
+    if (i === undefined) continue;
+    for (let l = regions.loops[i] as number; l < (regions.loops[i + 1] as number); l++) {
+      loops.push(l);
+      points += (regions.points[l + 1] as number) - (regions.points[l] as number);
     }
   }
   const stride = Math.max(1, Math.ceil(points / MAX_OUTLINE_POINTS));
   const out: number[] = [];
   let left = MAX_OUTLINE_POINTS;
-  for (const { polygon } of loops) {
+  const at = (k: number): [number, number] => [
+    regions.xy[k * 2] as number,
+    regions.xy[k * 2 + 1] as number,
+  ];
+  for (const l of loops) {
+    const start = regions.points[l] as number;
+    const length = (regions.points[l + 1] as number) - start;
     // A loop keeps at least three corners, so that it still reads as a loop.
-    const step = Math.max(1, Math.min(stride, Math.floor(polygon.length / 3)));
-    const corners = polygon.filter((_, i) => i % step === 0);
+    const step = Math.max(1, Math.min(stride, Math.floor(length / 3)));
+    const corners: [number, number][] = [];
+    for (let k = 0; k < length; k += step) corners.push(at(start + k));
     if (corners.length < 2 || corners.length > left) continue;
     left -= corners.length;
     corners.forEach((p, i) => {
-      const q = corners[(i + 1) % corners.length] as typeof p;
+      const q = corners[(i + 1) % corners.length] as [number, number];
       out.push(...sketchToWorld(frame, p), ...sketchToWorld(frame, q));
     });
   }

@@ -4,14 +4,32 @@
  * none, and says so, instead of freezing the tab; without those curves its
  * profiles are back.
  */
+import { readFileSync } from 'node:fs';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import {
+  keptBytes,
+  keptTotals,
+  setKeptLimits,
+  stringBytes,
   TOO_LARGE_COORDINATES,
   TOO_MANY_CROSSINGS,
   TOO_MANY_CURVES,
 } from '@extrudo/sketch/profiles';
-import { describe, expect, it } from 'vitest';
-import { sketchProfiles, sketchProfilesProblem } from './profiles';
+import { loadFont } from '@extrudo/sketch/text';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flatBytesOf } from './flatRegions';
+import {
+  closeOpenSketch,
+  inkCentroids,
+  openSketchProfiles,
+  pinOpenSketch,
+  regionCentroid,
+  sketchProfiles,
+  sketchProfilesProblem,
+  sketchRegions,
+} from './profiles';
+
+const FONTS_DIR = new URL('../../../../packages/fonts/fonts/', import.meta.url);
 
 function sketch(crossing: boolean) {
   const b = new SketchBuilder();
@@ -74,5 +92,121 @@ describe('sketchProfiles', () => {
     const first = sketchProfiles(data, 1);
     expect(first.length).toBeGreaterThan(0);
     expect(sketchProfiles(data, 2)).toBe(first);
+  });
+});
+
+/** A plate with `holes` holes, `dx` mm to the right. */
+function plate(holes: number, dx = 0) {
+  const b = new SketchBuilder();
+  b.line(dx, 0, dx + 200, 0);
+  b.line(dx + 200, 0, dx + 200, 100);
+  b.line(dx + 200, 100, dx, 100);
+  b.line(dx, 100, dx, 0);
+  for (let i = 0; i < holes; i++)
+    b.circle(dx + 10 + (i % 18) * 10, 10 + Math.floor(i / 18) * 10, 3);
+  return b.sketch;
+}
+
+describe('what the UI thread keeps of detection', () => {
+  afterEach(() => {
+    closeOpenSketch();
+    setKeptLimits();
+  });
+
+  it('keeps only the centres a dialog needs for a sketch that is not open, and finds them once', () => {
+    const reference = sketchProfiles(plate(40), 0);
+    const full = keptBytes(reference);
+    const id = reference[0]?.id as string;
+    const data = plate(40);
+    const before = keptTotals().bytes;
+    const centre = regionCentroid(data, id, 0);
+    expect(centre).toBeDefined();
+    expect(regionCentroid(data, id, 0)).toBe(centre);
+    // The centres keep far less than the profiles would.
+    expect(keptTotals().bytes - before).toBeLessThan(full / 4);
+  });
+
+  it("counts the slots of a text's ink centres, one list for the text", () => {
+    loadFont('inter-regular@1', readFileSync(new URL('inter-regular.ttf', FONTS_DIR)));
+    const b = new SketchBuilder();
+    const anchor = b.point(0, 0);
+    const top = b.point(0, 10);
+    b.entities.text = {
+      type: 'text',
+      anchor,
+      top,
+      text: 'I'.repeat(400),
+      font: 'inter-regular@1',
+      align: 'left',
+      construction: false,
+    } as never;
+    const before = keptTotals().bytes;
+    const centres = inkCentroids(b.sketch, 'text', 0);
+    expect(centres).toHaveLength(400);
+    const kept = keptTotals().bytes - before;
+    // Each centre with its ID, and once more as a slot of the text's list.
+    const ids = sketchProfiles(b.sketch, 0).reduce((n, p) => n + stringBytes(p.id) + 96, 0);
+    expect(kept).toBe(128 + ids + stringBytes('text') + 64 + 8 * 400);
+  });
+
+  it('gives no ink centres for a sketch without text', () => {
+    expect(inkCentroids(plate(2), 'no-such-text', 0)).toEqual([]);
+  });
+
+  it('keeps what all callers ask for within the budget, whatever many sketches are asked about', () => {
+    setKeptLimits(200_000, 1000);
+    for (let i = 0; i < 40; i++) {
+      const data = plate(30, i * 300);
+      sketchProfiles(data, 0);
+      regionCentroid(data, 'x', 0);
+    }
+    expect(keptTotals().bytes).toBeLessThanOrEqual(200_000);
+  });
+
+  it('finds the open sketch once per version of its data, too large to keep or not', () => {
+    const others = [plate(2, 3000), plate(2, 6000)];
+    const open = plate(80);
+    const size = (data: ReturnType<typeof plate>) => {
+      const found = sketchProfiles(data, 0);
+      return keptBytes(found) + flatBytesOf(found);
+    };
+    // Room for the others, never for the open sketch.
+    setKeptLimits(size(plate(80, 9000)) - 1, 100);
+    for (const data of others) sketchProfiles(data, 0);
+    const log: number[] = [];
+    vi.stubGlobal('window', { __extrudoProfileLog: log });
+    try {
+      pinOpenSketch(open);
+      expect(log).toHaveLength(0);
+      const profiles = openSketchProfiles(open, 0);
+      for (let i = 0; i < 10; i++) {
+        // What a click, a box select or a dialog asks of it; the profiles hidden and shown again.
+        pinOpenSketch(open);
+        expect(sketchProfiles(open, 0)).toBe(profiles);
+        sketchRegions(open, 0);
+        sketchProfilesProblem(open, 0);
+        regionCentroid(open, profiles[0]?.id as string, 0);
+      }
+      expect(log).toHaveLength(1);
+      // Closed, it doesn't fit the budget: it isn't kept, and the others stay.
+      closeOpenSketch();
+      for (const data of others) sketchProfiles(data, 0);
+      expect(log).toHaveLength(1);
+      sketchProfiles(open, 0);
+      expect(log).toHaveLength(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('always keeps the open sketch, whatever else is asked for', () => {
+    setKeptLimits(50_000, 4);
+    const open = plate(60);
+    const profiles = openSketchProfiles(open, 0);
+    for (let i = 0; i < 20; i++) sketchProfiles(plate(30, (i + 1) * 300), 0);
+    expect(sketchProfiles(open, 0)).toBe(profiles);
+    closeOpenSketch();
+    for (let i = 0; i < 20; i++) sketchProfiles(plate(30, (i + 30) * 300), 0);
+    expect(sketchProfiles(open, 0)).not.toBe(profiles);
   });
 });

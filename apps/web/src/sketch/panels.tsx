@@ -1374,6 +1374,8 @@ function ProfileReadout({
   doc: ExtrudoDocument;
 }) {
   const ids = new Set(profileIdsIn(selection, sketchId));
+  // Profiles are looked up only for a selected one.
+  if (ids.size === 0) return null;
   const picked = sketchProfiles(data).filter((p) => ids.has(p.id));
   if (picked.length === 0) return null;
   const area = picked.reduce((sum, p) => sum + p.area, 0);

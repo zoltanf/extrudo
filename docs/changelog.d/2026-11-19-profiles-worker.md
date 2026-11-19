@@ -1,0 +1,1 @@
+- 2026-11-19 · **Profiles found in the background**: the profiles of sketches that aren't open are found in a worker, so a design opens at once and its shading appears as it is found; a design's regions share a memory budget, and the status bar says when profiles are still being found or some can't be shaded or picked.

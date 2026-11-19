@@ -44,9 +44,8 @@ import {
   sketchToWorld,
   type Vec3,
 } from '@extrudo/core';
-import { profileCentroid } from '@extrudo/sketch/profiles';
 import { sketchFrame } from '../sketch/frame';
-import { sketchProfiles } from '../sketch/profiles';
+import { inkCentroids } from '../sketch/profiles';
 import { type Frame, profileFrame, surfaceFrame, surfaceFrameNear } from './geometry';
 import {
   type DialogValues,
@@ -228,10 +227,9 @@ function textCentre(
   if (!sketch || !parsed || entity?.type !== 'text') return undefined;
   const frame = sketchFrame(feature.id, sketch.plane, ctx.sketches, ctx.construction);
   if (!frame) return undefined;
-  const ink = sketchProfiles(sketch.data).filter((p) => p.text === parsed.entity);
-  if (ink.length > 0) {
-    return mean(ink.map((profile) => sketchToWorld(frame, profileCentroid(profile))));
-  }
+  // Only the ink's centres are kept, not the sketch's profiles (ADR-0154).
+  const ink = inkCentroids(sketch.data, parsed.entity);
+  if (ink.length > 0) return mean(ink.map((centre) => sketchToWorld(frame, centre)));
   const anchor = sketch.data.entities[entity.anchor];
   return anchor?.type === 'point' ? sketchToWorld(frame, [anchor.x, anchor.y]) : undefined;
 }

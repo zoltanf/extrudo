@@ -69,6 +69,8 @@ import {
 } from '../selection/pick';
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
+import { holeCount } from '../sketch/flatRegions';
+import { sketchRegions } from '../sketch/profiles';
 import { tangentGrips } from '../sketch/splineEnds';
 import { type PlanePointer, type SketchBox, SNAP_PIXELS } from '../sketch/tools/host';
 import { applyView } from './applyView';
@@ -684,6 +686,7 @@ export function Viewport({
       data-camera-projection={projection}
       data-sketch-status={sketchStatusSummary(sketches)}
       data-sketch-profiles={sketchProfilesSummary(sketches)}
+      data-sketch-fills={sketchFillsSummary(sketches)}
       data-tangent-grips={tangentGripsSummary(sketches)}
       data-sketches={sketches.map((s) => s.id).join(' ')}
       data-sketch-frames={sketchFramesSummary(sketches)}
@@ -1025,7 +1028,7 @@ function Scene({
   const sketchBounds = useMemo(
     () =>
       sketches.reduce<Bounds | undefined>(
-        (bounds, s) => unionBounds(bounds, sketchSegments(s.data, s.frame).bounds),
+        (bounds, s) => unionBounds(bounds, sketchBoundsOf(s.data, s.frame)),
         undefined,
       ),
     [sketches],
@@ -1766,7 +1769,7 @@ function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
         id: s.id as FeatureId,
         frame: s.frame,
         data: s.data,
-        ...(s.profiles && { profiles: s.profiles }),
+        ...(s.regions && { regions: s.regions }),
       })),
     occluding: style !== 'wireframe',
     ...(scene.clip && { clip: scene.clip }),
@@ -2083,11 +2086,44 @@ function tangentGripsSummary(sketches: readonly SketchDrawing[]): string | undef
     .join(' ');
 }
 
+const boundsCache = new WeakMap<
+  SketchDrawing['data'],
+  { frame: SketchDrawing['frame']; bounds: Bounds | undefined }
+>();
+
+/**
+ * A sketch's box for "Fit", kept by its data and frame: the shell hands new drawings
+ * with every profile result (ADR-0154), and the curves don't change with them.
+ */
+function sketchBoundsOf(
+  data: SketchDrawing['data'],
+  frame: SketchDrawing['frame'],
+): Bounds | undefined {
+  const known = boundsCache.get(data);
+  if (known?.frame === frame) return known.bounds;
+  const bounds = sketchSegments(data, frame).bounds;
+  boundsCache.set(data, { frame, bounds });
+  return bounds;
+}
+
+/**
+ * "shaded=3 unshaded=1 waiting=2" while profiles show (e2e tests read it): sketches with a
+ * fill, without one, and still waiting for the profile worker (ADR-0154).
+ */
+function sketchFillsSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const shown = sketches.filter((s) => s.selectedProfiles !== undefined);
+  if (shown.length === 0) return undefined;
+  const shaded = shown.filter((s) => !s.unshaded && (s.fill || s.active)).length;
+  const unshaded = shown.filter((s) => s.unshaded).length;
+  const waiting = shown.filter((s) => !s.unshaded && !s.fill && !s.active && !s.regions).length;
+  return `shaded=${shaded} unshaded=${unshaded} waiting=${waiting}`;
+}
+
 function sketchProfilesSummary(sketches: readonly SketchDrawing[]): string | undefined {
-  const profiles = sketches.find((s) => s.active)?.profiles;
-  if (!profiles) return undefined;
-  const holes = profiles.reduce((n, p) => n + p.holes.length, 0);
-  return `profiles=${profiles.length} holes=${holes}`;
+  const open = sketches.find((s) => s.active);
+  if (!open || open.selectedProfiles === undefined) return undefined;
+  const regions = sketchRegions(open.data);
+  return `profiles=${regions.ids.length} holes=${holeCount(regions)}`;
 }
 
 function sketchStatusSummary(sketches: readonly SketchDrawing[]): string | undefined {

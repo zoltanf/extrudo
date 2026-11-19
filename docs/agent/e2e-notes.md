@@ -3309,10 +3309,26 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/sketch-fill-budget.spec.ts`
 
-- **The budget for sketch fills** (ADR-0020's amendment of 2026-11-19): `page.addInitScript` sets
-  `window.__extrudoFillBudget = 6` (a rectangle's fill costs 6 vertices), so of two rectangles on XY
-  (`writeArchive`, **Import…**) the second is past the budget. The note is
-  `getByRole('status', { name: 'Sketches not shaded' })` (`data-unshaded-sketches`). `meanColor`
-  reads the mean of a 14 px square from a screenshot; keep sample points **off the axes** (y = 8: the
-  red X axis runs through y = 0) and move the pointer away first. A region past the budget picks in the
-  model (`getByRole('status', { name: 'Selection' })` reads "1 profile ·") and is outlined, not filled.
+- **The memory budget for a design's regions** (ADR-0154): `page.addInitScript` sets
+  `window.__extrudoRegionBudget` in bytes (a rectangle keeps about 486: about 254 of regions,
+  its ID's length varying, and 232 of fill), so of two rectangles on XY (`writeArchive`,
+  **Import…**) the second is past the budget (760: picked, not shaded) or can't even be picked (600). Wait for `data-sketch-fills` to end
+  in `waiting=0` first: the profile worker answers after the viewport is ready. The note is
+  `getByRole('status', { name: 'Sketches not shaded' })` (`data-unshaded-sketches`,
+  `data-unpickable-sketches`, text "· 1 sketch not shaded, 1 can't be picked"). `meanColor`
+  reads the mean of a 14 px square from a screenshot; keep sample points **off the axes**
+  (y = 8: the red X axis runs through y = 0) and move the pointer away first.
+
+### `e2e/profiles-worker.spec.ts`
+
+- **The profile worker** (ADR-0154). `heavy(dx)` is a sketch that takes the worker about a
+  second and draws little (a rectangle beside 1,600 parallel lines whose boxes overlap);
+  six of them open with no long task over 1.5 s while `data-sketch-fills` goes from
+  `waiting=6` to `shaded=6 unshaded=0 waiting=0`, and the hint
+  `getByRole('status', { name: 'Finding profiles' })` shows meanwhile. A quick design never
+  shows the hint (a `MutationObserver` on `[data-finding-profiles]`). The stale-result test
+  slows every answer with `__extrudoProfilesDelay = 1500` and changes B1's `width` to 60 mm
+  while the first job runs: of the old plate's x = 10 and x = 110 exactly one still picks.
+  `__extrudoNoProfilesWorker` makes the UI thread find them; `__extrudoProfilesDeadline = 1000`
+  stops the fill of a plate with 64 holes of 2,048 corners (its regions still pick) and not a
+  rectangle beside it. A 100 ms deadline is no good: a busy page reads a quick answer first.

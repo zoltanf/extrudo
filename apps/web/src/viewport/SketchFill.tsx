@@ -2,6 +2,8 @@ import type { SketchFrame } from '@extrudo/core';
 import type { Profile } from '@extrudo/sketch/profiles';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Mesh, MeshBasicMaterial } from 'three';
+import type { FlatRegions } from '../sketch/flatRegions';
+import { sketchProfiles, sketchRegions } from '../sketch/profiles';
 import type { Rgba } from './colors';
 import { LineMarks } from './LineMarks';
 import {
@@ -23,22 +25,25 @@ const NONE: readonly string[] = [];
  * the frame sets the mesh's matrix and the hover and selection its groups.
  */
 export function useSketchFill(
-  profiles: readonly Profile[] | undefined,
+  source: readonly Profile[] | ProfileFill | undefined,
   frame: SketchFrame,
   hover: string | undefined,
   selected: readonly string[],
   materials: readonly MeshBasicMaterial[],
 ): Mesh | undefined {
   // No memory for the fill costs this sketch its shading, not the view.
+  // A built fill (the profile worker's) is drawn as it is; an open sketch's regions are built here.
+  const profiles = Array.isArray(source) ? (source as readonly Profile[]) : undefined;
   const fill = useMemo((): ProfileFill | null | undefined => {
-    if (!profiles) return undefined;
+    if (!source) return undefined;
+    if (!profiles) return source as ProfileFill;
     try {
       return profileFill(profiles);
     } catch (error) {
       console.warn('[sketch] no fill for a sketch:', error);
       return null;
     }
-  }, [profiles]);
+  }, [source, profiles]);
   useEffect(() => {
     if (fill === null && profiles) noteUnbuiltFill(profiles);
   }, [fill, profiles]);
@@ -106,7 +111,11 @@ export function SketchFill({
   /** What marks a region of a sketch without a fill. */
   highlight: Rgba;
 }) {
-  const { profiles, frame, hoverProfile, selectedProfiles = NONE, unshaded } = drawing;
+  const { fill, frame, hoverProfile, selectedProfiles = NONE, unshaded } = drawing;
+  // The open sketch's regions come from the profile cache by its data (ADR-0154).
+  const shown = drawing.selectedProfiles !== undefined;
+  const openProfiles = drawing.active && shown ? sketchProfiles(drawing.data) : undefined;
+  const regions = drawing.active && shown ? sketchRegions(drawing.data) : drawing.regions;
   const materials = useMemo(
     () =>
       PROFILE_SHADES.map(
@@ -129,7 +138,7 @@ export function SketchFill({
     [materials],
   );
   const mesh = useSketchFill(
-    unshaded ? undefined : profiles,
+    unshaded ? undefined : (openProfiles ?? fill),
     frame,
     hoverProfile,
     selectedProfiles,
@@ -143,10 +152,10 @@ export function SketchFill({
     material.color = new Color().setRGB(c.r, c.g, c.b, 'srgb');
     material.opacity = c.a * alpha;
   });
-  if (unshaded && profiles) {
+  if (unshaded && regions) {
     return (
       <RegionMarks
-        profiles={profiles}
+        regions={regions}
         frame={frame}
         hover={hoverProfile}
         selected={selectedProfiles}
@@ -159,13 +168,13 @@ export function SketchFill({
 
 /** The hovered and selected regions of a sketch without a fill, as outlines. */
 function RegionMarks({
-  profiles,
+  regions,
   frame,
   hover,
   selected,
   color,
 }: {
-  profiles: readonly Profile[];
+  regions: FlatRegions;
   frame: SketchFrame;
   hover: string | undefined;
   selected: readonly string[];
@@ -173,14 +182,14 @@ function RegionMarks({
 }) {
   const key = selected.join();
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `selected`.
-  const chosen = useMemo(() => regionOutlines(profiles, selected, frame), [profiles, frame, key]);
+  const chosen = useMemo(() => regionOutlines(regions, selected, frame), [regions, frame, key]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `selected`.
   const hovered = useMemo(
     () =>
       hover === undefined || selected.includes(hover)
         ? new Float32Array()
-        : regionOutlines(profiles, [hover], frame),
-    [profiles, frame, hover, key],
+        : regionOutlines(regions, [hover], frame),
+    [regions, frame, hover, key],
   );
   return (
     <>

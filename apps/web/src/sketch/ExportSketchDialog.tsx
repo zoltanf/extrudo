@@ -11,7 +11,8 @@ import {
   sketchExport,
   sketchExportFile,
 } from './exportFile';
-import { sketchProfilesProblem } from './profiles';
+import { fontsStore } from './fonts';
+import { sketchProfilesFound } from './profiles';
 
 export interface ExportRequest {
   sketch: FeatureId;
@@ -41,22 +42,38 @@ export function ExportSketchDialog({ store, request, files, onClose }: ExportSke
   const [format, setFormat] = useState<ExportFormat>('svg');
   const [content, setContent] = useState<ExportContent>('curves');
   const [construction, setConstruction] = useState(false);
+  // The profiles are looked up once per version of the sketch's data, when first needed:
+  // a result too large to keep isn't found again on each render.
+  const data = sketch?.data;
+  const fonts = useStore(fontsStore, (s) => s.version);
+  const found = useMemo(() => {
+    let result: ReturnType<typeof sketchProfilesFound> | undefined;
+    return () => {
+      if (data) result ??= sketchProfilesFound(data, fonts);
+      return result;
+    };
+  }, [data, fonts]);
   // Each request starts from its selection: selected profiles if there are any,
   // unless the sketch's profiles can't be found, when they would export nothing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only a new request chooses again.
   useEffect(() => {
     if (!request) return;
-    const asked = store.getState().doc.features.find((f) => f.id === request.sketch);
-    const data = asked && readSketch(asked)?.data;
-    const usable = request.selected.length > 0 && !(data && sketchProfilesProblem(data));
+    const usable = request.selected.length > 0 && !found()?.refused;
     setContent(usable ? 'selected' : 'curves');
-  }, [request, store]);
+  }, [request]);
 
+  const name = feature?.name;
   const exported = useMemo(
     () =>
-      sketch && feature
-        ? sketchExport(sketch.data, feature.name, { content, construction, selected })
+      data && name !== undefined
+        ? sketchExport(data, name, {
+            content,
+            construction,
+            selected,
+            ...(content !== 'curves' && { profiles: found()?.profiles ?? [] }),
+          })
         : undefined,
-    [sketch, feature, content, construction, selected],
+    [data, name, content, construction, selected, found],
   );
   const size = exported?.bounds;
   const noun =
@@ -68,7 +85,7 @@ export function ExportSketchDialog({ store, request, files, onClose }: ExportSke
         ? 'profile'
         : 'profiles';
   // Asked only for profiles: exporting curves needs no detection.
-  const refused = sketch && content !== 'curves' ? sketchProfilesProblem(sketch.data) : undefined;
+  const refused = content !== 'curves' ? found()?.refused : undefined;
   const empty =
     content === 'curves'
       ? 'This sketch has no curves to export.'

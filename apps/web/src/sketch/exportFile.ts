@@ -7,6 +7,7 @@
 import type { SketchData } from '@extrudo/core';
 import { type Bounds, type Drawing, drawingBounds, writeDxf, writeSvg } from '@extrudo/io';
 import { profileDrawing, sketchDrawing } from '@extrudo/sketch/export';
+import type { Profile } from '@extrudo/sketch/profiles';
 import { safeFileName } from '../platform/files';
 import { sketchProfiles } from './profiles';
 
@@ -22,6 +23,8 @@ export interface SketchExportOptions {
   construction: boolean;
   /** With `selected`: the region IDs within the sketch. */
   selected?: readonly string[];
+  /** The sketch's profiles when the caller has them already; else they are looked up. */
+  profiles?: readonly Profile[];
 }
 
 export interface SketchExport {
@@ -43,7 +46,9 @@ export function sketchExport(
     drawing = sketchDrawing(data, { title, construction: options.construction });
   } else {
     const wanted = options.content === 'selected' ? new Set(options.selected) : undefined;
-    const profiles = sketchProfiles(data).filter((p) => !wanted || wanted.has(p.id));
+    const profiles = (options.profiles ?? sketchProfiles(data)).filter(
+      (p) => !wanted || wanted.has(p.id),
+    );
     drawing = profileDrawing(data, profiles, { title });
   }
   return { drawing, bounds: drawingBounds(drawing), count: drawing.shapes.length };
