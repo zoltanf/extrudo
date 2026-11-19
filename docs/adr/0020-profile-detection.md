@@ -648,3 +648,48 @@ the 500 rings of the FreeCAD importer's concentric-circles test went from
 0.6 s to 4.4 s, that test from 2.1 s to 19 s; frozen to the edges, it
 takes 2.2 s, and freezing costs nothing measurable. No caller writes into
 the points: the whole Vitest suite passed with them frozen.
+
+## Amendment 2026-11-19: fills are built once, and a design's fills share a budget
+
+**What.** The viewport built a sketch's fill again whenever the shell handed it
+a new selection list or frame: on every kernel report and every selection, for
+every shown sketch, and for the hovered sketch on every hover. Now
+`viewport/profileFills.ts` builds a region list's triangles once, in the
+sketch's own coordinates, with the range of vertices each region owns.
+`SketchFill.tsx` keeps them in one mesh: the frame sets the mesh's matrix, and
+hover and selection set its draw groups (neighbouring regions of one shade share
+a group). The triangles are the ones the view drew before.
+
+**The budget.** `MAX_FILL_VERTICES` (16,000,000 vertices, 192 MB at three 32-bit
+coordinates each) is shared by a design's shown sketches. `fillCost` knows a
+sketch's cost before anything is built, from its regions' corners: a polygon of
+n corners is n − 2 triangles, and a hole adds its corners and two for the bridge
+to it, so the cost is never under what is built. The open sketch is served first,
+then the shown sketches in timeline order; a sketch that doesn't fit is passed
+over and those after it may still fit. A hidden sketch counts nothing. A sketch
+past the budget draws its curves only, the status bar says "· 3 sketches not
+shaded", and its regions are detected and picked as before. A hovered or selected
+region of such a sketch is outlined in the accent (`regionOutlines`), at most
+`MAX_OUTLINE_POINTS` points a sketch, coarser past that. None of the repository's
+65 designs comes near the budget: the largest takes 2,934 vertices.
+
+**Numbers** (Chrome, one machine, alone):
+
+| Design | Fill work while opening, before | After |
+|---|--:|--:|
+| 30 sketches, a plate with 30 holes each | 957 ms (60 builds) | 461 ms (30 builds) |
+| 100 such sketches | 3,043 ms (200 builds) | 1,404 ms (100 builds) |
+
+A hover or a selection in those designs now builds no fill at all.
+
+**Rejected.** Keeping built fills in a cache by region list: the undo history
+keeps old sketch data, and with it old lists, alive, so every version of a dragged
+sketch would keep its triangles. The fill lives in the component, outside the
+fonts' key, and `sketchProfiles` keeps the same list when new fonts leave a sketch
+as it was. Index buffers per shade: a hover would rewrite an index of every vertex.
+Building triangles for the marked regions of a sketch past the budget: selecting
+all of them would build what the budget left out; outlines cost a bounded number
+of points. A budget per sketch: many small sketches add up the same.
+
+**Not covered.** The budget counts fills only. The regions themselves stay in
+memory for picking, and detection still runs on the UI thread.
