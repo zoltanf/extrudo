@@ -64,3 +64,15 @@ the Parameters dialog and found the pair redundant.
   row): nothing names a dimension again once it is placed, so typing a number into it later
   would leave a driving value with no name and no row, and any expression using `d3` breaks.
 - Hiding model-to-model links (`d4 = d2`, from linked dimensions) too: left for later.
+
+## Amendment, 2026-11-19: the followers in one pass
+
+The list finds the model parameters that only follow a user parameter for all rows at once
+(`followerNames` in `apps/web/src/parameters/list.ts`, in place of `followsUserParameter`):
+core's `usedParameterNames` reads every expression of the document once and gives each name
+`parameterUsers` would find a use of, with the same rules. The rows hidden are the same as
+before. With 4,000 model parameters following one user parameter, finding them took 9.2 s and
+takes 2 ms; with 50 user and 100 model parameters, 4 ms and 0.06 ms. The rows also look up
+their parameter and their feature's name in maps made once per document, and Move up / Move
+down are off at the ends of a row's section; with 4,000 user and 4,000 model parameters these
+took about 340 ms of each drawing of the list and take under 2 ms.

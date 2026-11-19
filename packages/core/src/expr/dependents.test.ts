@@ -1,11 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-import { evaluateRange } from '../customizer';
+import { describe, expect, it } from 'vitest';
+import { customizerRows, evaluateRange, type RangeField } from '../customizer';
 import { createDocument } from '../document';
 import type { FeatureId } from '../ids';
 import type { ExtrudoDocument, Feature, Parameter } from '../schema';
 import { fid, pid } from '../testing';
-import { isReservedName } from './evaluate';
-import { evaluateParameters, type ParameterEvaluation } from './parameters';
+import { ExprError } from './errors';
+import { type EvaluateResult, isReservedName } from './evaluate';
+import { evaluateParameters, findRef, type ParameterEvaluation } from './parameters';
 import { parse, references } from './parser';
 
 function param(name: string, expression: string): Parameter {
@@ -386,14 +387,115 @@ describe('the work of finding what depends on a parameter', () => {
     expect(lookups).toBeLessThanOrEqual(4 * (N + N + N));
   });
 
-  it('does not look for dependents for a slider range without a parameter', () => {
-    const e = evaluateParameters(doc(line));
-    const dependents = vi.fn(e.dependents);
-    const evaluation = { ...e, dependents };
-    const parameter = { name: 'p0', unit: 'length' as const };
-    expect(evaluateRange(evaluation, parameter, 'max', '100 mm + 2 * pi * 1 mm').ok).toBe(true);
-    expect(dependents).not.toHaveBeenCalled();
-    expect(evaluateRange(evaluation, parameter, 'max', 'p1').ok).toBe(true);
-    expect(dependents).toHaveBeenCalledTimes(1);
+  it('checks a slider range with work in step with what the range uses', () => {
+    // Every exposed parameter of a line has a range that uses a plain parameter.
+    const exposed = [
+      ...line.map((p) => ({ ...p, customizer: { max: 'top * 2' } })),
+      param('top', '100 mm'),
+    ];
+    const d = doc(exposed);
+    const e = evaluateParameters(d);
+    const per = countLookups(() => evaluateRange(e, { name: 'p0', unit: 'length' }, 'max', 'top'));
+    const lookups = countLookups(() => customizerRows(d, e));
+    expect(customizerRows(d, e)).toHaveLength(N);
+    expect(per).toBeLessThanOrEqual(10);
+    expect(lookups).toBeLessThanOrEqual(10 * N);
+  });
+});
+
+/** `evaluateRange` as it was first written: all that depends on the parameter, then the range's names. */
+function referenceRange(
+  evaluation: ParameterEvaluation,
+  parameter: Pick<Parameter, 'name' | 'unit'>,
+  field: RangeField,
+  expression: string,
+): EvaluateResult {
+  const result = evaluation.evaluate(expression, parameter.unit);
+  if (!result.ok) return result;
+  const node = parse(expression);
+  const names = references(node).filter((name) => !isReservedName(name));
+  const moving = referenceDependents(evaluation, [parameter.name]);
+  moving.add(parameter.name);
+  for (const name of names) {
+    if (!moving.has(name)) continue;
+    const span = findRef(node, name) ?? node.span;
+    const message =
+      name === parameter.name
+        ? `The range can't use \`${name}\` itself.`
+        : `The range can't use \`${name}\`: it changes with \`${parameter.name}\`.`;
+    return { ok: false, error: new ExprError(message, span) };
+  }
+  if (field === 'step' && result.value <= 0) {
+    return { ok: false, error: new ExprError('The step must be above 0.', node.span) };
+  }
+  return result;
+}
+
+describe('slider ranges against the first definition', () => {
+  const plain = (result: EvaluateResult) =>
+    result.ok
+      ? { value: result.value }
+      : { message: result.error.message, span: result.error.span, code: result.error.code };
+
+  /** Mostly parameters that evaluate, so most ranges get as far as the check. */
+  function rangeDocument(r: ReturnType<typeof random>): ExtrudoDocument {
+    const names = NAMES.filter((n) => !isReservedName(n));
+    const parameters = Array.from({ length: r.below(14) + 1 }, (_, i) => {
+      const a = r.pick([...names, 'ghost']);
+      const b = r.pick(names);
+      // Each uses one before it, mostly: chains, now and then a cycle.
+      const before = i > 0 && r.below(4) > 0 ? (names[r.below(i) % names.length] as string) : a;
+      const expression = r.pick([
+        `${r.below(9) + 1} mm`,
+        `${before} + 1 mm`,
+        `${before} * 2`,
+        `${a} + 1 mm`,
+        `${a} * 2 + ${b} * 0`,
+        `${a} +`,
+      ]);
+      return { ...param(names[i % names.length] as string, expression), id: pid(`id-${i}`) };
+    });
+    if (r.below(3) === 0) parameters.splice(r.below(parameters.length), 1);
+    return doc(parameters);
+  }
+
+  it('gives the same answer on seeded random documents', () => {
+    const seen = { refused: 0, changes: 0, ok: 0, ranges: 0 };
+    for (let seed = 1; seed <= 3000; seed++) {
+      const r = random(seed);
+      const d = rangeDocument(r);
+      const evaluated = evaluateParameters(d);
+      const asked = [...new Set([...d.parameters.map((p) => p.name), 'ghost', 'p11'])];
+      for (let q = 0; q < 8; q++) {
+        const parameter = { name: r.pick(asked), unit: 'length' as const };
+        const field = r.pick(['min', 'max', 'step'] as const);
+        // Now and then a name that does change with the parameter.
+        const moving = [...referenceDependents(evaluated, [parameter.name])];
+        const near = moving.length > 0 ? r.pick(moving) : r.pick(asked);
+        // A range uses one to three names, or none.
+        const expression = r.pick([
+          `${near} + 1 mm`,
+          `${r.pick(asked)} * 0 + ${near}`,
+          randomExpression(r),
+          `${r.below(9) + 1} mm`,
+          `${r.pick(asked)} + 1 mm`,
+          `${r.pick(asked)} + ${r.pick(asked)} * 0`,
+          `max(${r.pick(asked)}, ${r.pick(asked)}, ${r.pick(asked)})`,
+        ]);
+        const got = plain(evaluateRange(evaluated, parameter, field, expression));
+        expect(got, `seed ${seed}: ${parameter.name} ${field} ${expression}`).toEqual(
+          plain(referenceRange(evaluated, parameter, field, expression)),
+        );
+        seen.ranges++;
+        if ('value' in got) seen.ok++;
+        else if (got.message.includes('itself')) seen.refused++;
+        else if (got.message.includes('changes with')) seen.changes++;
+      }
+    }
+    // The documents do reach the cases the comparison is for.
+    expect(seen.refused).toBeGreaterThan(150);
+    expect(seen.changes).toBeGreaterThan(200);
+    expect(seen.ok).toBeGreaterThan(2000);
+    expect(seen.ranges).toBe(24_000);
   });
 });
