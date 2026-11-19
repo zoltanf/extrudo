@@ -1637,6 +1637,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `data-preview-status="error"` and its "Feature status" line the own-dialog message; the first
   `Count` textbox (there are two, one per direction) set to `2` gives `ok`, then OK builds it.
   No time is asserted; the pattern keeps one call busy 13.9 s in Node.
+- **A long feature** (the spec's second test, ADR-0155's amendment of 2026-11-19): sets
+  `window.__extrudoLongFeatureMs = 2000` with `page.addInitScript` (it may only lower the 30 s),
+  opens the same design and waits for `[data-feature-long]` ("This feature is taking a long
+  time.") and `[data-model-stop="long"]`; `notice.ariaSnapshot()` holds the sentence exactly once
+  and no seconds. "Building the model…" (`[data-progress-building]`) lasts too short to catch
+  reliably in a browser; the unit tests cover it.
 
 ### `e2e/kernel-prewarm.spec.ts`
 

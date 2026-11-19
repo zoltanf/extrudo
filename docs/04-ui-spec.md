@@ -1366,7 +1366,13 @@ command (replacing its first key).
   so there is no preview yet. Change a value to build it."). Nothing in the design changes
   and nothing is saved: opening the design again computes the feature again. The
   button has a name for screen readers; when it goes while focused, the focus moves
-  to the stopped feature's chip.
+  to the stopped feature's chip. After 30 s in one feature, counted from that
+  feature's start, Stop becomes the filled accent button and the pill adds "This
+  feature is taking a long time." (read once by screen readers); nothing happens by
+  itself.
+- **The model's last step:** once the kernel is past its last feature (building the
+  meshes), the line under the bar says "Building the model…" with the bar full, in
+  the opening and the update notice alike, and no Stop is offered.
 - **Bodies before they are drawn:** the Bodies folder lists the bodies the last
   session made at once, as muted rows with a small cube where the count would be;
   the eye works, selection waits. The first finished recompute replaces them.

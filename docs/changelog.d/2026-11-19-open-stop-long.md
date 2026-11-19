@@ -1,0 +1,1 @@
+- 2026-11-19 · **A feature that takes long**: while a design opens, Stop turns into the orange button after 30 s on one feature and the notice says so; once every feature is done the notice says "Building the model…".
