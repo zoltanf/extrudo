@@ -175,7 +175,9 @@ for every chip).
 component, a refactor of its own. Wrapping the shell's children in `memo`: their
 props are new on every shell render, so it would spare nothing.
 
-**Numbers.** Opening a stored design, Chrome with a real GPU, minified build,
-median of 3, before → after, page blocked in all: 30 plates NUMBERS30; 100
-plates NUMBERS100. Renders a batch: about 2,450 → about 24 plus the sketches
-whose results arrived; a kernel step: 1,276 → 2 chips' worth.
+**Numbers.** Opening a stored design of 30 / 100 plates with 30 holes each,
+Chrome with a real GPU, minified build, median of 5, before → after: time the
+page was blocked in all 1,062 → 705 / 2,572 → 1,005 ms, its longest block 254 →
+250 / 672 → 412 ms. Components rendered by a batch of results: about 2,450 /
+6,300 → 24, plus in the view about 262 / 822 → 84 / 88 (the sketches whose
+results arrived); by a kernel step: 1,276 / 4,216 → 109.
