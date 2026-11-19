@@ -1339,10 +1339,15 @@ command (replacing its first key).
   A call whose own panel already says what it is doing (Measure, the clearance
   check, the export dialog, the OpenSCAD list) shows no notice and no cursor.
 - **A long recompute is determinate (ADR-0105 §3):** the "Updating the model…"
-  pill adds a thin accent-coloured bar, its value the feature being computed of
-  the active features, and "Thread1 · 4 of 7" under it; the status bar's kernel
-  text reads "computing 4/7", and the timeline chip of that feature pulses
-  softly (not under reduced motion).
+  pill, and the "Preparing your design…" pill once the kernel has started on
+  the first feature (ADR-0105's amendment of 2026-11-19), adds a thin
+  accent-coloured bar, its value the feature being computed of the active
+  features, and "Thread1 · 4 of 7" under it; once that feature has run 3 s the
+  line adds its seconds, "Thread1 · 4 of 7 · 13 s", counting each second. A long
+  name is cut short with "…", the count and the seconds always show. Screen
+  readers hear the feature and the count, never the seconds. The status bar's
+  kernel text reads "computing 4/7", and the timeline chip of that feature
+  pulses softly (not under reduced motion).
 - **Cancel a long update (ADR-0111):** the "Updating the model…" pill has a
   quiet **Cancel** button at the right of its title (the pill's only part that
   takes clicks), shown once a model is on screen and no sketch or dialog is
