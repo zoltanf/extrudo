@@ -93,7 +93,17 @@ regions stayed in memory as `Profile` objects.
 
 ## Numbers
 
-NUMBERS
+Chrome on one four-core desktop, each design opened again from storage, alone:
+
+| Design (plates with 30 holes) | Longest block, before | After | All fills there, before | After |
+|---|--:|--:|--:|--:|
+| 30 sketches | 577 ms | 164 ms | 1.2 s | 1.7 s |
+| 100 sketches | 1,732 ms | 422 ms | 2.6 s | 3.8 s |
+
+The fills of an ordinary design arrive a little later than before, while the page
+stays free. The slowest sketch of the repository's 65 designs takes the worker
+6.5 ms; a plate with 1,000 round holes of 5 mm takes 3.3 to 3.8 s, inside the
+deadline. The largest of the repository's designs keeps 63 KB of the budget (0.02 %).
 
 ## Rejected
 

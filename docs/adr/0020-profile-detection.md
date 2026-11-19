@@ -651,6 +651,8 @@ the points: the whole Vitest suite passed with them frozen.
 
 ## Amendment 2026-11-19: fills are built once, and a design's fills share a budget
 
+(The budget of vertices below became ADR-0154's memory budget, `MAX_REGION_BYTES`, the same day; the work limits now hold for what is built on the UI thread only.)
+
 **What.** The viewport built a sketch's fill again whenever the shell handed it
 a new selection list or frame: on every kernel report and every selection, for
 every shown sketch, and for the hovered sketch on every hover. Now
