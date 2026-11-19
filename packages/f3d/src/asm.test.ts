@@ -3,7 +3,7 @@
  * loop forever or run out of memory (the security review's H1 and H2).
  */
 import { describe, expect, it } from 'vitest';
-import { asmFaces, asmFaceTags, readAsm } from './asm';
+import { type AsmRecord, asmFaces, asmFaceTags, readAsm } from './asm';
 import { F3dFormatError } from './bytes';
 
 const enc = new TextEncoder();
@@ -308,11 +308,16 @@ describe('readAsm memory', () => {
     return out;
   };
 
-  it('refuses a flood of one-byte values quickly, before it builds an array per byte', () => {
+  it('refuses a flood of one-byte values at its cap, before it builds an array per byte', () => {
     // 16 MB of `true` became 0.8 GB of heap before the cap.
-    const t = performance.now();
-    expect(() => readAsm(flood([0x0a], 8 * MB))).toThrow(/more than .* values/);
-    expect(performance.now() - t).toBeLessThan(1000);
+    const n = 8 * MB;
+    const bytes = flood([0x0a], n);
+    // One value per 4 bytes, the class name being the first. The byte the reader
+    // must refuse on is a tag it can't read: a reader that takes one value more
+    // stops there, with another message.
+    const cap = Math.ceil(bytes.length / 4);
+    bytes[bytes.length - n - 1 + cap - 1] = 0xff;
+    expect(() => readAsm(bytes)).toThrow(`more than ${cap} values`);
   });
 
   it('refuses records that carry no class, or more records than the bytes allow', () => {
@@ -435,6 +440,23 @@ describe('readAsm memory', () => {
 
 describe('asmFaces on shared records', () => {
   const rec = (type: string, ...values: number[][]) => [...className(type), ...values.flat(), 0x11];
+  /** Counts the reads of these records' values: the steps of a walk, on any machine. */
+  const countReads = (records: AsmRecord[], indexes: number[]) => {
+    const reads = { n: 0 };
+    for (const index of indexes) {
+      const record = records[index] as AsmRecord;
+      const { values } = record;
+      Object.defineProperty(record, 'values', {
+        get: () => {
+          reads.n++;
+          return values;
+        },
+      });
+    }
+    return reads;
+  };
+  const valueCount = (records: AsmRecord[]) =>
+    records.reduce((sum, record) => sum + record.values.length, 0);
   /**
    * `faces` faces, each with its own attribute that leads to one shared tag
    * attribute of `tags` references whose next attribute is itself.
@@ -463,9 +485,11 @@ describe('asmFaces on shared records', () => {
 
   it('follows a looping attribute chain once per attribute', () => {
     // 500 faces × 63 hops round a 2,000-tag attribute copied 63 million tags.
-    const t = performance.now();
-    const faces = asmFaces(sharedTags(500, 2000));
-    expect(performance.now() - t).toBeLessThan(1000);
+    const records = sharedTags(500, 2000);
+    const reads = countReads(records, [2 * 500]);
+    const faces = asmFaces(records);
+    // One hop per face, one read of its tags and one to size the budget.
+    expect(reads.n).toBeLessThanOrEqual(500 + 2);
     expect(faces).toHaveLength(500);
     expect(faces[499]?.tags).toHaveLength(2000);
   });
@@ -476,12 +500,17 @@ describe('asmFaces on shared records', () => {
   });
 
   it('refuses a stream whose faces would copy far more tags than it holds', () => {
-    const t = performance.now();
-    expect(() => asmFaces(sharedTags(2000, 4000))).toThrow(/share more tags/);
-    expect(performance.now() - t).toBeLessThan(1000);
+    const [faces, tags] = [2000, 4000];
+    const records = sharedTags(faces, tags);
+    const budget = 2 ** 20 + 4 * valueCount(records);
+    const reads = countReads(records, [2 * faces]);
+    expect(() => asmFaces(records)).toThrow(/share more tags/);
+    // Refused at the face that overdraws the budget, not after all 2,000.
+    expect(reads.n).toBeLessThanOrEqual(Math.floor(budget / tags) + 2);
   });
 
-  it('refuses a stream whose faces would walk one long loop each', () => {
+  // 1.4 s at worst beside four busy cores: the timeout is a watchdog, 20 times that.
+  it('refuses a stream whose faces would walk one long loop each', { timeout: 30_000 }, () => {
     // 3,000 faces on one loop of 3,000 coedges: 9 million steps.
     const n = 3000;
     const LOOP = n;
@@ -504,8 +533,11 @@ describe('asmFaces on shared records', () => {
         ),
       );
     const records = readAsm(stream(...out));
-    const t = performance.now();
+    const budget = 2 ** 20 + 4 * records.length;
+    const coedges = Array.from({ length: n }, (_, k) => LOOP + 1 + k);
+    const reads = countReads(records, coedges);
     expect(() => asmFaces(records)).toThrow(/share more loops/);
-    expect(performance.now() - t).toBeLessThan(1000);
+    // A step reads one coedge, and sizing the tag budget reads each once.
+    expect(reads.n).toBeLessThanOrEqual(budget + n + 1);
   });
 });
