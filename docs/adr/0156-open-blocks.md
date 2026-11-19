@@ -97,6 +97,12 @@ costs tens of milliseconds per pointer move.
 
 ## Numbers
 
-Opening a stored design with many large sketches (Chrome, real GPU, minified
-build): the time the page was blocked in all fell by about two thirds, most of
-it the three walks above; showing or hiding a sketch by a third to a half.
+Chrome with a real GPU, minified build, longest main-thread block, median of 3
+runs, before → after, for a design of 30 / 100 plates with 30 holes each:
+pointer move over the model 29 → 9 / 66 → 22 ms, click 44 → 24 / 117 → 48 ms,
+the hover where an orbit starts 24 → 14 / 64 → 27 ms, box select 54 → 51 /
+135 → 113 ms. Opening, showing and hiding are within the noise for these.
+For designs with many large sketches, opening blocked the page about a third
+as long in all (§1), a pointer move or a click went from seconds to tens or a
+few hundred milliseconds (§2) and a box over thousands of profiles from
+seconds to about one (§3).
