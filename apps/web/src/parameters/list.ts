@@ -8,12 +8,13 @@ import {
   type Command,
   type EvaluatedParameter,
   type ExtrudoDocument,
+  type FeatureId,
   type Parameter,
   type ParameterEvaluation,
   type ParameterId,
   type ParameterUse,
-  parameterUsers,
   setParameterCustomizer,
+  usedParameterNames,
 } from '@extrudo/core';
 
 /**
@@ -27,29 +28,39 @@ export function starCommand(id: ParameterId, starred: boolean): Command<unknown>
   return setParameterCustomizer({ id, customizer: starred ? undefined : {} });
 }
 
+/** Each feature's name by its ID, made once for a list of rows (IDs are unique). */
+export function featureNamesById(doc: ExtrudoDocument): Map<FeatureId, string> {
+  return new Map(doc.features.map((f) => [f.id, f.name]));
+}
+
 /** The feature a model parameter belongs to, by its name. */
-export function featureName(doc: ExtrudoDocument, p: EvaluatedParameter): string {
+export function featureName(
+  doc: ExtrudoDocument,
+  p: EvaluatedParameter,
+  names: ReadonlyMap<FeatureId, string> = featureNamesById(doc),
+): string {
   if (p.owner.type === 'user') return '';
-  const { featureId } = p.owner;
-  return doc.features.find((f) => f.id === featureId)?.name ?? '';
+  return names.get(p.owner.featureId) ?? '';
 }
 
 /**
- * Whether a model parameter only follows a user parameter (ADR-0142 §6): its
+ * The model parameters that only follow a user parameter (ADR-0142 §6): the
  * expression is that parameter's name alone, and nothing refers to the model
  * parameter itself. The list hides such rows behind a "Show" line, since the
- * user parameter's "Used by" already says the same.
+ * user parameter's "Used by" already says the same. One pass over the
+ * document for all of them (`usedParameterNames`).
  */
-export function followsUserParameter(
-  doc: ExtrudoDocument,
-  evaluation: ParameterEvaluation,
-  p: EvaluatedParameter,
-): boolean {
-  if (p.owner.type === 'user' || p.refs.length !== 1) return false;
-  const [ref] = p.refs;
-  if (ref === undefined || p.expression.trim() !== ref) return false;
-  if (evaluation.parameters.get(ref)?.owner.type !== 'user') return false;
-  return parameterUsers(doc, p.name).length === 0;
+export function followerNames(doc: ExtrudoDocument, evaluation: ParameterEvaluation): Set<string> {
+  const used = usedParameterNames(doc);
+  const followers = new Set<string>();
+  for (const p of evaluation.parameters.values()) {
+    if (p.owner.type === 'user' || p.refs.length !== 1) continue;
+    const [ref] = p.refs;
+    if (ref === undefined || p.expression.trim() !== ref) continue;
+    if (evaluation.parameters.get(ref)?.owner.type !== 'user') continue;
+    if (!used.has(p.name)) followers.add(p.name);
+  }
+  return followers;
 }
 
 /** One section of the user parameters: a group, or every parameter when none has one. */

@@ -98,11 +98,13 @@ export function evaluateRange(
   if (!result.ok) return result;
   const node = parse(expression);
   const names = references(node).filter((name) => !isReservedName(name));
-  // A range that uses no parameter can't move with one.
-  const moving = names.length > 0 ? evaluation.dependents([parameter.name]) : new Set<string>();
-  moving.add(parameter.name);
+  // A walk up through what the range's names use, which stops at the
+  // parameter: it costs what the range depends on, not all that depends on
+  // the parameter. What a name's walk passed without reaching it can't reach
+  // it from the next name either.
+  const passed = new Set<string>();
   for (const name of names) {
-    if (!moving.has(name)) continue;
+    if (!reaches(evaluation, name, parameter.name, passed)) continue;
     const span = findRef(node, name) ?? node.span;
     const message =
       name === parameter.name
@@ -114,6 +116,27 @@ export function evaluateRange(
     return { ok: false, error: new ExprError('The step must be above 0.', node.span) };
   }
   return result;
+}
+
+/**
+ * Whether `name` is `target` or uses it, directly or through other parameters.
+ * `passed` holds names already known not to reach `target`; this walk adds to it.
+ */
+function reaches(
+  evaluation: ParameterEvaluation,
+  name: string,
+  target: string,
+  passed: Set<string>,
+): boolean {
+  const queue = [name];
+  while (queue.length > 0) {
+    const next = queue.pop() as string;
+    if (next === target) return true;
+    if (passed.has(next)) continue;
+    passed.add(next);
+    for (const ref of evaluation.parameters.get(next)?.refs ?? []) queue.push(ref);
+  }
+  return false;
 }
 
 /**
