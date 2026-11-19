@@ -52,6 +52,16 @@ costs tens of milliseconds per pointer move.
    curve whose box lies further than the reach (plus a margin of 10⁻⁹ of the
    coordinates for rounding), which can never be the one picked.
 
+3. **The selection merges picked items in one pass** (`nextSelection`,
+   `packages/core/src/stores.ts`). A box over many profiles picks thousands of
+   items, and `replace` compared each with every item before it (a new slice
+   per item), `add` and `toggle` each with the whole list. Now a key per item
+   (`kind`, NUL, `id`) in a `Set` for `replace` and an insertion-ordered `Map`
+   for `add`/`toggle` (deleting and setting again moves an item to the end, as
+   the splice and push did): the same list in the same order. A current
+   selection that holds an item twice (no store rule makes one) keeps the old
+   scan.
+
 ## Rules
 
 - A check that runs per render over every sketch reads `sketchFacts` (or adds a
@@ -68,6 +78,8 @@ costs tens of milliseconds per pointer move.
   arithmetic.
 - Never keep samples in a cache keyed by data alone without `retain`: the undo
   history keeps old data alive (the rule ADR-0020 gives for fills).
+- Selection changes stay linear in the items picked: no scan of the list per
+  item (`stores-select.test.ts` counts the reads).
 
 ## Rejected
 

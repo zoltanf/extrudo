@@ -386,14 +386,53 @@ function sameItem(a: SelectionItem, b: SelectionItem): boolean {
   return a.kind === b.kind && a.id === b.id;
 }
 
+/** One key per item: `sameItem` items have the same key, others never do. */
+const itemKey = (item: SelectionItem) => `${item.kind}\u0000${item.id}`;
+
+/**
+ * The selection after selecting `items`: `replace` keeps each item's first
+ * copy, `add` appends what isn't selected yet, `toggle` also takes off what
+ * is. One pass with a map by key (ADR-0156): a box over many profiles picks
+ * thousands of items, and comparing each with the list before it was
+ * quadratic.
+ */
 function nextSelection(
   current: readonly SelectionItem[],
   items: readonly SelectionItem[],
   mode: SelectMode,
 ): SelectionItem[] {
-  const has = (list: readonly SelectionItem[], item: SelectionItem) =>
-    list.some((s) => sameItem(s, item));
-  if (mode === 'replace') return items.filter((item, i) => !has(items.slice(0, i), item));
+  if (mode === 'replace') {
+    const seen = new Set<string>();
+    return items.filter((item) => {
+      const key = itemKey(item);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  // A map keeps insertion order: deleting and setting again moves an item to the end, as
+  // taking it out of the list and pushing it did.
+  const result = new Map<string, SelectionItem>();
+  for (const item of current) {
+    const key = itemKey(item);
+    // A selection holding the same item twice keeps the old rules (none is made so).
+    if (result.has(key)) return nextSelectionByScan(current, items, mode);
+    result.set(key, item);
+  }
+  for (const item of items) {
+    const key = itemKey(item);
+    if (!result.has(key)) result.set(key, item);
+    else if (mode === 'toggle') result.delete(key);
+  }
+  return [...result.values()];
+}
+
+/** The list-scanning rules `nextSelection` keeps, for a selection with an item twice. */
+function nextSelectionByScan(
+  current: readonly SelectionItem[],
+  items: readonly SelectionItem[],
+  mode: SelectMode,
+): SelectionItem[] {
   const result = [...current];
   for (const item of items) {
     const index = result.findIndex((s) => sameItem(s, item));
