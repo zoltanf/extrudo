@@ -3329,5 +3329,6 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   shows the hint (a `MutationObserver` on `[data-finding-profiles]`). The stale-result test
   slows every answer with `__extrudoProfilesDelay = 1500` and changes B1's `width` to 60 mm
   while the first job runs: of the old plate's x = 10 and x = 110 exactly one still picks.
-  `__extrudoNoProfilesWorker` makes the UI thread find them; `__extrudoProfilesDeadline = 100`
-  stops the heavy sketch and not a rectangle beside it.
+  `__extrudoNoProfilesWorker` makes the UI thread find them; `__extrudoProfilesDeadline = 1000`
+  stops the fill of a plate with 64 holes of 2,048 corners (its regions still pick) and not a
+  rectangle beside it. A 100 ms deadline is no good: a busy page reads a quick answer first.

@@ -207,15 +207,32 @@ test('without a worker the UI thread finds the profiles, and fills still appear'
   expect(((await page.evaluate('window.__extrudoProfileLog')) as number[]).length).toBe(2);
 });
 
-test('a sketch past the deadline is stopped, the others go on, and the status bar says so', async ({
+/** A plate with 64 round holes of 2,048 corners each: found at once, its fill takes seconds. */
+function bigHoles(): SketchData {
+  const entities: Record<string, unknown> = rectangle(0, -20000, 18000, -2000).entities as Record<
+    string,
+    unknown
+  >;
+  for (let i = 0; i < 64; i++) {
+    entities[`hc${i}`] = {
+      type: 'point',
+      x: 1000 + (i % 8) * 2200,
+      y: -19000 + Math.floor(i / 8) * 2200,
+    };
+    entities[`h${i}`] = { type: 'circle', center: `hc${i}`, radius: 900, construction: false };
+  }
+  return { entities, constraints: {}, dimensions: {} } as unknown as SketchData;
+}
+
+test('a fill past the deadline is stopped, its regions still pick, the others go on', async ({
   page,
 }, info) => {
   test.setTimeout(90_000);
-  // A test may only shorten the deadline: 100 ms stops the heavy sketch, not the rectangle.
-  await page.addInitScript('window.__extrudoProfilesDeadline = 100');
+  // A test may only shorten the deadline: 1 s stops the plate's fill, not a rectangle's.
+  await page.addInitScript('window.__extrudoProfilesDeadline = 1000');
   const path = info.outputPath('mixed.extrudo');
   writeDesign(path, [
-    sketch('z', 'Sketch1', heavy(0)),
+    sketch('p', 'Sketch1', bigHoles()),
     sketch('a', 'Sketch2', rectangle(0, 20, 40, 40)),
   ]);
   const viewport = await importDesign(page, path);
@@ -223,6 +240,6 @@ test('a sketch past the deadline is stopped, the others go on, and the status ba
     timeout: 30_000,
   });
   await expect(page.getByRole('status', { name: 'Sketches not shaded' })).toHaveText(
-    "· 1 sketch not shaded, 1 can't be picked",
+    '· 1 sketch not shaded',
   );
 });
