@@ -139,17 +139,18 @@ export const MAX_FILL_VERTICES = 16_000_000;
 /**
  * The most work one sketch's fill may take to build, in the units of the app's
  * `fillWork`, which are known before anything is built. Measured on a four-core
- * desktop, the slowest fill just inside this limit built in about 0.6 s; a plate
- * with 500 round holes of 100 corners takes 80 % of it and one with 30 holes 6 %.
+ * desktop, the slowest fill just inside this limit built in 1.8 to 2.9 s (best
+ * and worst of three runs); a plate with 500 round holes of 5 mm takes 77 % of it
+ * and built in 0.8 to 1.6 s, one with 30 holes takes 3 %.
  * A sketch past it draws its curves only, as one past `MAX_FILL_VERTICES` does.
  */
-export const MAX_FILL_WORK = 50_000_000;
+export const MAX_FILL_WORK = 100_000_000;
 
 /**
  * The most work the fills of a design's shown sketches may take together:
- * sixteen fills at `MAX_FILL_WORK`, or about 280 plates with 30 holes.
+ * eight fills at `MAX_FILL_WORK`, or about 280 plates with 30 holes.
  */
-export const MAX_DESIGN_FILL_WORK = 16 * MAX_FILL_WORK;
+export const MAX_DESIGN_FILL_WORK = 8 * MAX_FILL_WORK;
 
 /** Why a sketch has no regions when its curves cut each other too often (`MAX_PROFILE_CUTS`), in the user's words. */
 export const TOO_MANY_CROSSINGS =

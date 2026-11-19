@@ -683,9 +683,10 @@ its region, for three corners of the average hole (a region with one hole costs 
 near constant instead), and for how thin and winding the outline is, up to once
 per corner. It followed the measured time within a factor of about six across
 plates, rings, outlines and sheets of parts. `MAX_FILL_WORK` is the limit for one
-sketch, and `MAX_DESIGN_FILL_WORK` (sixteen times that) for a design's shown
+sketch, and `MAX_DESIGN_FILL_WORK` (eight times that) for a design's shown
 sketches together, served in the same order as the budget. On the machine it was
-calibrated on, the slowest fill inside the limit built in about 0.6 s.
+calibrated on, the slowest fill just inside the limit built in 1.8 to 2.9 s (best
+and worst of three runs).
 
 **Past a limit.** The sketch draws its curves only, the status bar says "· 3
 sketches not shaded", and its regions are detected and picked as before. A hovered
@@ -695,8 +696,8 @@ loops that no longer fit are left out. A fill that can't be built for want of me
 costs its sketch the shading in the same way (`noteUnbuiltFill`), not the view.
 
 None of the repository's 65 designs comes within a tenth of a limit: the largest
-takes 2,934 vertices and 0.4 % of `MAX_FILL_WORK`. A plate with 500 round holes of
-100 corners takes 80 % of it.
+takes 2,934 vertices and 0.2 % of `MAX_FILL_WORK`. A plate with 500 round holes of
+5 mm takes 77 % of it and built in 0.8 to 1.6 s.
 
 **Memory.** A vertex keeps 12 bytes in memory and 12 on the graphics card, 384 MB
 at the budget, and 512 MB when every fill also keeps an order. Building a large
