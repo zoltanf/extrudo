@@ -449,7 +449,8 @@ test('features from before bodies come in as a timeline, live (S12a)', async ({ 
     timeout: 60_000,
   });
 
-  // A longer pad makes a taller plate, and the pocket's sketch stays on its top face.
+  // A thinner pad: the pocket's sketch stays on the top face, so the pocket is still 5 mm deep
+  // (on a plane fixed at the old top it would cut only 3 mm of the plate).
   await page
     .getByRole('list', { name: 'Features' })
     .getByRole('button', { name: /^Pad\b/ })
@@ -457,12 +458,14 @@ test('features from before bodies come in as a timeline, live (S12a)', async ({ 
   const edit = page.getByRole('region', { name: 'Edit Pad dialog' });
   const distance = edit.getByRole('textbox', { name: 'Distance' });
   await expect(distance).toHaveValue('8 mm');
-  await distance.fill('12 mm');
+  await distance.fill('6 mm');
   await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
   await distance.press('Enter');
   await expect(edit).toBeHidden();
-  await expect(viewport).toHaveAttribute('data-bodies', /^Pocket:\d+:40,30,12$/, {
+  await expect(viewport).toHaveAttribute('data-bodies', /^Pocket:\d+:40,30,6$/, {
     timeout: 60_000,
   });
   await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
+  const after = solidFacts(meshOfStl(await exportModel(page, 'STL')));
+  expect(after.volume).toBeCloseTo(40 * 30 * 6 - Math.PI * 16 * 5, -1);
 });

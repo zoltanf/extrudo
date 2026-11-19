@@ -199,6 +199,44 @@ describe('the face a sketch stays on', () => {
   });
 });
 
+describe('a large stored shape many objects name', () => {
+  it('is read once, and the import’s time stays bounded', { timeout: 120_000 }, async () => {
+    const n = 200;
+    // Noise, so the archive's limit on how far an entry may inflate lets it through.
+    const big = new Uint8Array(30 * 1024 * 1024);
+    let seed = 1;
+    for (let i = 0; i < big.length; i++) {
+      seed = (seed * 1_103_515_245 + 12_345) & 0x7fffffff;
+      big[i] = 33 + (seed % 90);
+    }
+    big.set(new TextEncoder().encode('CASCADE\nTShapes 1\nSo\n'));
+    const extra = Array.from({ length: n }, (_, i): ChainExtraObject[] => [
+      {
+        name: `F${i}`,
+        type: 'Part::Feature',
+        xml: `<Object name="F${i}"><Properties Count="1" TransientCount="0"><Property name="Shape" type="Part::PropertyPartShape"><Part file="big.brp"/></Property></Properties></Object>`,
+      },
+      {
+        name: `S${i}`,
+        type: 'Sketcher::SketchObject',
+        xml: `<Object name="S${i}"><Properties Count="1" TransientCount="0"><Property name="Support" type="App::PropertyLinkSub"><LinkSub value="F${i}" count="1"><Sub value="Face1"/></LinkSub></Property></Properties></Object>`,
+      },
+      {
+        name: `K${i}`,
+        type: 'PartDesign::Pocket',
+        xml: `<Object name="K${i}"><Properties Count="1" TransientCount="0"><Property name="Sketch" type="App::PropertyLink"><Link value="S${i}"/></Property></Properties></Object>`,
+      },
+    ]).flat();
+    const bytes = chainFile('pad_only', { extra, entries: { 'big.brp': big } });
+    const t = performance.now();
+    const r = await run(bytes);
+    const ms = performance.now() - t;
+    expect(r.report.bodies.filter((b) => b.loose?.foreignBase).length).toBe(n);
+    expect(ms).toBeLessThan(60_000);
+    if (process.env.BENCH) console.log(`${n} objects on one 30 MB entry: ${Math.round(ms)} ms`);
+  });
+});
+
 describe('a sketch on no face in an old file', () => {
   it('a revolution on one comes in whole', { timeout: 60_000 }, async () => {
     const r = await run(
