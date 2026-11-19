@@ -140,3 +140,8 @@ Expressions and slider ranges keep their own inline errors, before anything is
 committed. Rejected: a toast (far from the action, and it fades), a banner over
 the pane (covers the name field), a callout on the control (more machinery for
 the same placement).
+
+## Amendment, 2026-11-19: how a range finds what moves with the parameter
+
+`evaluateRange` no longer asks `dependents`: it walks up from each name the range uses and
+stops at the parameter (ADR-0004's correction of this date). Same refusals, same messages.

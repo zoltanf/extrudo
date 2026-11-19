@@ -81,7 +81,12 @@ with `heightOf` and `PARAMETER_DEPTH_MESSAGE`, no evaluation per cut); the FreeC
 reads `code === 'limit'` and settles only the parameter past a limit in its round. Since
 2026-11-18 `dependents` walks `usersByName`, made once per evaluation on the first question:
 users in document order and names no parameter has included, so answers and their order stay
-as they were; `evaluateRange` asks only when the range uses a parameter. ADR-0007 (P0-04) set the
+as they were. Since 2026-11-19 `evaluateRange` doesn't ask `dependents`: `reaches` walks up from
+each name the range uses through `refs` and stops at the parameter, with one `passed` set per
+range (a name passed without reaching it can't reach it later); keep the refusal of the first
+name in reference order, message and span as before. No production code calls `dependents` or
+`featuresAffectedBy` (public API, kept); the recompute engine keys features by their inputs'
+values (ADR-0024), it never asks either. ADR-0007 (P0-04) set the
 design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
 wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the
@@ -4499,8 +4504,11 @@ list row focuses it (`focusName`). **Make user parameter** (`makeUserParameter({
 takes the name and expression, the holder's expr becomes `name` and its `paramName` a fresh `dN`; one-way (undo only).
 **Reset name** (`resetModelParameterName`): lowest free `dN` via `lowestFreeModelParameterName`, not stored, so it may
 differ from the original; shown only for non-`dN` names. **A model parameter that only follows a user parameter is
-hidden from the dialog's list** (`followsUserParameter` in `parameters/list.ts`: expression is a user parameter's name
-alone, and `parameterUsers` of it is empty) behind "Show N that follow(s) a user parameter" / "Hide those that follow a
+hidden from the dialog's list** (`followerNames` in `parameters/list.ts`: expression is a user parameter's name
+alone, and `parameterUsers` of it is empty, answered for all rows by core's `usedParameterNames`, one pass over the
+document's expressions with `mentionedNames`, the same rules as `usesOf`/`mentions`; amendment 2026-11-19: **never
+one `parameterUsers` per row**, and the list's rows look up parameters and feature names in maps made once per
+document, Move up / Move down disabled by the row's index in its section, not `stepIndex` per row) behind "Show N that follow(s) a user parameter" / "Hide those that follow a
 user parameter"; shown, such a row has `FollowsMark` (link icon, title "Follows <name>") instead of `FormulaMark`;
 the selected row stays shown; **display only, `paramName` stays**. The e2e `selectParameter` helper
 clicks the Show line when a row is hidden. No schema change.

@@ -37,7 +37,8 @@ import {
 import {
   dropIndex,
   featureName,
-  followsUserParameter,
+  featureNamesById,
+  followerNames,
   listSections,
   starCommand,
   stepIndex,
@@ -288,15 +289,10 @@ function ParameterList({
   // Model parameters that only follow a user parameter stay out of the list
   // behind a Show line (ADR-0142 §6), apart from the selected one.
   const [followersOpen, setFollowersOpen] = useState(false);
-  const followers = useMemo(
-    () =>
-      new Set(
-        [...evaluation.parameters.values()]
-          .filter((p) => followsUserParameter(doc, evaluation, p))
-          .map((p) => p.name),
-      ),
-    [doc, evaluation],
-  );
+  const followers = useMemo(() => followerNames(doc, evaluation), [doc, evaluation]);
+  // Looked up per row, so made once per document (IDs are unique).
+  const byId = useMemo(() => new Map(doc.parameters.map((p) => [p.id, p])), [doc]);
+  const featureNames = useMemo(() => featureNamesById(doc), [doc]);
   const shownModel = model.filter(
     (p) =>
       followersOpen ||
@@ -374,7 +370,7 @@ function ParameterList({
               )}
               <ul>
                 {section.ids.map((id, index) => {
-                  const parameter = doc.parameters.find((p) => p.id === id);
+                  const parameter = byId.get(id);
                   if (!parameter) return null;
                   const evaluated = evaluation.parameters.get(parameter.name);
                   const exposed = parameter.customizer !== undefined;
@@ -452,14 +448,12 @@ function ParameterList({
                           ? `Hide ${parameter.name} from customizer`
                           : `Show ${parameter.name} in customizer`}
                       </MenuItem>
-                      <MenuItem
-                        disabled={stepIndex(doc.parameters, id, -1) === undefined}
-                        onSelect={() => onStep(id, -1)}
-                      >
+                      {/* A section holds its group's parameters in list order: its ends have no neighbour to step past. */}
+                      <MenuItem disabled={index === 0} onSelect={() => onStep(id, -1)}>
                         Move up
                       </MenuItem>
                       <MenuItem
-                        disabled={stepIndex(doc.parameters, id, 1) === undefined}
+                        disabled={index === section.ids.length - 1}
                         onSelect={() => onStep(id, 1)}
                       >
                         Move down
@@ -554,7 +548,7 @@ function ParameterList({
                           !isPlainValue(p.expression) && <FormulaMark />
                         )}
                         <span className="truncate text-sm text-muted group-aria-[current]:text-ink">
-                          {featureName(doc, p)}
+                          {featureName(doc, p, featureNames)}
                         </span>
                       </span>
                       <ValueText evaluated={p} settings={settings} />

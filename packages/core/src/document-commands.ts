@@ -8,6 +8,7 @@ import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { isReservedName } from './expr/evaluate';
 import {
   lowestFreeModelParameterName,
+  mentionedNames,
   mentions,
   nextModelParameterName,
   parameterNames,
@@ -768,6 +769,35 @@ export type ParameterUse =
  */
 export function parameterUsers(doc: ExtrudoDocument | DocumentDraft, name: string): ParameterUse[] {
   return [...usesOf(doc, name, new Set())];
+}
+
+/**
+ * Every name that `parameterUsers` finds a use of, in one pass over the
+ * document: for a parameter name, `parameterUsers(doc, name)` is empty exactly
+ * when the set lacks it. The same rules: a parameter's expression doesn't use
+ * its own name, a feature input or sketch dimension doesn't use its own model
+ * parameter, and a driven dimension uses nothing.
+ */
+export function usedParameterNames(doc: ExtrudoDocument | DocumentDraft): Set<string> {
+  const used = new Set<string>();
+  const add = (text: string, own?: string) => {
+    for (const name of mentionedNames(text)) if (name !== own) used.add(name);
+  };
+  for (const p of doc.parameters) add(p.expression, p.name);
+  for (const p of doc.parameters) {
+    for (const field of ['min', 'step', 'max'] as const) {
+      const text = p.customizer?.[field];
+      if (text !== undefined) add(text);
+    }
+  }
+  for (const { holder } of featureExpressions(doc)) {
+    if (!holder.driven) add(holder.expr, holder.paramName);
+  }
+  for (const joint of doc.joints ?? []) {
+    if (joint.min) add(joint.min.expr);
+    if (joint.max) add(joint.max.expr);
+  }
+  return used;
 }
 
 function* usesOf(

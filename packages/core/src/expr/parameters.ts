@@ -532,6 +532,17 @@ export function mentions(expression: string, name: string): boolean {
   return nameAt(name).test(expression);
 }
 
+const anyName = /(?<![A-Za-z0-9_.])[A-Za-z0-9_]+(?![A-Za-z0-9_])(?!\s*\()/g;
+
+/**
+ * Every name `expression` refers to, read as `mentions` reads it: for a
+ * parameter name, `mentions(expression, name)` holds exactly when the name is
+ * among these. One pass over the text.
+ */
+export function mentionedNames(expression: string): string[] {
+  return expression.match(anyName) ?? [];
+}
+
 /** Replaces references to `from` with `to`, leaving function calls and other names alone. */
 export function renameReferences(expression: string, from: string, to: string): string {
   return expression.replace(nameAt(from), to);
