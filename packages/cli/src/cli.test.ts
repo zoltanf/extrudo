@@ -657,7 +657,7 @@ describe('extrudo script', () => {
 });
 
 describe('the time an export takes', { timeout: 600_000 }, () => {
-  // 29 s alone, 52 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
+  // 29 s alone, 52 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
   // timeout is a watchdog, 5.8 times that.
   it('computes every benchmark design and writes a 3MF', { timeout: 300_000 }, async () => {
     const times: [string, number][] = [];

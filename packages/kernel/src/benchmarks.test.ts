@@ -413,8 +413,8 @@ describe('B7 knurled knob', () => {
     grooves * lens(15, groove / 2, 15) * 16 -
     Math.PI * 3 * 3 * 10;
 
-  // 1.2 s alone, 2.5 s at worst beside four busy cores and the rest of the
-  // suite (2026-11-18): the timeout is a watchdog, six times that.
+  // 1.2 s alone, 2.8 s at worst beside four busy cores and the rest of the
+  // suite (2026-11-18 and -19): the timeout is a watchdog, 5.4 times that.
   it('is one body: revolved, chamfered, 24 grooves, a shaft hole', {
     timeout: 15_000,
   }, async () => {

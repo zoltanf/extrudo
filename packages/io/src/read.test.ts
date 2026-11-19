@@ -178,9 +178,9 @@ describe('SVG round trip', () => {
 });
 
 describe('DXF round trip', () => {
-  // 1.4 s alone, 2.5 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
-  // timeout is a watchdog, 5.9 times that.
-  it('brings lines, arcs and circles back', { timeout: 15_000 }, () => {
+  // 1.4 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
+  // timeout is a watchdog, six times that.
+  it('brings lines, arcs and circles back', { timeout: 20_000 }, () => {
     const original = drawing(EXACT);
     const back = readDxf(writeDxf(original)).drawing;
     // Each stroke segment is its own entity, so the segments come back apart.

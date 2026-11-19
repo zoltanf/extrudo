@@ -274,7 +274,7 @@ describe('a kernel that lies, throws or hangs in the calls a transform makes', (
       expect(lies.body?.stop).toMatchObject({ reason: 'kernel', detail: NONSENSE_REPLY });
     },
     // A 2 s hang and three imports with kernel restarts: 3.0 s alone, 4.3 s at worst beside
-    // four busy cores and the rest of the suite (2026-11-18). The timeout is a watchdog,
+    // four busy cores and the rest of the suite (2026-11-18 and -19). The timeout is a watchdog,
     // seven times that.
     30_000,
   );

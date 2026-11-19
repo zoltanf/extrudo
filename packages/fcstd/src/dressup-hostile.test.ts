@@ -409,7 +409,7 @@ describe('a kernel that lies', () => {
       expect(hangs.body?.stop).toMatchObject({ reason: 'time' });
     },
     // A 2 s hang and two imports: 2.4 s alone, 3.8 s at worst beside four busy cores and the rest
-    // of the suite (2026-11-18): the timeout is a watchdog, 5.3 times that.
+    // of the suite (2026-11-18 and -19): the timeout is a watchdog, 5.3 times that.
     20_000,
   );
 });

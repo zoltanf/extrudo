@@ -193,10 +193,10 @@ describe('references', () => {
     expect(body?.stop?.references).toMatchObject({ none: 1 });
   });
 
-  // 1.1 s alone, 2.5 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
-  // timeout is a watchdog, 5.9 times that.
+  // 1.1 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18 and -19): the
+  // timeout is a watchdog, six times that.
   it('an edge that a later feature split has no counterpart: the history stops there', {
-    timeout: 15_000,
+    timeout: 20_000,
   }, async () => {
     // The mirror of mirrored_face made a linear pattern along each edge of the pad in turn: the
     // boss across the pad's top splits two of its edges, which then match nothing.
