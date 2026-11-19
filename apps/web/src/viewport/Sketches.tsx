@@ -5,6 +5,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { useStore } from 'zustand';
+import type { SketchCurves } from '../sketch/curveLines';
 import { fontsStore } from '../sketch/fonts';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
@@ -35,6 +36,8 @@ import type { ViewportStore } from './store';
 export interface SketchesProps {
   store: ViewportStore;
   sketches: readonly SketchDrawing[];
+  /** The view's polylines of shown sketches (ADR-0156); the open sketch samples its own. */
+  curves?: SketchCurves;
   /** Curve and point colours by constraint status (`free` is also the colour without one). */
   colors: Readonly<Record<EntityStatus, Rgba>>;
   /** Construction geometry (`muted`). */
@@ -61,6 +64,7 @@ const GAP = 4;
 export function Sketches({
   store,
   sketches,
+  curves,
   colors,
   construction,
   showPoints,
@@ -80,6 +84,7 @@ export function Sketches({
         key={fontsVersion}
         store={store}
         drawing={s}
+        curves={s.active ? undefined : curves}
         colors={s.highlight ? { free: highlight, fixed: highlight, conflict: highlight } : colors}
         construction={s.highlight ? { ...highlight, a: 0.7 } : construction}
         showPoints={showPoints}
@@ -96,6 +101,7 @@ const color = (c: Rgba) => new Color().setRGB(c.r, c.g, c.b, 'srgb');
 function Sketch({
   store,
   drawing,
+  curves,
   colors,
   construction,
   showPoints,
@@ -105,6 +111,7 @@ function Sketch({
 }: {
   store: ViewportStore;
   drawing: SketchDrawing;
+  curves: SketchCurves | undefined;
   colors: Readonly<Record<EntityStatus, Rgba>>;
   construction: Rgba;
   showPoints: boolean;
@@ -116,8 +123,8 @@ function Sketch({
   // Control polygons show while the sketch is open (P4-05, ADR-0063 §4).
   const gripSpline = active ? drawing.gripSpline : undefined;
   const segments = useMemo(
-    () => sketchSegments(data, frame, status, active, gripSpline),
-    [data, frame, status, active, gripSpline],
+    () => sketchSegments(data, frame, status, active, gripSpline, curves?.lines),
+    [data, frame, status, active, gripSpline, curves],
   );
 
   const geometries = useMemo(() => {

@@ -34,6 +34,24 @@ costs tens of milliseconds per pointer move.
    result is a number, so it ran on every render of the shell, which re-renders
    for every batch of profile results.
 
+2. **The curves of the shown sketches are sampled once per data object**
+   (`SketchCurves`, `apps/web/src/sketch/curveLines.ts`). Model-mode picking
+   measured against every curve of every shown sketch on each pointer move
+   (twice per click: press and click) and sampled each curve again each time
+   (`pickEntity` → `entityPolylines`); opening sampled each sketch twice (Fit's
+   bounds, then the drawing). Each `Viewport` keeps one `SketchCurves`: flat
+   `Float64Array` polylines and a box per curve entity, kept **only for data
+   frozen all the way through** (checked once per data object) and **never for a
+   text** (its curves follow the fonts); `retain` lets go of every sketch the
+   view no longer shows, so the undo history, which keeps old data objects
+   alive, never keeps samples. `sketchSegments` (the drawing and `sketchBoundsOf`)
+   and the pick (`sketchHits`, `curveDistance`, `pickBox`'s curves) read it; the
+   open sketch samples its own as before. The pick (`nearestEntity` in
+   `selection/pick.ts`) is `pickEntity` with the same arithmetic and order
+   (`flatPolylineDistance` equals `polylineDistance` bit for bit), and it skips a
+   curve whose box lies further than the reach (plus a margin of 10⁻⁹ of the
+   coordinates for rounding), which can never be the one picked.
+
 ## Rules
 
 - A check that runs per render over every sketch reads `sketchFacts` (or adds a
@@ -41,12 +59,29 @@ costs tens of milliseconds per pointer move.
 - Facts are kept only for data frozen through its entities; a new fact must
   read only an entity's own fields (or it needs the deep check of
   `curveLines.ts`).
+- Per-pick or per-render code that needs a shown sketch's curve polylines takes
+  them from the view's `SketchCurves` (`PickScene.curves`, the `linesOf`
+  argument of `sketchSegments`), never `entityPolylines` per call.
+- `nearestEntity` must pick what `pickEntity` picks (`pickCurves.test.ts`
+  compares them): a box skip may only leave out curves that can't be within
+  reach, and the distances keep `polylineDistance`'s and `curveDistance`'s
+  arithmetic.
+- Never keep samples in a cache keyed by data alone without `retain`: the undo
+  history keeps old data alive (the rule ADR-0020 gives for fills).
 
 ## Rejected
 
 - **Keeping the facts for any data object.** A builder's or a draft's data is
   changed in place; ADR-0020 keeps detection only for frozen data for the same
   reason.
+- **A global `WeakMap` of samples by data.** Simplest, but every version of a
+  sketch the undo history holds would keep its samples (megabytes for a large
+  sketch).
+- **Picking on the drawing's `Float32Array` segments.** No second copy, but
+  distances in single precision could pick another curve at the edge of the
+  reach.
+- **`Vec2` arrays in the cache** (what `entityPolylines` returns): about 2.5
+  times the memory of flat arrays.
 
 ## Numbers
 
