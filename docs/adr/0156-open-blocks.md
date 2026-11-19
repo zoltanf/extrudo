@@ -123,3 +123,59 @@ For designs with many large sketches, opening blocked the page about a third
 as long in all (§1), a pointer move or a click went from seconds to tens or a
 few hundred milliseconds (§2) and a box over thousands of profiles from
 seconds to about one (§3).
+
+## Amendment (2026-11-19): profile results render what shows them
+
+**Context.** On opening, every batch of profile results (ADR-0154) rendered
+the whole shell: the app bar, the toolbar's tiles, the browser's rows, the
+timeline's chips (with their tooltip and menu triggers) and every shown
+sketch in the view; about 2,450 component renders a batch for 30 plates.
+The React Compiler doesn't compile `Shell` (it reads and writes refs during
+render, has dynamic `import()`s and manual memos whose dependencies it can't
+match), so each render of it hands new callbacks to all of those. Separately,
+each step of the kernel's progress rendered all of the timeline's chips for
+the one that changed: the compiler skips the chip (`useChipDrag` changes a
+value it can't prove unshared) and left the timeline's `live`, `select` and
+`movingWith` unmemoised (they read a ref, and `movingWith` made a new array
+for every chip).
+
+**Decision.**
+
+1. The shell builds the shown sketches from the document only
+   (`ShownSketchBase` in `shell/shownSketches.tsx`: the drawings, the open
+   sketch's claim, the closed sketches' jobs). `ShownSketchesProvider`, around
+   the shell's tree, subscribes to the profile client and the unbuilt fills,
+   adds the results (`withResults`: the old memo's rules, unchanged) and gives
+   the drawings and the note's counts through two contexts
+   (`useShownDrawings`, `useSketchShading`). Its children are the shell's
+   elements, unchanged when only results arrive, so a batch renders the
+   provider, `DialogViewport` and the view, and the status bar's
+   `UnshadedSketches` only when a count changes. It runs the client's
+   effects in the old order (fonts, `want`, `keep`).
+2. A drawing whose results didn't change stays the same object (`dressed`,
+   per base drawing), the list stays the same while every drawing does, and
+   `Sketches` memoises each sketch and fill (`ShownSketch`, `ShownFill`): the
+   compiler memoises the list as a whole, not its items.
+3. The timeline's chip is `memo(TimelineChip)` with stable props: `live` and
+   `select` memoised, a one-chip `moving` list kept per feature.
+
+**Rules.**
+
+- Profile results reach the view and the note through the provider's
+  contexts; nothing in `Shell` may subscribe to the profile client's store or
+  read a drawing's `regions`/`fill`/`unshaded` (the shell's render is not
+  memoised).
+- `withResults` never writes into the base's drawings or jobs (jobs are copied
+  before `allowance` is set).
+- A batch for some sketches renders only those sketches' `Sketch` and
+  `SketchFill` (`shownSketches.test.tsx`); a kernel step renders only the chips
+  whose props changed (`Timeline.renders.test.tsx`).
+
+**Rejected.** Making `Shell` compile: dozens of diagnostics in a 3,900-line
+component, a refactor of its own. Wrapping the shell's children in `memo`: their
+props are new on every shell render, so it would spare nothing.
+
+**Numbers.** Opening a stored design, Chrome with a real GPU, minified build,
+median of 3, before → after, page blocked in all: 30 plates NUMBERS30; 100
+plates NUMBERS100. Renders a batch: about 2,450 → about 24 plus the sketches
+whose results arrived; a kernel step: 1,276 → 2 chips' worth.

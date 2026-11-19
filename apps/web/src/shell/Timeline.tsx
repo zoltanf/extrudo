@@ -17,8 +17,10 @@ import { ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import {
   Fragment,
   type KeyboardEvent,
+  memo,
   type PointerEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -226,15 +228,30 @@ export function Timeline({
   const pickedGroup = useStore(selection, (s) => s.group);
   const anchor = useRef<FeatureId>(undefined);
   const order = useMemo(() => doc.features.map((f) => f.id), [doc.features]);
-  const live = picked.filter((id) => order.includes(id));
+  const live = useMemo(() => picked.filter((id) => order.includes(id)), [picked, order]);
   const pick = (chips: FeatureId[], group?: GroupId) => {
     selection.getState().pick(chips, group);
   };
-  const select = (id: FeatureId, mode: 'replace' | 'toggle' | 'range') => {
-    pick(chipSelection(order, live, id, mode, anchor.current));
-    if (mode !== 'range') anchor.current = id;
+  // The chips' props stay the same objects while nothing they show changes (ADR-0156's
+  // amendment of 2026-11-19): a kernel's progress renders the timeline for the computing
+  // chip, and every chip used to render with it.
+  const select = useCallback(
+    (id: FeatureId, mode: 'replace' | 'toggle' | 'range') => {
+      selection.getState().pick(chipSelection(order, live, id, mode, anchor.current));
+      if (mode !== 'range') anchor.current = id;
+    },
+    [selection, order, live],
+  );
+  const alone = useMemo(() => new Map<FeatureId, readonly FeatureId[]>(), []);
+  const movingWith = (id: FeatureId): readonly FeatureId[] => {
+    if (live.length > 1 && live.includes(id)) return live;
+    let one = alone.get(id);
+    if (!one) {
+      one = [id];
+      alone.set(id, one);
+    }
+    return one;
   };
-  const movingWith = (id: FeatureId) => (live.length > 1 && live.includes(id) ? live : [id]);
   /** A click on a group's chip: it picks the group, or (with Shift) the run over its members. */
   const pickGroup = (run: GroupRun, shift: boolean) => {
     const last = run.members.at(-1)?.id;
@@ -546,7 +563,10 @@ function dropIndex(chips: readonly HTMLElement[]): number {
   );
 }
 
-function Chip({
+/** A chip renders again only when one of its props does (the list renders per kernel step). */
+const Chip = memo(TimelineChip);
+
+function TimelineChip({
   feature,
   index,
   count,
