@@ -14,8 +14,9 @@ import { kernelReady, parameterExpression, pickTool, projector } from './helpers
 // sketches that take the worker about a second each opens without that work on the page.
 
 /**
- * A sketch that takes the worker about a second and draws little: a grid of 100 × 100 lines
- * (9,801 regions) beside 1,400 parallel lines whose boxes all overlap, `dx` mm to the right.
+ * A sketch that takes the worker about a second and draws little: a rectangle beside 1,600
+ * parallel lines whose boxes all overlap, `dx` mm to the right. (Large fills would stall the
+ * software renderer the e2e browser draws with, which says nothing about profile work.)
  */
 function heavy(dx: number): SketchData {
   const entities: Record<string, unknown> = {};
@@ -26,9 +27,11 @@ function heavy(dx: number): SketchData {
     entities[`b${id}`] = { type: 'point', x: x1, y: y1 };
     entities[`l${id}`] = { type: 'line', start: `a${id}`, end: `b${id}`, construction: false };
   };
-  for (let i = 0; i < 100; i++) line(dx - 1, i + 0.5, dx + 101, i + 0.5);
-  for (let i = 0; i < 100; i++) line(dx + i + 0.5, -1, dx + i + 0.5, 101);
-  for (let i = 0; i < 1400; i++) line(dx + 120 + i * 0.02, 0, dx + 220 + i * 0.02, 100);
+  line(dx, 0, dx + 100, 0);
+  line(dx + 100, 0, dx + 100, 100);
+  line(dx + 100, 100, dx, 100);
+  line(dx, 100, dx, 0);
+  for (let i = 0; i < 1600; i++) line(dx + 120 + i * 0.02, 0, dx + 220 + i * 0.02, 100);
   return { entities, constraints: {}, dimensions: {} } as unknown as SketchData;
 }
 
@@ -84,28 +87,38 @@ test('a design of heavy sketches opens without profile work on the page, and eve
   const path = info.outputPath('heavy.extrudo');
   writeDesign(
     path,
-    Array.from({ length: 6 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, heavy(i * 300))),
+    Array.from({ length: 10 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, heavy(i * 300))),
   );
-  const viewport = await importDesign(page, path);
-  // While the worker finds them (about a second a sketch), the page answers at once.
+  await page.goto('./');
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
+  ]);
+  await chooser.setFiles(path);
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  // From the open until every fill is there (about a second a sketch in the worker), the page
+  // keeps answering.
+  const viewport = page.getByRole('region', { name: 'Viewport' });
   const answers: number[] = [];
   for (;;) {
-    const fills = (await viewport.getAttribute('data-sketch-fills')) ?? '';
-    if (/waiting=0$/.test(fills)) break;
     const t = Date.now();
-    await page.evaluate(() => 0);
+    const fills = await page.evaluate(
+      () => document.querySelector('[data-sketch-fills]')?.getAttribute('data-sketch-fills') ?? '',
+    );
     answers.push(Date.now() - t);
+    if (/^shaded=10 .*waiting=0$/.test(fills)) break;
     await page.waitForTimeout(100);
   }
-  expect(answers.length).toBeGreaterThan(5);
-  // Six detections of about a second each, on the page, would hold it for seconds.
-  expect(Math.max(...answers)).toBeLessThan(1000);
-  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=6 unshaded=0 waiting=0');
+  expect(answers.length).toBeGreaterThanOrEqual(3);
+  // Ten detections of most of a second each, on the page, would hold it for six seconds and
+  // more; what is left is the open itself (and a software renderer under load).
+  expect(Math.max(...answers)).toBeLessThan(4000);
+  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=10 unshaded=0 waiting=0');
 });
 
 test('while profiles take a moment, the status bar says so', async ({ page }, info) => {
   test.setTimeout(90_000);
-  await page.addInitScript('window.__extrudoProfilesDelay = 300');
+  await page.addInitScript('window.__extrudoProfilesDelay = 1500');
   const path = info.outputPath('slow.extrudo');
   writeDesign(
     path,
@@ -117,7 +130,9 @@ test('while profiles take a moment, the status bar says so', async ({ page }, in
   await expect(page.getByRole('status', { name: 'Finding profiles' })).toContainText(
     /Finding profiles \d of 4…/,
   );
-  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=4 unshaded=0 waiting=0');
+  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=4 unshaded=0 waiting=0', {
+    timeout: 30_000,
+  });
   await expect(page.getByRole('status', { name: 'Finding profiles' })).toHaveCount(0);
 });
 

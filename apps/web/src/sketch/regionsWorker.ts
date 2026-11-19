@@ -42,6 +42,28 @@ async function handle(request: RegionsRequest): Promise<void> {
   }
 }
 
+// A first, tiny job while the worker starts, so a design's first real job doesn't pay for
+// the engine's warm-up (and a quick design never shows "Finding profiles…").
+const square = (['a', 'b', 'c', 'd'] as const).map(
+  (id, i) => [id, [i % 3 === 0 ? 0 : 1, i < 2 ? 0 : 1]] as const,
+);
+try {
+  const entities: Record<string, unknown> = {};
+  square.forEach(([id, [x, y]], i) => {
+    const [next] = square[(i + 1) % 4] as (typeof square)[number];
+    entities[id] = { type: 'point', x, y };
+    entities[`${id}2`] = {
+      type: 'point',
+      x: square[(i + 1) % 4]?.[1][0],
+      y: square[(i + 1) % 4]?.[1][1],
+    };
+    entities[`${id}${next}`] = { type: 'line', start: id, end: `${id}2`, construction: false };
+  });
+  regionsOf({ entities, constraints: {}, dimensions: {} } as never, Number.POSITIVE_INFINITY);
+} catch {
+  // Only a warm-up.
+}
+
 // Messages are handled one after another: a font finishes loading before the job after it.
 let chain = Promise.resolve();
 self.onmessage = ({ data }: MessageEvent<RegionsRequest>) => {
