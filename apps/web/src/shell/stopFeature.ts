@@ -26,8 +26,9 @@ export function stoppedText(name: string): string {
 
 /**
  * Stops the running feature and says so, with Try again while it is still
- * stopped. Does nothing visible when there was nothing to stop (the feature
- * finished first).
+ * stopped. Says nothing when nothing was stopped (the feature finished first,
+ * or the document no longer reaches it: the worker was still replaced) or the
+ * stop is already gone when the restart ends.
  */
 export async function stopAndTell(
   kernel: StopKernel,
@@ -35,12 +36,16 @@ export async function stopAndTell(
   notify: (tone: 'info', text: string, options?: ToastOptions) => void,
 ): Promise<FeatureId | undefined> {
   const id = await kernel.stop();
-  if (id === undefined) return undefined;
+  // Nothing recorded, or the stop is gone already (Try Again from the chip's
+  // menu during the restart, a roll-back meanwhile): no "was stopped" news.
+  if (id === undefined || !kernel.isStopped(id)) return undefined;
   const name = store.getState().doc.features.find((f) => f.id === id)?.name ?? 'The feature';
   notify('info', stoppedText(name), {
     lifetime: STOP_TOAST_MS,
     action: {
       label: 'Try again',
+      // Once the stop is gone (tried again, forgotten) there is nothing to try:
+      // the live toast's button then does nothing, the history no longer offers it.
       run: () => void kernel.retry(id),
       available: () => kernel.isStopped(id),
     },

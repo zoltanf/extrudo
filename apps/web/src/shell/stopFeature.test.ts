@@ -50,6 +50,19 @@ describe('stopAndTell', () => {
     expect(options.action.available()).toBe(false);
   });
 
+  it('says nothing when the stop is gone by the time the restart ends', async () => {
+    const k = kernel('f1' as FeatureId);
+    // Try Again from the chip's menu while the worker restarts.
+    k.stop = vi.fn(async () => {
+      k.held.add('f1' as FeatureId);
+      k.retry('f1' as FeatureId);
+      return 'f1' as FeatureId;
+    });
+    const notify = vi.fn();
+    expect(await stopAndTell(k, store(), notify)).toBeUndefined();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
   it('says nothing when there was nothing to stop', async () => {
     const notify = vi.fn();
     expect(await stopAndTell(kernel(undefined), store(), notify)).toBeUndefined();

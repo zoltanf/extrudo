@@ -4,7 +4,6 @@
 // while resources go out) can be put in order. A terminated worker never
 // answers again, as a real one.
 import {
-  applyCommand,
   type Command,
   createDocument,
   createDocumentStore,
@@ -466,7 +465,7 @@ describe('forgetting a stop (ADR-0155)', () => {
     expect(t.last().request.stopped).toEqual([]);
   });
 
-  it('keeps it out of a dialog preview, unless the dialog is its own', async () => {
+  it('keeps it out of a dialog preview, and out of its own dialog until a value changes', async () => {
     const t = await stopped();
     const seen: RecomputeRequest[] = [];
     const api = t.r.client;
@@ -482,13 +481,122 @@ describe('forgetting a stop (ADR-0155)', () => {
           },
         } as KernelApi);
       });
+    const f2 = t.store.getState().doc.features[1] as Feature;
     await t.r.preview(feature('f4'), 3);
-    await t.r.preview(
-      applyCommand(t.store.getState().doc, renameFeature({ id: 'f2' as FeatureId, name: 'Draft' }))
-        .doc.features[1] as Feature,
-      1,
-    );
+    // Edit Feature on it: the same values, rebuilt as new objects in another key order.
+    const same = {
+      ...f2,
+      name: 'Draft',
+      inputs: { ...f2.inputs, size: undefined },
+    } as unknown as Feature;
+    await t.r.preview(same, 1);
+    // A value changed: its own dialog builds it.
+    const changed = {
+      ...f2,
+      inputs: { ...f2.inputs, count: { kind: 'expr', expr: '3' } },
+    } as Feature;
+    await t.r.preview(changed, 1);
     expect(seen[0]?.stopped).toEqual(['f2']);
-    expect(seen[1]?.stopped).toBeUndefined();
+    expect(seen[1]?.stopped).toEqual(['f2']);
+    expect(seen[2]?.stopped).toBeUndefined();
+    // Previews never forget the stop.
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(true);
+  });
+});
+
+describe('Stop after a document change while the old call still runs (ADR-0155, review finding 1)', () => {
+  /** Opening with f2 running, then a change the store sends while the worker is still on f2. */
+  async function changedWhileRunning(change: (store: DocumentStore) => void) {
+    const t = setup();
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    change(t.store);
+    // The change's call is with the kernel and has reported nothing: the worker is still on f2.
+    await t.call(2);
+    return t;
+  }
+
+  it('keeps Stop offered, and records the edited feature in its new version', async () => {
+    const t = await changedWhileRunning((store) =>
+      dispatch(store, renameFeature({ id: 'f2' as FeatureId, name: 'Edited' })),
+    );
+    expect(t.r.stops.get()).toMatchObject({ opening: true, stoppable: true });
+    expect(await t.r.stop()).toBe('f2');
+    const third = await t.call(3);
+    expect(third.request.stopped).toEqual(['f2']);
+    expect(third.request.doc.features[1]?.name).toBe('Edited');
+    third.finish();
+    await until(t.ready);
+    expect(status(t, 'f2')?.message).toBe(STOPPED_MESSAGE);
+  });
+
+  for (const [what, change] of [
+    ['rolled past', (store: DocumentStore) => dispatch(store, moveTimelineMarker({ index: 1 }))],
+    [
+      'suppressed',
+      (store: DocumentStore) =>
+        dispatch(store, setFeatureSuppressed({ id: 'f2' as FeatureId, suppressed: true })),
+    ],
+    [
+      'deleted',
+      (store: DocumentStore) => dispatch(store, removeFeature({ id: 'f2' as FeatureId })),
+    ],
+  ] as const) {
+    it(`ends the old call when the running feature was ${what}, and records nothing`, async () => {
+      const t = await changedWhileRunning(change);
+      expect(t.r.stops.get().stoppable).toBe(true);
+      // Nothing recorded, so no "was stopped" toast: the app tells only of a recorded stop.
+      expect(await t.r.stop()).toBeUndefined();
+      expect(t.workers[0]?.terminated).toBe(true);
+      expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+      const third = await t.call(3);
+      expect(third.worker).toBe(2);
+      expect(third.request.stopped).toEqual([]);
+      third.finish();
+      await until(t.ready);
+      expect(t.r.client.restarts).toBe(0);
+    });
+  }
+
+  it('stops nothing once the old call came back', async () => {
+    const t = await changedWhileRunning((store) =>
+      dispatch(store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' })),
+    );
+    // The old call ends (cancelled by the newer send) before the click.
+    t.calls[0]?.finish();
+    await until(() => !t.r.stops.get().stoppable);
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(1);
+  });
+
+  it('does not swallow a Stop when a send starts during its first turn (review finding 7)', async () => {
+    const t = setup();
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    // An edit whose send fires before Stop's turn ends.
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    expect(await t.r.stop()).toBe('f2');
+    expect(t.workers[0]?.terminated).toBe(true);
+  });
+
+  it('Try Again during the restart: the stop is gone when it ends (review finding 3)', async () => {
+    const t = setup();
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    // Try Again lands while the new worker starts.
+    const client = t.r.client as { restart(): Promise<void> };
+    const restart = client.restart.bind(client);
+    let retried: boolean | undefined;
+    client.restart = async () => {
+      const started = restart();
+      retried = t.r.retry('f2' as FeatureId);
+      await started;
+    };
+    const stop = t.r.stop();
+    await until(() => retried !== undefined);
+    expect(retried).toBe(true);
+    // Nothing to tell: `stop()` says so, and `stopAndTell` checks `isStopped` too.
+    expect(await stop).toBeUndefined();
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
   });
 });

@@ -229,6 +229,25 @@ export interface KernelStops {
   subscribe(listener: () => void): () => void;
 }
 
+/**
+ * Whether two JSON values are equal, whatever the order of their keys: a dialog
+ * rebuilds a feature's inputs as new objects (ADR-0155's own-dialog rule).
+ */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => sameValue(v, b[i]));
+  }
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return (
+    ka.length === kb.length &&
+    ka.every((k) => sameValue((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  );
+}
+
 /** A stopped feature, with what it was computed from when it was stopped (ADR-0155). */
 interface StoppedFeature {
   feature: Feature;
@@ -300,8 +319,8 @@ export class Recomputer {
   readonly #crashed = new Map<FeatureId, Feature>();
   /** Features the person stopped while the design opened (ADR-0155); never stored. */
   readonly #stopped = new Map<FeatureId, StoppedFeature>();
-  /** The sequence whose recompute call is with the kernel now (not its resources). */
-  #inFlight: number | undefined;
+  /** The send whose call reported `#current`: it is cleared when that call settles. */
+  #currentSequence: number | undefined;
   /** See `StopState.opening`: true until a recompute finishes, again after Try again or Stop. */
   #opening = true;
   /** The document of the last finished recompute: a send of another one is an edit. */
@@ -444,38 +463,48 @@ export class Recomputer {
    * the worker is replaced (`KernelClient.restart`, the memory recycle's path),
    * and the design is computed again without that feature, which fails with
    * `STOPPED_MESSAGE` until it is tried again or forgotten. The document is not
-   * touched. Resolves with the stopped feature, or undefined when there was
-   * nothing to stop: not opening, no feature running (resources still going
-   * out, the kernel past its features or restarting), a Stop already under
-   * way, or the feature finished before the worker could be ended (the
+   * touched.
+   *
+   * The running feature is the one the kernel last reported, for as long as the
+   * call that reported it is with the kernel: a newer send (an edit, a roll-back)
+   * doesn't end it, the worker finishes the old feature first. The stop is
+   * recorded against the document as it is now: an edited feature in its new
+   * version; a feature the document no longer reaches (rolled past, suppressed,
+   * deleted) is not recorded at all, but the worker is still replaced, which
+   * ends the old call.
+   *
+   * Resolves with the stopped feature; undefined when nothing was recorded, or
+   * nothing could be stopped: not opening, no feature running (resources still
+   * going out, the kernel past its features or restarting), a Stop already
+   * under way, or the feature finished before the worker could be ended (the
    * kernel's last messages are let in first).
    */
   async stop(): Promise<FeatureId | undefined> {
     if (!this.#canStop()) return undefined;
-    const sequence = this.#sequence;
     const id = this.#current as FeatureId;
     this.#stopping = true;
     this.#notifyStops();
     try {
       // The race (ADR-0155): what the worker already said lands first. If the
       // feature finished meanwhile (another one started, the walk ended, the
-      // result came), there is nothing to stop.
+      // call came back), there is nothing to stop. A send that started
+      // meanwhile doesn't matter: the worker is still on the old feature.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      if (this.#disposed || sequence !== this.#sequence || this.#inFlight !== sequence) {
-        return undefined;
+      if (this.#disposed || !this.#opening || this.#current !== id) return undefined;
+      const doc = this.#document.getState().doc;
+      const at = doc.features.findIndex((f) => f.id === id);
+      const feature = doc.features[at];
+      const reached = feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
+      if (reached) {
+        this.#stopped.set(id, {
+          feature,
+          before: doc.features.slice(0, at),
+          parameters: doc.parameters,
+          settings: doc.settings,
+        });
       }
-      if (this.#current !== id) return undefined;
-      const doc = this.#sent;
-      const at = doc?.features.findIndex((f) => f.id === id) ?? -1;
-      const feature = doc?.features[at];
-      if (!doc || !feature) return undefined;
-      this.#stopped.set(id, {
-        feature,
-        before: doc.features.slice(0, at),
-        parameters: doc.parameters,
-        settings: doc.settings,
-      });
-      this.#stoppedSequence = sequence;
+      // The send now under way gets the restart's rejection: not a crash.
+      this.#stoppedSequence = this.#sequence;
       this.#opening = true;
       this.#notifyStops();
       try {
@@ -483,24 +512,19 @@ export class Recomputer {
       } catch {
         // A kernel that can't start again says so through the kernel status.
       }
-      return id;
+      return reached && this.#stopped.has(id) ? id : undefined;
     } finally {
       this.#stopping = false;
       this.#notifyStops();
     }
   }
 
-  /** Whether `stop` would stop something now. */
+  /**
+   * Whether `stop` would stop something now: opening, and a feature reported by
+   * a call still with the kernel (`#current` is cleared when that call settles).
+   */
   #canStop(): boolean {
-    const id = this.#current;
-    return (
-      !this.#disposed &&
-      !this.#stopping &&
-      this.#opening &&
-      id !== undefined &&
-      this.#inFlight === this.#sequence &&
-      (this.#sent?.features.some((f) => f.id === id) ?? false)
-    );
+    return !this.#disposed && !this.#stopping && this.#opening && this.#current !== undefined;
   }
 
   /** Whether a feature is stopped for now (ADR-0155): its chip menu offers Try again. */
@@ -687,9 +711,14 @@ export class Recomputer {
     // A preview's draft isn't in the document yet, so its file goes now.
     await this.#sendResources(doc, [draft]);
     if (ended()) return undefined;
-    // A stopped feature stays skipped in a dialog's preview too (ADR-0155),
-    // unless it is the draft itself: its own dialog computes it.
-    const stopped = this.#stillStopped(doc).filter((id) => id !== draft.id);
+    // A stopped feature stays skipped in a dialog's preview too (ADR-0155). In
+    // its own dialog it stays skipped until a value changes: opening Edit
+    // Feature to lower a count must not start the slow computation by itself.
+    const stopped = this.#stillStopped(doc).filter((id) => {
+      if (id !== draft.id) return true;
+      const stop = this.#stopped.get(id);
+      return stop !== undefined && sameValue(stop.feature.inputs, draft.inputs);
+    });
     this.#notifyStops();
     const result = await this.client.call((api) =>
       api.preview({
@@ -1224,11 +1253,11 @@ export class Recomputer {
     try {
       await this.#sendResources(doc);
       if (sequence !== this.#sequence || this.#disposed) return;
-      this.#inFlight = sequence;
       result = await this.client.call((api) =>
         api.recompute({ doc, have: this.#have(), crashed, stopped }, (id) => {
           if (sequence !== this.#sequence) return;
           this.#current = id;
+          this.#currentSequence = id === undefined ? undefined : sequence;
           this.#notifyStops();
           // Past the last feature (joints, meshes): nothing runs, the bar stays.
           if (id === undefined) return;
@@ -1256,8 +1285,11 @@ export class Recomputer {
       this.#model.getState().failed(error instanceof Error ? error.message : String(error));
       return;
     } finally {
-      if (sequence === this.#sequence) this.#current = undefined;
-      if (this.#inFlight === sequence) this.#inFlight = undefined;
+      // The call that reported the running feature came back: it isn't running.
+      if (this.#currentSequence === sequence) {
+        this.#current = undefined;
+        this.#currentSequence = undefined;
+      }
       this.#notifyStops();
     }
     if (sequence !== this.#sequence || result.status !== 'done' || this.#disposed) return;

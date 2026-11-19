@@ -29,6 +29,7 @@ import {
   type KernelFeatureDefinition,
   type RecomputeRequest,
   type RecomputeResult,
+  STOPPED_DRAFT_MESSAGE,
   STOPPED_MESSAGE,
 } from './types';
 
@@ -337,6 +338,19 @@ describe('feature status', () => {
       }),
     );
     expect(preview.features['f2' as FeatureId]?.message).toBe(STOPPED_MESSAGE);
+    // Its own dialog, values unchanged (the app keeps it in the list): not built, and said so.
+    const own = await done(
+      engine.preview({
+        doc: chainDocument(3),
+        draft: testFeature('f2', 'test-grow', { height: '1 mm' }),
+        index: 1,
+        stopped: ids('f2'),
+      }),
+    );
+    expect(own.features['f2' as FeatureId]).toEqual({
+      status: 'error',
+      message: STOPPED_DRAFT_MESSAGE,
+    });
   });
 
   it('checks sketch planes', async () => {

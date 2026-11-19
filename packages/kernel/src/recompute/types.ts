@@ -298,6 +298,13 @@ export interface PreviewToolMesh {
 export const STOPPED_MESSAGE =
   'Stopped: this feature took too long while the design opened. Try again to build it.';
 
+/**
+ * What a stopped feature's own dialog says while its values are still the ones
+ * that were stopped (ADR-0155): it isn't built until a value changes.
+ */
+export const STOPPED_DRAFT_MESSAGE =
+  'Stopped while the design opened, so there is no preview yet. Change a value to build it.';
+
 export interface RecomputeRequest {
   doc: ExtrudoDocument;
   /**

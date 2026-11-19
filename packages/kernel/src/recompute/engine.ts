@@ -94,6 +94,7 @@ import {
   type ProgressListener,
   type RecomputeRequest,
   type RecomputeResult,
+  STOPPED_DRAFT_MESSAGE,
   STOPPED_MESSAGE,
 } from './types';
 
@@ -747,7 +748,7 @@ export class RecomputeEngine {
         passed.set(feature.id, { state: 'failed' });
       };
       if (stopped.has(feature.id) && !script) {
-        fail(STOPPED_MESSAGE);
+        fail(feature.id === draft ? STOPPED_DRAFT_MESSAGE : STOPPED_MESSAGE);
         continue;
       }
       if (crashed.has(feature.id) && !script) {
