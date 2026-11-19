@@ -8,6 +8,7 @@ import {
   sketchInputs,
 } from '../packages/core/src/index';
 import { writeArchive } from '../packages/storage/src/archive';
+import { chip } from './benchmark-helpers';
 import { kernelReady, parameterExpression, pickTool, projector } from './helpers';
 
 // The profiles of sketches that aren't open are found in a worker (ADR-0154). A design of six
@@ -84,36 +85,25 @@ test('a design of heavy sketches opens without profile work on the page, and eve
   page,
 }, info) => {
   test.setTimeout(120_000);
+  // Every detection on the UI thread is logged here (a normal visit logs nothing).
+  await page.addInitScript('window.__extrudoProfileLog = []');
   const path = info.outputPath('heavy.extrudo');
   writeDesign(
     path,
-    Array.from({ length: 10 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, heavy(i * 300))),
+    Array.from({ length: 8 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, heavy(i * 300))),
   );
-  await page.goto('./');
-  const [chooser] = await Promise.all([
-    page.waitForEvent('filechooser'),
-    page.getByRole('button', { name: 'Import…', exact: true }).click(),
-  ]);
-  await chooser.setFiles(path);
-  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
-  // From the open until every fill is there (about a second a sketch in the worker), the page
-  // keeps answering.
-  const viewport = page.getByRole('region', { name: 'Viewport' });
-  const answers: number[] = [];
-  for (;;) {
-    const t = Date.now();
-    const fills = await page.evaluate(
-      () => document.querySelector('[data-sketch-fills]')?.getAttribute('data-sketch-fills') ?? '',
-    );
-    answers.push(Date.now() - t);
-    if (/^shaded=10 .*waiting=0$/.test(fills)) break;
-    await page.waitForTimeout(100);
-  }
-  expect(answers.length).toBeGreaterThanOrEqual(3);
-  // Ten detections of most of a second each, on the page, would hold it for six seconds and
-  // more; what is left is the open itself (and a software renderer under load).
-  expect(Math.max(...answers)).toBeLessThan(4000);
-  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=10 unshaded=0 waiting=0');
+  const viewport = await importDesign(page, path);
+  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=8 unshaded=0 waiting=0', {
+    timeout: 90_000,
+  });
+  // None of it was found on the page.
+  expect(await page.evaluate('window.__extrudoProfileLog')).toEqual([]);
+  // Opening a sketch finds its profiles on the page, as sketch mode needs them at once.
+  await chip(page, 'Sketch1').dblclick();
+  await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  expect(((await page.evaluate('window.__extrudoProfileLog')) as number[]).length).toBeGreaterThan(
+    0,
+  );
 });
 
 test('while profiles take a moment, the status bar says so', async ({ page }, info) => {
@@ -205,7 +195,9 @@ test('an edit while the sketch is in the worker never shows the old regions', as
 test('without a worker the UI thread finds the profiles, and fills still appear', async ({
   page,
 }, info) => {
-  await page.addInitScript('window.__extrudoNoProfilesWorker = true');
+  await page.addInitScript(
+    'window.__extrudoNoProfilesWorker = true; window.__extrudoProfileLog = []',
+  );
   const path = info.outputPath('rectangles.extrudo');
   writeDesign(path, [
     sketch('a', 'Sketch1', rectangle(0, 0, 40, 20)),
@@ -213,6 +205,7 @@ test('without a worker the UI thread finds the profiles, and fills still appear'
   ]);
   const viewport = await importDesign(page, path);
   await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=2 unshaded=0 waiting=0');
+  expect(((await page.evaluate('window.__extrudoProfileLog')) as number[]).length).toBe(2);
 });
 
 test('a sketch past the deadline is stopped, the others go on, and the status bar says so', async ({

@@ -28,6 +28,22 @@ interface Entry {
 
 const cache = new WeakMap<SketchData, Entry>();
 
+declare global {
+  interface Window {
+    /**
+     * Set to an array by e2e tests: every detection on the UI thread pushes its time, ms
+     * (the open sketch's, a dialog's, the profile worker's fallback). A normal visit logs nothing.
+     */
+    __extrudoProfileLog?: number[];
+  }
+}
+
+/** Notes a detection on the UI thread for e2e tests, when they asked (`__extrudoProfileLog`). */
+export function logProfileWork(since: number): void {
+  const log = typeof window !== 'undefined' ? window.__extrudoProfileLog : undefined;
+  if (Array.isArray(log)) log.push(Math.round(performance.now() - since));
+}
+
 export function sketchProfiles(
   data: SketchData,
   version: number = fontsStore.getState().version,
@@ -51,6 +67,7 @@ function detected(data: SketchData, version: number): Entry {
   const cached = cache.get(data);
   if (cached && cached.version === version) return cached;
   let entry: Entry;
+  const since = performance.now();
   try {
     const profiles = detectProfiles(data);
     // New fonts leave a sketch without text as it was: the same list, so its fill stays.
@@ -62,6 +79,7 @@ function detected(data: SketchData, version: number): Entry {
     if (!(error instanceof ProfilesRefusedError)) throw error;
     entry = { profiles: [], version, refused: error.message };
   }
+  logProfileWork(since);
   cache.set(data, entry);
   return entry;
 }

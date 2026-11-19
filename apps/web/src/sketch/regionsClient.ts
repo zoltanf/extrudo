@@ -14,6 +14,7 @@ import { MAX_DESIGN_FILL_WORK, MAX_FILL_WORK } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { fillWork, type ProfileFill } from '../viewport/profileFills';
 import { type FlatRegions, regionIndex, regionsBytes } from './flatRegions';
+import { logProfileWork } from './profiles';
 import { regionsOf } from './regionsJob';
 import type { RegionsReply, RegionsRequest } from './regionsProtocol';
 
@@ -298,10 +299,12 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
   function runInline(job: RegionsJob) {
     const used = [...inlineWork].reduce((n, [data, w]) => n + (wanted.has(data) ? w : 0), 0);
     let work = 0;
+    const since = performance.now();
     const result = regionsOf(job.data, maxFillVertices(), (profiles) => {
       work = fillWork(profiles);
       return work <= MAX_FILL_WORK && used + work <= MAX_DESIGN_FILL_WORK;
     });
+    logProfileWork(since);
     if (result.fill) inlineWork.set(job.data, work);
     if (!result.regions) {
       store_(job, { state: 'refused', regionBytes: 0, fillBytes: 0, fillable: false });
