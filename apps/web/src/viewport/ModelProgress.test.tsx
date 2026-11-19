@@ -266,10 +266,11 @@ describe("a long feature and the model's last step (ADR-0155's amendment of 2026
         return () => listeners.delete(l);
       },
     };
-    const set = (next: Partial<StopState>) => {
-      state = { ...state, ...next };
-      for (const l of listeners) l();
-    };
+    const set = (next: Partial<StopState>) =>
+      act(() => {
+        state = { ...state, ...next };
+        for (const l of listeners) l();
+      });
     const view = render(
       <ModelProgress
         model={model}
