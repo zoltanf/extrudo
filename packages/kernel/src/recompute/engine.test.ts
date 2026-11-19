@@ -24,11 +24,12 @@ import {
   testFeatures,
   withExpr,
 } from './testing';
-import type {
-  ExpandContext,
-  KernelFeatureDefinition,
-  RecomputeRequest,
-  RecomputeResult,
+import {
+  type ExpandContext,
+  type KernelFeatureDefinition,
+  type RecomputeRequest,
+  type RecomputeResult,
+  STOPPED_MESSAGE,
 } from './types';
 
 let oc: OcctModule;
@@ -312,6 +313,30 @@ describe('feature status', () => {
       status: 'error',
       message: 'The kernel stopped while computing this feature. Change it to try again.',
     });
+  });
+
+  it("doesn't evaluate a feature the person stopped, says so, and reports the walk's end (ADR-0155)", async () => {
+    const heard: (FeatureId | undefined)[] = [];
+    const result = await done(
+      engine.recompute({ doc: chainDocument(3), stopped: ids('f2') }, (id) => heard.push(id)),
+    );
+    expect(result.stats.evaluated).toEqual(ids('f1', 'f3'));
+    expect(result.features['f2' as FeatureId]).toEqual({
+      status: 'error',
+      message: STOPPED_MESSAGE,
+    });
+    // Each evaluated feature as it starts, then once `undefined`: no feature runs any more.
+    expect(heard).toEqual([...ids('f1', 'f3'), undefined]);
+    // A preview skips it the same way.
+    const preview = await done(
+      engine.preview({
+        doc: chainDocument(3),
+        draft: testFeature('f4', 'test-grow', { height: '1 mm' }),
+        index: 3,
+        stopped: ids('f2'),
+      }),
+    );
+    expect(preview.features['f2' as FeatureId]?.message).toBe(STOPPED_MESSAGE);
   });
 
   it('checks sketch planes', async () => {

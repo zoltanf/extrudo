@@ -97,7 +97,6 @@ import {
   STOPPED_MESSAGE,
 } from './types';
 
-
 export const DEFAULT_TESSELLATION: MeshOptions = { linearDeflection: 0.05, angularDeflection: 0.3 };
 
 /** Sheet views the engine keeps (plain data, no shapes): a few sheets' worth of views. */

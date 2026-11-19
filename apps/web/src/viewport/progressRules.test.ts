@@ -10,6 +10,7 @@ import {
   SECONDS_FROM,
   showsBar,
   showsCancel,
+  showsStop,
   UPDATING_AFTER_MS,
   WAITING_AFTER_MS,
   type WaitInput,
@@ -133,6 +134,26 @@ describe("the bar and the feature's seconds (ADR-0105's amendment of 2026-11-19)
     expect(nextTickIn(10_000, 13_000)).toBe(1000);
     expect(nextTickIn(10_000, 13_400)).toBe(600);
     expect(nextTickIn(10_000, 9_000)).toBe(3000);
+  });
+});
+
+describe('Stop while a design opens (ADR-0155)', () => {
+  it('shows only while preparing and only while a feature can be stopped', () => {
+    expect(showsStop('preparing', true)).toBe(true);
+    expect(showsStop('preparing', false)).toBe(false);
+    expect(showsStop('updating', true)).toBe(false);
+    expect(showsStop('waiting', true)).toBe(false);
+  });
+  it('never with Cancel: every mode offers at most one of them', () => {
+    for (const mode of ['preparing', 'updating', 'waiting'] as const) {
+      expect(showsStop(mode, true) && showsCancel(mode, () => true)).toBe(false);
+    }
+  });
+  it('a Try again or a Stop after the first result shows as preparing, at once', () => {
+    const base = { status: 'computing' as const, finished: true, elapsed: 0 };
+    expect(progressMode(base)).toBeUndefined();
+    expect(progressMode({ ...base, opening: true })).toBe('preparing');
+    expect(progressMode({ ...base, status: 'ready', opening: true })).toBeUndefined();
   });
 });
 

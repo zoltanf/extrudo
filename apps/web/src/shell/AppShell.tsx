@@ -315,6 +315,7 @@ import { MODES, perMode } from './modes';
 import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
+import { type StopKernel, stopAndTell } from './stopFeature';
 import { Timeline } from './Timeline';
 import { lastHoveredTool, Toolbar, ToolbarTabs, useToolbarTab } from './Toolbar';
 import {
@@ -432,6 +433,10 @@ export interface AppShellProps {
         | 'waits'
         | 'canRevertToShown'
         | 'revertToShown'
+        | 'stops'
+        | 'stop'
+        | 'retry'
+        | 'isStopped'
         | 'sheetViews'
         | 'cancelSheetViews'
         | 'bodyVersions'
@@ -2486,8 +2491,10 @@ function Shell({
           return dialog?.edit(id, { fix: issues }) ?? false;
         },
         redefinePlane: (id) => startRedefineRef.current(id),
+        isStopped: (id) => kernel?.isStopped?.(id) ?? false,
+        retryStopped: (id) => void kernel?.retry?.(id),
       }),
-    [stores, notify, session, dialog, dialogs, picking],
+    [stores, notify, session, dialog, dialogs, picking, kernel],
   );
   // The timeline's groups (P4-09, ADR-0065 §2) and the picked chips it shares with the
   // marking menu. Both are session state: nothing here is saved or undoable.
@@ -3338,6 +3345,16 @@ function Shell({
                       'Update cancelled: your last changes were undone. Redo brings them back.',
                     );
                 },
+              },
+            })}
+          {...(kernel?.stops &&
+            kernel.stop &&
+            kernel.retry &&
+            kernel.isStopped && {
+              stop: {
+                stops: kernel.stops,
+                run: () =>
+                  void stopAndTell(kernel as StopKernel, store, notify).catch(() => undefined),
               },
             })}
         />

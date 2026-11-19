@@ -483,7 +483,11 @@ describe('forgetting a stop (ADR-0155)', () => {
         } as KernelApi);
       });
     await t.r.preview(feature('f4'), 3);
-    await t.r.preview(applyCommand(t.store.getState().doc, renameFeature({ id: 'f2' as FeatureId, name: 'Draft' })).doc.features[1] as Feature, 1);
+    await t.r.preview(
+      applyCommand(t.store.getState().doc, renameFeature({ id: 'f2' as FeatureId, name: 'Draft' }))
+        .doc.features[1] as Feature,
+      1,
+    );
     expect(seen[0]?.stopped).toEqual(['f2']);
     expect(seen[1]?.stopped).toBeUndefined();
   });
