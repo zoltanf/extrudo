@@ -437,7 +437,11 @@ describe('f3dToDesign: copying features', () => {
     ]);
   });
 
-  it("threads a rod's side, found by its crest where the thread moved it off the sketch circle", async () => {
+  // 1.9 s alone, 7.2 s at worst beside four busy cores and other test files (2026-11-18/19): the
+  // timeout is a watchdog, eight times that.
+  it("threads a rod's side, found by its crest where the thread moved it off the sketch circle", {
+    timeout: 60_000,
+  }, async () => {
     // A Ø10 × 10 mm rod; the file's B-rep has its side at the thread's crest, Ø9.85.
     const f3d: F3dDesign = {
       parameters: [],

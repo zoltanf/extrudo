@@ -11,6 +11,15 @@ import { loadManifold, type Manifold } from './manifold';
 import { expectStepRoundTrip } from './mesh-to-solid-test-support';
 import { loadOcct } from './occt/load';
 
+/** CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
+function threadMs(): number {
+  const node = (globalThis as { process?: { threadCpuUsage(): { user: number; system: number } } })
+    .process;
+  if (!node) throw new Error('no process.threadCpuUsage');
+  const { user, system } = node.threadCpuUsage();
+  return (user + system) / 1000;
+}
+
 let kernel: Kernel;
 let manifold: Awaited<ReturnType<typeof loadManifold>>;
 /** The raw facade, for the non-manifold refusals `Kernel.meshFrom` never lets through. */
@@ -789,20 +798,20 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
     const mesh = meshOfSolid(plate(), 0.0002, 0.0025);
     const triangles =
       kernel.exportMesh(mesh, { linearDeflection: 1, angularDeflection: 1 }).indices.length / 3;
-    let start = performance.now();
+    let start = threadMs();
     const { shape } = prismatic(mesh);
-    const convert = performance.now() - start;
+    const convert = threadMs() - start;
     try {
       expect(kernel.count(shape, 'face')).toBe(7);
     } finally {
       kernel.release(shape);
     }
-    start = performance.now();
+    start = threadMs();
     const sphere = meshOf(manifold.Manifold.sphere(10, 1000));
     const sphereTriangles =
       kernel.exportMesh(sphere, { linearDeflection: 1, angularDeflection: 1 }).indices.length / 3;
     const { shape: ball } = prismatic(sphere);
-    const ballMs = performance.now() - start;
+    const ballMs = threadMs() - start;
     try {
       expect(kernel.count(ball, 'face')).toBe(1);
       expect(kinds(ball)).toEqual(['sphere']);
@@ -814,6 +823,9 @@ describe('Kernel.meshToSolid, prismatic', { timeout: 300_000 }, () => {
     );
     expect(triangles).toBeGreaterThan(15_000);
     expect(sphereTriangles).toBeGreaterThan(400_000);
+    // CPU time on this thread, which a busy machine doesn't inflate as it
+    // does the clock: the sphere took 4.8 to 4.9 s alone and beside four busy
+    // cores (2026-11-19), where the clock gave up to 10.3 s.
     expect(convert).toBeLessThan(3000);
     expect(ballMs).toBeLessThan(10_000);
   });

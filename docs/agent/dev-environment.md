@@ -238,7 +238,10 @@ tools only work on some of them. Notes further down that name a machine apply to
   `it(name, { timeout }, fn)`; the old third-argument form throws.
 - **A unit test doesn't assert on the clock of a busy machine.** Count the work
   (a spy, a bound from the input size), or compare with a yardstick measured in
-  the same run (CPU time, best of several). A time limit is only a watchdog
+  the same run (CPU time, best of several), or, when the measured code doesn't
+  wait (no sleep, no I/O), limit the test thread's own CPU time
+  (`process.threadCpuUsage()`; not `process.cpuUsage()`, which also counts helper
+  threads such as GC). A time limit is only a watchdog
   against a hang: at least 5× the slowest time under load, with the numbers in a comment.
 - **planegcs (P0-03):** the published `@salusoft89/planegcs` WASM has a fixed
   16 MB heap and aborts with `Aborted(OOM)` at about 100 entities in one

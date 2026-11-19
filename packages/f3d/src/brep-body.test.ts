@@ -1512,10 +1512,21 @@ describe('utf16StreamName', () => {
   });
 
   it('scans a crafted run of printable UTF-16 in linear time', () => {
-    const bytes = utf16('B'.repeat(1 << 20));
-    const t0 = performance.now();
-    expect(utf16StreamName(bytes, 0, bytes.length)).toBeUndefined();
-    expect(performance.now() - t0).toBeLessThan(2000);
+    // Every other byte starts a candidate that would read on to the end of the
+    // run if the longest name (46 characters) didn't stop it: 47 characters of
+    // two bytes each, so about 48 reads a byte. Count the reads.
+    const bytes = utf16('B'.repeat(1 << 14));
+    const bound = 64 * bytes.length;
+    let reads = 0;
+    const counted = new Proxy(bytes, {
+      get(target, key) {
+        if (typeof key === 'string' && /^\d+$/.test(key) && ++reads > bound)
+          throw new Error(`more than ${bound} reads of ${bytes.length} bytes`);
+        return Reflect.get(target, key);
+      },
+    });
+    expect(utf16StreamName(counted, 0, bytes.length)).toBeUndefined();
+    expect(reads).toBeGreaterThan(bytes.length);
   });
 });
 

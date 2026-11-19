@@ -193,7 +193,11 @@ describe('references', () => {
     expect(body?.stop?.references).toMatchObject({ none: 1 });
   });
 
-  it('an edge that a later feature split has no counterpart: the history stops there', async () => {
+  // 1.1 s alone, 3.3 s at worst beside four busy cores and the rest of the suite (2026-11-18/19):
+  // the timeout is a watchdog, six times that.
+  it('an edge that a later feature split has no counterpart: the history stops there', {
+    timeout: 20_000,
+  }, async () => {
     // The mirror of mirrored_face made a linear pattern along each edge of the pad in turn: the
     // boss across the pad's top splits two of its edges, which then match nothing.
     const reasons: string[] = [];
