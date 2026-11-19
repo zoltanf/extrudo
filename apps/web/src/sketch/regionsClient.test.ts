@@ -433,4 +433,16 @@ describe('closedSketchShows', () => {
       unpickable: true,
     });
   });
+
+  it('asks again for a fill left out for want of room once the room is there', () => {
+    const one = rectangle(1);
+    const { client, worker } = setup();
+    client.want([{ ...job('a', one), allowance: 100 }]);
+    // Regions only: the fill didn't fit what was left.
+    worker().answer(undefined, false);
+    const entry = client.get(one, 0) as RegionsEntry;
+    expect(entry.fill).toBeUndefined();
+    expect(entry.fillable).toBe(true);
+    expect(closedSketchShows(entry, 'shaded').ask).toBe(true);
+  });
 });

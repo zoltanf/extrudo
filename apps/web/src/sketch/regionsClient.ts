@@ -331,7 +331,8 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
         ...(regions && { regions }),
         regionBytes: reply.regionBytes,
         fillBytes: fillBytes(reply.vertices, reply.count),
-        fillable: reply.fill,
+        // A fill left out for want of room can still be had: asked for again when it fits.
+        fillable: true,
       });
       // The regions can be picked already; the fill follows.
       if (reply.fill) {
@@ -407,9 +408,9 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     const allowance = Math.max(0, (job.allowance ?? Number.POSITIVE_INFINITY) - accepted);
     const bytes = fillBytes(vertices, regions.ids.length);
     const used = [...inlineWork].reduce((n, [data, w]) => n + (wanted.has(data) ? w : 0), 0);
-    const work =
-      regionBytes + bytes <= allowance ? fillWork(found.profiles) : Number.POSITIVE_INFINITY;
-    const mayFill = work <= MAX_FILL_WORK && used + work <= MAX_DESIGN_FILL_WORK;
+    const fits = regionBytes + bytes <= allowance;
+    const work = fits ? fillWork(found.profiles) : 0;
+    const mayFill = fits && work <= MAX_FILL_WORK && used + work <= MAX_DESIGN_FILL_WORK;
     const fill = mayFill ? buildFill(found) : null;
     if (fill) inlineWork.set(job.data, work);
     store_(job, {
@@ -420,7 +421,8 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       }),
       regionBytes,
       fillBytes: bytes,
-      fillable: fill !== null,
+      // Left out for want of room it can still be had; too slow or failed, it can't.
+      fillable: fill !== null || !fits,
     });
   }
 
