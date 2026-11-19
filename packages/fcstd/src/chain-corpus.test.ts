@@ -111,7 +111,8 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
       for (const c of planned)
         for (const f of c.features) inChains.set(f.name, (inChains.get(f.name) ?? 0) + 1);
       const shared = [...inChains.values()].filter((n) => n > 1);
-      if (shared.length > 0) branches.push({ features: shared.length, chains: Math.max(...shared) });
+      if (shared.length > 0)
+        branches.push({ features: shared.length, chains: Math.max(...shared) });
       for (const c of planned) {
         bump(lengths, String(c.features.length));
         for (const r of c.rules) bump(rules, r);

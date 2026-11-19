@@ -99,6 +99,7 @@ export type {
   ShapeMeasure,
   StoredShapeStep,
 } from './import-kernel';
+export { type LooseChain, looseChains, MAX_LOOSE_CHAINS } from './loose-chains';
 export {
   binaryFormProblem,
   brepHasSolid,
@@ -127,7 +128,6 @@ export {
   type Vec3,
   versionAtLeast,
 } from './model';
-export { type LooseChain, looseChains, MAX_LOOSE_CHAINS } from './loose-chains';
 export { cleanName, clip, MAX_DETAIL_LENGTH, MAX_NAME_LENGTH, stepFileName } from './names';
 export {
   type ExpressionOutcome,
