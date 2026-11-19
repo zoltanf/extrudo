@@ -24,6 +24,15 @@ import { loadOcct } from './occt/load';
 const env =
   (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
 
+/** The CPU time this thread has spent, ms: a busy machine doesn't inflate it as it does the clock. */
+function threadMs(): number {
+  const node = (globalThis as { process?: { threadCpuUsage(): { user: number; system: number } } })
+    .process;
+  if (!node) throw new Error('no process.threadCpuUsage');
+  const { user, system } = node.threadCpuUsage();
+  return (user + system) / 1000;
+}
+
 /** The kernel's tsconfig has no Node types: a module name in a variable keeps tsc out of it. */
 interface NodeFs {
   readdirSync(
@@ -400,13 +409,16 @@ describe('Mesh to Solid, faceted on the fixtures the 5,000 cap allows', {
     it(`converts ${name} in Faceted (${faces} faces) in under 20 s`, () => {
       const mesh = kernel.meshFrom(readStl(bytesOf(url)).mesh);
       try {
-        const start = performance.now();
+        const start = threadMs();
         const { shape, report } = kernel.meshToSolid(mesh, { method: 'faceted', tolerance: 0.01 });
-        const ms = performance.now() - start;
+        const ms = threadMs() - start;
         try {
           expect(report).toMatchObject({ faces, planes: faces });
           expect(kernel.count(shape, 'face')).toBe(faces);
           expect(kernel.isValid(shape)).toBe(true);
+          // CPU time on this thread, which a busy machine doesn't inflate as
+          // it does the clock: 5.5 to 6.7 s alone and beside four busy cores
+          // (2026-11-19), where the clock gave up to 12.3 s.
           expect(ms).toBeLessThan(20_000);
           expectStepRoundTrip(kernel, shape, `faceted fixture ${name}`);
         } finally {

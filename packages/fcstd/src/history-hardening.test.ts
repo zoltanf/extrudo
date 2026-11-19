@@ -237,12 +237,14 @@ describe("a profile sketch's cost", () => {
   });
 
   // The worst cases at the cap, measured: a grid of crossing lines and concentric circles.
+  // The CPU time on this thread, which a busy machine doesn't inflate as it does the clock.
   const timed = (build: Parameters<Design['sketch']>[1]) => {
     const d = Design.create({});
     const s = d.sketch(d.origin.xy, build);
-    const t = performance.now();
+    const t = process.threadCpuUsage();
     const refs = profileRefs(s, true);
-    return { ms: performance.now() - t, refs };
+    const { user, system } = process.threadCpuUsage(t);
+    return { ms: (user + system) / 1000, refs };
   };
   it('refuses a grid of crossing lines at the cap in a few seconds', () => {
     const half = MAX_PROFILE_CURVES / 2;
@@ -277,7 +279,8 @@ describe("a profile sketch's cost", () => {
     // Bullseye: every other ring, from the outermost.
     expect(refs).toHaveLength(MAX_PROFILE_CURVES / 2);
     console.log(`${MAX_PROFILE_CURVES} concentric circles: ${Math.round(ms)} ms`);
-    // About 1–2 s unloaded (the ADR's table); room for a loaded runner.
+    // About 1–2 s unloaded (the ADR's table). Here 2.2 to 2.5 s of CPU time alone
+    // and beside four or eight busy cores (2026-11-19), where the clock gave up to 6.0 s.
     expect(ms).toBeLessThan(10_000);
   }, 60_000);
 

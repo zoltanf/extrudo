@@ -735,8 +735,10 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  // 166 s alone, 323 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
+  // timeout is a watchdog, 5.6 times that.
   it(`shelling ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
-    timeout: 300_000,
+    timeout: 1_800_000,
   }, () => {
     // P3-03: shells inside, outside and closed through the builder on the
     // facade's stack (each on a copy of the body), a shell too thick whose
@@ -774,8 +776,10 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  // 96 s alone, 180 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
+  // timeout is a watchdog, 6.7 times that.
   it(`shelling with wall sets and plugs ${OFFSET_REBUILDS} times, failing ones included, does not grow the heap`, {
-    timeout: 300_000,
+    timeout: 1_200_000,
   }, () => {
     // P4-12 (ADR-0046's amendment): shells with walls of their own thickness
     // (the facade's shellFaces, a per-face offset on its stack), inside, outside
@@ -841,8 +845,10 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  // 85 s alone, 162 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
+  // timeout is a watchdog, 5.6 times that.
   it(`offsetting faces ${OFFSET_REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
-    timeout: 300_000,
+    timeout: 900_000,
   }, () => {
     // P3-08: offsets of planar and curved faces out and in, a rounded body whose
     // smooth chain moves together, a face pushed too far (the largest distance is

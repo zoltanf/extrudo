@@ -43,7 +43,9 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
     expect(result.ok && result.warnings).toEqual([]);
   });
 
-  it('gives the same model twice', async () => {
+  // 10.9 s alone, 18.8 s at worst beside four busy cores and the rest of the suite (2026-11-18):
+  // the timeout is a watchdog, 5.3 times that.
+  it('gives the same model twice', { timeout: 100_000 }, async () => {
     const source = 'minkowski() { cube([20, 20, 10]); sphere(r = 2, $fn = 32); }';
     const a = await compiler.compile(scad(source));
     const b = await compiler.compile(scad(source));

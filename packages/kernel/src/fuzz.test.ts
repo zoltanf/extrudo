@@ -89,8 +89,10 @@ const STEP_LIMIT_MS = 20_000;
  *   at worst, so 600 s is 5.8 times that; the whole case 835 s alone and
  *   1,803 s at worst, so 10,000 s is 5.5 times that.
  * - **B8**: 124 ms median, 11.8 s the slowest (a `x 10000` dimension, which
- *   ADR-0067 measured at 21.6 s under load), 85 s for 200 steps. A 40 s step
- *   limit leaves the hang detector room for a slower runner.
+ *   ADR-0067 measured at 21.6 s under load), 85 s for 200 steps. The step
+ *   limit is a watchdog against a hang: on 2026-11-18 the slowest recompute
+ *   took 17.6 s alone and 34.0 s beside four busy cores and the rest of the
+ *   suite, so 200 s is 5.9 times that.
  */
 interface FuzzBudget {
   /** How many random edits (the default `STEPS`). */
@@ -101,7 +103,7 @@ interface FuzzBudget {
   timeoutMs?: number;
 }
 const B9_BUDGET: FuzzBudget = { steps: 120, limitMs: 600_000, timeoutMs: 10_000_000 };
-const B8_BUDGET: FuzzBudget = { limitMs: 40_000, timeoutMs: 480_000 };
+const B8_BUDGET: FuzzBudget = { limitMs: 200_000, timeoutMs: 480_000 };
 /** Every so many steps the warm result is compared with a cold recompute. */
 const COMPARE_EVERY = 10;
 

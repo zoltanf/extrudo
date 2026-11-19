@@ -548,7 +548,11 @@ describe('sketches no feature uses', () => {
 });
 
 describe('the sketches of one import', () => {
-  it(`may have ${MAX_IMPORT_ENTITIES} points and curves; past that the import is refused`, () => {
+  // 3.3 s alone, 6.7 s at worst beside four busy cores and the rest of the suite (2026-11-18): the
+  // timeout is a watchdog, six times that.
+  it(`may have ${MAX_IMPORT_ENTITIES} points and curves; past that the import is refused`, {
+    timeout: 40_000,
+  }, () => {
     const f3d = (points: number): F3dDesign => {
       const d = washerWithHole();
       d.features.push(
