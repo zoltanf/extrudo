@@ -136,7 +136,11 @@ export interface RegionsClient {
   want(jobs: readonly RegionsJob[]): void;
   /** Moves the job of this sketch feature to the front. */
   prefer(key: string): void;
-  /** Lets go of what the budget doesn't grant: the fill unless shaded, everything unless picked. */
+  /**
+   * Lets go of what the budget doesn't grant: the fill unless shaded, everything unless
+   * picked. `granted` holds every shown sketch that has an entry, whatever its state
+   * (`closedSketchShows`' `keep`): only the others' entries are spare.
+   */
   keep(granted: ReadonlyMap<SketchData, 'shaded' | 'pickable' | 'none'>): void;
   addFont(id: string, bytes: ArrayBuffer): void;
   readonly store: StoreApi<RegionsState>;
@@ -158,16 +162,22 @@ export function closedSketchShows(
   unshaded: boolean;
   unpickable: boolean;
   ask: boolean;
+  /** What the client keeps of the entry (`keep`): a shown sketch's entry is never spare. */
+  keep: RegionVerdict;
 } {
   if (entry.state === 'stopped' || entry.state === 'failed') {
-    return { unshaded: true, unpickable: true, ask: false };
+    return { unshaded: true, unpickable: true, ask: false, keep: 'none' };
   }
-  if (entry.state !== 'done' || !verdict) return { unshaded: false, unpickable: false, ask: false };
+  if (entry.state !== 'done' || !verdict) {
+    return { unshaded: false, unpickable: false, ask: false, keep: 'none' };
+  }
   const regions = verdict !== 'none' ? entry.regions : undefined;
   const ask =
     (verdict !== 'none' && !entry.regions) ||
     (verdict === 'shaded' && entry.fillable && !entry.fill);
-  if (ask) return { ...(regions && { regions }), unshaded: false, unpickable: false, ask };
+  if (ask) {
+    return { ...(regions && { regions }), unshaded: false, unpickable: false, ask, keep: verdict };
+  }
   const fill = verdict === 'shaded' ? entry.fill : undefined;
   return {
     ...(regions && { regions }),
@@ -175,6 +185,7 @@ export function closedSketchShows(
     unshaded: !fill,
     unpickable: verdict === 'none',
     ask: false,
+    keep: verdict,
   };
 }
 

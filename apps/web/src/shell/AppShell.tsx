@@ -2799,7 +2799,8 @@ function Shell({
       const entry = entries.get(drawing.id);
       if (!entry) continue;
       const shows = closedSketchShows(entry, verdict);
-      if (entry.state === 'done' && verdict) granted.set(drawing.data, verdict);
+      // Every shown sketch's entry stays, refused, stopped or failed too: only others are spare.
+      granted.set(drawing.data, shows.keep);
       if (shows.regions) drawing.regions = shows.regions;
       if (shows.fill) drawing.fill = shows.fill;
       if (shows.unshaded) {

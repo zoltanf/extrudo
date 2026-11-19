@@ -106,7 +106,16 @@ function setup(options: { spawn?: () => RegionsWorkerLike | undefined; batch?: n
       }
     }
   };
-  return { client, workers, advance, idle, worker: () => workers.at(-1) as FakeWorker };
+  /** Runs the next timer, at its time; false when none is set. */
+  const step = () => {
+    const next = [...timers].sort((x, y) => x[1].at - y[1].at)[0];
+    if (!next) return false;
+    timers.delete(next[0]);
+    time = Math.max(time, next[1].at);
+    next[1].run();
+    return true;
+  };
+  return { client, workers, advance, step, idle, worker: () => workers.at(-1) as FakeWorker };
 }
 
 const job = (key: string, data: SketchData, version = 0): RegionsJob => ({
@@ -384,6 +393,106 @@ describe('createRegionsClient', () => {
     ]);
     worker().answer();
     expect(worker().jobs().at(-1)?.maxBytes).toBe(500);
+  });
+});
+
+describe('a shell that asks again on every result', () => {
+  type Ending = 'done' | 'refused' | 'stopped' | 'failed';
+
+  /**
+   * Shows sketches that end as `endings` says, and does what the shell does on each
+   * bump of the store (`closedSketchShows`, `want`, `keep`) until nothing moves.
+   */
+  function shown(endings: readonly Ending[]) {
+    const { client, workers, step } = setup({ batch: 150 });
+    const sketches = endings.map((ending, i) => ({ key: `s${i}`, data: rectangle(1 + i), ending }));
+    const endingOf = new Map(sketches.map((s) => [s.data, s.ending]));
+    const served = new Map<FakeWorker, number>();
+    const shell = () => {
+      const jobs: RegionsJob[] = [];
+      const granted = new Map<SketchData, 'shaded' | 'pickable' | 'none'>();
+      for (const s of sketches) {
+        const entry = client.get(s.data, 0);
+        const shows = entry && closedSketchShows(entry, entry.state === 'done' ? 'shaded' : undefined);
+        if (shows) granted.set(s.data, shows.keep);
+        if (!shows || shows.ask) jobs.push({ ...job(s.key, s.data), allowance: 1e9 });
+      }
+      client.want(jobs);
+      client.keep(granted);
+    };
+    // Answers the jobs the worker hasn't seen yet as their sketches end.
+    const serve = () => {
+      const w = workers.at(-1);
+      if (!w || w.terminated) return false;
+      const jobs = w.jobs();
+      const from = served.get(w) ?? 0;
+      if (from >= jobs.length) return false;
+      served.set(w, jobs.length);
+      for (const j of jobs.slice(from)) {
+        w.start(j);
+        const ending = endingOf.get(j.data);
+        if (ending === 'done') {
+          w.answer(j, true);
+          w.fill(j);
+        } else if (ending === 'refused' || ending === 'failed') {
+          const reply = ending === 'refused' ? { refused: 'no' } : { error: 'no' };
+          w.onmessage?.({ data: { job: j.job, ...reply } } as MessageEvent<RegionsReply>);
+        }
+        // A stopped one never answers: the deadline stops it.
+      }
+      return true;
+    };
+    let seen = -1;
+    const settle = () => {
+      for (let i = 0; i < 100_000; i++) {
+        const version = client.store.getState().version;
+        if (version !== seen) {
+          seen = version;
+          shell();
+        } else if (!serve() && !step()) return;
+      }
+      throw new Error('never settled');
+    };
+    settle();
+    const posted = () => workers.reduce((n, w) => n + w.jobs().length, 0);
+    const again = (passes: number) => {
+      for (let i = 0; i < passes; i++) {
+        shell();
+        settle();
+      }
+    };
+    return { client, sketches, posted, again };
+  }
+
+  it('asks once for each of 70 sketches stopped at the deadline and 5 after them', () => {
+    const { client, sketches, posted, again } = shown([
+      ...Array<Ending>(70).fill('stopped'),
+      ...Array<Ending>(5).fill('done'),
+    ]);
+    expect(posted()).toBe(75);
+    again(10);
+    expect(posted()).toBe(75);
+    for (const s of sketches.slice(70)) {
+      const entry = client.get(s.data, 0);
+      expect(entry?.regions).toBeDefined();
+      expect(entry?.fill).toBeDefined();
+    }
+  });
+
+  it('asks once for each of 200 refused sketches, however often the shell looks again', () => {
+    const { posted, again } = shown(Array<Ending>(200).fill('refused'));
+    expect(posted()).toBe(200);
+    again(10);
+    expect(posted()).toBe(200);
+  });
+
+  it('asks no more after the first round for any mix of endings', () => {
+    const endings: Ending[] = ['done', 'refused', 'stopped', 'failed'];
+    const mix = Array.from({ length: 150 }, (_, i) => endings[(i * 7 + (i >> 3)) % 4] as Ending);
+    const { posted, again } = shown(mix);
+    expect(posted()).toBe(150);
+    again(10);
+    expect(posted()).toBe(150);
   });
 });
 
