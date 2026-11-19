@@ -16,14 +16,17 @@ import {
   TOO_MANY_CURVES,
 } from '@extrudo/sketch/profiles';
 import { loadFont } from '@extrudo/sketch/text';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flatBytesOf } from './flatRegions';
 import {
   closeOpenSketch,
   inkCentroids,
   openSketchProfiles,
+  pinOpenSketch,
   regionCentroid,
   sketchProfiles,
   sketchProfilesProblem,
+  sketchRegions,
 } from './profiles';
 
 const FONTS_DIR = new URL('../../../../packages/fonts/fonts/', import.meta.url);
@@ -158,6 +161,42 @@ describe('what the UI thread keeps of detection', () => {
       regionCentroid(data, 'x', 0);
     }
     expect(keptTotals().bytes).toBeLessThanOrEqual(200_000);
+  });
+
+  it('finds the open sketch once per version of its data, too large to keep or not', () => {
+    const others = [plate(2, 3000), plate(2, 6000)];
+    const open = plate(80);
+    const size = (data: ReturnType<typeof plate>) => {
+      const found = sketchProfiles(data, 0);
+      return keptBytes(found) + flatBytesOf(found);
+    };
+    // Room for the others, never for the open sketch.
+    setKeptLimits(size(plate(80, 9000)) - 1, 100);
+    for (const data of others) sketchProfiles(data, 0);
+    const log: number[] = [];
+    vi.stubGlobal('window', { __extrudoProfileLog: log });
+    try {
+      pinOpenSketch(open);
+      expect(log).toHaveLength(0);
+      const profiles = openSketchProfiles(open, 0);
+      for (let i = 0; i < 10; i++) {
+        // What a click, a box select or a dialog asks of it; the profiles hidden and shown again.
+        pinOpenSketch(open);
+        expect(sketchProfiles(open, 0)).toBe(profiles);
+        sketchRegions(open, 0);
+        sketchProfilesProblem(open, 0);
+        regionCentroid(open, profiles[0]?.id as string, 0);
+      }
+      expect(log).toHaveLength(1);
+      // Closed, it doesn't fit the budget: it isn't kept, and the others stay.
+      closeOpenSketch();
+      for (const data of others) sketchProfiles(data, 0);
+      expect(log).toHaveLength(1);
+      sketchProfiles(open, 0);
+      expect(log).toHaveLength(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('always keeps the open sketch, whatever else is asked for', () => {

@@ -63,9 +63,13 @@ export class KeptResults<K extends object, V> {
     return slot.value as V;
   }
 
-  /** Keeps `value` for `key`, counted as `bytes`, and lets go of the oldest past the budget. */
+  /**
+   * Keeps `value` for `key`, counted as `bytes`, and lets go of the oldest past the budget.
+   * A value larger than the whole budget isn't kept, and costs the others nothing.
+   */
   set(key: K, value: V, bytes: number): void {
     this.delete(key);
+    if (bytes > limits.bytes) return;
     const slot: Slot = { key: new WeakRef(key), owner: this.#map, value, bytes };
     this.#map.set(key, slot);
     order.set(slot, true);

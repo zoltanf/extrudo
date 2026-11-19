@@ -196,7 +196,15 @@ describe('strings in flat regions', () => {
   });
 
   it('takes no place outside the strings', () => {
-    const wire = toWire(flattenRegions(made(2, (i) => `r${i}`, () => 'text')));
+    const wire = toWire(
+      flattenRegions(
+        made(
+          2,
+          (i) => `r${i}`,
+          () => 'text',
+        ),
+      ),
+    );
     expect(() => fromWire({ ...wire, idOf: Uint32Array.from([0, 9]) })).toThrow(RangeError);
     expect(() => fromWire({ ...wire, textOf: Int32Array.from([0, -2]) })).toThrow(RangeError);
   });

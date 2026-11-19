@@ -431,7 +431,8 @@ describe('a shell that asks again on every result', () => {
       const granted = new Map<SketchData, 'shaded' | 'pickable' | 'none'>();
       for (const s of sketches) {
         const entry = client.get(s.data, 0);
-        const shows = entry && closedSketchShows(entry, entry.state === 'done' ? 'shaded' : undefined);
+        const shows =
+          entry && closedSketchShows(entry, entry.state === 'done' ? 'shaded' : undefined);
         if (shows) granted.set(s.data, shows.keep);
         if (!shows || shows.ask) jobs.push({ ...job(s.key, s.data), allowance: 1e9 });
       }

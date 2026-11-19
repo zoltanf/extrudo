@@ -229,6 +229,7 @@ import {
   closeOpenSketch,
   hasText,
   openSketchProfiles,
+  pinOpenSketch,
   profileIdsIn,
   sketchProfilesProblem,
   sketchRegions,
@@ -2727,6 +2728,8 @@ function Shell({
         ...(active && { gripSpline: gripSplineOf(sketch.data, selection) }),
         ...(showProfiles && { selectedProfiles: profileIdsIn(shownSelection, feature.id) }),
       });
+      // Its result stays while it is open, profiles shown or not.
+      if (active) pinOpenSketch(sketch.data);
       if (!showProfiles) return;
       if (active) {
         // The open sketch stays synchronous: its regions are found here, as the tools need them.
@@ -2774,7 +2777,7 @@ function Shell({
     const grantedTo = new Map(claims.map((c) => [c.id, grantedBytes(c, verdicts.get(c.id))]));
     const left = Math.max(0, budget - [...grantedTo.values()].reduce((n, b) => n + b, 0));
     const openClaim = claims.find((c) => c.active);
-    if (!openClaim) closeOpenSketch();
+    if (!out.some((d) => d.active)) closeOpenSketch();
     heldRegions.current =
       openClaim === undefined
         ? undefined

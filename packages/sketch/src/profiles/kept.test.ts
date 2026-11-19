@@ -47,6 +47,17 @@ describe('KeptResults', () => {
     expect(c.get(key)).toBeUndefined();
   });
 
+  it('lets go of nothing else for a result larger than the budget', () => {
+    setKeptLimits(100, 10);
+    const c = new KeptResults<object, string>();
+    const small = [{}, {}, {}];
+    for (const key of small) c.set(key, 'small', 30);
+    const before = keptTotals();
+    c.set({}, 'big', 101);
+    expect(small.map((key) => c.get(key))).toEqual(['small', 'small', 'small']);
+    expect(keptTotals()).toEqual(before);
+  });
+
   it('has a real budget of 64 MB and 256 results', () => {
     expect(MAX_KEPT_PROFILE_BYTES).toBe(64 * 1024 * 1024);
     expect(MAX_KEPT_PROFILE_RESULTS).toBe(256);

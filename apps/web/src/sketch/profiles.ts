@@ -6,8 +6,8 @@
  * A sketch whose curves cross too often, lie too far out or are too many has no profiles
  * (`sketchProfilesProblem` says why; ADR-0020's amendment of 2026-11-15).
  *
- * What is kept is bounded (ADR-0154): the open sketch's result always stays
- * (`openSketchProfiles`); other results share the thread's budget of detection
+ * What is kept is bounded (ADR-0154): the open sketch's result always stays, outside
+ * the budget (`pinOpenSketch`); other results share the thread's budget of detection
  * results (`MAX_KEPT_PROFILE_BYTES`, `KeptResults`) and are found again when let
  * go of. A feature dialog's handles need only where each region's centre is
  * (`regionCentroid`, `inkCentroids`): for a sketch that isn't open those are
@@ -57,8 +57,8 @@ interface Marks {
 
 const cache = new KeptResults<SketchData, Entry>();
 const marksCache = new KeptResults<SketchData, Marks>();
-/** The open sketch's entry: kept whatever the budget says. */
-let pinned: { data: SketchData; entry: Entry } | undefined;
+/** The open sketch, and its result once found: kept whatever the budget says, outside it. */
+let pinned: { data: SketchData; entry?: Entry } | undefined;
 
 declare global {
   interface Window {
@@ -92,19 +92,29 @@ export function sketchProfiles(
   return detected(data, version).profiles;
 }
 
+/**
+ * The sketch open now: its result, when found, is kept outside the budget until it
+ * closes or its data is replaced (the profiles hidden or not). The one before goes
+ * to the budget, if it fits.
+ */
+export function pinOpenSketch(data: SketchData): void {
+  if (pinned?.data === data) return;
+  closeOpenSketch();
+  pinned = { data };
+}
+
 /** The open sketch's profiles: found here, as sketch mode needs them at once, and always kept. */
 export function openSketchProfiles(
   data: SketchData,
   version: number = fontsStore.getState().version,
 ): readonly Profile[] {
-  const entry = detected(data, version);
-  pinned = { data, entry };
-  return entry.profiles;
+  pinOpenSketch(data);
+  return detected(data, version).profiles;
 }
 
-/** No sketch is open: its result goes back to the budget. */
+/** No sketch is open: its result goes to the budget, if it fits. */
 export function closeOpenSketch(): void {
-  if (pinned) cache.set(pinned.data, pinned.entry, entryBytes(pinned.entry));
+  if (pinned?.entry) cache.set(pinned.data, pinned.entry, entryBytes(pinned.entry));
   pinned = undefined;
 }
 
@@ -116,6 +126,14 @@ export function sketchRegions(
   const entry = detected(data, version);
   entry.flat ??= flattenRegions(entry.profiles);
   return entry.flat;
+}
+
+/** The sketch's profiles and, when detection refused it, why: both from one lookup. */
+export function sketchProfilesFound(
+  data: SketchData,
+  version: number = fontsStore.getState().version,
+): { profiles: readonly Profile[]; refused?: string } {
+  return detected(data, version);
 }
 
 /**
@@ -175,11 +193,20 @@ function detect(data: SketchData, version: number): Entry {
   return entry;
 }
 
+/** The result at hand for `data`, if any: the open sketch's, or one still kept. */
+function known(data: SketchData, version: number): Entry | undefined {
+  if (pinned?.data !== data) return valid(cache.get(data), version);
+  pinned.entry = valid(pinned.entry, version) ?? valid(cache.get(data), version);
+  if (pinned.entry) cache.delete(data);
+  return pinned.entry;
+}
+
 function detected(data: SketchData, version: number): Entry {
-  const known = valid(pinned?.data === data ? pinned.entry : cache.get(data), version);
-  if (known) return known;
+  const found = known(data, version);
+  if (found) return found;
   const entry = detect(data, version);
-  cache.set(data, entry, entryBytes(entry));
+  if (pinned?.data === data) pinned.entry = entry;
+  else cache.set(data, entry, entryBytes(entry));
   return entry;
 }
 
@@ -198,11 +225,10 @@ function marksOf(profiles: readonly Profile[], version: number, text: boolean): 
 }
 
 function marks(data: SketchData, version: number): Marks {
-  const known = valid(marksCache.get(data), version);
-  if (known) return known;
+  const kept = valid(marksCache.get(data), version);
+  if (kept) return kept;
   // A result already at hand (the open sketch's, or one still kept) needs no detection.
-  const entry =
-    valid(pinned?.data === data ? pinned.entry : cache.get(data), version) ?? detect(data, version);
+  const entry = known(data, version) ?? detect(data, version);
   const found = marksOf(entry.profiles, version, entry.text);
   let bytes = 128;
   for (const id of found.centroids.keys()) bytes += stringBytes(id) + 96;

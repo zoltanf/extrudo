@@ -15,6 +15,7 @@ import {
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import {
+  setKeptLimits,
   TOO_LARGE_COORDINATES,
   TOO_MANY_CROSSINGS,
   TOO_MANY_CURVES,
@@ -134,6 +135,26 @@ describe('ExportSketchDialog on other sketches', () => {
   it('starts on All curves with nothing selected', () => {
     show(closed());
     expect(allCurves().checked).toBe(true);
+  });
+
+  it('looks the profiles up once while it is open, also when their result is too large to keep', () => {
+    setKeptLimits(1, 10);
+    const log: number[] = [];
+    window.__extrudoProfileLog = log;
+    try {
+      show(closed(), ['gone']);
+      fireEvent.click(allProfiles());
+      for (let i = 0; i < 5; i++) {
+        fireEvent.click(radio(/^DXF/));
+        fireEvent.click(radio(/^SVG/));
+      }
+      fireEvent.click(allCurves());
+      fireEvent.click(selectedProfile());
+      expect(log).toHaveLength(1);
+    } finally {
+      window.__extrudoProfileLog = undefined;
+      setKeptLimits();
+    }
   });
 
   it('still says to close a shape when a sketch simply has no closed profile', () => {
