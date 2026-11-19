@@ -66,3 +66,8 @@ the long update came from an Undo, redoing) top-level steps in one run:
   and the restart path re-sends fonts and files.
 - **Escape as Cancel**: it already means deselect / close / leave tool; a stray
   Escape would silently undo edits.
+
+**Later (2026-11-19):** while a design first opens, where Cancel is not offered, ADR-0155's
+**Stop** does replace the worker: at open there is little cache to lose, and the alternative
+was waiting for the running call. Cancel after an edit is unchanged, and the two buttons never
+show together.

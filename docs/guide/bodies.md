@@ -76,6 +76,11 @@ and the view says "Preparing your design…", with the feature being computed an
 timeline ("Rectangular Pattern1 · 5 of 9"); a feature that takes longer than 3 s gets its seconds
 counted ("· 13 s"). They turn solid when the model has been computed.
 
+If one feature takes too long, press **Stop** on that notice: the design opens without that
+feature, its chip in the timeline shows ✕, and nothing in the design is changed or saved.
+**Try again** (in the message that appears, or on the feature's right-click menu) builds it,
+however long it takes. Opening the design again also builds it again.
+
 ## Working with a body
 
 A click on a row selects the body. `Shift`-click adds more, and the selection works as it does

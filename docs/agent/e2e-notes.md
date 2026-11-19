@@ -1617,6 +1617,21 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   Parameters (`parameterExpression(…).toHaveValue`) and closing it with
   Escape before `Control+y` (Redo), so the key doesn't land in the field.
 
+### `e2e/open-stop.spec.ts`
+
+- **Stop while a design opens** (ADR-0155): builds its design in the spec like
+  `model-progress.spec.ts`'s last test (the PCB enclosure benchmark, `Rectangular Pattern1` at
+  12 × 12; copy each input and change only `expr`) and imports it. Waits until
+  `[data-progress-feature]` names the pattern and the button named "Stop: open the design without
+  this feature for now" (`[data-model-stop]`) shows, then clicks it. The toast is `[data-toast]`
+  with "was stopped" and a "Try again" button (12 s lifetime: check it before waiting for ready).
+  After `kernelReady` the pattern's chip has `data-feature-status="error"`, the accessible name
+  "Rectangular Pattern1 (error)", the tooltip the stop message, the status line "1 error"; Undo is
+  disabled and the save status stays "Saved". Try Again is a `menuitem` of the chip's right-click
+  menu; the second Stop is pressed with Enter on the focused button, after which the chip has the
+  focus. Leaving for the home screen and opening the URL again shows the pattern running again.
+  No time is asserted; the pattern keeps one call busy 13.9 s in Node.
+
 ### `e2e/kernel-prewarm.spec.ts`
 
 - **Kernel-prewarm e2e** (ADR-0102 §8): loads the home screen and polls
