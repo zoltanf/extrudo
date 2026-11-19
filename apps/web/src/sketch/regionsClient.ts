@@ -36,6 +36,9 @@ declare global {
  */
 export const PROFILES_DEADLINE_MS = 10_000;
 
+/** How long a new worker may take to start before its first job counts as stopped. */
+const START_MS = 20_000;
+
 /** A job that is no longer wanted keeps running this long before the worker is restarted. */
 const DROP_AFTER_MS = 250;
 
@@ -82,8 +85,8 @@ export interface RegionsWorkerLike {
 }
 
 export interface RegionsProgress {
-  /** When the current run of jobs began. */
-  since: number;
+  /** When the first job of the current run began in the worker; unset until then. */
+  since?: number;
   done: number;
   total: number;
 }
@@ -240,6 +243,17 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
 
   function answer(reply: RegionsReply) {
     if (!current || reply.job !== current.id) return; // late
+    if ('started' in reply) {
+      // The deadline runs from here: a new worker's start-up isn't the sketch's.
+      clearTimer(current.timer);
+      const id = current.id;
+      current.timer = setTimer(() => timedOut(id), deadline());
+      if (progress && progress.since === undefined) {
+        progress = { ...progress, since: now() };
+        notify(false);
+      }
+      return;
+    }
     const { job } = current;
     if (!wanted.has(job.data)) return finish(); // dropped
     if ('regions' in reply) {
@@ -317,6 +331,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
         if (disposed || current) return;
         const job = queue.shift();
         if (!job) return notify();
+        if (progress && progress.since === undefined) progress = { ...progress, since: now() };
         try {
           runInline(job);
         } catch {
@@ -331,7 +346,13 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     const job = queue.shift() as RegionsJob;
     const id = nextId++;
     const wait = delay();
-    current = { job, id, started: now(), timer: setTimer(() => timedOut(id), deadline()) };
+    // Until the worker says it has begun, only a start-up that never ends counts.
+    current = {
+      job,
+      id,
+      started: now(),
+      timer: setTimer(() => timedOut(id), deadline() + START_MS),
+    };
     worker.postMessage({
       type: 'job',
       job: id,
@@ -363,8 +384,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
         current = undefined;
         stopWorker();
       }
-      if ((queue.length > 0 || current) && !progress)
-        progress = { since: now(), done: 0, total: 0 };
+      if ((queue.length > 0 || current) && !progress) progress = { done: 0, total: 0 };
       notify(false);
       pump();
     },

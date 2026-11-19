@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import {
   createDocument,
@@ -7,7 +7,7 @@ import {
   type SketchData,
   sketchInputs,
 } from '../packages/core/src/index';
-import { readArchive, writeArchive } from '../packages/storage/src/archive';
+import { writeArchive } from '../packages/storage/src/archive';
 import { kernelReady, parameterExpression, pickTool, projector } from './helpers';
 
 // The profiles of sketches that aren't open are found in a worker (ADR-0154). A design of six
@@ -81,32 +81,44 @@ test('a design of heavy sketches opens without profile work on the page, and eve
   page,
 }, info) => {
   test.setTimeout(120_000);
-  await page.addInitScript(() => {
-    const long: number[] = [];
-    (window as unknown as { __long: number[] }).__long = long;
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) long.push(entry.duration);
-    }).observe({ type: 'longtask', buffered: true });
-  });
   const path = info.outputPath('heavy.extrudo');
   writeDesign(
     path,
     Array.from({ length: 6 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, heavy(i * 300))),
   );
   const viewport = await importDesign(page, path);
-  // While the worker is at it for more than a moment, the status bar says so.
+  // While the worker finds them (about a second a sketch), the page answers at once.
+  const answers: number[] = [];
+  for (;;) {
+    const fills = (await viewport.getAttribute('data-sketch-fills')) ?? '';
+    if (/waiting=0$/.test(fills)) break;
+    const t = Date.now();
+    await page.evaluate(() => 0);
+    answers.push(Date.now() - t);
+    await page.waitForTimeout(100);
+  }
+  expect(answers.length).toBeGreaterThan(5);
+  // Six detections of about a second each, on the page, would hold it for seconds.
+  expect(Math.max(...answers)).toBeLessThan(1000);
+  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=6 unshaded=0 waiting=0');
+});
+
+test('while profiles take a moment, the status bar says so', async ({ page }, info) => {
+  test.setTimeout(90_000);
+  await page.addInitScript('window.__extrudoProfilesDelay = 300');
+  const path = info.outputPath('slow.extrudo');
+  writeDesign(
+    path,
+    Array.from({ length: 4 }, (_, i) =>
+      sketch(`r${i}`, `Sketch${i + 1}`, rectangle(i * 60, 0, i * 60 + 40, 20)),
+    ),
+  );
+  const viewport = await importDesign(page, path);
   await expect(page.getByRole('status', { name: 'Finding profiles' })).toContainText(
-    /Finding profiles \d of 6…/,
+    /Finding profiles \d of 4…/,
   );
-  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=6 unshaded=0 waiting=0', {
-    timeout: 90_000,
-  });
+  await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=4 unshaded=0 waiting=0');
   await expect(page.getByRole('status', { name: 'Finding profiles' })).toHaveCount(0);
-  const longest = await page.evaluate(() =>
-    Math.max(0, ...(window as unknown as { __long: number[] }).__long),
-  );
-  // Six detections of about a second each would block the page for seconds on end.
-  expect(longest).toBeLessThan(1500);
 });
 
 test('a quick design never says it is finding profiles', async ({ page }, info) => {
@@ -128,34 +140,51 @@ test('a quick design never says it is finding profiles', async ({ page }, info) 
   expect(await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen)).toEqual([]);
 });
 
-test('an edit while the sketch is in the worker never shows the old regions', async ({ page }) => {
+test('an edit while the sketch is in the worker never shows the old regions', async ({
+  page,
+}, info) => {
   // Every answer of the worker waits 1.5 s, so the edit lands while the first job runs.
   await page.addInitScript('window.__extrudoProfilesDelay = 1500');
-  const b1 = readArchive(readFileSync('fixtures/benchmarks/b1-plate.extrudo')).doc;
-  writeFileSync(test.info().outputPath('b1.extrudo'), writeArchive(b1));
-  const viewport = await importDesign(page, test.info().outputPath('b1.extrudo'));
-  await kernelReady(page);
-  // The plate is 120 mm wide; make it 60 mm before the worker answers.
+  // A circle whose diameter is the parameter `size`: 60 mm, then 20 mm.
+  const doc = createDocument({ name: 'Circle' });
+  doc.parameters.push({ id: 'p1', name: 'size', expression: '60 mm', unit: 'length' } as never);
+  const data = {
+    entities: {
+      c: { type: 'point', x: 0, y: 0 },
+      k: { type: 'circle', center: 'c', radius: 30, construction: false },
+    },
+    constraints: { f: { type: 'fix', entity: 'c' } },
+    dimensions: {
+      d: {
+        type: 'diameter',
+        curve: 'k',
+        expr: 'size',
+        paramName: 'd1',
+        driven: false,
+        label: { x: 40, y: 0 },
+      },
+    },
+  } as unknown as SketchData;
+  doc.features.push(sketch('s', 'Sketch1', data));
+  doc.timelineMarker = 1;
+  const path = info.outputPath('circle.extrudo');
+  writeFileSync(path, writeArchive(doc));
+  const viewport = await importDesign(page, path);
   await pickTool(page, 'Parameters');
-  const width = await parameterExpression(page, 'width');
-  await width.fill('60 mm');
-  await width.press('Enter');
+  const size = await parameterExpression(page, 'size');
+  await size.fill('20 mm');
+  await size.press('Enter');
   await page.keyboard.press('Escape');
   await expect(viewport).toHaveAttribute('data-sketch-fills', 'shaded=1 unshaded=0 waiting=0', {
     timeout: 20_000,
   });
   await page.mouse.move(5, 5);
   const at = await projector(viewport);
-  // The old plate covered x = 10 and x = 110; the new one, 60 mm wide, covers one of them,
-  // whichever side the solver kept. Old regions would pick at both.
-  const picks = async (x: number) => {
-    await page.mouse.click(at([x, 40, 0]).x, at([x, 40, 0]).y);
-    const n = await page.getByRole('status', { name: 'Selection' }).count();
-    await page.keyboard.press('Escape');
-    await page.mouse.move(5, 5);
-    return n;
-  };
-  expect((await picks(10)) + (await picks(110))).toBe(1);
+  // 20 mm from the centre was inside the old circle only; 4 mm is inside both.
+  await page.mouse.click(at([14, 14, 0]).x, at([14, 14, 0]).y);
+  await expect(page.getByRole('status', { name: 'Selection' })).toHaveCount(0);
+  await page.mouse.click(at([3, 3, 0]).x, at([3, 3, 0]).y);
+  await expect(page.getByRole('status', { name: 'Selection' })).toHaveText('1 profile ·');
 });
 
 test('without a worker the UI thread finds the profiles, and fills still appear', async ({

@@ -19,6 +19,7 @@ async function handle(request: RegionsRequest): Promise<void> {
     return;
   }
   const { job } = request;
+  post({ job, started: true });
   try {
     const result = regionsOf(request.data, request.maxFillVertices);
     if (request.delay) await new Promise((resolve) => setTimeout(resolve, request.delay));

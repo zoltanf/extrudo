@@ -1072,7 +1072,7 @@ function FindingProfiles({ store }: { store: StoreApi<RegionsState> }) {
     const timer = setTimeout(() => setTick((t) => t + 1), wait);
     return () => clearTimeout(timer);
   }, [since]);
-  if (!progress || performance.now() - progress.since < FINDING_DELAY_MS) return null;
+  if (!progress || since === undefined || performance.now() - since < FINDING_DELAY_MS) return null;
   return (
     <output
       aria-label="Finding profiles"

@@ -40,6 +40,11 @@ class FakeWorker implements RegionsWorkerLike {
   jobs() {
     return this.sent.filter((m) => m.type === 'job') as Extract<RegionsRequest, { type: 'job' }>[];
   }
+  /** Says the last job has begun, as the real worker does first. */
+  start(job = this.jobs().at(-1)) {
+    if (!job) throw new Error('no job');
+    this.onmessage?.({ data: { job: job.job, started: true } } as MessageEvent<RegionsReply>);
+  }
   /** Answers the last job as the real worker would. */
   answer(job = this.jobs().at(-1)) {
     if (!job) throw new Error('no job');
@@ -175,7 +180,13 @@ describe('createRegionsClient', () => {
     const { client, workers, advance } = setup();
     client.addFont('f@1', new Uint8Array([1, 2, 3]).buffer);
     client.want([job('a', a), job('b', b)]);
-    advance(1000);
+    // A new worker's start-up doesn't count against the sketch.
+    advance(5000);
+    expect(workers[0]?.terminated).toBe(false);
+    workers[0]?.start();
+    advance(999);
+    expect(workers[0]?.terminated).toBe(false);
+    advance(1);
     expect(workers[0]?.terminated).toBe(true);
     expect(client.get(a, 0)?.state).toBe('stopped');
     expect(workers[1]?.sent[0]).toMatchObject({ type: 'font', id: 'f@1' });
@@ -251,6 +262,10 @@ describe('createRegionsClient', () => {
     const { client, worker } = setup();
     client.want([job('a', a), job('b', b), job('c', c)]);
     expect(client.store.getState().progress).toMatchObject({ done: 0, total: 3 });
+    // The hint's clock starts with the first job the worker begins.
+    expect(client.store.getState().progress?.since).toBeUndefined();
+    worker().start();
+    expect(client.store.getState().progress?.since).toBe(0);
     worker().answer();
     expect(client.store.getState().progress).toMatchObject({ done: 1, total: 3 });
     worker().answer();

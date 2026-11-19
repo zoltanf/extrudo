@@ -15,6 +15,8 @@ export type RegionsRequest =
     };
 
 export type RegionsReply =
+  /** The worker has begun the job: its deadline runs from now (a new worker's start-up doesn't count). */
+  | { job: number; started: true }
   | {
       job: number;
       regions: FlatRegions;
