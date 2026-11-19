@@ -1015,6 +1015,10 @@ export class Recomputer {
     const steps = activeFeatures(doc);
     const stepOf = new Map(steps.map((f, i) => [f.id, i]));
     let done = 0;
+    // When the reported feature started (ADR-0105's amendment of 2026-11-19): a
+    // feature reported again (prepared, then evaluated) keeps its first time.
+    let reported: FeatureId | undefined;
+    let since = 0;
     let result: RecomputeResult;
     try {
       await this.#sendResources(doc);
@@ -1025,7 +1029,11 @@ export class Recomputer {
           this.#current = id;
           const at = stepOf.get(id);
           if (at !== undefined) done = at;
-          this.#reportProgress({ done, total: steps.length, feature: id });
+          if (id !== reported) {
+            reported = id;
+            since = Date.now();
+          }
+          this.#reportProgress({ done, total: steps.length, feature: id, since });
         }),
       );
     } catch (error) {

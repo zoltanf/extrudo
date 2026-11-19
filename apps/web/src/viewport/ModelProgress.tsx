@@ -5,10 +5,13 @@ import { useStore } from 'zustand';
 import { Button } from '../design-system/Button';
 import {
   activeFeatureCount,
+  featureSeconds,
+  nextTickIn,
   progressBar,
   progressDetail,
   progressMode,
   progressTitle,
+  showsBar,
   showsCancel,
   UPDATING_AFTER_MS,
   WAITING_AFTER_MS,
@@ -60,6 +63,40 @@ export function ProgressCube({ size = 20 }: { size?: number }) {
       <path className="x-cube-face x-cube-left" d="M3 7 12 12V22L3 17Z" fill="currentColor" />
       <path className="x-cube-face x-cube-right" d="M12 12 21 7V17L12 22Z" fill="currentColor" />
     </svg>
+  );
+}
+
+/**
+ * How long the reported feature has run, after the bar's line (ADR-0105's
+ * amendment of 2026-11-19): " · 13 s" from `SECONDS_FROM` on. Its own timer
+ * redraws only this span, once per change, and runs only while the span is
+ * mounted, i.e. while the notice shows the bar. Hidden from screen readers: the
+ * notice is a polite live region, and a count that changes every second would
+ * be read out every second.
+ */
+export function FeatureSeconds({ since }: { since: number }) {
+  // The time the count was last read; the timer moves it, so a render reads no clock.
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      timer = setTimeout(
+        () => {
+          setNow(Date.now());
+          arm();
+        },
+        nextTickIn(since, Date.now()),
+      );
+    };
+    arm();
+    return () => clearTimeout(timer);
+  }, [since]);
+  const seconds = featureSeconds(since, now);
+  if (seconds === undefined) return null;
+  return (
+    <span aria-hidden data-feature-seconds className="shrink-0 whitespace-pre">
+      {` · ${seconds} s`}
+    </span>
   );
 }
 
@@ -137,7 +174,7 @@ export function ModelProgress({
   if (!mode) return null;
 
   const bar =
-    mode === 'updating' && progress
+    progress && showsBar(mode, true)
       ? progressBar({
           done: progress.done,
           total: progress.total,
@@ -177,7 +214,13 @@ export function ModelProgress({
               aria-label="Features computed"
               className="mt-1 h-1 w-40 accent-accent"
             />
-            <span className="mt-0.5 text-xs text-muted">{bar.text}</span>
+            <span data-progress-line className="mt-0.5 flex max-w-64 text-xs text-muted">
+              <span data-progress-feature className="min-w-0 truncate">
+                {bar.name}
+              </span>
+              <span className="shrink-0 whitespace-pre">{` · ${bar.position}`}</span>
+              {progress && <FeatureSeconds since={progress.since} />}
+            </span>
           </>
         ) : (
           <span className="text-xs text-muted">

@@ -9,9 +9,9 @@ describe('kernelText', () => {
     expect(kernelText('ready', undefined, undefined)).toBe('computed');
   });
   it('shows the running recompute position when the store has one (ADR-0105 §3)', () => {
-    expect(kernelText('computing', undefined, { done: 3, total: 7, feature: 'f1' as never })).toBe(
-      'computing 4/7',
-    );
+    expect(
+      kernelText('computing', undefined, { done: 3, total: 7, feature: 'f1' as never, since: 0 }),
+    ).toBe('computing 4/7');
   });
   it('rounds the last recompute to whole ms above 10 ms', () => {
     expect(kernelText('ready', { ms: 4.25, evaluated: 1, reused: 0 }, undefined)).toBe(

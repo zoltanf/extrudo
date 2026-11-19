@@ -80,6 +80,8 @@ function setup(
     recomputeGate?: () => Promise<void>;
     /** Whether a reported feature is forwarded to the Recomputer's `onFeature`. */
     reportFeature?: (id: FeatureId) => boolean;
+    /** Forwards each reported feature twice, as the engine does for one with a prepare step. */
+    reportTwice?: boolean;
   } = {},
 ) {
   const requests: RecomputeRequest[] = [];
@@ -143,7 +145,10 @@ function setup(
             request,
             report
               ? (id) => {
-                  if (report(id)) onFeature?.(id);
+                  if (!report(id)) return;
+                  onFeature?.(id);
+                  // A feature with a prepare step is reported twice (engine.ts).
+                  if (options.reportTwice) onFeature?.(id);
                 }
               : onFeature,
           );
@@ -991,12 +996,60 @@ describe('Recomputer', () => {
         reportFeature: (id) => id === 'f2',
         recomputeGate: () => gate.promise,
       });
+      const before = Date.now();
       await until(() => model.getState().progress !== undefined);
-      expect(model.getState().progress).toEqual({ done: 1, total: 3, feature: 'f2' });
+      expect(model.getState().progress).toEqual({
+        done: 1,
+        total: 3,
+        feature: 'f2',
+        since: expect.any(Number),
+      });
+      expect(model.getState().progress?.since).toBeGreaterThanOrEqual(before);
+      expect(model.getState().progress?.since).toBeLessThanOrEqual(Date.now());
       gate.resolve();
       await until(() => ready(model));
       expect(model.getState().progress).toBeUndefined();
     } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps a feature's start time while it is reported again, and takes a new one for the next (ADR-0105's amendment of 2026-11-19)", {
+    timeout: 30_000,
+  }, async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    // Each read of the clock is a second later, so two reads never agree by chance.
+    let clock = 0;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 1000));
+    const gate = deferred();
+    try {
+      const { model } = setup(chainDocument(3), {
+        reportFeature: (id) => id === 'f2' || id === 'f3',
+        reportTwice: true,
+        recomputeGate: () => gate.promise,
+      });
+      const seen: Array<{ feature: string; since: number }> = [];
+      model.subscribe((state) => {
+        const p = state.progress;
+        if (p) seen.push({ feature: p.feature, since: p.since });
+      });
+      // `until` reads the clock this test moves, so wait by turns instead (2,000 × 5 ms).
+      for (let turn = 0; turn < 2000 && seen.length < 4; turn++) {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      const [a, b, c, d] = seen;
+      expect([a?.feature, b?.feature, c?.feature, d?.feature]).toEqual(['f2', 'f2', 'f3', 'f3']);
+      expect(b?.since).toBe(a?.since);
+      expect(d?.since).toBe(c?.since);
+      expect(c?.since).toBeGreaterThan(a?.since ?? Number.POSITIVE_INFINITY);
+      now.mockRestore();
+      gate.resolve();
+      await until(() => ready(model));
+    } finally {
+      now.mockRestore();
       vi.unstubAllGlobals();
     }
   });

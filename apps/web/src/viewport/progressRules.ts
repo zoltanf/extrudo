@@ -86,14 +86,51 @@ export function progressDetail(mode: ProgressMode, value: number | WaitInput): s
 }
 
 /**
- * The determinate bar of a long recompute (ADR-0105 §3): how far it is among
- * the active features, and the line under it ("Thread1 · 4 of 7"). `name` is
- * the reported feature's name from the document, which the caller passes.
+ * The determinate bar of a long recompute (ADR-0105 §3), while a design opens
+ * too (its amendment of 2026-11-19): how far it is among the active features,
+ * and the line under it ("Thread1 · 4 of 7"). `name` is the reported
+ * feature's name from the document, which the caller passes; `name` and
+ * `position` come apart so a long name can be cut short and the count kept.
  */
 export function progressBar({ done, total, name }: { done: number; total: number; name: string }): {
   value: number;
   max: number;
+  name: string;
+  position: string;
   text: string;
 } {
-  return { value: done, max: total, text: `${name} · ${done + 1} of ${total}` };
+  const position = `${done + 1} of ${total}`;
+  return { value: done, max: total, name, position, text: `${name} · ${position}` };
+}
+
+/**
+ * Whether the notice draws the bar (ADR-0105's amendment of 2026-11-19): while
+ * a design opens and while it updates, once the kernel has reported a feature.
+ * Before that the opening notice keeps "Computing n features".
+ */
+export function showsBar(mode: ProgressMode, reported: boolean): boolean {
+  return reported && (mode === 'preparing' || mode === 'updating');
+}
+
+/** The line under the bar counts the feature's seconds from this many on (ADR-0105's amendment of 2026-11-19). */
+export const SECONDS_FROM = 3;
+
+/**
+ * Whole seconds the reported feature has run at `now`, or undefined while it is
+ * under `SECONDS_FROM` (a quick feature never shows a count).
+ */
+export function featureSeconds(since: number, now: number): number | undefined {
+  const seconds = Math.floor((now - since) / 1000);
+  return seconds >= SECONDS_FROM ? seconds : undefined;
+}
+
+/**
+ * How long, in ms, until the shown seconds change: the first count at
+ * `SECONDS_FROM`, then each whole second since `since`. The notice's timer
+ * waits this long, so it wakes once per change and not before the count shows.
+ */
+export function nextTickIn(since: number, now: number): number {
+  const elapsed = Math.max(0, now - since);
+  const first = SECONDS_FROM * 1000 - elapsed;
+  return first > 0 ? first : 1000 - (elapsed % 1000);
 }
