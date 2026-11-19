@@ -1027,7 +1027,7 @@ function Scene({
   const sketchBounds = useMemo(
     () =>
       sketches.reduce<Bounds | undefined>(
-        (bounds, s) => unionBounds(bounds, sketchSegments(s.data, s.frame).bounds),
+        (bounds, s) => unionBounds(bounds, sketchBoundsOf(s.data, s.frame)),
         undefined,
       ),
     [sketches],
@@ -2083,6 +2083,26 @@ function tangentGripsSummary(sketches: readonly SketchDrawing[]): string | undef
   return tangentGrips(sketch.data, sketch.gripSpline as SketchEntityId)
     .map((g) => `${g.end}:${round(g.at[0])},${round(g.at[1])}`)
     .join(' ');
+}
+
+const boundsCache = new WeakMap<
+  SketchDrawing['data'],
+  { frame: SketchDrawing['frame']; bounds: Bounds | undefined }
+>();
+
+/**
+ * A sketch's box for "Fit", kept by its data and frame: the shell hands new drawings
+ * with every profile result (ADR-0154), and the curves don't change with them.
+ */
+function sketchBoundsOf(
+  data: SketchDrawing['data'],
+  frame: SketchDrawing['frame'],
+): Bounds | undefined {
+  const known = boundsCache.get(data);
+  if (known?.frame === frame) return known.bounds;
+  const bounds = sketchSegments(data, frame).bounds;
+  boundsCache.set(data, { frame, bounds });
+  return bounds;
 }
 
 /**
