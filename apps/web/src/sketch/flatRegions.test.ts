@@ -195,6 +195,12 @@ describe('strings in flat regions', () => {
     expect(fromWire(toWire(regions)).ids).toEqual(regions.ids);
   });
 
+  it('takes no place outside the strings', () => {
+    const wire = toWire(flattenRegions(made(2, (i) => `r${i}`, () => 'text')));
+    expect(() => fromWire({ ...wire, idOf: Uint32Array.from([0, 9]) })).toThrow(RangeError);
+    expect(() => fromWire({ ...wire, textOf: Int32Array.from([0, -2]) })).toThrow(RangeError);
+  });
+
   it('gives region IDs a fixed short length, as detection hashes them', () => {
     const ids = detectProfiles(FIXTURES['a plate with holes'] as SketchData).map((p) => p.id);
     expect(Math.max(...ids.map((id) => id.length))).toBeLessThanOrEqual(11);

@@ -103,12 +103,18 @@ export function toWire(regions: FlatRegions): WireRegions {
   };
 }
 
+/** The regions back from their wire form; throws a `RangeError` for a place outside `strings`. */
 export function fromWire(wire: WireRegions): FlatRegions {
   const { strings, idOf, textOf, ...arrays } = wire;
+  const at = (i: number) => {
+    const text = strings[i];
+    if (text === undefined) throw new RangeError(`No string ${i} of ${strings.length}`);
+    return text;
+  };
   return {
     ...arrays,
-    ids: Array.from(idOf, (i) => strings[i] as string),
-    texts: Array.from(textOf, (i) => (i < 0 ? '' : (strings[i] as string))),
+    ids: Array.from(idOf, at),
+    texts: Array.from(textOf, (i) => (i === -1 ? '' : at(i))),
   };
 }
 

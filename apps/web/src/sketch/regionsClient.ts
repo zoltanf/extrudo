@@ -336,7 +336,14 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     const { job } = current;
     if (!wanted.has(job.data)) return finish(); // dropped
     if ('regionBytes' in reply) {
-      const regions = reply.regions && fromWire(reply.regions);
+      let regions: FlatRegions | undefined;
+      try {
+        regions = reply.regions && fromWire(reply.regions);
+      } catch {
+        // A reply that doesn't hold together counts as a failure, not as regions.
+        store_(job, { state: 'failed', regionBytes: 0, fillBytes: 0, fillable: false });
+        return finish();
+      }
       store_(job, {
         state: 'done',
         ...(regions && { regions }),
@@ -418,7 +425,11 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     const { regions, regionBytes, vertices } = found;
     const allowance = Math.max(0, (job.allowance ?? Number.POSITIVE_INFINITY) - accepted);
     const bytes = fillBytes(vertices, regions.ids.length);
-    const used = [...inlineWork].reduce((n, [data, w]) => n + (wanted.has(data) ? w : 0), 0);
+    // Its own earlier fill doesn't count: asked again, a sketch replaces it.
+    const used = [...inlineWork].reduce(
+      (n, [data, w]) => n + (wanted.has(data) && data !== job.data ? w : 0),
+      0,
+    );
     const fits = regionBytes + bytes <= allowance;
     const work = fits ? fillWork(found.profiles) : 0;
     const mayFill = fits && work <= MAX_FILL_WORK && used + work <= MAX_DESIGN_FILL_WORK;

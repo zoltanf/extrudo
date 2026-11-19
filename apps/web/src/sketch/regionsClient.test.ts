@@ -350,6 +350,24 @@ describe('createRegionsClient', () => {
     expect(client.get(a, 0)?.state).toBe('done');
   });
 
+  it('counts a reply whose regions name a string it lacks as a failure', () => {
+    const { client, worker } = setup();
+    client.want([job('a', a)]);
+    const last = worker().jobs()[0] as Extract<RegionsRequest, { type: 'job' }>;
+    const wire = toWire(flattenRegions(detectProfiles(a)));
+    const reply = {
+      job: last.job,
+      regions: { ...wire, idOf: Uint32Array.from(wire.idOf, () => wire.strings.length) },
+      regionBytes: 200,
+      count: wire.idOf.length,
+      vertices: 6,
+      fill: false,
+    };
+    worker().onmessage?.({ data: reply } as MessageEvent<RegionsReply>);
+    expect(client.get(a, 0)?.state).toBe('failed');
+    expect(client.get(a, 0)?.regions).toBeUndefined();
+  });
+
   it('tells the worker what the budget has left for the sketch', () => {
     const { client, worker } = setup();
     client.want([{ ...job('a', a), allowance: 1234 }]);
