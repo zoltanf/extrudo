@@ -321,6 +321,57 @@ describe('what a hostile file can make the plan read', () => {
   });
 });
 
+describe('what the whole plan may visit', () => {
+  /** `rows` rows of `n` patterns, each of two originals: the one before it and a pad on that one. */
+  function patternRows(rows: number, n: number) {
+    const objects: FcObject[] = [];
+    const tips: string[] = [];
+    for (let r = 0; r < rows; r++) {
+      objects.push(pad(`P${r}_0`), pad(`Q${r}_0`, `P${r}_0`));
+      for (let i = 1; i < n; i++) {
+        objects.push(
+          object(`P${r}_${i}`, 'PartDesign::LinearPattern', {
+            Originals: {
+              kind: 'linkList',
+              objects: [`P${r}_${i - 1}`, `Q${r}_${i - 1}`],
+            } as FcValue,
+          }),
+          pad(`Q${r}_${i}`, `P${r}_${i}`),
+        );
+      }
+      tips.push(`P${r}_${n - 1}`);
+    }
+    return { objects, tips };
+  }
+
+  it('256 rows of 501 patterns of two originals cost the budgets, not their product', () => {
+    const { objects, tips } = patternRows(256, 501);
+    const t = performance.now();
+    const chains = plan(objects, tips);
+    const ms = performance.now() - t;
+    expect(chains.every((c) => c.refused?.reason === 'limit')).toBe(true);
+    expect(ms).toBeLessThan(2_000);
+    if (process.env.BENCH) console.log(`256 rows of 501 patterns: ${Math.round(ms)} ms`);
+  });
+
+  it('rows refused at their cap use up the visits: the chains after them as today', () => {
+    const rows = Array.from({ length: 40 }, (_, r) =>
+      Array.from({ length: 501 }, (_, i) =>
+        pad(`R${r}_${i}`, i > 0 ? `R${r}_${i - 1}` : undefined),
+      ),
+    ).flat();
+    const tips = Array.from({ length: 40 }, (_, r) => `R${r}_500`);
+    const chains = plan([...rows, pad('A')], [...tips, 'A']);
+    expect(chains.at(-1)?.refused?.reason).toBe('limit');
+    expect(chains.at(-1)?.refused?.detail).toMatch(/follow/);
+  });
+
+  it('an honest file never comes near them', () => {
+    const { objects, tips } = patternRows(2, 40);
+    expect(plan(objects, tips).map((c) => c.refused)).toEqual([undefined, undefined]);
+  });
+});
+
 describe('the limits', () => {
   /** A row of `n` pads, each on the one before. */
   const row = (n: number) =>

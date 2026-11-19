@@ -11,9 +11,10 @@
  * its sketch is attached to, when that holds a solid. The base as read is never trusted: the walk
  * checks every feature against the shape the file stores for it.
  *
- * No kernel, no recursion on the file's depth. Every chain is followed once and the whole plan is
- * bounded by `maxFile` features and `maxChains` chains, so a file of many tips on one long row
- * costs the caps, not the square of the row.
+ * No kernel, no recursion on the file's depth. What a file can make the plan do is bounded by two
+ * budgets of the planner, refused chains counted: `PLAN_VISITS_PER_FEATURE` times `maxFile` features
+ * visited and `MAX_ORIGINAL_LINKS` links followed among patterns' originals. Past either a chain
+ * comes in as today (`limit`).
  */
 import { supportsOf } from './attach';
 import { FEATURE_TYPES, MAX_ORIGINALS } from './features';
@@ -29,8 +30,15 @@ import { cleanName } from './names';
 
 /** The most loose chains one import plans at its top (the library has 14). */
 export const MAX_LOOSE_CHAINS = 256;
-/** The most links followed to tell which of a pattern's originals is the last of their row. */
+/** The most links followed to tell which of one pattern's originals is the last of their row. */
 const MAX_ORIGINAL_STEPS = 500;
+/** The most such links one file may have followed, every pattern together (the library needs none). */
+export const MAX_ORIGINAL_LINKS = 20_000;
+/**
+ * How many times `maxFile` the planner may visit features, those of chains it refuses included: a
+ * refused chain gives back what it counted against `maxFile`, so this is what bounds such rows.
+ */
+export const PLAN_VISITS_PER_FEATURE = 4;
 
 /** Which rule gave a feature's base; `none` when it starts a new solid. */
 export type BaseRule = 'base-feature' | 'dress-up' | 'original' | 'support' | 'none';
@@ -82,6 +90,8 @@ interface BaseRead {
   readonly name?: string;
   readonly rule: BaseRule;
   readonly broken?: string;
+  /** The planner's budget for patterns' originals ran out here. */
+  readonly over?: true;
   readonly conflict: boolean;
 }
 
@@ -179,10 +189,11 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
 
   /**
    * The original no other of the list builds on: the last of them in their row. The first when
-   * they aren't in one row, lead back to each other or are too many to follow. Iterative, each
-   * object followed once per list.
+   * they aren't in one row, lead back to each other or are too many to follow; `undefined` when the
+   * file has used up `MAX_ORIGINAL_LINKS`. Iterative, each object followed once per list.
    */
-  const lastOriginal = (list: readonly string[]): string => {
+  let originalLinks = 0;
+  const lastOriginal = (list: readonly string[]): string | undefined => {
     const first = list[0] as string;
     if (list.length < 2 || list.length > MAX_ORIGINALS) return first;
     const originals = new Set(list);
@@ -191,6 +202,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
     for (const start of originals)
       for (let at: string | undefined = start; at !== undefined && !visited.has(at); ) {
         visited.add(at);
+        if (++originalLinks > MAX_ORIGINAL_LINKS) return undefined;
         if (visited.size > MAX_ORIGINAL_STEPS) return first;
         const o = doc.byName.get(at);
         at = o ? nextLink(o) : undefined;
@@ -227,8 +239,12 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
       if (dressed?.kind === 'linkSub' && dressed.object)
         return namedBase(dressed.object, 'its base', 'dress-up', false);
       const originals = o.properties.Originals?.value;
-      if (originals?.kind === 'linkList' && originals.objects[0] !== undefined)
-        return namedBase(lastOriginal(originals.objects), 'its original', 'original', false);
+      if (originals?.kind === 'linkList' && originals.objects[0] !== undefined) {
+        const last = lastOriginal(originals.objects);
+        return last === undefined
+          ? { rule: 'original', conflict: false, over: true }
+          : namedBase(last, 'its original', 'original', false);
+      }
       if (onSolid) return { name: onSolid.name, rule: 'support', conflict: false };
       return { rule: 'none', conflict: false };
     })();
@@ -236,6 +252,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
     return read;
   };
 
+  let visits = 0;
   const chain: LoosePlanner['chain'] = (tip, limits, used) => {
     const counted = used.features;
     /** A chain that doesn't come in leaves what it counted to the chains after it. */
@@ -246,6 +263,7 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
     // Its last feature could never hold: nothing below it is worth walking.
     if (!walkable(tip)) return refuse('type', `it is a ${tip.type || 'object of no type'}`);
     const overFile = `the file's rows have more than ${limits.maxFile} features`;
+    const tooMany = "the file's rows take too many links to follow";
     if (used.features >= limits.maxFile) return refuse('limit', overFile);
     const features: FcObject[] = [];
     const rules: BaseRule[] = [];
@@ -256,12 +274,14 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
       if (features.length >= limits.maxFeatures)
         return refuse('limit', `its row has more than ${limits.maxFeatures} features`);
       if (used.features >= limits.maxFile) return refuse('limit', overFile);
+      if (++visits > PLAN_VISITS_PER_FEATURE * limits.maxFile) return refuse('limit', tooMany);
       used.features++;
       seen.add(at.name);
       features.push(at);
       const base = baseOf(at);
       rules.push(base.rule);
       if (base.conflict) conflicts++;
+      if (base.over) return refuse('limit', tooMany);
       if (base.broken) return refuse('chain', `${named(at.name)}: ${base.broken}`);
       if (base.name === undefined) break;
       if (seen.has(base.name)) return refuse('chain', 'its features lead back to themselves');

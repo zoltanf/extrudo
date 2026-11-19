@@ -96,6 +96,7 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
     let foreign = 0;
     let restarts = 0;
     let filesWithChains = 0;
+    let faceFallbacks = 0;
     for (const path of walk(root as string)) {
       const bytes = new Uint8Array(readFileSync(path));
       const doc = readFcstd(bytes);
@@ -154,6 +155,7 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
         bump(chains, kind);
         if (b.loose.foreignBase) bump(chains, `${kind}, foreign base`);
         for (const s of b.steps) bump(steps, s.reason);
+        faceFallbacks += b.faceFallbacks ?? 0;
         for (const m of b.mapped) {
           bump(features, `${m.kind} held`);
           references.found += m.references?.found ?? 0;
@@ -194,6 +196,7 @@ describe.skipIf(!root)('the loose chains of a library (FCSTD_SAMPLES)', () => {
       features,
       steps,
       planes,
+      faceFallbacks,
       references,
       parameters,
       imports,

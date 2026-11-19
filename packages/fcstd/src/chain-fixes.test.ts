@@ -3,13 +3,24 @@
  * loose feature shares with it, a chain's stop is its own feature's, only loose chains are planned,
  * and the face a sketch stays on is tried on every path that adds a sketch.
  */
+import type { ExtrudoDocument } from '@extrudo/core';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { asOldFile, type ChainExtraObject, chainBrep, chainCase, chainFile } from './chain-parts';
+import { finalShapes } from './final-shapes';
 import { documentXml, fcstd, guiXml } from './fixtures';
-import { type FcstdImportOptions, importFcstd } from './import';
+import { type FcstdImportOptions, type FcstdImportResult, importFcstd } from './import';
+import type { ImportKernel, RebuildResult } from './import-kernel';
+import { looseChains } from './loose-chains';
+import { readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
-import { PATTERN_FIXTURES, type PartChange, partObjects } from './pattern-parts';
+import {
+  P,
+  PATTERN_FIXTURES,
+  type PartChange,
+  partObjects,
+  partFile as patternFile,
+} from './pattern-parts';
 import { REF_FIXTURES } from './reference-parts';
 
 let planegcs: PlanegcsModule;
@@ -51,6 +62,18 @@ const stored = (name: string, type: string, base?: string): ChainExtraObject => 
   type,
   xml: `<Object name="${name}"><Properties Count="2" TransientCount="0"><Property name="BaseFeature" type="App::PropertyLink"><Link value="${base ?? ''}"/></Property><Property name="Shape" type="Part::PropertyPartShape"><Part file="${name}.Shape.brp"/></Property></Properties></Object>`,
 });
+
+/** A fixture body's features with the body taken away: loose features of a 1.1 file. */
+function loose(name: string, change: PartChange = {}): Uint8Array {
+  const fixtures = name.startsWith('hole') ? PATTERN_FIXTURES : REF_FIXTURES;
+  const { objects, entries } = partObjects(name, change, { fixtures });
+  const kept = objects.filter((o) => o.type !== 'PartDesign::Body' && !o.type.startsWith('App::'));
+  return fcstd({
+    'Document.xml': documentXml(kept, { label: 'Parts', version: '1.1.4R20260101 (Git)' }),
+    'GuiDocument.xml': guiXml([]),
+    ...entries,
+  });
+}
 
 describe('a body and a loose feature that share a sketch', () => {
   const text = () => chainBrep('pad_only', 'Pad');
@@ -152,20 +175,6 @@ describe('what is planned as a loose chain', () => {
 });
 
 describe('the face a sketch stays on', () => {
-  /** A fixture body's features with the body taken away: loose features of a 1.1 file. */
-  function loose(name: string, change: PartChange = {}): Uint8Array {
-    const fixtures = name.startsWith('hole') ? PATTERN_FIXTURES : REF_FIXTURES;
-    const { objects, entries } = partObjects(name, change, { fixtures });
-    const kept = objects.filter(
-      (o) => o.type !== 'PartDesign::Body' && !o.type.startsWith('App::'),
-    );
-    return fcstd({
-      'Document.xml': documentXml(kept, { label: 'Parts', version: '1.1.4R20260101 (Git)' }),
-      'GuiDocument.xml': guiXml([]),
-      ...entries,
-    });
-  }
-
   it.each([
     ['a revolution about an edge', 'revolution_about_edge', 'Revolution', 'RevSketch', 'Pad'],
     ['a groove about an edge', 'groove_about_edge', 'Groove', 'GrooveSketch', 'Pad'],
@@ -183,7 +192,9 @@ describe('the face a sketch stays on', () => {
     expect(planes.at(-1)).toBe('face');
   });
 
-  it('a try that falls back to the fixed plane is counted apart', { timeout: 60_000 }, async () => {
+  it('a face try and its fixed-plane try that both fail are no fallback', {
+    timeout: 60_000,
+  }, async () => {
     const r = await run(
       chainFile('chain_five', {
         edit: (name, xml) =>
@@ -195,7 +206,188 @@ describe('the face a sketch stays on', () => {
       }),
     );
     const c = r.report.bodies[0];
+    expect([c?.faceFallbacks, c?.secondAttempts]).toEqual([undefined, 0]);
+    expect(c?.steps.map((s) => s.shape)).toEqual(['Hole']);
+  });
+});
+
+/** The sketch named `name` in a document sent to the kernel, when it sits on a face. */
+function sketchOnFace(sent: ExtrudoDocument, name: string) {
+  const f = sent.features.find((x) => x.type === 'sketch' && x.name === name);
+  const refs = (f?.inputs as { plane?: { refs?: readonly { kind: string }[] } } | undefined)?.plane
+    ?.refs;
+  return f && refs?.[0]?.kind === 'face' ? f : undefined;
+}
+
+/** The node kernel with its `rebuild` wrapped: `wrap` may answer in its place. */
+function kernelWith(
+  wrap: (
+    sent: ExtrudoDocument,
+    real: () => Promise<RebuildResult>,
+  ) => Promise<RebuildResult> | undefined,
+) {
+  const node = nodeImportKernel();
+  const k: ImportKernel = {
+    ...node,
+    rebuild: (...args) => wrap(args[0], () => node.rebuild(...args)) ?? node.rebuild(...args),
+  };
+  return k;
+}
+const has = (sent: ExtrudoDocument, name: string) => sent.features.some((x) => x.name === name);
+
+describe('the second try on a face', () => {
+  it('a sketch with no usable face is tried once', { timeout: 60_000 }, async () => {
+    let boss = 0;
+    const k = kernelWith((sent) => {
+      if (has(sent, 'Boss')) boss++;
+      return undefined;
+    });
+    const r = await run(
+      chainFile('chain_five', {
+        edit: (name, xml) =>
+          name === 'Sketch002'
+            ? xml.replace(/<Link obj="[^"]*" sub="[^"]*"\/>/, '')
+            : name === 'Boss'
+              ? setLength(7)(xml)
+              : xml,
+      }),
+      { kernel: k },
+    );
+    const c = r.report.bodies[0];
+    expect(c?.steps.map((s) => [s.reason, s.shape])).toEqual([['differs', 'Boss']]);
+    expect(c?.faceFallbacks).toBeUndefined();
+    // The try of the boss itself, then the rebuilds of what comes after it never name it.
+    expect(boss).toBe(1);
+  });
+
+  it('a fixed-plane try that held after its face try is the fallback counted', {
+    timeout: 60_000,
+  }, async () => {
+    const k = kernelWith((sent, real) => {
+      const f = sketchOnFace(sent, 'Sketch001');
+      if (!f) return undefined;
+      return real().then((r) => ({
+        ...r,
+        failed: [...r.failed, { feature: f.id, message: 'not on this face' }],
+      }));
+    });
+    const r = await run(chainFile('pad_pocket'), { kernel: k });
+    const c = r.report.bodies[0];
+    expect(c?.outcome).toBe('history');
+    expect(c?.sketches.map((s) => s.plane)).toEqual(['origin', 'offset']);
     expect([c?.faceFallbacks, c?.secondAttempts]).toEqual([1, 0]);
+    expect(c?.mapped.at(-1)?.secondAttempt).toBeUndefined();
+  });
+
+  it('a face try that ran out of time has no second try', { timeout: 60_000 }, async () => {
+    let pocket = 0;
+    const k = kernelWith((sent) => {
+      if (has(sent, 'Pocket')) pocket++;
+      return sketchOnFace(sent, 'Sketch001') ? new Promise(() => undefined) : undefined;
+    });
+    const r = await run(chainFile('pad_pocket'), { kernel: k, shapeTimeoutMs: 5_000 });
+    const c = r.report.bodies[0];
+    expect([c?.outcome, c?.stop?.reason, c?.faceFallbacks]).toEqual(['shape', 'time', undefined]);
+    expect(pocket).toBe(1);
+    expect(r.report.restarts).toBe(1);
+  });
+
+  it('a kernel that fails on the face try has no second try either', {
+    timeout: 60_000,
+  }, async () => {
+    let pocket = 0;
+    const k = kernelWith((sent) => {
+      if (has(sent, 'Pocket')) pocket++;
+      return sketchOnFace(sent, 'Sketch001') ? Promise.reject(new Error('trap')) : undefined;
+    });
+    const r = await run(chainFile('pad_pocket'), { kernel: k });
+    expect([r.report.bodies[0]?.stop?.reason, pocket]).toEqual(['kernel', 1]);
+  });
+
+  it('a later target’s fixed-plane try is that target’s first attempt no more than its face try', {
+    timeout: 120_000,
+  }, async () => {
+    // Attached to the first wall's outer face, up to the first face it meets: two targets.
+    let found: FcstdImportResult | undefined;
+    for (let n = 1; n <= 16 && !found; n++) {
+      let tries = 0;
+      const k = kernelWith((sent, real) => {
+        const f = sent.features.find((x) => x.name === 'Bridge');
+        if (!f) return undefined;
+        tries++;
+        // The first target fails on its face and its plane, the second on its face.
+        return tries > 3
+          ? undefined
+          : real().then((r) => ({
+              ...r,
+              failed: [...r.failed, { feature: f.id, message: 'it goes nowhere' }],
+            }));
+      });
+      const r = await run(
+        loose('pad_up_to_first', { BridgeSketch: { support: [['Walls', `Face${n}`]] } }),
+        { kernel: k },
+      );
+      const c = r.report.bodies.find((b) => b.object === 'Bridge');
+      if (c?.faceFallbacks === 1) found = r;
+    }
+    const c = found?.report.bodies.find((b) => b.object === 'Bridge');
+    expect(c?.outcome).toBe('history');
+    expect(c?.secondAttempts).toBe(1);
+    expect(c?.mapped.at(-1)?.secondAttempt).toBe(true);
+    expect(c?.mapped.at(-1)?.upTo?.tries).toBe(2);
+  });
+});
+
+describe('a body’s hole', () => {
+  it('a first cut the rebuild reports as failed is a step, as it always was', {
+    timeout: 60_000,
+  }, async () => {
+    let tries = 0;
+    const k = kernelWith((sent, real) => {
+      const f = sent.features.find((x) => x.type === 'hole');
+      if (!f) return undefined;
+      tries++;
+      return real().then((r) => ({
+        ...r,
+        failed: [...r.failed, { feature: f.id, message: 'it cuts nothing' }],
+      }));
+    });
+    // A cut the file names by index only: two cuts to try, a counterbore and a countersink.
+    const cut = P.raw('<Integer value="5"/>');
+    const r = await run(
+      patternFile('hole_countersink', { Hole: { props: { HoleCutType: cut } } }),
+      {
+        kernel: k,
+      },
+    );
+    const body = r.report.bodies[0];
+    expect([tries, body?.secondAttempts]).toEqual([1, 0]);
+    expect(body?.stop?.reason).toBe('failed');
+  });
+});
+
+describe('a cap that ends a chain on a foreign base', () => {
+  it('a step the cap refuses names the chain’s first feature', { timeout: 60_000 }, async () => {
+    const r = await run(chainFile('on_part_box'), { maxSteps: 0 });
+    const stop = r.report.bodies[0]?.stop;
+    expect([stop?.object, stop?.reason]).toEqual(['Pad', 'limit']);
+    expect(stop?.run?.map((x) => x.object)).not.toContain('Box');
+  });
+
+  it('the time running out before the first feature leaves the base out of the run', {
+    timeout: 60_000,
+  }, async () => {
+    const r = await run(chainFile('on_part_box'), { importTimeoutMs: 0 });
+    const stop = r.report.bodies[0]?.stop;
+    expect([stop?.object, stop?.reason]).toEqual(['Pad', 'import-time']);
+    expect(stop?.run?.map((x) => x.object) ?? []).not.toContain('Box');
+  });
+
+  it('a base that can’t come in is still named', { timeout: 60_000 }, async () => {
+    const r = await run(
+      chainFile('on_part_cut', { brep: (o, t) => (o === 'Cut' ? undefined : t) }),
+    );
+    expect(r.report.bodies[0]?.stop?.object).toBe('Cut');
   });
 });
 
@@ -233,6 +425,12 @@ describe('a large stored shape many objects name', () => {
     const ms = performance.now() - t;
     expect(r.report.bodies.filter((b) => b.loose?.foreignBase).length).toBe(n);
     expect(ms).toBeLessThan(60_000);
+    // The plan alone, on the same file: the entry is inflated once for all of them.
+    const doc = readFcstd(bytes);
+    const reads = vi.spyOn(doc.entries, 'get');
+    const tips = finalShapes(doc).filter((s) => s.kind === 'chain-tip');
+    looseChains(doc, tips, { maxFeatures: 500, maxFile: 2_000 });
+    expect(reads.mock.calls.filter(([entry]) => entry === 'big.brp').length).toBe(1);
     if (process.env.BENCH) console.log(`${n} objects on one 30 MB entry: ${Math.round(ms)} ms`);
   });
 });
