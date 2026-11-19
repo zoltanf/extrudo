@@ -26,7 +26,10 @@ export function sketchesWithHover(
     const id = sketch.id as FeatureId;
     const highlight = hovered.has(id);
     const hoverEntity = sketch.active ? undefined : sketchEntityIdsIn([hover], id)[0];
-    const hoverProfile = sketch.regions ? profileIdsIn([hover], id)[0] : undefined;
+    const hoverProfile =
+      sketch.regions || (sketch.active && sketch.selectedProfiles)
+        ? profileIdsIn([hover], id)[0]
+        : undefined;
     if (!highlight && hoverEntity === undefined && hoverProfile === undefined) return sketch;
     changed = true;
     return {

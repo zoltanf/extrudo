@@ -12,7 +12,6 @@ import {
   textPolylines,
 } from '@extrudo/core';
 import type { EntityStatus } from '@extrudo/sketch/inference';
-import type { Profile } from '@extrudo/sketch/profiles';
 import type { FlatRegions } from '../sketch/flatRegions';
 import { tangentGrips } from '../sketch/splineEnds';
 import type { Vec3 } from './camera';
@@ -34,14 +33,11 @@ export interface SketchDrawing {
   /** Constraint status by entity (P1-08), for the sketch being edited once the solver is in. */
   status?: Readonly<Record<string, EntityStatus>>;
   /**
-   * The open sketch's regions, found on the UI thread (P1-11): its fill is
-   * built from them. Absent for other sketches and past the budget.
-   */
-  openProfiles?: readonly Profile[];
-  /**
-   * The regions to pick and outline, flat (ADR-0154): the open sketch's, or
-   * what the profile worker found. None while "Show profiles" is off, while
-   * the worker is still at it, or when even they are past the budget.
+   * The regions to pick and outline, flat, as the profile worker found them
+   * (ADR-0154). None while "Show profiles" is off, while the worker is still at
+   * it, or when even they are past the budget. The open sketch has none here: its
+   * regions are looked up by its data (`sketchProfiles`, `sketchRegions`), so a
+   * drawing kept by an old render never keeps an old version of them.
    */
   regions?: FlatRegions;
   /** A fill the profile worker built. */

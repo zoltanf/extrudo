@@ -3,6 +3,7 @@ import type { Profile } from '@extrudo/sketch/profiles';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Mesh, MeshBasicMaterial } from 'three';
 import type { FlatRegions } from '../sketch/flatRegions';
+import { sketchProfiles, sketchRegions } from '../sketch/profiles';
 import type { Rgba } from './colors';
 import { LineMarks } from './LineMarks';
 import {
@@ -110,15 +111,11 @@ export function SketchFill({
   /** What marks a region of a sketch without a fill. */
   highlight: Rgba;
 }) {
-  const {
-    openProfiles,
-    fill,
-    regions,
-    frame,
-    hoverProfile,
-    selectedProfiles = NONE,
-    unshaded,
-  } = drawing;
+  const { fill, frame, hoverProfile, selectedProfiles = NONE, unshaded } = drawing;
+  // The open sketch's regions come from the profile cache by its data (ADR-0154).
+  const shown = drawing.selectedProfiles !== undefined;
+  const openProfiles = drawing.active && shown ? sketchProfiles(drawing.data) : undefined;
+  const regions = drawing.active && shown ? sketchRegions(drawing.data) : drawing.regions;
   const materials = useMemo(
     () =>
       PROFILE_SHADES.map(

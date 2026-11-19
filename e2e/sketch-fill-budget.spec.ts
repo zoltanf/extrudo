@@ -11,8 +11,8 @@ import { writeArchive } from '../packages/storage/src/archive';
 import { kernelReady, projector } from './helpers';
 
 // A design's regions share a memory budget (ADR-0154). The real one is 256 MB, so the tests
-// set a small one through `__extrudoRegionBudget`: a rectangle keeps 304 bytes, 200 of regions
-// for picking and 104 of fill.
+// set a small one through `__extrudoRegionBudget`: a rectangle keeps about 486 bytes, about 254
+// of regions for picking and 232 of fill.
 
 /** A rectangle's corners and lines. */
 function rectangle(x0: number, y0: number, x1: number, y1: number): SketchData {
@@ -62,7 +62,10 @@ async function meanColor(page: Page, at: { x: number; y: number }, size = 14) {
 const apart = (a: readonly number[], b: readonly number[]) =>
   Math.max(...a.map((c, i) => Math.abs(c - (b[i] ?? 0))));
 
-/** Opens a design of two rectangles under a budget of `bytes` (a rectangle keeps 304 bytes: 200 of regions, 104 of fill). */
+/**
+ * Opens a design of two rectangles under a budget of `bytes`. A rectangle keeps about 486 bytes:
+ * about 254 of regions (its ID's length varies by a character or two) and 232 of fill.
+ */
 async function openTwoRectangles(page: Page, bytes: number, path: string) {
   await page.addInitScript(`window.__extrudoRegionBudget = ${bytes}`);
   const doc = createDocument({ name: 'Two rectangles' });
@@ -88,7 +91,7 @@ async function openTwoRectangles(page: Page, bytes: number, path: string) {
 test('a sketch past the budget draws its curves, says so, and its region still picks', async ({
   page,
 }, info) => {
-  const viewport = await openTwoRectangles(page, 504, info.outputPath('two-rectangles.extrudo'));
+  const viewport = await openTwoRectangles(page, 760, info.outputPath('two-rectangles.extrudo'));
 
   // The status bar says so, in words.
   const note = page.getByRole('status', { name: 'Sketches not shaded' });
@@ -132,7 +135,7 @@ test('a sketch past the budget draws its curves, says so, and its region still p
 test("a sketch whose regions don't fit the budget can't be picked in the model, and says so", async ({
   page,
 }, info) => {
-  const viewport = await openTwoRectangles(page, 450, info.outputPath('two-rectangles.extrudo'));
+  const viewport = await openTwoRectangles(page, 600, info.outputPath('two-rectangles.extrudo'));
   const note = page.getByRole('status', { name: 'Sketches not shaded' });
   await expect(note).toHaveText("· 1 sketch not shaded, 1 can't be picked");
   await expect(note).toHaveAttribute('data-unpickable-sketches', '1');

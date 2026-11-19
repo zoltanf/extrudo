@@ -3310,9 +3310,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 ### `e2e/sketch-fill-budget.spec.ts`
 
 - **The memory budget for a design's regions** (ADR-0154): `page.addInitScript` sets
-  `window.__extrudoRegionBudget` in bytes (a rectangle keeps 304: 200 of regions, 104 of
-  fill), so of two rectangles on XY (`writeArchive`, **Import…**) the second is past the budget
-  (504: picked, not shaded) or can't even be picked (450). Wait for `data-sketch-fills` to end
+  `window.__extrudoRegionBudget` in bytes (a rectangle keeps about 486: about 254 of regions,
+  its ID's length varying, and 232 of fill), so of two rectangles on XY (`writeArchive`,
+  **Import…**) the second is past the budget (760: picked, not shaded) or can't even be picked (600). Wait for `data-sketch-fills` to end
   in `waiting=0` first: the profile worker answers after the viewport is ready. The note is
   `getByRole('status', { name: 'Sketches not shaded' })` (`data-unshaded-sketches`,
   `data-unpickable-sketches`, text "· 1 sketch not shaded, 1 can't be picked"). `meanColor`

@@ -70,6 +70,7 @@ import {
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
 import { holeCount } from '../sketch/flatRegions';
+import { sketchRegions } from '../sketch/profiles';
 import { tangentGrips } from '../sketch/splineEnds';
 import { type PlanePointer, type SketchBox, SNAP_PIXELS } from '../sketch/tools/host';
 import { applyView } from './applyView';
@@ -2112,17 +2113,16 @@ function sketchBoundsOf(
 function sketchFillsSummary(sketches: readonly SketchDrawing[]): string | undefined {
   const shown = sketches.filter((s) => s.selectedProfiles !== undefined);
   if (shown.length === 0) return undefined;
-  const shaded = shown.filter((s) => !s.unshaded && (s.fill || s.openProfiles)).length;
+  const shaded = shown.filter((s) => !s.unshaded && (s.fill || s.active)).length;
   const unshaded = shown.filter((s) => s.unshaded).length;
-  const waiting = shown.filter(
-    (s) => !s.unshaded && !s.fill && !s.openProfiles && !s.regions,
-  ).length;
+  const waiting = shown.filter((s) => !s.unshaded && !s.fill && !s.active && !s.regions).length;
   return `shaded=${shaded} unshaded=${unshaded} waiting=${waiting}`;
 }
 
 function sketchProfilesSummary(sketches: readonly SketchDrawing[]): string | undefined {
-  const regions = sketches.find((s) => s.active)?.regions;
-  if (!regions) return undefined;
+  const open = sketches.find((s) => s.active);
+  if (!open || open.selectedProfiles === undefined) return undefined;
+  const regions = sketchRegions(open.data);
   return `profiles=${regions.ids.length} holes=${holeCount(regions)}`;
 }
 

@@ -32,7 +32,9 @@ describe('KeptResults', () => {
     setKeptLimits(1e9, 3);
     const c = new KeptResults<object, number>();
     const keys = Array.from({ length: 10 }, () => ({}));
-    keys.forEach((key, i) => c.set(key, i, 0));
+    keys.forEach((key, i) => {
+      c.set(key, i, 0);
+    });
     expect(keys.filter((key) => c.get(key) !== undefined)).toHaveLength(3);
     expect(keptTotals().results).toBeLessThanOrEqual(3);
   });

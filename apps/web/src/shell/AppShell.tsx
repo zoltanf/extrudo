@@ -2788,9 +2788,9 @@ function Shell({
       const verdict = verdicts.get(drawing.id);
       const mine = open.get(drawing.id);
       if (mine) {
-        drawing.regions = mine.regions;
-        if (verdict === 'shaded') drawing.openProfiles = mine.profiles;
-        else {
+        // The open sketch's regions stay in the profile cache, looked up by its data where
+        // they are drawn: a drawing an old render keeps must not keep them too.
+        if (verdict !== 'shaded') {
           drawing.unshaded = true;
           unshaded++;
         }
@@ -2841,11 +2841,11 @@ function Shell({
   useEffect(() => {
     for (const [id, bytes] of uiFontBytes()) regionsClient?.addFont(id, bytes);
   }, [fontsVersion, regionsClient]);
-  useEffect(() => regionsClient?.want(shownSketches.jobs), [shownSketches.jobs, regionsClient]);
-  useEffect(
-    () => regionsClient?.keep(shownSketches.granted),
-    [shownSketches.granted, regionsClient],
-  );
+  // The effects take the small parts: a closure that keeps the drawings would keep their arrays.
+  const regionJobs = shownSketches.jobs;
+  const grantedRegions = shownSketches.granted;
+  useEffect(() => regionsClient?.want(regionJobs), [regionJobs, regionsClient]);
+  useEffect(() => regionsClient?.keep(grantedRegions), [grantedRegions, regionsClient]);
   // A hovered sketch is found first.
   useEffect(
     () =>
