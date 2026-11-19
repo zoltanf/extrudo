@@ -10,22 +10,25 @@ import {
 import { readArchive, writeArchive } from '../packages/storage/src/archive';
 import { kernelReady, parameterExpression, pickTool, projector } from './helpers';
 
-// The profiles of sketches that aren't open are found in a worker (ADR-0154). A sketch of two
-// zigzag splines of 2,000 poles crossing each other takes the worker about a second; a design
-// of six of them opens without that work on the page.
+// The profiles of sketches that aren't open are found in a worker (ADR-0154). A design of six
+// sketches that take the worker about a second each opens without that work on the page.
 
-/** Two control splines of `poles` poles zigzagging across each other, `dx` mm to the right. */
-function zigzags(poles: number, dx: number): SketchData {
+/**
+ * A sketch that takes the worker about a second and draws little: a grid of 100 × 100 lines
+ * (9,801 regions) beside 1,400 parallel lines whose boxes all overlap, `dx` mm to the right.
+ */
+function heavy(dx: number): SketchData {
   const entities: Record<string, unknown> = {};
-  for (const phase of [0, 1]) {
-    const ids: string[] = [];
-    for (let i = 0; i < poles; i++) {
-      const id = `p${phase}_${i}`;
-      entities[id] = { type: 'point', x: dx + (100 * i) / (poles - 1), y: ((i + phase) % 2) * 5 };
-      ids.push(id);
-    }
-    entities[`s${phase}`] = { type: 'spline', points: ids, mode: 'control', construction: false };
-  }
+  let n = 0;
+  const line = (x0: number, y0: number, x1: number, y1: number) => {
+    const id = `${n++}`;
+    entities[`a${id}`] = { type: 'point', x: x0, y: y0 };
+    entities[`b${id}`] = { type: 'point', x: x1, y: y1 };
+    entities[`l${id}`] = { type: 'line', start: `a${id}`, end: `b${id}`, construction: false };
+  };
+  for (let i = 0; i < 100; i++) line(dx - 1, i + 0.5, dx + 101, i + 0.5);
+  for (let i = 0; i < 100; i++) line(dx + i + 0.5, -1, dx + i + 0.5, 101);
+  for (let i = 0; i < 1400; i++) line(dx + 120 + i * 0.02, 0, dx + 220 + i * 0.02, 100);
   return { entities, constraints: {}, dimensions: {} } as unknown as SketchData;
 }
 
@@ -85,10 +88,10 @@ test('a design of heavy sketches opens without profile work on the page, and eve
       for (const entry of list.getEntries()) long.push(entry.duration);
     }).observe({ type: 'longtask', buffered: true });
   });
-  const path = info.outputPath('zigzags.extrudo');
+  const path = info.outputPath('heavy.extrudo');
   writeDesign(
     path,
-    Array.from({ length: 6 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, zigzags(2000, i * 120))),
+    Array.from({ length: 6 }, (_, i) => sketch(`z${i}`, `Sketch${i + 1}`, heavy(i * 300))),
   );
   const viewport = await importDesign(page, path);
   // While the worker is at it for more than a moment, the status bar says so.
@@ -143,11 +146,16 @@ test('an edit while the sketch is in the worker never shows the old regions', as
   });
   await page.mouse.move(5, 5);
   const at = await projector(viewport);
-  // Where only the old plate was, nothing picks; inside the new one, the plate does.
-  await page.mouse.click(at([100, 40, 0]).x, at([100, 40, 0]).y);
-  await expect(page.getByRole('status', { name: 'Selection' })).toHaveCount(0);
-  await page.mouse.click(at([30, 40, 0]).x, at([30, 40, 0]).y);
-  await expect(page.getByRole('status', { name: 'Selection' })).toHaveText('1 profile ·');
+  // The old plate covered x = 10 and x = 110; the new one, 60 mm wide, covers one of them,
+  // whichever side the solver kept. Old regions would pick at both.
+  const picks = async (x: number) => {
+    await page.mouse.click(at([x, 40, 0]).x, at([x, 40, 0]).y);
+    const n = await page.getByRole('status', { name: 'Selection' }).count();
+    await page.keyboard.press('Escape');
+    await page.mouse.move(5, 5);
+    return n;
+  };
+  expect((await picks(10)) + (await picks(110))).toBe(1);
 });
 
 test('without a worker the UI thread finds the profiles, and fills still appear', async ({
@@ -167,11 +175,11 @@ test('a sketch past the deadline is stopped, the others go on, and the status ba
   page,
 }, info) => {
   test.setTimeout(90_000);
-  // A test may only shorten the deadline: 100 ms stops the zigzags, not the rectangle.
+  // A test may only shorten the deadline: 100 ms stops the heavy sketch, not the rectangle.
   await page.addInitScript('window.__extrudoProfilesDeadline = 100');
   const path = info.outputPath('mixed.extrudo');
   writeDesign(path, [
-    sketch('z', 'Sketch1', zigzags(2000, 0)),
+    sketch('z', 'Sketch1', heavy(0)),
     sketch('a', 'Sketch2', rectangle(0, 20, 40, 40)),
   ]);
   const viewport = await importDesign(page, path);

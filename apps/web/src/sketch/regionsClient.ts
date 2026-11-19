@@ -42,8 +42,8 @@ const DROP_AFTER_MS = 250;
 /** What results of sketches no longer shown are kept for an undo, at most. */
 const SPARE_BYTES = 64 * 1024 * 1024;
 
-/** Crashes (not deadlines) after which the worker is given up for idle slices. */
-const MAX_CRASHES = 3;
+/** Deaths (not deadlines) after which the worker is given up for idle slices. */
+const MAX_DEATHS = 3;
 
 /** Bytes a fill keeps a vertex: 12 for its position, 4 for a drawing order (`fillLayout`). */
 export const FILL_BYTES_PER_VERTEX = 16;
@@ -181,7 +181,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
   let current: { job: RegionsJob; id: number; started: number; timer: unknown } | undefined;
   let worker: RegionsWorkerLike | undefined;
   let nextId = 1;
-  let crashes = 0;
+  let deaths = 0;
   let fallback = false;
   let idlePending = false;
   let disposed = false;
@@ -192,12 +192,18 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
   const valid = (entry: RegionsEntry | undefined, version: number) =>
     entry && (!entry.text || entry.version === version) ? entry : undefined;
 
-  const notify = () => {
+  /**
+   * Tells the shell. Only a result bumps the version (the shell reads results and asks
+   * again); a new count of jobs only changes the progress, or asking would loop.
+   */
+  const notify = (result = true) => {
     const busy = current !== undefined || queue.length > 0;
-    if (busy && progress)
-      progress = { ...progress, total: progress.done + queue.length + (current ? 1 : 0) };
+    const total = (progress?.done ?? 0) + queue.length + (current ? 1 : 0);
+    if (busy && progress && progress.total !== total) progress = { ...progress, total };
     if (!busy) progress = undefined;
-    store.setState((s) => ({ version: s.version + 1, progress, fallback }));
+    const state = store.getState();
+    if (!result && state.progress === progress && state.fallback === fallback) return;
+    store.setState((s) => ({ version: result ? s.version + 1 : s.version, progress, fallback }));
   };
 
   const startWorker = (): RegionsWorkerLike | undefined => {
@@ -209,7 +215,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       return undefined;
     }
     made.onmessage = ({ data }) => answer(data);
-    made.onerror = () => crashed(made);
+    made.onerror = () => died(made);
     for (const [id, bytes] of fonts) made.postMessage({ type: 'font', id, bytes: bytes.slice(0) });
     return made;
   };
@@ -256,11 +262,11 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     finish();
   }
 
-  function crashed(which: RegionsWorkerLike) {
+  function died(which: RegionsWorkerLike) {
     if (which !== worker) return;
     stopWorker();
-    crashes++;
-    if (crashes >= MAX_CRASHES) fallback = true;
+    deaths++;
+    if (deaths >= MAX_DEATHS) fallback = true;
     if (current) {
       const { job } = current;
       store_(job, { state: 'failed', regionBytes: 0, fillBytes: 0, fillable: false });
@@ -335,6 +341,9 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
     });
   }
 
+  // Started at once, so it has loaded by the time the design's first sketches arrive.
+  worker = startWorker();
+
   return {
     store,
     get(data, version) {
@@ -356,7 +365,7 @@ export function createRegionsClient(options: RegionsClientOptions = {}): Regions
       }
       if ((queue.length > 0 || current) && !progress)
         progress = { since: now(), done: 0, total: 0 };
-      notify();
+      notify(false);
       pump();
     },
     prefer(key) {
