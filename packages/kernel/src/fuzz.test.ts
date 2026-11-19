@@ -87,7 +87,7 @@ const STEP_LIMIT_MS = 20_000;
  *   only stop a hang. Measured here on 2026-11-18, beside four busy cores and
  *   the rest of the suite: the slowest recompute took 46.6 s alone and 103.5 s
  *   at worst, so 600 s is 5.8 times that; the whole case 835 s alone and
- *   1,661 s at worst, so 10,000 s is 6 times that.
+ *   1,803 s at worst, so 10,000 s is 5.5 times that.
  * - **B8**: 124 ms median, 11.8 s the slowest (a `x 10000` dimension, which
  *   ADR-0067 measured at 21.6 s under load), 85 s for 200 steps. A 40 s step
  *   limit leaves the hang detector room for a slower runner.
