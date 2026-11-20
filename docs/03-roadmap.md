@@ -1791,10 +1791,11 @@ end to end, faster than in established desktop CAD.
   - [x] S11 Part workbench: primitives and booleans as a timeline: each object checked against its own
     stored shape, the file's shape where it can't be rebuilt, the booleans above it live (2026-11-15;
     ADR-0144's S11 amendment).
-  - [ ] S12 Structure:
+  - [x] S12 Structure:
     - [x] S12a PartDesign features in no body (files from before bodies) come in with their history,
       each checked against its stored shape (2026-11-19; ADR-0144's S12a amendment).
-    - [ ] S12b Part containers, links as copies, compounds at the top, meshes.
+    - [x] S12b Part containers as components, links as copies, compounds at the top as their members,
+      meshes as mesh bodies, each checked (2026-11-20; ADR-0144's S12b amendment).
   - [ ] S13 User guide page; a second hostile-file pass.
 
 - [x] **P6-26 Insert Design, Copied** (issue #75; ADR-0140; accepted 2026-11-13). Solid ›

@@ -6,7 +6,12 @@
  * before anything is allocated, every index against the points, every
  * coordinate for being finite.
  */
-import type { TriangleMesh } from '@extrudo/io';
+import {
+  checkManifold,
+  dropBadTriangles,
+  splitNonManifoldEdges,
+  type TriangleMesh,
+} from '@extrudo/io';
 import { rotate } from './final-shapes';
 import type { FcPlacement } from './model';
 import { compose } from './sketch-place';
@@ -112,11 +117,11 @@ export function readMeshKernel(bytes: Uint8Array, maxFacets = MAX_MESH_FACETS): 
 
 /** What a mesh's triangles are once placed. */
 export interface MeshFacts {
-  /** The placed triangles, as the STL holds them (single precision). */
+  /** The placed triangles, as the STL holds them (single precision), flat and repeated ones dropped. */
   readonly triangles: TriangleMesh;
   /** Pieces joined by shared edges. */
   readonly pieces: number;
-  /** Edges not met by exactly one opposite edge: 0 for a closed, consistently turned surface. */
+  /** What keeps it from closing, as the kernel counts it: open, non-manifold after the split and flipped edges, bad triangles. */
   readonly openEdges: number;
   /** The enclosed volume (positive when the facets face outwards), mm³. */
   readonly volume: number;
@@ -133,45 +138,53 @@ export interface MeshFacts {
  * The mesh placed by `chain` (outermost first, the object's own placement
  * last), in single precision as the STL stores it, and measured from those
  * same numbers: the volume, area and box the import is checked against.
+ * Closed and in pieces exactly as the kernel's `meshFrom` makes it: flat and
+ * repeated triangles dropped, edges where surfaces touch split apart
+ * (`@extrudo/io`'s own steps), then the manifold check.
  */
 export function meshFacts(mesh: MeshKernel, chain: readonly FcPlacement[]): MeshFacts {
   let place: FcPlacement = { position: [0, 0, 0], rotation: [0, 0, 0, 1] };
   for (const p of chain) place = compose(place, p);
   const { points, facets } = mesh;
-  // Only the points the facets use, once each by position: two points at one place are one.
+  // Placed, in single precision, and welded by exact position: what `readStl` gives the kernel.
   const index = new Map<string, number>();
-  const remap = new Uint32Array(points.length / 3).fill(OPEN_EDGE);
+  const remap = new Uint32Array(points.length / 3);
   const positions: number[] = [];
-  const indices = new Uint32Array(facets.length);
-  for (let i = 0; i < facets.length; i++) {
-    const old = facets[i] as number;
-    let n = remap[old] as number;
-    if (n === OPEN_EDGE) {
-      const [x, y, z] = rotate(place.rotation, [
-        points[3 * old] as number,
-        points[3 * old + 1] as number,
-        points[3 * old + 2] as number,
-      ]);
-      const v = [
-        Math.fround(x + place.position[0]),
-        Math.fround(y + place.position[1]),
-        Math.fround(z + place.position[2]),
-      ];
-      const key = `${v[0]},${v[1]},${v[2]}`;
-      const known = index.get(key);
-      if (known === undefined) {
-        n = positions.length / 3;
-        index.set(key, n);
-        positions.push(...v);
-      } else n = known;
-      remap[old] = n;
+  for (let i = 0; i < points.length / 3; i++) {
+    const [x, y, z] = rotate(place.rotation, [
+      points[3 * i] as number,
+      points[3 * i + 1] as number,
+      points[3 * i + 2] as number,
+    ]);
+    const v = [
+      Math.fround(x + place.position[0]),
+      Math.fround(y + place.position[1]),
+      Math.fround(z + place.position[2]),
+    ];
+    const key = `${v[0]},${v[1]},${v[2]}`;
+    let n = index.get(key);
+    if (n === undefined) {
+      n = positions.length / 3;
+      index.set(key, n);
+      positions.push(...(v as [number, number, number]));
     }
-    indices[i] = n;
+    remap[i] = n;
   }
-  const count = positions.length / 3;
-  // Directed edges: a closed surface turned one way meets each a→b once and b→a once.
-  const directed = new Map<number, number>();
-  const parent = new Int32Array(facets.length / 3).map((_, i) => i);
+  const welded: TriangleMesh = {
+    positions: Float32Array.from(positions),
+    indices: facets.map((f) => remap[f] as number),
+  };
+  // What `meshFrom` builds from these triangles, step by step.
+  const kept = dropBadTriangles(welded).mesh;
+  const separated = splitNonManifoldEdges(kept);
+  const report = checkManifold(separated.mesh);
+  const openEdges =
+    report.boundaryEdges + report.nonManifoldEdges + report.misorientedEdges + report.badTriangles;
+  // Pieces: triangles joined by shared edges (a split keeps touching surfaces apart).
+  const solid = separated.mesh;
+  const nodes = solid.positions.length / 3;
+  const count = solid.indices.length / 3;
+  const parent = new Int32Array(count).map((_, i) => i);
   const find = (x: number): number => {
     let r = x;
     while (parent[r] !== r) r = parent[r] as number;
@@ -182,23 +195,25 @@ export function meshFacts(mesh: MeshKernel, chain: readonly FcPlacement[]): Mesh
     }
     return r;
   };
-  const firstFacet = new Map<number, number>();
+  const byEdge = new Map<number, number>();
   let volume = 0;
   let area = 0;
   const moment: [number, number, number] = [0, 0, 0];
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-  const at = (i: number, k: number) => positions[3 * i + k] as number;
-  for (let t = 0; t < indices.length / 3; t++) {
-    const c = [indices[3 * t], indices[3 * t + 1], indices[3 * t + 2]] as [number, number, number];
+  const at = (i: number, k: number) => solid.positions[3 * i + k] as number;
+  for (let t = 0; t < count; t++) {
+    const c = [solid.indices[3 * t], solid.indices[3 * t + 1], solid.indices[3 * t + 2]] as [
+      number,
+      number,
+      number,
+    ];
     for (let e = 0; e < 3; e++) {
       const a = c[e] as number;
       const b = c[(e + 1) % 3] as number;
-      const key = a * count + b;
-      directed.set(key, (directed.get(key) ?? 0) + 1);
-      const undirected = Math.min(a, b) * count + Math.max(a, b);
-      const other = firstFacet.get(undirected);
-      if (other === undefined) firstFacet.set(undirected, t);
+      const key = Math.min(a, b) * nodes + Math.max(a, b);
+      const other = byEdge.get(key);
+      if (other === undefined) byEdge.set(key, t);
       else parent[find(t)] = find(other);
     }
     const [ax, ay, az] = [at(c[0], 0), at(c[0], 1), at(c[0], 2)];
@@ -217,23 +232,17 @@ export function meshFacts(mesh: MeshKernel, chain: readonly FcPlacement[]): Mesh
     const vy = cy - ay;
     const vz = cz - az;
     area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
-  }
-  for (let i = 0; i < count; i++)
-    for (let k = 0; k < 3; k++) {
-      const v = at(i, k);
-      if (v < (min[k] as number)) min[k] = v;
-      if (v > (max[k] as number)) max[k] = v;
-    }
-  let openEdges = 0;
-  for (const [key, n] of directed) {
-    const a = Math.floor(key / count);
-    const b = key - a * count;
-    if (n !== 1 || directed.get(b * count + a) !== 1) openEdges++;
+    for (const i of c)
+      for (let k = 0; k < 3; k++) {
+        const x = at(i, k);
+        if (x < (min[k] as number)) min[k] = x;
+        if (x > (max[k] as number)) max[k] = x;
+      }
   }
   let pieces = 0;
-  for (let t = 0; t < parent.length; t++) if (find(t) === t) pieces++;
+  for (let t = 0; t < count; t++) if (find(t) === t) pieces++;
   return {
-    triangles: { positions: Float32Array.from(positions), indices },
+    triangles: kept,
     pieces,
     openEdges,
     volume,

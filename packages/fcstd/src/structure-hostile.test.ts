@@ -12,6 +12,7 @@ import { planCompounds } from './compounds';
 import { finalShapes } from './final-shapes';
 import { importFcstd } from './import';
 import { planLink, readPlacementList } from './links';
+import { bms } from './mesh-parts';
 import { readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
 import {
@@ -310,4 +311,41 @@ describe('parts past the component cap', () => {
     expect(new Set(report.made.map((c) => c.name.toLowerCase())).size).toBe(1_000);
     expect(performance.now() - start).toBeLessThan(30_000);
   }, 60_000);
+});
+
+describe('a large mesh through the kernel (BENCH=1)', () => {
+  it.skipIf(!process.env.BENCH)(
+    'times a mesh of about 50,000 facets from entry to checked body',
+    async () => {
+      // A closed tube: 250 points a ring, 101 rings, a fan at each end, facing outwards.
+      const m = 250;
+      const k = 100;
+      const points: number[] = [];
+      for (let r = 0; r <= k; r++)
+        for (let j = 0; j < m; j++) {
+          const a = (2 * Math.PI * j) / m;
+          points.push(20 * Math.cos(a), 20 * Math.sin(a), r * 0.5);
+        }
+      const bottom = points.length / 3;
+      points.push(0, 0, 0);
+      const top = bottom + 1;
+      points.push(0, 0, k * 0.5);
+      const p = (r: number, j: number) => r * m + (j % m);
+      const facets: number[] = [];
+      for (let r = 0; r < k; r++)
+        for (let j = 0; j < m; j++)
+          facets.push(p(r, j), p(r, j + 1), p(r + 1, j + 1), p(r, j), p(r + 1, j + 1), p(r + 1, j));
+      for (let j = 0; j < m; j++)
+        facets.push(bottom, p(0, j + 1), p(0, j), top, p(k, j), p(k, j + 1));
+      const entry = bms(points, facets);
+      const start = performance.now();
+      const r = await run('meshes', { files: (o, _f, b) => (o === 'Mesh' ? entry : b) });
+      bench(
+        `a mesh of ${facets.length / 3} facets (${entry.length} bytes) imported`,
+        performance.now() - start,
+      );
+      expect(r.report.meshes[0]).toMatchObject({ outcome: 'in', pieces: 1 });
+    },
+    600_000,
+  );
 });

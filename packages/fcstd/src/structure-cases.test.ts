@@ -476,4 +476,15 @@ describe('compounds at the top', () => {
     expect(r.report.shapes.map((s) => s.object)).toEqual(['Compound']);
     expect(named(r, 'Box')).toEqual([]);
   });
+
+  it('a member that came in as an import and was taken out again is not one of the file’s shapes', async () => {
+    const r = await run('compound_top', {
+      types: { Box: 'Part::Feature' },
+      brep: (o, t) => (o === 'Cylinder' ? undefined : t),
+    });
+    expect(features(r.design)).toContain('import Import Box');
+    expect(r.report.compounds[0]).toMatchObject({ outcome: 'today', reason: 'check' });
+    expect(r.report.shapes.map((s) => s.object)).toEqual(['Compound']);
+    expect(named(r, 'Box')).toEqual([]);
+  });
 });

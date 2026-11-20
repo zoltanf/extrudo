@@ -113,6 +113,8 @@ export interface StructureFileOptions {
   readonly entries?: Readonly<Record<string, string | Uint8Array>>;
   /** Visibility changed, by object. */
   readonly visible?: Readonly<Record<string, boolean>>;
+  /** The declared type changed, by object (a box as a plain `Part::Feature`). */
+  readonly types?: Readonly<Record<string, string>>;
 }
 
 const esc = (s: string) =>
@@ -136,7 +138,12 @@ export function structureFile(name: string, options: StructureFileOptions = {}):
       const b = options.files ? options.files(o.object, file, bytes) : bytes;
       if (b !== undefined) entries[file] = b;
     }
-    objects.push({ name: o.object, type: o.type, xml, ...(o.hidden ? { hidden: true } : {}) });
+    objects.push({
+      name: o.object,
+      type: options.types?.[o.object] ?? o.type,
+      xml,
+      ...(o.hidden ? { hidden: true } : {}),
+    });
   }
   objects.push(...(options.extra ?? []));
   Object.assign(entries, options.entries ?? {});

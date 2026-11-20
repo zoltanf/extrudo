@@ -430,7 +430,11 @@ export async function importFcstd(
     design,
     files: build.files,
     report: {
-      shapes: [...result.imported, ...(after?.imported ?? [])],
+      // A compound that came in as before took its members out again: their imports are not its shapes.
+      shapes: [
+        ...result.imported.filter((s) => !takenOut.has(s.object)),
+        ...(after?.imported ?? []),
+      ],
       leftOut: [
         ...result.leftOut,
         ...(after?.leftOut ?? []),
