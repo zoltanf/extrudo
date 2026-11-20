@@ -89,6 +89,42 @@ describe('Timeline renders', () => {
     expect(looked.n).toBe(0);
   });
 
+  it('a chip with an error or a warning keeps its props across kernel steps', () => {
+    const store = createDocumentStore(thirtySketches());
+    const model = createModelStore<BodyMesh>();
+    act(() =>
+      model.getState().computed({
+        features: {
+          ['sk20' as FeatureId]: { status: 'error', message: 'It failed.' },
+          ['sk21' as FeatureId]: { status: 'warning', message: 'Look at it.' },
+        },
+        bodies: {},
+      }),
+    );
+    render(
+      <TooltipProvider>
+        <Timeline
+          store={store}
+          actions={stub<FeatureActions>({ canEdit: () => true })}
+          groups={stub<GroupActions>()}
+          selection={createTimelineSelectionStore()}
+          model={model}
+        />
+      </TooltipProvider>,
+    );
+    const step = (i: number) =>
+      act(() =>
+        model
+          .getState()
+          .setProgress({ done: i + 1, total: 30, feature: `sk${i}` as FeatureId, since: 0 }),
+      );
+    step(0);
+    looked.n = 0;
+    for (let i = 1; i < 10; i++) step(i);
+    // Only the chips whose "computing" changed: not the two with a problem.
+    expect(looked.n).toBe(9 * 2);
+  });
+
   it('a click still picks the chip, with the latest selection', () => {
     const store = createDocumentStore(thirtySketches());
     const selection = createTimelineSelectionStore();
@@ -110,5 +146,53 @@ describe('Timeline renders', () => {
     expect(selection.getState().chips).toEqual(['sk3', 'sk5']);
     act(() => chip(3).dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })));
     expect(selection.getState().chips).toEqual(['sk5']);
+  });
+
+  it('clicks pick with the latest selection after an outside pick and kernel steps', () => {
+    const store = createDocumentStore(thirtySketches());
+    const model = createModelStore<BodyMesh>();
+    const selection = createTimelineSelectionStore();
+    const view = render(
+      <TooltipProvider>
+        <Timeline
+          store={store}
+          actions={stub<FeatureActions>({ canEdit: () => true })}
+          groups={stub<GroupActions>()}
+          selection={selection}
+          model={model}
+        />
+      </TooltipProvider>,
+    );
+    const chip = (i: number) =>
+      view.container.querySelector(`[data-feature-id="sk${i}"]`) as HTMLElement;
+    const click = (i: number, o: MouseEventInit = {}) =>
+      act(() => chip(i).dispatchEvent(new MouseEvent('click', { bubbles: true, ...o })));
+    const step = (i: number) =>
+      act(() =>
+        model
+          .getState()
+          .setProgress({ done: i + 1, total: 30, feature: `sk${i}` as FeatureId, since: 0 }),
+      );
+    click(2);
+    step(4);
+    // An outside pick (the marking menu, the view) replaces the chips.
+    act(() => selection.getState().pick(['sk6' as FeatureId]));
+    step(5);
+    click(8, { ctrlKey: true });
+    expect(selection.getState().chips).toEqual(['sk6', 'sk8']);
+    click(5, { shiftKey: true });
+    // A run from the anchor (sk8, the last plain or Ctrl click) to sk5.
+    expect([...selection.getState().chips].sort()).toEqual(['sk5', 'sk6', 'sk7', 'sk8']);
+    // A rename: the chip's label follows.
+    act(() =>
+      store.setState((s) => ({
+        doc: {
+          ...s.doc,
+          features: s.doc.features.map((f) => (f.id === 'sk1' ? { ...f, name: 'Renamed' } : f)),
+        },
+      })),
+    );
+    expect(chip(1).getAttribute('aria-label')).toBe('Renamed');
+    expect(chip(8).getAttribute('data-selected')).toBe('true');
   });
 });

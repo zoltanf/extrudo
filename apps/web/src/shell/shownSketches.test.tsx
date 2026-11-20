@@ -16,8 +16,9 @@ import { memo, type ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import type { FlatRegions } from '../sketch/flatRegions';
+import { openSketchProfiles } from '../sketch/profiles';
 import type { RegionsClient, RegionsEntry, RegionsState } from '../sketch/regionsClient';
-import type { ProfileFill } from '../viewport/profileFills';
+import { fillFailed, noteUnbuiltFill, type ProfileFill } from '../viewport/profileFills';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import {
   type ShownSketchBase,
@@ -192,5 +193,46 @@ describe('ShownSketchesProvider renders', () => {
     });
     expect(second.jobs).toHaveLength(25);
     expect(second.jobs[0]).not.toBe(third.jobs[0]);
+  });
+});
+
+describe('the open sketch whose fill fails to build', () => {
+  it('goes unshaded, counts in the note and gives its fill bytes back, with no new base', () => {
+    const data = Object.freeze({ ...emptySketchData() }) as SketchData;
+    const profiles = openSketchProfiles(data, 0);
+    const closed = Object.freeze({ ...emptySketchData() }) as SketchData;
+    // What the shell's base holds: the open claim (fillable), and a closed sketch still asked for.
+    const base: ShownSketchBase = {
+      items: [
+        {
+          drawing: { id: 'open', frame, data, active: true, selectedProfiles: [] },
+          kind: 'open',
+          claim: { id: 'open', active: true, regionBytes: 10, fillBytes: 1_000, fillable: true },
+        },
+        {
+          drawing: { id: 'closed', frame, data: closed, active: false, selectedProfiles: [] },
+          kind: 'closed',
+          job: { key: 'closed', data: closed, version: 0, text: false },
+        },
+      ],
+      fontsVersion: 0,
+      activeSketchId: 'open',
+    };
+    const { client, asked } = fakeClient();
+    const view = render(
+      <ShownSketchesProvider base={base} client={client}>
+        <Note />
+        <Layer />
+      </ShownSketchesProvider>,
+    );
+    const note = () => view.container.querySelector('output')?.dataset.unshaded;
+    const allowance = () => (asked.at(-1) as { allowance?: number }[])[0]?.allowance ?? 0;
+    expect(note()).toBe('0');
+    const before = allowance();
+    act(() => noteUnbuiltFill(profiles));
+    expect(fillFailed(profiles)).toBe(true);
+    // The same base: only the provider looked again.
+    expect(note()).toBe('1');
+    expect(allowance() - before).toBe(1_000);
   });
 });

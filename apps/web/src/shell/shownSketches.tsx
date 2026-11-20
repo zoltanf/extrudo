@@ -13,7 +13,7 @@ import type { SketchData } from '@extrudo/core';
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useRef } from 'react';
 import { useStore } from 'zustand';
 import { uiFontBytes } from '../sketch/fonts';
-import { hasText } from '../sketch/profiles';
+import { hasText, openSketchProfiles } from '../sketch/profiles';
 import {
   closedSketchShows,
   idleRegions,
@@ -22,6 +22,7 @@ import {
   type RegionsJob,
 } from '../sketch/regionsClient';
 import {
+  fillFailed,
   grantedBytes,
   type RegionClaim,
   type RegionVerdict,
@@ -127,7 +128,14 @@ export function withResults(
   const jobs: RegionsJob[] = [];
   const entries = new Map<string, RegionsEntry>();
   for (const item of items) {
-    if (item.kind === 'open') claims.push(item.claim);
+    if (item.kind === 'open') {
+      // A fill that failed to build since the shell made the claim (`noteUnbuiltFill`, which
+      // renders this provider, not the shell) gives its bytes back and leaves it unshaded. The
+      // profiles come from the profile cache, where the open sketch is pinned: the base keeps
+      // none, as a render that an old closure keeps must not keep them.
+      const failed = fillFailed(openSketchProfiles(item.drawing.data, fontsVersion));
+      claims.push(failed && item.claim.fillable ? { ...item.claim, fillable: false } : item.claim);
+    }
     if (item.kind !== 'closed') continue;
     const entry = client?.get(item.job.data, fontsVersion);
     if (!entry) {

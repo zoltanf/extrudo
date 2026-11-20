@@ -243,6 +243,10 @@ export function Timeline({
     [selection, order, live],
   );
   const alone = useMemo(() => new Map<FeatureId, readonly FeatureId[]>(), []);
+  useEffect(() => {
+    const ids = new Set(order);
+    for (const id of alone.keys()) if (!ids.has(id)) alone.delete(id);
+  }, [alone, order]);
   const movingWith = (id: FeatureId): readonly FeatureId[] => {
     if (live.length > 1 && live.includes(id)) return live;
     let one = alone.get(id);

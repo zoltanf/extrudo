@@ -145,19 +145,28 @@ for every chip).
    (`ShownSketchBase` in `shell/shownSketches.tsx`: the drawings, the open
    sketch's claim, the closed sketches' jobs). `ShownSketchesProvider`, around
    the shell's tree, subscribes to the profile client and the unbuilt fills,
-   adds the results (`withResults`: the old memo's rules, unchanged) and gives
+   adds the results (`withResults`: the old memo's rules; the open sketch's
+   claim, made by the shell, is looked at again there, since a fill that fails
+   to build (`noteUnbuiltFill`) renders the provider and not the shell: its
+   profiles come from the profile cache, where the open sketch is pinned, and a
+   failed fill leaves it unshaded and gives its bytes back) and gives
    the drawings and the note's counts through two contexts
    (`useShownDrawings`, `useSketchShading`). Its children are the shell's
    elements, unchanged when only results arrive, so a batch renders the
    provider, `DialogViewport` and the view, and the status bar's
-   `UnshadedSketches` only when a count changes. It runs the client's
-   effects in the old order (fonts, `want`, `keep`).
+   `UnshadedSketches` only when a count changes. Its effects run in the old
+   order among themselves (fonts, `want`, `keep`); as a child's, they now run
+   before the shell's own effects, the one that makes the client included: on
+   the first pass they have no client and do nothing, and once the client is
+   set they run in that order.
 2. A drawing whose results didn't change stays the same object (`dressed`,
    per base drawing), the list stays the same while every drawing does, and
    `Sketches` memoises each sketch and fill (`ShownSketch`, `ShownFill`): the
    compiler memoises the list as a whole, not its items.
 3. The timeline's chip is `memo(TimelineChip)` with stable props: `live` and
-   `select` memoised, a one-chip `moving` list kept per feature.
+   `select` memoised, a one-chip `moving` list kept per feature (dropped when
+   the feature goes), and one `featureProblem` object per status object, so a
+   chip with an error or a warning keeps its props too.
 
 **Rules.**
 
@@ -167,9 +176,17 @@ for every chip).
   memoised).
 - `withResults` never writes into the base's drawings or jobs (jobs are copied
   before `allowance` is set).
-- A batch for some sketches renders only those sketches' `Sketch` and
-  `SketchFill` (`shownSketches.test.tsx`); a kernel step renders only the chips
-  whose props changed (`Timeline.renders.test.tsx`).
+- What the tests check, and a change must keep: the provider gives a batch's
+  drawings with the same objects for the sketches it isn't for, renders none
+  of the shell's other children, and renders the note only when a count
+  changes (`shownSketches.test.tsx`, with stand-ins for the shell's parts); the
+  real `Sketches` renders, for a batch for 3 of 30 sketches, those 3 sketches
+  and fills only (`Sketches.renders.test.tsx`); a failed fill of the open
+  sketch unshades it and gives its bytes back without a new base
+  (`shownSketches.test.tsx`); a kernel step renders only the chips whose
+  "computing" changed, those with a problem included
+  (`Timeline.renders.test.tsx`, the real `Timeline`). No test renders `Shell`:
+  that nothing in it subscribes to the profile client is a rule for review.
 
 **Rejected.** Making `Shell` compile: dozens of diagnostics in a 3,900-line
 component, a refactor of its own. Wrapping the shell's children in `memo`: their
