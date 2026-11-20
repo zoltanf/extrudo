@@ -526,6 +526,88 @@ describe('fcstdNotices', () => {
     ]);
   });
 
+  it('S12b: counts a compound once and a copy with what it copies; meshes as bodies; components', () => {
+    const history = (object: string) =>
+      ({
+        object,
+        name: object,
+        features: 1,
+        mapped: [],
+        bodies: [`${object}:0`],
+        sketches: [],
+        secondAttempts: 0,
+        steps: [],
+        heldAfterLastStep: 1,
+        outcome: 'history',
+      }) as never;
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 6,
+      // Body is a member of Pair; Box001 is a plain shape; Link copies Body; Mesh came in.
+      shapes: [shape('Box001'), shape('Member')],
+      bodies: [history('Body'), history('Alone')],
+      trees: [],
+      meshes: [{ object: 'Mesh', name: 'Scan', outcome: 'in', bodies: ['m:0'] }],
+      compounds: [
+        {
+          object: 'Pair',
+          name: 'Pair',
+          outcome: 'members',
+          members: ['Body', 'Member'],
+          bodies: ['Body:0', 'f:0'],
+          moves: [],
+          withoutSolid: 0,
+          nested: 0,
+        },
+      ],
+      links: [
+        {
+          object: 'Link',
+          name: 'Link',
+          outcome: 'copy',
+          sources: ['Alone'],
+          moves: ['f9'],
+          bodies: ['f9:0'],
+        },
+        {
+          object: 'Other',
+          name: 'Other',
+          outcome: 'today',
+          reason: 'target',
+          moves: [],
+          bodies: [],
+        },
+      ],
+      components: {
+        made: [
+          { id: 'c1', name: 'Frame', kind: 'part', object: 'Part', bodies: 2 },
+          { id: 'c2', name: 'Pair', kind: 'compound', object: 'Pair', bodies: 2 },
+        ],
+        parts: 1,
+        partsWithout: 0,
+        overLimit: 0,
+      },
+    });
+    expect(notices).toEqual([
+      // Alone and its copy with their history; Pair with part of it (a body and a plain shape);
+      // Box001 and the mesh without.
+      "Imported from the FreeCAD file: 5 of 6 shapes, 2 with their history, 1 with part of its history and 2 as bodies without history. Grouped into components as the file's parts and compounds group them: Frame; Pair.",
+      "Taken from the file's own shape, not copied from what it links to: Other, because what it links to didn't come into the design.",
+    ]);
+  });
+
+  it('S12b: a scaled link is not imported, with its reason', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 2,
+      shapes: [shape('Box')],
+      leftOut: [{ object: 'Link', name: 'Big', reason: 'scaled' }],
+    });
+    expect(notices[1]).toBe(
+      'Not imported: Big (a link that makes its shape larger or smaller, which a copy in Extrudo can’t).',
+    );
+  });
+
   it('says when a file has no shapes at all', () => {
     expect(fcstdNotices(base)).toEqual([
       'The FreeCAD file has no shapes to import, so the design is empty.',

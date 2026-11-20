@@ -65,6 +65,8 @@ export interface LinkImport {
   readonly detail?: string;
   /** What the link shows, through further links. */
   readonly target?: string;
+  /** The final shapes whose bodies were copied (the target, or a part's shapes). */
+  readonly sources?: readonly string[];
   /** The moves (one per element) and the copies they make. */
   readonly moves: readonly string[];
   readonly bodies: readonly string[];
@@ -91,8 +93,9 @@ export interface LinkRefusal {
 
 const IDENTITY: FcPlacement = { position: [0, 0, 0], rotation: [0, 0, 0, 1] };
 
-/** Whether an object scales what it shows (a scale that isn't 1, or isn't a number). */
+/** Whether an object scales what it shows (a scale that isn't 1, or one the reader couldn't read). */
 function scales(o: FcObject): boolean {
+  if (o.unreadable?.some((p) => p === 'Scale' || p === 'ScaleVector')) return true;
   const s = o.properties.Scale?.value;
   if (s && (s.kind === 'float' || s.kind === 'integer') && s.value !== 1) return true;
   const v = o.properties.ScaleVector?.value;

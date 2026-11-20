@@ -235,6 +235,7 @@ export async function placeStructure(
       bodies.set(s.object.name, copied.bodies);
       record(s, plan, {
         outcome: 'copy',
+        sources: isPart ? (members as FinalShape[]).map((f) => f.object.name) : [target.name],
         moves: copied.moves,
         bodies: copied.bodies,
         ...(plan.array ? { array: { elements: plan.array.elements, expanded: true } } : {}),

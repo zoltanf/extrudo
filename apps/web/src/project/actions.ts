@@ -11,7 +11,13 @@ import {
   randomUuid,
 } from '@extrudo/core';
 import type { ImportReport, ImportResult } from '@extrudo/f3d';
-import type { FcstdImportReport, HistoryStop, LeftOutReason, TreeReason } from '@extrudo/fcstd';
+import type {
+  FcstdImportReport,
+  HistoryStop,
+  LeftOutReason,
+  LinkReason,
+  TreeReason,
+} from '@extrudo/fcstd';
 import {
   ArchiveError,
   type ProjectId,
@@ -351,6 +357,19 @@ const LEFT_OUT: Record<LeftOutReason, string> = {
   restarts: 'the geometry kernel failed too often',
 };
 
+/** Why a link came in as the file's own shape, not as a copy (S12b), after "because". */
+const LINK_REASON: Record<LinkReason, string> = {
+  target: "what it links to didn't come into the design",
+  array: "its array's elements can't be read",
+  limit: 'it has more copies than one import makes',
+  mixed: 'its elements show different shapes',
+  cycle: 'a part holds a link back to itself',
+  check: "a copy didn't measure as the file's shape",
+  kernel: 'the geometry kernel failed on the copy',
+  scaled: 'it makes its shape larger or smaller',
+  broken: "it doesn't lead to a shape",
+};
+
 /** Why a body's history stopped, in the app's words (after "because"). */
 const HISTORY_STOP: Record<HistoryStop, string> = {
   type: "it has a feature Extrudo doesn't rebuild from FreeCAD files yet",
@@ -408,20 +427,55 @@ export function fcstdNotices(
     FcstdImportReport,
     'shapes' | 'leftOut' | 'finalShapes' | 'problems' | 'linkArrays'
   > &
-    Partial<Pick<FcstdImportReport, 'bodies' | 'parameters' | 'trees'>>,
+    Partial<
+      Pick<
+        FcstdImportReport,
+        'bodies' | 'parameters' | 'trees' | 'meshes' | 'links' | 'compounds' | 'components'
+      >
+    >,
 ): string[] {
   if (report.finalShapes === 0)
     return ['The FreeCAD file has no shapes to import, so the design is empty.'];
   const bodies = report.bodies ?? [];
   const trees = report.trees ?? [];
+  const links = report.links ?? [];
+  const compounds = (report.compounds ?? []).filter((c) => c.outcome === 'members');
+  // S12b: a compound's members stand for it, and a copy counts with what it copies.
+  const members = new Set(compounds.flatMap((c) => c.members));
+  type Kind = 'whole' | 'partial' | 'plain';
+  const kindOf = new Map<string, Kind>();
+  for (const b of bodies)
+    if (b.outcome === 'history') kindOf.set(b.object, b.steps.length > 0 ? 'partial' : 'whole');
+  for (const t of trees)
+    if (t.outcome === 'history' || t.outcome === 'leaves')
+      kindOf.set(t.object, t.outcome === 'history' ? 'whole' : 'partial');
+  const together = (objects: readonly string[]): Kind => {
+    const kinds = objects.map((o) => kindOf.get(o) ?? 'plain');
+    return kinds.every((k) => k === 'whole')
+      ? 'whole'
+      : kinds.some((k) => k !== 'plain')
+        ? 'partial'
+        : 'plain';
+  };
+  for (const c of compounds) kindOf.set(c.object, together(c.members));
+  const copies = links.filter((l) => l.outcome === 'copy');
+  for (const l of copies) kindOf.set(l.object, together(l.sources ?? []));
+  const extra = { whole: 0, partial: 0, plain: 0 };
+  for (const x of [...compounds, ...copies]) extra[kindOf.get(x.object) ?? 'plain']++;
   // Bodies with their whole history, and with the part after a stored-shape step (S8).
   const stepped = bodies.filter((b) => b.outcome === 'history' && b.steps.length > 0);
   // Part trees (S11): built whole, or on the file's shapes for some of their parts.
   const leafy = trees.filter((t) => t.outcome === 'leaves');
-  const treesWhole = trees.filter((t) => t.outcome === 'history').length;
-  const whole = bodies.filter((b) => b.outcome === 'history').length - stepped.length + treesWhole;
-  const partial = stepped.length + leafy.length;
-  const plain = report.shapes.length;
+  const own = (x: { object: string }) => !members.has(x.object);
+  const whole =
+    bodies.filter((b) => b.outcome === 'history' && b.steps.length === 0 && own(b)).length +
+    trees.filter((t) => t.outcome === 'history' && own(t)).length +
+    extra.whole;
+  const partial = stepped.filter(own).length + leafy.filter(own).length + extra.partial;
+  const plain =
+    report.shapes.filter(own).length +
+    (report.meshes ?? []).filter((m) => m.outcome === 'in').length +
+    extra.plain;
   const came = plain + whole + partial;
   // What "history" is made of: a body's sketches and features, a tree's primitives and booleans.
   const cameIn = trees.filter((t) => t.outcome === 'history' || t.outcome === 'leaves');
@@ -451,6 +505,19 @@ export function fcstdNotices(
           ? `Imported from the FreeCAD file: ${came} of ${total}, with ${its(whole)} history (${made}).`
           : `Imported from the FreeCAD file: ${came} of ${total}, as ${came === 1 ? 'a body' : 'bodies'} without history.`,
   ];
+  // S12b: the file's parts (and compounds, and links to parts) as components.
+  const groups = report.components?.made ?? [];
+  if (groups.length > 0) {
+    const kinds = [
+      ...(groups.some((c) => c.kind === 'part') ? ['parts'] : []),
+      ...(groups.some((c) => c.kind === 'compound') ? ['compounds'] : []),
+      ...(groups.some((c) => c.kind === 'link') ? ['links to parts'] : []),
+    ];
+    const from =
+      kinds.length > 1 ? `${kinds.slice(0, -1).join(', ')} and ${kinds.at(-1)}` : kinds[0];
+    // Said with the first notice: the toasts show three at a time.
+    out[0] = `${out[0]} Grouped into components as the file's ${from} group them: ${listed(groups.map((c) => c.name))}.`;
+  }
   out.push(...parameterNotices(report.parameters));
   if (stepped.length > 0) {
     const reasons = stepped.flatMap((b) => b.steps.map((st) => st.reason));
@@ -565,6 +632,17 @@ export function fcstdNotices(
     out.push(
       `${threads === 1 ? 'A threaded hole' : `${threads} threaded holes`} came in as ${threads === 1 ? 'a plain hole' : 'plain holes'} of the size the file stores: the thread itself is not modelled.`,
     );
+  // S12b: links that came in as the file's own shape, not as copies of what they show.
+  const notCopied = links.filter((l) => l.outcome === 'today' && l.reason && l.reason !== 'broken');
+  if (notCopied.length > 0) {
+    const one = notCopied.length === 1;
+    out.push(
+      `Taken from the file's own ${one ? 'shape' : 'shapes'}, not copied from what ${one ? 'it links' : 'they link'} to: ${listed(notCopied.map((l) => l.name))}${one ? ', because' : '. Most often because'} ${commonestOf(
+        notCopied.map((l) => l.reason as LinkReason),
+        LINK_REASON,
+      ).join(', or ')}.`,
+    );
+  }
   if (report.linkArrays.length > 0)
     out.push(`Of each link array only one copy came in: ${listed([...report.linkArrays])}.`);
   const unread = report.problems.length;

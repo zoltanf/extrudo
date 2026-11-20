@@ -1174,6 +1174,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/import-fcstd.spec.ts`
 
+- **Parts and links** (S12b, ADR-0144): `structureFile('part_basic')` and `structureFile('links_basic')`
+  from `packages/fcstd/src/structure-parts.ts` (our own FreeCAD 1.1.4 documents) as `Bracket.FCStd` and
+  `Links.FCStd`. The component sentence is appended to the first notice ("… Grouped into components as
+  the file's parts group them: Bracket."): the toasts show three at a time, and a fourth would push the
+  first out. `part_basic`: the Viewport's `data-components` is exactly `Bracket:Body,Cut` (Spacer stays
+  loose) and the browser has a `[data-component]` row named Bracket. `links_basic`: the chips end `Link`,
+  `Link001`, `Link002` (moves with copy, named by the links' labels); `data-bodies` holds
+  `Link002:<n>:40,20,10`; the **BodyPad** chip's "Edit BodyPad dialog" has Distance "10 mm", and after
+  20 mm both `Body:<n>:40,20,20` and `Link002:<n>:40,20,20` show (the copy follows its target). The first
+  test's line is now "Not imported: Empty body (no shape); Scan (its shape can't be read from the file)."
+  (the shapes fixture's mesh entry is a 16-byte stand-in) and its link "Holed box copy" is a copy.
 - **Features from before bodies** (S12a, ADR-0144): `asOldFile('pad_pocket', '0.14')` from
   `packages/fcstd/src/chain-parts.ts` (FreeCAD's own shapes, rewritten into the old grammar) as
   `Plate.FCStd`. Notice: "Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and
@@ -1186,7 +1197,8 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `packages/fcstd/src/shape-fixtures.ts` (authored XML and the kernel's own test shapes; never
   a sample), fed to the home screen's **Import…** with `chooser.setFiles` as `Shapes.FCStd`.
   The notices are "Imported from the FreeCAD file: 9 of 11 shapes, as bodies without
-  history." and the "Not imported: Scan (…); Empty body (no shape)." line; body rows are
+  history." (matched as a part of the first notice, which goes on with its components) and the
+  "Not imported: Empty body (no shape); Scan (…)." line; body rows are
   `[data-body]` filtered by the name button (`exact: true`), `data-body-display` "shown" or
   "hidden" ("Hidden box"); the compound gives "Pair" and "Pair 2". `page.on('worker')` sees
   `fcstdWorker` (its nested kernel is a `kernelWorker` like the project's, so its URL tells

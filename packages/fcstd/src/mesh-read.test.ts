@@ -200,7 +200,12 @@ describe('an entry that lies (hostile files)', () => {
     view.setUint32(268, 1_000_000, true);
     const start = performance.now();
     expect(read(bytes)).toMatchObject({ refused: 'facets' });
-    expect(performance.now() - start).toBeLessThan(50);
+    const ms = performance.now() - start;
+    if (process.env.BENCH)
+      process.stderr.write(
+        `S12BTIME a million facets, ${bytes.length} bytes, refused: ${ms.toFixed(2)} ms\n`,
+      );
+    expect(ms).toBeLessThan(50);
   });
 
   it(`a mesh at the cap (${MAX_MESH_FACETS} facets) reads and measures within seconds`, () => {
@@ -222,7 +227,9 @@ describe('an entry that lies (hostile files)', () => {
     const facts = meshFacts(mesh(bytes), []);
     const ms = performance.now() - start;
     if (process.env.BENCH)
-      console.log(`${pieces * 4} facets, ${bytes.length} bytes: ${ms.toFixed(0)} ms`);
+      process.stderr.write(
+        `S12BTIME ${pieces * 4} facets, ${bytes.length} bytes: ${ms.toFixed(0)} ms\n`,
+      );
     expect(facts.pieces).toBe(pieces);
     expect(facts.openEdges).toBe(0);
     expect(ms).toBeLessThan(20_000);
