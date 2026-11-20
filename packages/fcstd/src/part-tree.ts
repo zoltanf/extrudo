@@ -39,6 +39,8 @@ export type PartNodeKind =
   | 'compound'
   /** A PartDesign body: the body the walk brought in (S5 to S10). */
   | 'body'
+  /** A PartDesign feature in no body: its loose chain, walked as a body is (S12a). */
+  | 'loose'
   /** The file's own shape for it (S8's stored-shape step). */
   | 'leaf';
 
@@ -149,7 +151,11 @@ function sizeProblem(o: FcObject, names: readonly string[]): string | undefined 
 }
 
 /** Classifies one object from its own properties: what it is, its operands, or why it is a leaf. */
-export function classify(doc: FcDocument, o: FcObject): PlannedNode {
+export function classify(
+  doc: FcDocument,
+  o: FcObject,
+  isLoose?: (o: FcObject) => boolean,
+): PlannedNode {
   const leaf = (reason: LeafReason, detail: string, operands: string[] = []): PlannedNode => ({
     object: o,
     kind: 'leaf',
@@ -158,6 +164,7 @@ export function classify(doc: FcDocument, o: FcObject): PlannedNode {
   });
   const t = o.type;
   if (t === 'PartDesign::Body') return { object: o, kind: 'body', operands: [] };
+  if (isLoose?.(o)) return { object: o, kind: 'loose', operands: [] };
   const placed = (kind: PartNodeKind, operands: string[] = []): PlannedNode => {
     const p = placementProblem(o);
     return p ? leaf('placement', p) : { object: o, kind, operands };
@@ -314,7 +321,12 @@ function membersAllowed(user: PlannedNode, position: number): boolean {
 export function partTrees(
   doc: FcDocument,
   shapes: readonly FinalShape[],
-  limits: { maxTreeNodes?: number; maxImportNodes?: number } = {},
+  limits: {
+    maxTreeNodes?: number;
+    maxImportNodes?: number;
+    /** Which objects are PartDesign features in no body (S12a); without it they are stored leaves. */
+    isLoose?: (o: FcObject) => boolean;
+  } = {},
 ): PartPlan {
   const maxTree = limits.maxTreeNodes ?? MAX_TREE_NODES;
   const maxImport = limits.maxImportNodes ?? MAX_IMPORT_TREE_NODES;
@@ -327,7 +339,7 @@ export function partTrees(
   const nodeOf = (name: string): PlannedNode => {
     let n = nodes.get(name);
     if (n) return n;
-    n = classify(doc, doc.byName.get(name) as FcObject);
+    n = classify(doc, doc.byName.get(name) as FcObject, limits.isLoose);
     nodes.set(name, n);
     return n;
   };
@@ -336,8 +348,9 @@ export function partTrees(
     n.kind = 'leaf';
     n.leaf = { reason, detail };
   };
-  /** The operands of a node that are walked: none for a leaf or a body. */
-  const walked = (n: PlannedNode) => (n.kind === 'leaf' || n.kind === 'body' ? [] : n.operands);
+  /** The operands of a node that are walked: none for a leaf, a body or a loose chain. */
+  const walked = (n: PlannedNode) =>
+    n.kind === 'leaf' || n.kind === 'body' || n.kind === 'loose' ? [] : n.operands;
 
   // Operands that can't be operands make their user a leaf, before anything is ordered.
   const checkOperands = (n: PlannedNode) => {
@@ -470,7 +483,8 @@ export function usesOf(
       if (counted.has(name) || !isBuilt(name)) continue;
       counted.add(name);
       const n = plan.nodes.get(name) as PlannedNode;
-      if (n.kind === 'leaf' || n.kind === 'body' || n.kind === 'compound') continue;
+      if (n.kind === 'leaf' || n.kind === 'body' || n.kind === 'loose' || n.kind === 'compound')
+        continue;
       for (const op of effectiveOperands(plan, name, isBuilt))
         uses.set(op, (uses.get(op) ?? 0) + 1);
     }

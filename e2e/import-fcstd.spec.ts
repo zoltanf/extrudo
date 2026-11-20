@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { asOldFile } from '../packages/fcstd/src/chain-parts';
 import {
   DRESSUP_CASES,
   type DressUpFixtureFeature,
@@ -422,4 +423,49 @@ test('a Part workbench tree comes in as primitives and a combine, live (S11)', a
   await expect(edit).toBeHidden();
   await expect(viewport).toHaveAttribute('data-bodies', /^Cut:\d+:40,20,10$/, { timeout: 60_000 });
   await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
+});
+
+test('features from before bodies come in as a timeline, live (S12a)', async ({ page }) => {
+  test.setTimeout(180_000);
+  await importFile(page, 'Plate.FCStd', Buffer.from(asOldFile('pad_pocket', '0.14')));
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await expect(
+    page.getByText(
+      'Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and features).',
+    ),
+  ).toBeVisible();
+  const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
+  await expect
+    .poll(() => chips.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label'))), {
+      timeout: 60_000,
+    })
+    .toEqual(['PadSketch', 'Pad', 'Sketch001', 'Pocket']);
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0, {
+    timeout: 60_000,
+  });
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  // FreeCAD's 40 × 30 × 8 plate with the pocket in its top: one body, named as the file names the tip.
+  await expect(viewport).toHaveAttribute('data-bodies', /^Pocket:\d+:40,30,8$/, {
+    timeout: 60_000,
+  });
+
+  // A thinner pad: the pocket's sketch stays on the top face, so the pocket is still 5 mm deep
+  // (on a plane fixed at the old top it would cut only 3 mm of the plate).
+  await page
+    .getByRole('list', { name: 'Features' })
+    .getByRole('button', { name: /^Pad\b/ })
+    .dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Pad dialog' });
+  const distance = edit.getByRole('textbox', { name: 'Distance' });
+  await expect(distance).toHaveValue('8 mm');
+  await distance.fill('6 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await distance.press('Enter');
+  await expect(edit).toBeHidden();
+  await expect(viewport).toHaveAttribute('data-bodies', /^Pocket:\d+:40,30,6$/, {
+    timeout: 60_000,
+  });
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
+  const after = solidFacts(meshOfStl(await exportModel(page, 'STL')));
+  expect(after.volume).toBeCloseTo(40 * 30 * 6 - Math.PI * 16 * 5, -1);
 });

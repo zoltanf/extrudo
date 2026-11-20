@@ -1174,6 +1174,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/import-fcstd.spec.ts`
 
+- **Features from before bodies** (S12a, ADR-0144): `asOldFile('pad_pocket', '0.14')` from
+  `packages/fcstd/src/chain-parts.ts` (FreeCAD's own shapes, rewritten into the old grammar) as
+  `Plate.FCStd`. Notice: "Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and
+  features)." Chips: PadSketch, Pad, Sketch001, Pocket. `data-bodies` starts `Pocket:<n>:40,30,8` (the body
+  takes the tip's label) and reads `40,30,6` after the Pad's **Distance** goes from 8 to 6 mm in its
+  "Edit Pad dialog". The exported STL's volume then tells a sketch on the face (the pocket still 5 mm deep)
+  from one on a fixed plane (3 mm).
+
 - **The FreeCAD import** (P6-25 S3, ADR-0144): the file is `shapesFile()` from
   `packages/fcstd/src/shape-fixtures.ts` (authored XML and the kernel's own test shapes; never
   a sample), fed to the home screen's **Import…** with `chooser.setFiles` as `Shapes.FCStd`.
