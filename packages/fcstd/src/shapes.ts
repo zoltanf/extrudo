@@ -40,8 +40,14 @@ export { IMPORT_TIMEOUT_MS, MAX_RESTARTS, NONSENSE_REPLY, SHAPE_TIMEOUT_MS } fro
 export const MAX_SOLIDS_PER_SHAPE = 10_000;
 
 export type LeftOutReason =
-  /** A mesh object (S12). */
+  /** A mesh object (before S12b; no longer given). */
   | 'mesh'
+  /** A mesh whose surface doesn't close (S12b). */
+  | 'not-closed'
+  /** Past one of the import's limits on how many (S12b: meshes, copies). */
+  | 'limit'
+  /** A link that scales what it shows, which a copy can't (S12b). */
+  | 'scaled'
   /** The object stores no shape, or an empty one. */
   | 'empty'
   /** FreeCAD's binary shape form, which is not read. */

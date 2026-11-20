@@ -21,9 +21,13 @@ import {
   newWalkShared,
 } from './bodies';
 import { KernelBudget } from './budget';
+import { type ComponentsReport, componentGroups, makeComponents } from './components';
+import { type CompoundImport, type CompoundPlan, planCompounds } from './compounds';
 import { finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
+import type { LinkImport } from './links';
 import { type LooseChain, looseChains, loosePlanner } from './loose-chains';
+import type { MeshImport } from './meshes';
 import { readFcstd, storedShapeEntry } from './model';
 import { cleanName } from './names';
 import { type ParametersReport, parametersReport } from './parameters-report';
@@ -32,6 +36,8 @@ import { importTrees, type TreeImport } from './part-import';
 import { partTrees } from './part-tree';
 import { type ImportedShape, importShapes, type LeftOutShape, setBodies } from './shapes';
 import { containerChain, releasePlane } from './sketch-place';
+import { placeStructure } from './structure';
+import { StructureBuild } from './structure-build';
 
 /**
  * The most a `.FCStd` file may be before it is read: the import holds the
@@ -78,6 +84,14 @@ export interface FcstdImportOptions {
   readonly maxTreeFeatures?: number;
   /** S12a's `MAX_LOOSE_CHAINS`, for tests. */
   readonly maxLooseChains?: number;
+  /** S12b's `MAX_MESH_FACETS` and `MAX_IMPORT_MESHES`, for tests. */
+  readonly maxMeshFacets?: number;
+  readonly maxMeshes?: number;
+  /** S12b's `MAX_ARRAY_ELEMENTS`, `MAX_LINK_COPIES`, `MAX_COMPOUND_OBJECTS` and `MAX_IMPORT_COMPONENTS`, for tests. */
+  readonly maxArrayElements?: number;
+  readonly maxLinkCopies?: number;
+  readonly maxCompoundObjects?: number;
+  readonly maxComponents?: number;
 }
 
 /** What happened to one PartDesign body: its history, and whether its final shape came in (S3's way). */
@@ -101,7 +115,7 @@ export interface FcstdImportReport {
   readonly finalShapes: number;
   /** What the reader couldn't read or left out, one line each. */
   readonly problems: readonly string[];
-  /** The labels of link arrays, of which only the link itself was placed. */
+  /** The labels of link arrays that couldn't be expanded, of which only the link itself was placed. */
   readonly linkArrays: readonly string[];
   /** How many times the import's kernel was replaced after a failure. */
   readonly restarts: number;
@@ -111,6 +125,14 @@ export interface FcstdImportReport {
   readonly parameters: ParametersReport;
   /** The Part workbench's trees (S11), in document order of their tops: what each object became. */
   readonly trees: readonly TreeImport[];
+  /** The meshes that are final shapes (S12b), each in or left out (the left out are in `leftOut` too). */
+  readonly meshes: readonly MeshImport[];
+  /** Each link that is a final shape (S12b): a copy of what its target became, as today, or left out. */
+  readonly links: readonly LinkImport[];
+  /** Each compound at the top (S12b): as its members, or as today with the reason. */
+  readonly compounds: readonly CompoundImport[];
+  /** The components made from parts, compounds and links to parts (S12b). */
+  readonly components: ComponentsReport;
 }
 
 export interface FcstdImportResult {
@@ -146,8 +168,22 @@ export async function importFcstd(
   const binder = new Binder(design, prepared, (plane) => releasePlane(design, plane));
   const budget = new KernelBudget(options.kernel, options);
   const planner = loosePlanner(doc);
+  // S12b: a compound at the top comes in as its members, each as it would at the document's top.
+  const compounds = planCompounds(
+    doc,
+    shapes,
+    (o) => planner.isLoose(o),
+    options.maxCompoundObjects,
+  );
+  const membersOf = new Map(
+    compounds
+      .filter((c): c is CompoundPlan => 'members' in c)
+      .map((c) => [c.compound.object.name, c.members]),
+  );
+  /** What the walks below take: the final shapes, a compound's members in its place. */
+  const walked = shapes.flatMap((s) => membersOf.get(s.object.name) ?? [s]);
   // S11: the Part workbench's trees, planned from the file alone.
-  const plan = partTrees(doc, shapes, {
+  const plan = partTrees(doc, walked, {
     isLoose: planner.endsChain,
     ...(options.maxTreeNodes !== undefined ? { maxTreeNodes: options.maxTreeNodes } : {}),
     ...(options.maxImportTreeNodes !== undefined
@@ -158,7 +194,7 @@ export async function importFcstd(
   const loose = new Map<string, LooseChain>(
     looseChains(
       doc,
-      shapes.filter((s) => s.kind === 'chain-tip' && planner.isLoose(s.object)),
+      walked.filter((s) => s.kind === 'chain-tip' && planner.isLoose(s.object)),
       {
         maxFeatures: options.maxBodyFeatures ?? MAX_BODY_FEATURES,
         maxFile: options.maxFileFeatures ?? MAX_FILE_FEATURES,
@@ -169,13 +205,13 @@ export async function importFcstd(
   );
   // Progress: each feature the walk takes, each tree node, then each shape converted.
   const steps =
-    shapes.reduce((n, s) => {
+    walked.reduce((n, s) => {
       if (s.kind === 'chain-tip') return n + (loose.get(s.object.name)?.features.length ?? 0);
       if (s.kind !== 'body') return n;
       const chain = bodyChain(doc, s.object);
       return n + ('features' in chain ? chain.features.length : 0);
     }, 0) + plan.trees.reduce((n, t) => n + t.order.length, 0);
-  let walked = 0;
+  let done = 0;
   // The stored-shape steps' STEP bytes (S8), then the shapes import's.
   const stepFiles = new Map<AttachmentId, Uint8Array>();
   const known = { ids: [] as string[] };
@@ -200,9 +236,9 @@ export async function importFcstd(
     ...(options.maxFileFeatures !== undefined ? { maxFileFeatures: options.maxFileFeatures } : {}),
     ...(options.originFirst === false ? { originFirst: false } : {}),
     ...(options.onUntouched ? { onUntouched: options.onUntouched } : {}),
-    onStep: () => options.onProgress?.(++walked, steps + shapes.length),
+    onStep: () => options.onProgress?.(++done, steps + walked.length),
   };
-  const histories = await importBodies(doc, shapes, design, { ...walkOptions, known, loose });
+  const histories = await importBodies(doc, walked, design, { ...walkOptions, known, loose });
   const treeWalk = await importTrees(doc, plan, design, {
     budget,
     binder,
@@ -217,7 +253,7 @@ export async function importFcstd(
       ? { maxOperandBodies: options.maxOperandBodies }
       : {}),
     markWalk: () => markWalkShared(shared),
-    onStep: () => options.onProgress?.(++walked, steps + shapes.length),
+    onStep: () => options.onProgress?.(++done, steps + walked.length),
     // A PartDesign body a tree uses, or a loose chain ending at the feature it uses (S12a):
     // walked as any body is, from the design's bodies so far.
     walkBody: async (body, ids) => {
@@ -260,25 +296,30 @@ export async function importFcstd(
   });
   binder.finish();
   const complete = new Set(histories.filter((h) => !h.stop).map((h) => h.object));
-  const byTop = new Map(shapes.map((s) => [s.object.name, s]));
+  const byTop = new Map(walked.map((s) => [s.object.name, s]));
   for (const t of treeWalk.trees)
     if (t.outcome === 'history' || t.outcome === 'leaves') {
       complete.add(t.object);
       const shape = byTop.get(t.object);
       if (shape) setBodies(design, t.bodies, shape, t.name);
     }
-  const rest = shapes.filter(
+  // Meshes and links come in after the rest (S12b), so a link can copy what its target became.
+  const rest = walked.filter(
     (s) =>
+      s.format !== 'mesh' &&
+      s.kind !== 'link' &&
       !(
         (s.kind === 'body' || s.kind === 'shape' || s.kind === 'chain-tip') &&
         complete.has(s.object.name)
       ),
   );
+  // Progress: the meshes and links come after the shapes import.
+  const later = walked.filter((s) => s.format === 'mesh' || s.kind === 'link').length;
   const removesAt = design.doc.features.length;
   const result = await importShapes(doc, rest, design, {
     ...options,
     budget,
-    onProgress: (done, total) => options.onProgress?.(walked + done, walked + total),
+    onProgress: (n, total) => options.onProgress?.(done + n, done + total + later),
   });
   const came = new Set(result.imported.map((s) => s.object));
   const byObject = new Map(rest.map((s) => [s.object.name, s]));
@@ -303,28 +344,132 @@ export async function importFcstd(
       }
     }
   });
+  // Which bodies each final shape (or a compound's member) came in as (S12b).
+  const cameAs = new Map<string, string[]>();
+  const partial = new Map<string, string[]>();
+  for (const b of bodies)
+    if (b.outcome === 'history') cameAs.set(b.object, [...b.bodies]);
+    else if (b.outcome === 'left-out' && b.bodies.length > 0) partial.set(b.object, [...b.bodies]);
+  for (const t of treeWalk.trees)
+    if (t.outcome === 'history' || t.outcome === 'leaves') cameAs.set(t.object, [...t.bodies]);
+  const noteImported = (list: readonly ImportedShape[]) => {
+    for (const s of list)
+      cameAs.set(
+        s.object,
+        Array.from({ length: s.solids }, (_, i) => `${s.feature}:${i}`),
+      );
+  };
+  noteImported(result.imported);
+  // S12b: meshes, compounds placed as their members, links as copies: each checked on its own.
+  const build = new StructureBuild(design, budget, new Map([...stepFiles, ...result.files]));
+  let after_ = 0;
+  const structure = await placeStructure(
+    doc,
+    shapes,
+    compounds,
+    design,
+    build,
+    budget,
+    cameAs,
+    partial,
+    {
+      onStep: () => options.onProgress?.(done + rest.length + ++after_, done + rest.length + later),
+      ...(options.maxMeshFacets !== undefined ? { maxMeshFacets: options.maxMeshFacets } : {}),
+      ...(options.maxMeshes !== undefined ? { maxMeshes: options.maxMeshes } : {}),
+      ...(options.maxArrayElements !== undefined
+        ? { maxArrayElements: options.maxArrayElements }
+        : {}),
+      ...(options.maxLinkCopies !== undefined ? { maxLinkCopies: options.maxLinkCopies } : {}),
+      ...(options.maxAttachmentsBytes !== undefined
+        ? { maxAttachmentsBytes: options.maxAttachmentsBytes }
+        : {}),
+    },
+  );
+  // What didn't hold comes in as S3 brought it.
+  const after =
+    structure.fallback.length > 0
+      ? await importShapes(doc, structure.fallback, design, {
+          kernel: options.kernel,
+          budget,
+          ...(options.maxAttachmentsBytes !== undefined
+            ? { maxAttachmentsBytes: options.maxAttachmentsBytes }
+            : {}),
+        })
+      : undefined;
+  if (after) {
+    noteImported(after.imported);
+    for (const [id, bytes] of after.files) build.files.set(id, bytes);
+  }
+  const linksToParts = new Set(structure.links.filter((l) => l.part).map((l) => l.object));
+  const asMembers = new Set(
+    structure.compounds.filter((c) => c.outcome === 'members').map((c) => c.object),
+  );
+  const components = makeComponents(
+    design,
+    doc,
+    componentGroups(doc, shapes, cameAs, partial, linksToParts, asMembers),
+    [...new Set([...build.ids, ...[...cameAs.values()].flat(), ...[...partial.values()].flat()])],
+    options.maxComponents,
+  );
+  // A compound that came in as today after its members were tried: their records go with them.
+  const takenOut = new Set(
+    structure.compounds.filter((c) => c.outcome === 'today').flatMap((c) => c.members),
+  );
+  const meshes = structure.meshes;
   const arrays = doc.objects.filter((o) => {
     const count = o.properties.ElementCount?.value;
     return o.type === 'App::Link' && count?.kind === 'integer' && count.value > 0;
   });
-  const linkArrays = arrays.map((o) => cleanName(o.label, o.name));
+  const expanded = new Set(structure.links.filter((l) => l.array?.expanded).map((l) => l.object));
+  const linkArrays = arrays
+    .filter((o) => !expanded.has(o.name))
+    .map((o) => cleanName(o.label, o.name));
   // The reader notes each link array as a problem too; the report lists them on their own.
   const arrayLines = new Set(arrays.map((o) => linkArrayProblem(o.name)));
   return {
     design,
-    files: new Map([...stepFiles, ...result.files]),
+    files: build.files,
     report: {
-      shapes: result.imported,
-      leftOut: result.leftOut,
+      shapes: [...result.imported, ...(after?.imported ?? [])],
+      leftOut: [
+        ...result.leftOut,
+        ...(after?.leftOut ?? []),
+        ...structure.scaled.map(
+          (l): LeftOutShape => ({
+            object: l.object,
+            name: l.name,
+            reason: 'scaled',
+            ...(l.detail ? { detail: l.detail } : {}),
+          }),
+        ),
+        ...meshes.flatMap((m): LeftOutShape[] =>
+          m.outcome === 'in'
+            ? []
+            : [
+                {
+                  object: m.object,
+                  name: m.name,
+                  reason: m.reason ?? 'kernel',
+                  ...(m.detail ? { detail: m.detail } : {}),
+                },
+              ],
+        ),
+      ],
       finalShapes: shapes.length,
       problems: doc.problems.filter((p) => !arrayLines.has(p)),
       linkArrays,
       restarts: budget.restarts,
-      bodies,
+      bodies: bodies.filter((b) => !takenOut.has(b.object)),
       parameters: parametersReport(prepared, binder, design.doc),
-      trees: treeWalk.trees.map((t) =>
-        t.outcome === 'shape' && !came.has(t.object) ? { ...t, outcome: 'left-out' } : t,
-      ),
+      trees: treeWalk.trees
+        .filter((t) => !takenOut.has(t.object))
+        .map((t) =>
+          t.outcome === 'shape' && !came.has(t.object) ? { ...t, outcome: 'left-out' } : t,
+        ),
+      meshes,
+      links: structure.links,
+      compounds: structure.compounds,
+      components,
     },
   };
 }

@@ -451,7 +451,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             shapes: [
               { object: 'Body', name: 'Plate', feature: 'f1', solids: 1, drift: 0, stepBytes: 30 },
             ],
-            leftOut: [{ object: 'Mesh', name: 'Scan', reason: 'mesh' }],
+            leftOut: [{ object: 'Mesh', name: 'Scan', reason: 'not-closed' }],
             finalShapes: 2,
             problems: [],
             linkArrays: [],
@@ -459,6 +459,10 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             bodies: [],
             parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
             trees: [],
+            meshes: [],
+            links: [],
+            compounds: [],
+            components: { made: [], parts: 0, partsWithout: 0, overLimit: 0 },
           },
         };
       },
@@ -471,7 +475,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
     expect(await projects.readAttachment?.(id as never, sha256)).toEqual(step);
     expect(takeOpenNotices(id as never)).toEqual([
       'Imported from the FreeCAD file: 1 of 2 shapes, as a body without history.',
-      "Not imported: Scan (a mesh, which Extrudo doesn't import from FreeCAD files yet).",
+      "Not imported: Scan (a mesh whose surface isn't closed).",
     ]);
   });
 });
@@ -534,8 +538,8 @@ describe('fcstdNotices', () => {
       finalShapes: 5,
       shapes: [shape('A')],
       leftOut: [
-        { object: 'm1', name: 'Scan', reason: 'mesh' },
-        { object: 'm2', name: 'Scan 2', reason: 'mesh' },
+        { object: 'm1', name: 'Scan', reason: 'not-closed' },
+        { object: 'm2', name: 'Scan 2', reason: 'not-closed' },
         { object: 'c', name: 'Fillet', reason: 'check', detail: 'the volume differs by 2 %' },
         { object: 'k', name: 'Broken', reason: 'kernel', detail: 'refused' },
       ],
@@ -544,7 +548,7 @@ describe('fcstdNotices', () => {
     });
     expect(notices).toEqual([
       'Imported from the FreeCAD file: 1 of 5 shapes, as a body without history.',
-      "Not imported: Scan; Scan 2 (a mesh, which Extrudo doesn't import from FreeCAD files yet); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
+      "Not imported: Scan; Scan 2 (a mesh whose surface isn't closed); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
       'Of each link array only one copy came in: Bolts.',
       '1 thing in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…',
     ]);

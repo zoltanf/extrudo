@@ -465,6 +465,9 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../core
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../io
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch

@@ -84,9 +84,9 @@ const GEO_GROUPS = new Set([
   'PartDesign::Boolean',
   'Assembly::AssemblyObject',
 ]);
-const isLink = (o: FcObject) => o.type === 'App::Link' || o.type === 'App::LinkElement';
+export const isLink = (o: FcObject) => o.type === 'App::Link' || o.type === 'App::LinkElement';
 /** How many links a link may go through to reach a shape. */
-const MAX_LINK_HOPS = 32;
+export const MAX_LINK_HOPS = 32;
 /** How deep containers may nest before the walk gives up. */
 const MAX_CONTAINER_DEPTH = 64;
 
@@ -110,7 +110,7 @@ export function linkedObjects(value: FcValue): string[] {
 
 const identity: FcPlacement = { position: [0, 0, 0], rotation: [0, 0, 0, 1] };
 
-function placement(o: FcObject, name = 'Placement'): FcPlacement | undefined {
+export function placement(o: FcObject, name = 'Placement'): FcPlacement | undefined {
   const v = o.properties[name]?.value;
   return v?.kind === 'placement' ? v.value : undefined;
 }
@@ -142,7 +142,7 @@ export function rotate(
 }
 
 /** A link's target (same document only) and whether the target's own placement stays. */
-function linkTarget(o: FcObject): { target: string | undefined; keep: boolean } {
+export function linkTarget(o: FcObject): { target: string | undefined; keep: boolean } {
   const value = o.properties.LinkedObject?.value;
   let target: string | undefined;
   if (value?.kind === 'xlink') target = value.items.find((i) => i.file === '')?.object;
@@ -152,13 +152,22 @@ function linkTarget(o: FcObject): { target: string | undefined; keep: boolean } 
 }
 
 /** A link's own placement: `LinkPlacement` when it has one, else `Placement`. */
-const linkPlacement = (o: FcObject) => placement(o, 'LinkPlacement') ?? placement(o) ?? identity;
+export const linkPlacement = (o: FcObject) =>
+  placement(o, 'LinkPlacement') ?? placement(o) ?? identity;
 
-/** The document's final shapes, in document order. Problems found on the way go to `doc.problems`. */
-export function finalShapes(doc: FcDocument): FinalShape[] {
-  // Built once: who is in a body, who is consumed, who holds whom.
+/** Who is in a body, who is consumed and by whom: built once per document. */
+interface Index {
+  readonly members: ReadonlySet<string>;
+  /** Object → the objects that consume it, in document order. */
+  readonly users: ReadonlyMap<string, readonly string[]>;
+  readonly parent: ReadonlyMap<string, FcObject>;
+}
+const indexes = new WeakMap<FcDocument, Index>();
+function indexOf(doc: FcDocument): Index {
+  const known = indexes.get(doc);
+  if (known) return known;
   const members = new Set<string>();
-  const consumed = new Set<string>();
+  const users = new Map<string, string[]>();
   const parent = new Map<string, FcObject>();
   for (const o of doc.objects) {
     if (o.type === 'PartDesign::Body')
@@ -174,9 +183,60 @@ export function finalShapes(doc: FcDocument): FinalShape[] {
     if (isLink(o) || NOT_CONSUMING.some((t) => o.type.startsWith(t))) continue;
     for (const p of Object.values(o.properties)) {
       if (NOT_CONSUMING_PROPERTIES.has(p.name) || p.value.kind === 'xlink') continue;
-      for (const x of linkedObjects(p.value)) if (x !== o.name) consumed.add(x);
+      for (const x of linkedObjects(p.value)) {
+        if (x === o.name) continue;
+        const list = users.get(x);
+        if (!list) users.set(x, [o.name]);
+        else if (list.at(-1) !== o.name) list.push(o.name);
+      }
     }
   }
+  const index = { members, users, parent };
+  indexes.set(doc, index);
+  return index;
+}
+
+/** The objects that consume `name` (its `Base`, `Tool`, a compound's `Links` …), each once, in document order. */
+export function consumersOf(doc: FcDocument, name: string): readonly string[] {
+  return indexOf(doc).users.get(name) ?? [];
+}
+
+const solids = new WeakMap<FcDocument, Map<string, boolean>>();
+/**
+ * Whether `o`'s stored shape has a solid (an empty shape quietly has none),
+ * each object's entry read once per document; a problem on `doc.problems`
+ * when it can't be read.
+ */
+export function hasSolid(doc: FcDocument, o: FcObject): boolean {
+  let solid = solids.get(doc);
+  if (!solid) {
+    solid = new Map();
+    solids.set(doc, solid);
+  }
+  const known = solid.get(o.name);
+  if (known !== undefined) return known;
+  const entry = storedShapeEntry(doc, o);
+  let result = false;
+  if (entry !== undefined) {
+    try {
+      const bytes = doc.entries.get(entry);
+      if (!bytes)
+        doc.problems.push(`${o.name}.Shape: its stored shape ${entry} is missing from the file.`);
+      else if (entry.endsWith('.bin')) doc.problems.push(binaryFormProblem(`${o.name}.Shape`));
+      else if (bytes.length > 0) result = brepHasSolid(new TextDecoder('latin1').decode(bytes));
+    } catch (error) {
+      if (!(error instanceof FcstdFormatError)) throw error;
+      doc.problems.push(`${o.name}.Shape: its stored shape can't be read: ${error.message}`);
+    }
+  }
+  solid.set(o.name, result);
+  return result;
+}
+
+/** The document's final shapes, in document order. Problems found on the way go to `doc.problems`. */
+export function finalShapes(doc: FcDocument): FinalShape[] {
+  const { members, users, parent } = indexOf(doc);
+  const consumed = { has: (name: string) => users.has(name) };
 
   const isGeoGroup = (o: FcObject) =>
     GEO_GROUPS.has(o.type) ||
@@ -198,29 +258,6 @@ export function finalShapes(doc: FcDocument): FinalShape[] {
       if (isGeoGroup(p)) out.push(placement(p) ?? identity);
     }
     return out.reverse();
-  };
-
-  const solid = new Map<string, boolean>();
-  /** Whether `o`'s stored shape has a solid (an empty shape quietly has none). */
-  const hasSolid = (o: FcObject): boolean => {
-    const known = solid.get(o.name);
-    if (known !== undefined) return known;
-    const entry = storedShapeEntry(doc, o);
-    let result = false;
-    if (entry !== undefined) {
-      try {
-        const bytes = doc.entries.get(entry);
-        if (!bytes)
-          doc.problems.push(`${o.name}.Shape: its stored shape ${entry} is missing from the file.`);
-        else if (entry.endsWith('.bin')) doc.problems.push(binaryFormProblem(`${o.name}.Shape`));
-        else if (bytes.length > 0) result = brepHasSolid(new TextDecoder('latin1').decode(bytes));
-      } catch (error) {
-        if (!(error instanceof FcstdFormatError)) throw error;
-        doc.problems.push(`${o.name}.Shape: its stored shape can't be read: ${error.message}`);
-      }
-    }
-    solid.set(o.name, result);
-    return result;
   };
 
   const shape = (
@@ -271,7 +308,7 @@ export function finalShapes(doc: FcDocument): FinalShape[] {
       out.push(shape('mesh', o, o, containers(o)));
       continue;
     }
-    if (hasSolid(o)) out.push(shape('shape', o, o, containers(o)));
+    if (hasSolid(doc, o)) out.push(shape('shape', o, o, containers(o)));
   }
   return out;
 

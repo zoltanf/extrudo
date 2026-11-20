@@ -334,7 +334,10 @@ export async function saveFcstdImport(
 
 /** Why a shape was left out, in the app's words. */
 const LEFT_OUT: Record<LeftOutReason, string> = {
-  mesh: "a mesh, which Extrudo doesn't import from FreeCAD files yet",
+  mesh: 'a mesh',
+  'not-closed': "a mesh whose surface isn't closed",
+  limit: 'past what one import brings in',
+  scaled: 'a link that makes its shape larger or smaller, which a copy in Extrudo can’t',
   empty: 'no shape',
   binary: "stored in FreeCAD's binary form, which Extrudo can't read",
   unreadable: "its shape can't be read from the file",

@@ -397,9 +397,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     bodies: ['Fusion'],
   },
   compounds: {
+    // The compound at the top comes in as its members (S12b): two trees of one primitive each.
     trees: {
       Cut: 'history',
       Cut001: 'leaves',
+      Box: 'history',
+      Cylinder: 'history',
     },
     outcomes: {
       Box001: 'feature',
@@ -410,8 +413,12 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       Blocks: 'leaf:compound',
       Box004: 'feature',
       Cut001: 'feature',
+      Box: 'feature',
+      Cylinder: 'feature',
     },
     features: [
+      'box Box',
+      'cylinder Cylinder',
       'box Box001',
       'cylinder Cylinder001',
       'cylinder Cylinder002',
@@ -420,9 +427,8 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
       'box Box004',
       'combine Cut001',
       'combine Cut001 2',
-      'import Import Compound',
     ],
-    bodies: ['Cut', 'Cut001', 'Cut001 2', 'Compound', 'Compound 2'],
+    bodies: ['Box', 'Cylinder', 'Cut', 'Cut001', 'Cut001 2'],
   },
   in_containers: {
     trees: {
