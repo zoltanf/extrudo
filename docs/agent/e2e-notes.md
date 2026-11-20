@@ -1174,6 +1174,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/import-fcstd.spec.ts`
 
+- **Features from before bodies** (S12a, ADR-0144): `asOldFile('pad_pocket', '0.14')` from
+  `packages/fcstd/src/chain-parts.ts` (FreeCAD's own shapes, rewritten into the old grammar) as
+  `Plate.FCStd`. Notice: "Imported from the FreeCAD file: 1 of 1 shape, with its history (sketches and
+  features)." Chips: PadSketch, Pad, Sketch001, Pocket. `data-bodies` starts `Pocket:<n>:40,30,8` (the body
+  takes the tip's label) and reads `40,30,6` after the Pad's **Distance** goes from 8 to 6 mm in its
+  "Edit Pad dialog". The exported STL's volume then tells a sketch on the face (the pocket still 5 mm deep)
+  from one on a fixed plane (3 mm).
+
 - **The FreeCAD import** (P6-25 S3, ADR-0144): the file is `shapesFile()` from
   `packages/fcstd/src/shape-fixtures.ts` (authored XML and the kernel's own test shapes; never
   a sample), fed to the home screen's **Import…** with `chooser.setFiles` as `Shapes.FCStd`.
@@ -1637,6 +1645,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `data-preview-status="error"` and its "Feature status" line the own-dialog message; the first
   `Count` textbox (there are two, one per direction) set to `2` gives `ok`, then OK builds it.
   No time is asserted; the pattern keeps one call busy 13.9 s in Node.
+- **A long feature** (the spec's second test, ADR-0155's amendment of 2026-11-19): sets
+  `window.__extrudoLongFeatureMs = 2000` with `page.addInitScript` (it may only lower the 30 s),
+  opens the same design and waits for `[data-feature-long]` ("This feature is taking a long
+  time.") and `[data-model-stop="long"]`; `notice.ariaSnapshot()` holds the sentence exactly once
+  and no seconds. "Building the model…" (`[data-progress-building]`) lasts too short to catch
+  reliably in a browser; the unit tests cover it.
 
 ### `e2e/kernel-prewarm.spec.ts`
 

@@ -4115,6 +4115,15 @@ previews skip it too, its own dialog while the draft's inputs equal the stopped 
 (`sameValue`, `STOPPED_DRAFT_MESSAGE`);
 when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight
 during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-stop.spec.ts`.
+**Its amendment (2026-11-19), a feature that takes long and the model's last step:** after
+`LONG_FEATURE_MS` (30 s) in one feature, counted from `ModelProgress.since`, Stop is filled
+(`[data-model-stop="long"]`) and the notice adds `LONG_FEATURE_TEXT`; nothing happens by itself.
+Past the last feature the recomputer reports `building: true` and the line says `BUILDING_TEXT`
+with the bar full, no Stop, in both notices. **Rules:** one timer (`useLongFeature`) and only
+while Stop is offered; the sentence is plain text in the polite region (read once), the seconds
+stay hidden; the threshold's comment keeps the margin against B9's thread (21.5 s on a slow
+runner); `window.__extrudoLongFeatureMs` may only lower it (`longFeatureMs`), never set by the
+app; a recompute with nothing computed reports no `building`.
 
 ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
 `packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a
@@ -5186,6 +5195,28 @@ waste and runs again. What a node adds is counted before anything is added (`MAX
 `FcstdImportReport.trees`; the app's `TREE_REASON` and the "Built on the file's own shape…" notice. Fixtures
 `part-fixtures.ts` (22 FreeCAD documents, the B-rep texts deflated), `part-parts.ts`; tests `part.test.ts`,
 `part-hostile.test.ts`. S3's library test runs with `maxImportTreeNodes: 0`.
+
+**ADR-0144, S12a (loose chains):** files `loose-chains.ts` (`loosePlanner`, `looseChains`: from the file alone, iterative,
+each feature's base read once), `chain-parts.ts` (test support: `chainFile`, `asOldFile`), `transforms.ts` `sketchFace`,
+`sketch-place.ts` (`GivenPlane` kind `face`). Rules: a **loose feature** is a PartDesign feature (not a body, datum or
+binder) in no body; a **loose chain** is a tip and the loose features reached through each one's base: `BaseFeature`, a
+dress-up's `Base`, of a pattern's originals the one no other builds on (else the first), the object its sketch is attached
+to when it stores a solid, in that order. Only tips that are loose are planned; a tip of a type the walk doesn't map is as today, unwalked.
+**One walk serves bodies and chains** (`importBodies`, `BodyWalkOptions.loose`): never a second walk. Every feature is
+checked against its stored shape; one that doesn't hold is S8's step; a chain that can't come in is S3's final shape
+(`stop` with the reason), never a lost shape. A root on a shape outside the chain starts with a step of that shape
+(`foreign-base`), which stays the reason only until a feature of the chain fails. Each tip of a branch walks **its own
+copy** of what it shares, and **a loose chain never claims from or is refused by `WalkShared.owner`**: it takes nothing from a
+body. A loose chain's sketch **stays on the flat face its support names** on every path that adds a sketch (`withFace`) when
+S6's matcher finds that face and the stored frame lies in its plane, else on the fixed plane. A try that found no face isn't made
+twice, and none is made again after a kernel call failed or restarted the kernel; `faceFallbacks` counts fixed-plane tries that
+held after their face try didn't; a body's
+sketches stay on S9's planes (their standing numbers must not move). A loose feature of a mapped type a Part boolean uses is a
+tree node of kind `loose`, walked through `walkBody`. Limits: `MAX_BODY_FEATURES` a chain; `MAX_LOOSE_CHAINS` (256) and
+`MAX_FILE_FEATURES` planned for the chains at the top, a refused chain giving back what it counted, with one planner budget for
+all visits (`PLAN_VISITS_PER_FEATURE` × `MAX_FILE_FEATURES`) and one for links among originals (`MAX_ORIGINAL_LINKS`); a chain under a tree plans
+on its own count (500 a call) and is bounded by the walk's shared `MAX_FILE_FEATURES`; a stored shape is scanned once per entry,
+never past `MAX_STORED_BREP_BYTES`. Report: `BodyHistory.loose`; the library's bodies' numbers count real bodies only (`!b.loose`).
 
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   activeFeatureCount,
   featureSeconds,
+  LONG_FEATURE_MS,
+  longFeatureIn,
+  longFeatureMs,
   nextTickIn,
   progressBar,
   progressDetail,
@@ -154,6 +157,24 @@ describe('Stop while a design opens (ADR-0155)', () => {
     expect(progressMode(base)).toBeUndefined();
     expect(progressMode({ ...base, opening: true })).toBe('preparing');
     expect(progressMode({ ...base, status: 'ready', opening: true })).toBeUndefined();
+  });
+});
+
+describe("the long-feature threshold (ADR-0155's amendment of 2026-11-19)", () => {
+  it('is 30 s; a test may only lower it', () => {
+    expect(LONG_FEATURE_MS).toBe(30_000);
+    expect(longFeatureMs(undefined)).toBe(LONG_FEATURE_MS);
+    expect(longFeatureMs(2000)).toBe(2000);
+    expect(longFeatureMs(60_000)).toBe(LONG_FEATURE_MS);
+    for (const bad of [0, -5, Number.NaN, Number.POSITIVE_INFINITY, '100', null]) {
+      expect(longFeatureMs(bad)).toBe(LONG_FEATURE_MS);
+    }
+  });
+  it('counts from the feature start', () => {
+    expect(longFeatureIn(10_000, 10_000, 30_000)).toBe(30_000);
+    expect(longFeatureIn(10_000, 35_000, 30_000)).toBe(5_000);
+    expect(longFeatureIn(10_000, 40_000, 30_000)).toBe(0);
+    expect(longFeatureIn(10_000, 99_000, 30_000)).toBe(0);
   });
 });
 

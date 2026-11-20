@@ -99,6 +99,7 @@ export type {
   ShapeMeasure,
   StoredShapeStep,
 } from './import-kernel';
+export { type LooseChain, looseChains, MAX_LOOSE_CHAINS } from './loose-chains';
 export {
   binaryFormProblem,
   brepHasSolid,

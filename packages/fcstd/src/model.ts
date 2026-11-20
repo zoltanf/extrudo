@@ -822,6 +822,30 @@ export function brepHasSolid(text: string): boolean {
   return solid.test(text);
 }
 
+/**
+ * `brepHasSolid` on the entry's bytes, without decoding them: one forward scan for the shape
+ * table, then for a solid's record in it.
+ */
+export function brepBytesHaveSolid(bytes: Uint8Array): boolean {
+  const NL = 10;
+  const table = [...'\nTShapes '].map((c) => c.charCodeAt(0));
+  let at = -1;
+  scan: for (let i = 0; i + table.length <= bytes.length; i++) {
+    for (let k = 0; k < table.length; k++) if (bytes[i + k] !== table[k]) continue scan;
+    at = i;
+    break;
+  }
+  if (at < 0) return false;
+  for (let i = at; i + 3 < bytes.length; i++) {
+    if (bytes[i] !== NL || bytes[i + 1] !== 83 || bytes[i + 2] !== 111) continue;
+    let k = i + 3;
+    while (bytes[k] === 32 || bytes[k] === 9) k++;
+    if (bytes[k] === 13) k++;
+    if (bytes[k] === NL) return true;
+  }
+  return false;
+}
+
 /** The most numbers a float list entry may hold for the importer to read it (a pattern's gaps). */
 export const MAX_FLOAT_LIST = 100_000;
 

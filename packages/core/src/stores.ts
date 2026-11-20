@@ -580,6 +580,12 @@ export interface ModelProgress {
    * run, for the notice's seconds (ADR-0105's amendment of 2026-11-19).
    */
   since: number;
+  /**
+   * The kernel is past its last feature (the joint and annotation passes, the
+   * meshes): no feature runs, nothing can be stopped, and the notice says
+   * "Building the model…" (ADR-0155's amendment of 2026-11-19).
+   */
+  building?: boolean;
 }
 
 /**

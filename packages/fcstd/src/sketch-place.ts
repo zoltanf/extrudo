@@ -30,7 +30,15 @@ import type { Vec2 } from './sketch-decode';
  * frame, a datum plane's construction (`datum`) or a plane through three
  * fixed points of the sketch's own frame (`points`).
  */
-export type PlaneKind = 'origin' | 'offset' | 'angle' | 'angle-offset' | 'datum' | 'points';
+export type PlaneKind =
+  | 'origin'
+  | 'offset'
+  | 'angle'
+  | 'angle-offset'
+  | 'datum'
+  | 'points'
+  /** A flat face of the rebuilt body, which the sketch follows (S12a). */
+  | 'face';
 
 export interface SketchPlacement {
   readonly plane: GeomRef;
@@ -243,10 +251,14 @@ export function fitsOriginPlane(global: FcPlacement): boolean {
   );
 }
 
-/** A plane made for a tilted frame by the caller (S9): the plane, its kind, and a point and normal of its frame. */
+/**
+ * A plane the caller found for a sketch: made for a tilted frame (S9), or a flat face of the
+ * rebuilt body the sketch stays on (`face`, S12a). The plane, its kind, and a point and normal of
+ * its frame.
+ */
 export interface GivenPlane {
   readonly plane: GeomRef;
-  readonly kind: 'datum' | 'points';
+  readonly kind: 'datum' | 'points' | 'face';
   readonly point: Vec3;
   readonly normal: Vec3;
 }
@@ -300,6 +312,9 @@ export function placeSketch(
     return { plane, offset };
   };
 
+  // A face the sketch stays on comes first: the origin planes below would not follow the body.
+  if (given?.kind === 'face')
+    return placed(given.plane, 'face', faceSketchFrame(given.point, given.normal));
   for (const p of ORIGIN_PLANES) {
     const n = p.frame.normal as Vec3;
     if (Math.abs(Math.abs(dot(N, n)) - 1) > EPS) continue;

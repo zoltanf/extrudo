@@ -513,7 +513,8 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         if (after.get(object) === o) otherSame++;
         else otherDiffer++;
       }
-      for (const b of report.bodies) {
+      // The bodies' standing numbers are real bodies': loose chains have `chain-corpus.test.ts`.
+      for (const b of report.bodies.filter((x) => !x.loose)) {
         bump(bodies, b.outcome);
         s7.secondAttempts += b.secondAttempts;
         s9.upToTries += b.upToTries;

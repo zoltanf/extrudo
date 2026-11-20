@@ -87,6 +87,41 @@ export function showsStop(mode: ProgressMode, stoppable: boolean): boolean {
   return mode === 'preparing' && stoppable;
 }
 
+/**
+ * After this long in one feature while a design opens, Stop becomes the filled
+ * button and the notice adds `LONG_FEATURE_TEXT` (ADR-0155's amendment of
+ * 2026-11-19). Nothing happens by itself. Counted from the feature's start
+ * (`ModelProgress.since`), so a new feature starts over. Margin: the
+ * repository's slowest single feature is B9's thread, 6.6 s cold in Node on the
+ * Ubuntu machine (about 11 s in its browser) and up to 21.5 s on GitHub's
+ * runners when an e2e waits for it (`docs/agent/e2e-notes.md`, the kernel-cancel
+ * spec): 30 s is 1.4× that worst case and 4.5× the local one, and a false light
+ * only fills a button.
+ */
+export const LONG_FEATURE_MS = 30_000;
+
+/** What the notice adds once a feature has run `LONG_FEATURE_MS`; read once (polite region). */
+export const LONG_FEATURE_TEXT = 'This feature is taking a long time.';
+
+/** The bar's line while the kernel is past its last feature (`ModelProgress.building`). */
+export const BUILDING_TEXT = 'Building the model…';
+
+/**
+ * The long-feature threshold, ms. A test may only lower it
+ * (`window.__extrudoLongFeatureMs`, like `__extrudoRegionBudget`): anything that
+ * isn't a positive finite number below `LONG_FEATURE_MS` is ignored.
+ */
+export function longFeatureMs(lower: unknown): number {
+  return typeof lower === 'number' && Number.isFinite(lower) && lower > 0
+    ? Math.min(lower, LONG_FEATURE_MS)
+    : LONG_FEATURE_MS;
+}
+
+/** How long until a feature that started at `since` counts as long at `now` (0 once it does). */
+export function longFeatureIn(since: number, now: number, limit: number): number {
+  return Math.max(0, since + limit - now);
+}
+
 export function progressTitle(mode: ProgressMode, wait?: WaitInput): string {
   if (mode === 'preparing') return 'Preparing your design…';
   if (mode === 'updating') return 'Updating the model…';

@@ -402,6 +402,37 @@ describe('Stop while a design opens (ADR-0155)', () => {
   });
 });
 
+describe("the model's last step (ADR-0155's amendment of 2026-11-19)", () => {
+  it('reports "building" past the last feature, with nothing to stop', async () => {
+    const t = setup();
+    const c = await t.call(1);
+    c.report('f3' as FeatureId);
+    await until(() => t.model.getState().progress?.feature === 'f3');
+    const since = t.model.getState().progress?.since;
+    c.report(undefined);
+    await until(() => t.model.getState().progress?.building === true);
+    expect(t.model.getState().progress).toEqual({
+      done: 2,
+      total: 3,
+      feature: 'f3',
+      since,
+      building: true,
+    });
+    expect(t.r.stops.get().stoppable).toBe(false);
+    c.finish();
+    await until(t.ready);
+    expect(t.model.getState().progress).toBeUndefined();
+  });
+
+  it('says nothing about building when no feature was computed (all from the cache)', async () => {
+    const t = setup();
+    const c = await t.call(1);
+    c.report(undefined);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(t.model.getState().progress).toBeUndefined();
+  });
+});
+
 describe('forgetting a stop (ADR-0155)', () => {
   async function stopped() {
     const t = setup();
