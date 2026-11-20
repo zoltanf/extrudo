@@ -221,7 +221,7 @@ describe('compounds that lie or loop', () => {
         /<LinkList count="2">.*?<\/LinkList>/,
         `<LinkList count="${members.length}">${members.map((m) => `<Link value="${m}"/>`).join('')}</LinkList>`,
       )
-      .replace(/<Property name="Shape"[^]*?<\/Property>/, ''),
+      .replace(/<Property name="Shape"[\s\S]*?<\/Property>/, ''),
   });
 
   it('nested 10,000 deep: planned iteratively, refused at the cap', () => {
