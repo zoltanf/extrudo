@@ -1,0 +1,1 @@
+- 2026-11-20 · **Faster .f3d import**: the bodies brought in from the file are prepared once, in the background, so a design with many or large bodies no longer holds the page while it is saved.

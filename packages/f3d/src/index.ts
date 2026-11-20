@@ -16,6 +16,7 @@
  * that onto `@extrudo/api`.
  */
 import { previewBytes, unzip } from './archive';
+import { withStepFiles } from './body-check';
 import { baseBodiesStep, bodiesStep } from './brep-step';
 import type { ImportOptions, ImportResult } from './map';
 import { f3dToDesign } from './map';
@@ -45,8 +46,11 @@ export {
   probeDocument,
   REMOVE_NAME,
   type ReplayedBody,
+  type StepFile,
+  stepFile,
   stepSize,
   VOLUME_TOLERANCE,
+  withStepFiles,
 } from './body-check';
 export {
   type BaseStep,
@@ -96,8 +100,10 @@ export function importF3d(
   const preview = previewBytes(entries);
   const own = files ? { files } : {};
   if (!options.bodies) return { design, report, ...(preview ? { preview } : {}), ...own };
-  // The B-rep writer runs on the entries already unzipped (M2).
-  const steps = bodiesStep(entries, f3d);
+  // The B-rep writer runs on the entries already unzipped (M2). Each written
+  // body is encoded and hashed here, once: the app's probe, plan and storage
+  // take the bytes and the hash as they are.
+  const steps = withStepFiles(bodiesStep(entries, f3d));
   return { design, report, ...(preview ? { preview } : {}), ...own, bodies, steps };
 }
 

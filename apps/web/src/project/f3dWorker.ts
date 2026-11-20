@@ -3,7 +3,12 @@
 // can't freeze the tab and the client can terminate it (`f3dImport.ts`). It
 // takes one request and answers once; the client then terminates it.
 import { importF3d } from '@extrudo/f3d';
-import { F3D_MEMORY_TEXT, type F3dWorkerReply, type F3dWorkerRequest } from './f3dImport';
+import {
+  F3D_MEMORY_TEXT,
+  type F3dWorkerReply,
+  type F3dWorkerRequest,
+  replyTransfer,
+} from './f3dImport';
 
 self.onmessage = async ({ data }: MessageEvent<F3dWorkerRequest>) => {
   // The solver vets the file's sketch constraints and dimensions; without it
@@ -34,5 +39,6 @@ self.onmessage = async ({ data }: MessageEvent<F3dWorkerRequest>) => {
       solver?.dispose();
     } catch {}
   }
-  self.postMessage(reply);
+  // The bodies' bytes are handed over, not copied (`replyTransfer`).
+  self.postMessage(reply, { transfer: replyTransfer(reply) });
 };

@@ -54,6 +54,13 @@ export interface BodyStep {
   component?: number;
   /** The STEP text, when the body was written. */
   step?: string;
+  /**
+   * The STEP text's bytes as stored, and their SHA-256 (`stepFile`): `importF3d`
+   * sets both, in the import's worker, so the page neither encodes nor hashes a
+   * written body again.
+   */
+  bytes?: Uint8Array;
+  sha256?: string;
   /** Why the body was not written. */
   reason?: string;
 }
