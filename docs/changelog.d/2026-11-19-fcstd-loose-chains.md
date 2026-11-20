@@ -1,0 +1,1 @@
+- 2026-11-19 · **FreeCAD import: files from before bodies keep their history**: PartDesign features that are in no body come in as sketches and features you can edit, each checked against the shape the file stores for it (ADR-0144).

@@ -611,7 +611,7 @@ export async function importTrees(
     const live = unit.filter((t) => !today.has(t.top.object.name));
     const isMapped = (name: string) => {
       const n = plan.nodes.get(name) as PlannedNode;
-      return !fates.has(name) && n.kind !== 'leaf' && n.kind !== 'body';
+      return !fates.has(name) && n.kind !== 'leaf' && n.kind !== 'body' && n.kind !== 'loose';
     };
     // What the live tops reach through nodes that are built as features.
     /** What the live tops reach through nodes built as features (again whenever a fate changes). */
@@ -866,11 +866,14 @@ export async function importTrees(
         record({ outcome: 'members', features: [] });
         continue;
       }
-      if (kind === 'body') {
+      if (kind === 'body' || kind === 'loose') {
         const top = live.find((t) => t.top.object.name === name);
         const chain = containerChain(doc, o);
         if (top || !chain || chain.moved || frame.some((p) => !isIdentity(p))) {
-          await fail({ reason: 'body', detail: 'its body is moved by a container' });
+          await fail({
+            reason: 'body',
+            detail: `its ${kind === 'body' ? 'body' : 'row of features'} is moved by a container`,
+          });
           continue;
         }
         const featuresBefore = design.doc.features.length;
@@ -888,8 +891,8 @@ export async function importTrees(
           await fail({
             reason: 'body',
             detail: h.stop
-              ? `its body's history stops at ${cleanName(h.stop.object, h.stop.object)}`
-              : 'its body has nothing in it',
+              ? `its ${kind === 'body' ? "body's" : "row of features'"} history stops at ${cleanName(h.stop.object, h.stop.object)}`
+              : `its ${kind === 'body' ? 'body' : 'row of features'} has nothing in it`,
           });
           continue;
         }

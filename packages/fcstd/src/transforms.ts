@@ -87,6 +87,10 @@ export interface Plane {
   readonly normal: Vec3;
 }
 
+/** How far off a face's plane a sketch may lie and still stay on it: S9's tolerances for a datum (a sine; mm). */
+const SKETCH_FACE_PARALLEL = 1e-9;
+const SKETCH_FACE_ON = 1e-7;
+
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -852,6 +856,40 @@ export class TransformMapper {
       `its ${what} ${cleanName(reference.element.name, 'nothing')}`,
       `${reference.object}|face|${reference.element.index}`,
     );
+  }
+
+  /**
+   * The flat face a loose chain's sketch can stay on (S12a): the face its support names, on a
+   * feature walked before, found on the rebuilt body by S6's matcher, when the sketch's stored
+   * frame lies in that face's plane (S9's datum tolerances). Anything else is no face: the sketch
+   * then takes the fixed plane its stored placement gives.
+   */
+  async sketchFace(sketch: string): Promise<GivenPlane | undefined> {
+    const { doc } = this.#c;
+    const object = doc.byName.get(sketch);
+    const support = object ? supportsOf(object)[0] : undefined;
+    const m = support ? /^Face([1-9]\d{0,8})$/.exec(support.sub) : null;
+    if (!object || !support || !m || !this.#c.walked.has(support.object)) return undefined;
+    const index = Number(m[1]) - 1;
+    const stored = await this.#stored(support.object, 'face', index, support.sub);
+    if ('stop' in stored) return undefined;
+    const face = stored.element as ElementFace;
+    if (face.type !== 'plane' || !face.direction || !inRange(face.centroid)) return undefined;
+    const frame = this.#frame(sketch);
+    const normal = unit(face.direction);
+    if (!(norm(cross(frame.n, normal)) <= SKETCH_FACE_PARALLEL)) return undefined;
+    const off = Math.abs(dot(sub(frame.origin, face.centroid), normal));
+    if (!(off <= SKETCH_FACE_ON + 1e-9 * norm(face.centroid))) return undefined;
+    const found = await this.face(
+      {
+        kind: 'element',
+        object: support.object,
+        element: { kind: 'face', index, name: support.sub },
+      },
+      'face to sketch on',
+    );
+    if ('stop' in found) return undefined;
+    return { plane: found, kind: 'face', point: face.centroid, normal };
   }
 
   // ------------------------------------------------------------ datums (S9)
