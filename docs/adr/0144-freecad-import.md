@@ -3058,3 +3058,258 @@ features after it come in with their history."
 - **S13:** a foreign base that S11 could build; the tips another object uses that no tree walks
   (they stay out of the design's history); sketches of bodies on faces, which could take this
   slice's rule once the bodies' standing numbers may move.
+
+## Amendment (S12b, 2026-11-20): meshes, part containers as components, links as copies, compounds at the top
+
+Four things a FreeCAD document has around its shapes came in flat, not at all, or several times
+over: meshes were left out, `App::Part` containers only placed what they hold, each link was one
+more `import` of its target's stored shape with the link's placement baked in, and a compound at the
+top was one `import` of its stored shape. Now a closed mesh is a mesh body, each part a component, a
+link a copy of what its target became, and a compound its members, each as it would come in at the
+document's top. `packages/fcstd`: `mesh-read.ts` (the mesh kernel entry, pure), `meshes.ts`,
+`structure-build.ts` (the transactions and rebuilds below), `compounds.ts`, `links.ts`,
+`components.ts`, `structure.ts` (the stage after the shapes import); `final-shapes.ts` shares its
+consumer index and solid test (`consumersOf`, `hasSolid`); `@extrudo/io` is a new dependency of
+`@extrudo/fcstd` (`writeStl` and the mesh checks; io gains nothing). In `packages/kernel` only
+`importRebuilder` changed: it turns the kernel's mesh bodies on once when it sends a mesh
+attachment, as the project's recomputer does. No facade change, no schema change, nothing in
+`packages/core`. Fixtures: 16 small documents we made with FreeCAD 1.1.4 through our own script
+(`packages/fcstd/scripts/make-structure-fixtures.py`, self-contained;
+`structure-fixtures-to-module.py` makes `structure-fixtures.ts`, 75 KB, one deflated JSON text;
+`structure-parts.ts` writes them back into files). Each object carries FreeCAD's measure of the
+shape it shows in the document's frame, through its containers and links (`world`), and a mesh what
+FreeCAD says about it (`mesh`): the truths the tests check against.
+
+### The rules
+
+1. **Nothing comes in unproven.** A mesh body, a link's copies and a compound's placed members are
+   each added in a transaction of their own, the design is rebuilt in the import kernel, and the
+   transaction is kept only when the check holds (`StructureBuild.attempt`: a rebuild that measures
+   only the bodies that are new or moved; a cancel takes the attachment and the body metadata back
+   with it).
+2. **No shape that came in before is lost or changed.** The count of final shapes is unchanged. A
+   link or a compound that doesn't hold comes in as S3 brought it, by the same `importShapes`, after
+   everything else. The one exception is a scaled link (below): S3 brought it in at the wrong size.
+3. **From the file alone, iterative, every count checked first.** The plans (`planCompounds`,
+   `planLink`) never recurse on the file's depth; a mesh entry's and a placement list's counts are
+   checked against the entry's length before anything is allocated.
+
+The timeline's order: the bodies' histories, the Part trees, the shapes import (S3 to S12a), then
+the meshes, the moves that place compounds' members, the links' copies, and last what came in as
+before after all.
+
+### Meshes
+
+**The entry** (`*.bms`, `MeshKernel::Write` in FreeCAD's source; FORMAT.md): little-endian, the magic
+`0xA0B0C0D0`, the version `0x00010000`, 256 bytes of header text, the point and facet counts, three
+`float32` a point, three point indices and three neighbour facets (`uint32`) a facet, then six
+`float32` of bounding box: exactly 296 + 12 *p* + 24 *f* bytes (the mesh box fixture: 680). FreeCAD
+reads the same layout big-endian (magic and version swapped) and, without the magic, an older layout
+of its own; it writes neither, the library has neither, and the reader refuses both (`format`).
+`readMeshKernel` refuses, each with its detail: another magic or version, an entry shorter than the
+head or not exactly what its counts say (`length`), more facets than the cap (`facets`, from the
+header alone), a point index past the points or a neighbour past the facets that isn't the open-edge
+mark (`index`), a coordinate that isn't finite (`coordinate`), a facet that names one point twice
+(`degenerate`). No facets is `empty`.
+
+**The frame.** The points are in the object's own frame: `meshes`' turned cylinder stores its points
+from 0 to 20 along X, and FreeCAD shows it from x 35 to 45 and z −20 to 0, its `Placement` (a quarter
+turn about Y, then 40 along X) applied; `mesh_in_part`'s mesh box is in its part's frame (the part's
+placement isn't in FreeCAD's mesh box). The import places the points by the containers' chain and
+then the object's `Placement`, in double precision, and rounds them to single precision once: the
+STL holds those numbers and the check is measured from them.
+
+**What it becomes.** Binary STL (`writeStl`), an attachment of media type `model/stl` named by its
+SHA-256 (equal meshes share one, as STEP attachments do), and an `import` feature (`units` mm, `up`
+z, `position` file) named, coloured and shown as S3 does for a shape. **The check** runs the kernel's
+own pure steps on the placed triangles (`meshFacts`): weld by exact position as `readStl` does, drop
+flat and repeated triangles, split the edges where surfaces only touch (`splitNonManifoldEdges`),
+`checkManifold`; then the pieces (triangles joined by edges), the signed volume, area and box. The
+kernel's bodies must be as many as the pieces, their volume and area within 1e-6 and their box within
+S5's tolerance. A mesh that isn't closed (open, non-manifold after the split, flipped edges, bad
+triangles) is left out before anything is added (`not-closed`, with the count); `mesh_odd`'s open box
+and sheet are, its two pieces are two bodies, its empty mesh is `empty`. A mesh something else
+consumes is no final shape and stays as before.
+
+**Caps.** `MAX_MESH_FACETS` 500,000 a mesh: binary STL is 84 bytes plus 50 a triangle, so the STL
+stays at 25,000,084 bytes, under ADR-0066's 25 MiB an attachment (26,214,400), and half the kernel's
+own 1,000,000 triangles a mesh import; an entry larger than such a mesh can be is left out from the
+archive's size, before it is inflated. `MAX_IMPORT_MESHES` 512 an import (the library's most in one
+file is 83). The design's 100 MB of attachments is the existing judge.
+
+### Part containers as components
+
+Each `App::Part` from which a body came into the design is one component (ADR-0081), named by its
+label: S3's `cleanName`, then the rule `packages/f3d` uses (`uniqueComponentName`): cut to 90
+characters so " (12)" fits the 100, unique ignoring case ("in a FOLDER (2)" beside "In a folder" in
+`part_odd`), "Component1" for a label that cleans to nothing (an empty label falls back to the
+object's name first). No component for an empty part, a folder or a part none of whose bodies came
+in. **Nesting:** `packages/f3d` makes every component of its file and lets a nested one stand alone
+with a note; here a body joins its **innermost** part's component and an outer part with no body of
+its own gets none (`part_placed`: Frame holds the body and the box, Axle the cylinder). Membership is
+stamped on the bodies (every imported body has metadata, which ADR-0081 §2 puts first) and on every
+feature whose live bodies all joined one component (a tree's box, a body's pad, an import, a copy's
+move), so a body such a feature makes again joins it; in one undo step. Placement is unchanged (a
+part's placement stays baked, a walk's container chain, S11's `Place` move); components carry no
+transform. **Visibility** stays the bodies': S3 never read a part's visibility, and a hidden part
+(`part_odd`) still hides nothing. At most `MAX_IMPORT_COMPONENTS` (1,000); past it the bodies stay
+loose and the report counts them.
+
+### Links as copies
+
+A link's target is what `LinkedObject` names, through further links (S3's 32 hops). Where the target
+came into the design as bodies (a body or a loose chain, a tree's top, a plain shape, a mesh, a
+compound's members, another link's copies), the link is one `move` with `copy` over those bodies per
+instance, named by the link's label; the copies take the link's label ("Link", "Link 2" …), colour
+and visibility, and the source bodies stay as they are.
+
+**The placement, as built.** S3 places a target's stored shape for a link by its chain C: the link's
+containers, then its `LinkPlacement`, then, with `LinkTransform` **off** (the link replaces its
+target's placement), the inverse of the target's own `Placement`; with it **on** (the link applies on
+top of it) nothing more. The target's bodies stand at its own containers' chain F applied to the same
+stored shape, so the copy is placed by C · F⁻¹: a free move about the box centre of the bodies it
+copies, as S11 writes one (`moveFor`). `link_transform`'s two links hold, each where FreeCAD shows it
+(`world`). For a mesh target the same holds with its placement at the end of both chains.
+
+**Checked** against the target's stored shape placed by C (what S3 bakes into its STEP; `world` in
+the fixtures), with S3's check (solids, volume within 1e-3, box within 1e-4 of the diagonal) and the
+centre of mass within 1e-4 of the diagonal. S3's tolerance, not S5's: a target that came in through
+STEP drifts from its stored shape by up to 1.25e-4 (S3), and its copy with it; the centre tells a copy
+turned the wrong way. A copy that doesn't hold, a target that didn't come in (left out, consumed, a
+sketch or a sheet) and a kernel failure leave the link as before, with the reason. **A copy follows
+its target**: a longer pad makes a longer copy (tested, and in the app). As with S11's turning moves,
+a turned copy follows FreeCAD's model exactly only at the imported sizes: the move's distances were
+written for the pivot c at import, and the kernel turns about the box centre c′ of what it copies
+then, so after a size change the copy is off by (I − R)(c′ − c).
+
+**A link to a part** copies every body of the part's final shapes (nested parts and links inside it
+included) with one `move`, into a component of its own named by the link's label (ADR-0081 §10; the
+name rule above makes "Wheel 2 (2)" of a clash), checked against each shape placed by C and its own
+chain inside the part. A link inside a part waits until the links inside it are settled; a part that
+holds a link back to itself, directly or through others, never settles and ends `cycle`.
+
+**Arrays** (`ElementCount` > 0) are one copy an element, each element on top of the array's own
+`LinkPlacement`: by the `App::LinkElement`s of `ElementList` when the array shows its elements (each a
+link of its own: its `LinkPlacement`, `LinkTransform`, target), else by the `PlacementList` entry
+(FORMAT.md: a `uint32` count, then seven `float64` a placement, the position and the rotation's
+quaternion x, y, z, w; FreeCAD also writes seven `float32` when the property is marked single
+precision, which the reader takes too). `link_array`'s list elements (0, 20 and 40 along X, turned 0,
+15 and 30° about Z) and its three link elements land where FreeCAD shows them. The list must hold
+exactly `ElementCount` finite placements within 10 km with a non-zero rotation; else the array can't
+be expanded and comes in as before, one copy, and only then does the notice "Of each link array only
+one copy came in" name it. A negative count is no array. **Scale:** Extrudo's `move` doesn't scale.
+S3 baked a scaled link at scale 1: `link_scaled`, which FreeCAD shows at 8,000 mm³ (a box of 1,000
+scaled by 2), came in at 1,000. That was a wrong shape; a link with a `Scale` or `ScaleVector` that
+isn't 1 (or that the reader couldn't read: a `NaN` is dropped from the file's properties with a
+problem), or an array whose scale list holds anything but 1, is now **left out** (`scaled`). Element
+visibility (`VisibilityList`) isn't read: every element comes in shown.
+
+### Compounds at the top
+
+A `Part::Compound` that is a final shape comes in as its **members** (`Links`, through nested
+compounds, iteratively), each handed to the body walk, the Part trees or the shapes import as a final
+shape of its own: a body or a loose chain with its history, a tree through S11, a plain shape as an
+`import`. Members that hold no solid (sketches, wires, 2D objects, meshes) give nothing. The members'
+names and colours are their own (a member with no colour takes the compound's), their visibility the
+compound's. Then, in one transaction, one `move` per distinct placement beyond their own (the
+compounds' placements composed, outermost first, acting in the containers' frame: F · P · F⁻¹) and
+one check of all their bodies together against the compound's stored shape placed as S3 places it:
+its number of solids, volume within 1e-6 and box (S5's tolerances). If it doesn't hold, one `remove`
+takes out what the members brought and the compound comes in as before. **`compound_touching`**:
+two overlapping boxes come in as two bodies (a compound's volume is its solids' sum, which the check
+compares), never fused. Two or more bodies from a compound form one component named by its label.
+**As before, with the reason:** a member another object uses too (`shared`), one object twice or a
+compound inside itself (`repeated`), a member that isn't in the file (`missing`), a link member
+(`member`), a member in other containers than the compound (`container`), no member with a solid
+(`empty`), more than `MAX_COMPOUND_OBJECTS` (1,000) objects reached (`limit`), and the check (`check`).
+
+### Limits (hostile files)
+
+| Limit | Value | Past it |
+|---|---|---|
+| Facets a mesh | 500,000 (`MAX_MESH_FACETS`) | left out (`too-large`), from the header or the archive's size |
+| Meshes an import | 512 (`MAX_IMPORT_MESHES`) | left out (`limit`) |
+| Elements an array | 1,000 (`MAX_ARRAY_ELEMENTS`) | as before (`limit`) |
+| Copies an import | 2,000 (`MAX_LINK_COPIES`), arrays of arrays counted before they are expanded | as before (`limit`) |
+| Hops through links | 32 (S3's) | left out with S3's problem |
+| Objects a compound reaches | 1,000 (`MAX_COMPOUND_OBJECTS`) | as before (`limit`) |
+| Components an import | 1,000 (`MAX_IMPORT_COMPONENTS`) | the bodies stay loose |
+
+Also clean, each tested: a mesh entry with counts of 2³²−1 in 300 bytes, one byte short or long, an
+index past the points, NaN and infinite coordinates, a facet naming one point three times, a missing
+entry; a link to itself, a cycle of links, 33 hops, a link to a missing object, to a sketch, to a
+sheet; an `ElementCount` of 2³¹−1 with a short list, a negative one, a truncated list, placements that
+aren't finite; three arrays of 20 on each other (8,000 copies, refused before expanding); a scale of
+0, −1, NaN, a scale list of 2; a part that links to itself through a link inside it; a compound nested
+10,000 deep, a compound inside itself, a member twice, a member another object uses; 10,000 parts;
+labels empty, longer than 100 characters, alike but for case, with control characters. The import's
+time and kernel budgets stay the judges of the whole import.
+
+**Measured** (Ubuntu machine, shared and loaded; `BENCH=1`): a mesh entry of a million facets (24,000,296
+bytes) is refused from its header in 0.03 ms; one at the cap, 500,000 facets (18,000,296 bytes), is
+read, placed and measured in 1.9 s; a closed mesh of 50,500 facets (1,515,320 bytes) comes in, STL,
+attachment, rebuild and check, in 0.8 s; three arrays of 20 on each other (8,000 copies) are refused
+in 22 ms of planning; a compound nested 10,000 deep is planned and refused at its cap in 27 ms;
+10,000 parts are grouped (1,000 components, the rest loose) in 3.1 s.
+
+### The report and the app
+
+`FcstdImportReport` gains `meshes` (`MeshImport`: in, with its feature, bodies, facets, pieces and STL
+size, or left out with the reason; the left out are in `leftOut` too), `links` (`LinkImport`: `copy`
+with its moves, copies and the final shapes it copied, `today` with the reason, `left-out` when
+scaled; arrays with their elements and whether they were expanded), `compounds` (`CompoundImport`:
+`members` with their bodies and moves, or `today` with the reason) and `components`
+(`ComponentsReport`: the components made, by kind; the parts and how many gave none; how many groups
+were past the cap). `linkArrays` names only the arrays that couldn't be expanded. In `fcstdNotices`
+a compound counts once, with its members' history (all with their history: "with its history"; some:
+"with part of"; none: without), and a copy counts with what it copies; a mesh that came in is a body
+without history; the mesh sentence no longer says Extrudo doesn't import meshes ("a mesh whose
+surface isn't closed" in the "Not imported" line); a scaled link is "a link that makes its shape
+larger or smaller, which a copy in Extrudo can't". Two new sentences: "Taken from the file's own
+shape, not copied from what it links to: *Name*, because *reason*." (several: "… shapes, not copied
+from what they link to: *A*; *B*. Most often because …"), and "Grouped into components as the file's
+parts group them: *A*; *B*." ("parts and compounds", "parts, compounds and links to parts"), said at
+the end of the first notice: the app shows three toasts at a time, and as a fourth it pushed the first
+out. e2e (`import-fcstd.spec.ts`): `part_basic`'s part as a component holding its bodies, and
+`links_basic`'s copy following its target when the pad's distance changes.
+
+### The library (60 files, `history-corpus.test.ts`, `s12b`)
+
+- **Meshes: 85 in 2 files**, none placed, none in a container (the census agrees), the largest entry
+  253,280 bytes, the most facets 8,432. **4 come in** as 4 mesh bodies; **68 are left out as not
+  closed** and **13 as empty**. Each of the 68 repeats triangles with the same three corners in the
+  other winding; the kernel drops a repeated triangle in any mesh import (ADR-0066's 2026-10-31
+  amendment), and what is left has open edges, so `meshFrom` would refuse them too.
+- **Parts: 21 in 11 files**, 4 with a placement, 2 nested in another, 1 empty. **17 components** from
+  parts; 4 parts gave none (the empty one, one that holds only a nested part, two whose final shapes
+  came in as no body); 2 more components from compounds' members; 38 bodies in components.
+- **Links: 13 in one file**, all single, all to plain stored shapes, `LinkTransform` off, no arrays.
+  **12 are copies**; **1 comes in as before** (`kernel`): the kernel's move refuses its copy, whose
+  shape it reads as no sound solid, so that link is its own STEP import as S3 made it.
+- **Compounds: 18**, 10 with a placement of their own, **5 at the top**: **2 come in as their members**
+  (10 members, all plain stored shapes, now an `import` each; neither compound has a placement, so no
+  move); **2 as before because they share a member** (`shared`: each uses a member the other uses
+  too); **1 as before by the check**: its 7 members together differ from its stored shape by 1.6e-5
+  in volume, the drift of members that came in through STEP, which S5's 1e-6 refuses. No member of
+  those holds no solid, none is nested, and none is a loose chain's tip: of the 12 tips S12a found
+  another object using, no compound at the top holds one, so this slice brings in none of them.
+- **`import`s:** the final shapes' go from **234 to 230** (12 links are copies, the 3 compounds that
+  came in or were tried have none of their own, the 10 members of the 2 that came in have one each,
+  the one that came back has its own again); the meshes add **4**. All `import` features in the
+  designs go from 275 to 282 (the 7 members of the compound that came back stay in its timeline
+  before the Remove that takes them out).
+- **The standing numbers did not move:** 25 bodies with their history, 6 from the file's shape, 4
+  empty; 131 references found; 50 parameters; 52 expressions kept; S11's trees 9 / 10 / 14; S12a's
+  chains 8 / 5 / 1; 383 final shapes; no restart; the 216 final shapes S12b doesn't touch come in
+  exactly as S3 brings them (216 compared, 0 differ).
+- **Time per file** on the shared machine with other jobs running: median 0.25 s, slowest 68 s
+  (S12a's run: 0.26 s and 54 s). Not measured alone; what a file costs is S13's.
+
+### What S13 inherits
+
+- Link arrays' `VisibilityList` and per-element scales; scaled links (a copy and a Scale feature
+  could rebuild them, with a pivot of their own).
+- A compound whose members came in through STEP and drift by S8's size (S5's tolerance refuses
+  them); members in other containers; links as members.
+- A mesh refused for a facet that names a point twice (the kernel would drop it); mesh colours.
+- The time a file of many shapes costs, now with the compounds' members as shapes of their own.
