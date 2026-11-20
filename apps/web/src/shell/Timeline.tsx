@@ -17,8 +17,10 @@ import { ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import {
   Fragment,
   type KeyboardEvent,
+  memo,
   type PointerEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -56,6 +58,7 @@ import {
 } from './featureStatus';
 import type { GroupActions } from './groupActions';
 import { kernelText } from './kernelText';
+import { useSketchShading } from './shownSketches';
 import { chipSelection, edgeScrollStep } from './timelineDrag';
 import {
   dropAt,
@@ -96,10 +99,6 @@ export interface TimelineProps {
   macro?: MacroStore;
   /** The notification store (ADR-0041): its bell is the row's last item. */
   notifications?: NotificationStore;
-  /** How many shown sketches draw their curves only (ADR-0020, ADR-0154). */
-  unshadedSketches?: number;
-  /** How many of those can't have their profiles picked in the model. */
-  unpickableSketches?: number;
   /** The profile worker's progress, for "Finding profiles 12 of 30…" (ADR-0154). */
   profilesProgress?: StoreApi<RegionsState>;
 }
@@ -192,8 +191,6 @@ export function Timeline({
   selectionSize,
   macro,
   notifications,
-  unshadedSketches = 0,
-  unpickableSketches = 0,
   profilesProgress,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
@@ -231,15 +228,34 @@ export function Timeline({
   const pickedGroup = useStore(selection, (s) => s.group);
   const anchor = useRef<FeatureId>(undefined);
   const order = useMemo(() => doc.features.map((f) => f.id), [doc.features]);
-  const live = picked.filter((id) => order.includes(id));
+  const live = useMemo(() => picked.filter((id) => order.includes(id)), [picked, order]);
   const pick = (chips: FeatureId[], group?: GroupId) => {
     selection.getState().pick(chips, group);
   };
-  const select = (id: FeatureId, mode: 'replace' | 'toggle' | 'range') => {
-    pick(chipSelection(order, live, id, mode, anchor.current));
-    if (mode !== 'range') anchor.current = id;
+  // The chips' props stay the same objects while nothing they show changes (ADR-0156's
+  // amendment of 2026-11-19): a kernel's progress renders the timeline for the computing
+  // chip, and every chip used to render with it.
+  const select = useCallback(
+    (id: FeatureId, mode: 'replace' | 'toggle' | 'range') => {
+      selection.getState().pick(chipSelection(order, live, id, mode, anchor.current));
+      if (mode !== 'range') anchor.current = id;
+    },
+    [selection, order, live],
+  );
+  const alone = useMemo(() => new Map<FeatureId, readonly FeatureId[]>(), []);
+  useEffect(() => {
+    const ids = new Set(order);
+    for (const id of alone.keys()) if (!ids.has(id)) alone.delete(id);
+  }, [alone, order]);
+  const movingWith = (id: FeatureId): readonly FeatureId[] => {
+    if (live.length > 1 && live.includes(id)) return live;
+    let one = alone.get(id);
+    if (!one) {
+      one = [id];
+      alone.set(id, one);
+    }
+    return one;
   };
-  const movingWith = (id: FeatureId) => (live.length > 1 && live.includes(id) ? live : [id]);
   /** A click on a group's chip: it picks the group, or (with Shift) the run over its members. */
   const pickGroup = (run: GroupRun, shift: boolean) => {
     const last = run.members.at(-1)?.id;
@@ -422,9 +438,7 @@ export function Timeline({
       </output>
       {model && <KernelState model={model} />}
       {profilesProgress && <FindingProfiles store={profilesProgress} />}
-      {unshadedSketches > 0 && (
-        <UnshadedSketches count={unshadedSketches} unpickable={unpickableSketches} />
-      )}
+      <UnshadedSketches />
       {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
       {notifications && <NotificationHistory store={notifications} />}
@@ -553,7 +567,10 @@ function dropIndex(chips: readonly HTMLElement[]): number {
   );
 }
 
-function Chip({
+/** A chip renders again only when one of its props does (the list renders per kernel step). */
+const Chip = memo(TimelineChip);
+
+function TimelineChip({
   feature,
   index,
   count,
@@ -1084,8 +1101,14 @@ function FindingProfiles({ store }: { store: StoreApi<RegionsState> }) {
   );
 }
 
-/** Says that some sketches draw their curves only (ADR-0020, ADR-0154), and if some can't be picked. */
-function UnshadedSketches({ count, unpickable }: { count: number; unpickable: number }) {
+/**
+ * Says that some sketches draw their curves only (ADR-0020, ADR-0154), and if some can't be
+ * picked. It reads the counts itself (ADR-0156's amendment of 2026-11-19), so profile results
+ * render this note and not the timeline.
+ */
+function UnshadedSketches() {
+  const { unshaded: count, unpickable } = useSketchShading();
+  if (count === 0) return null;
   const them = unpickable === 1 ? 'one of them' : `${unpickable} of them`;
   return (
     <Tooltip

@@ -40,6 +40,20 @@ export type F3dWorkerReply =
   | { result: Omit<ImportResult, 'design'> & { doc: ExtrudoDocument } }
   | { error: string };
 
+/**
+ * The buffers a reply hands over instead of copying: the written bodies' bytes
+ * and the files the design itself imports, each once. The worker is
+ * terminated after it answers, so it keeps none of them.
+ */
+export function replyTransfer(reply: F3dWorkerReply): ArrayBuffer[] {
+  if (!('result' in reply)) return [];
+  const buffers = new Set<ArrayBuffer>();
+  for (const step of reply.result.steps ?? [])
+    if (step.bytes) buffers.add(step.bytes.buffer as ArrayBuffer);
+  for (const bytes of reply.result.files?.values() ?? []) buffers.add(bytes.buffer as ArrayBuffer);
+  return [...buffers];
+}
+
 /** What the client needs of a `Worker` (a fake one in tests). */
 export type F3dWorkerLike = Pick<Worker, 'postMessage' | 'terminate' | 'onmessage' | 'onerror'>;
 

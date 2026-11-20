@@ -1,5 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { Fragment, useEffect, useMemo } from 'react';
+import { Fragment, memo, useEffect, useMemo } from 'react';
 import { BufferAttribute, BufferGeometry, Color, type Plane, PointsMaterial } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -79,8 +79,8 @@ export function Sketches({
   return sketches.map((s) => (
     <Fragment key={s.id}>
       {/* Outside the fonts' key: new fonts leave the fill of a sketch without text alone. */}
-      <SketchFill drawing={s} colors={profileColors} highlight={highlight} />
-      <Sketch
+      <ShownFill drawing={s} colors={profileColors} highlight={highlight} />
+      <ShownSketch
         key={fontsVersion}
         store={store}
         drawing={s}
@@ -97,6 +97,15 @@ export function Sketches({
 }
 
 const color = (c: Rgba) => new Color().setRGB(c.r, c.g, c.b, 'srgb');
+
+/**
+ * A sketch whose drawing, colours and the rest are the same objects renders nothing again
+ * (ADR-0156's amendment of 2026-11-19): the shell keeps a sketch's drawing while its profile
+ * results don't change, so a batch of results renders the sketches it is for. The React
+ * Compiler memoises this list as a whole, so it can't spare the items that didn't change.
+ */
+const ShownSketch = memo(Sketch);
+const ShownFill = memo(SketchFill);
 
 function Sketch({
   store,

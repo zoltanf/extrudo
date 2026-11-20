@@ -170,6 +170,41 @@ export function stepSize(step: string): number {
   return new TextEncoder().encode(step).length;
 }
 
+/** A written body's STEP as stored: its bytes and their SHA-256. */
+export interface StepFile {
+  bytes: Uint8Array;
+  sha256: string;
+}
+
+const stepFiles = new WeakMap<BodyStep, StepFile>();
+
+/**
+ * A written body's bytes and SHA-256 (`undefined` for a body not written):
+ * the ones the step carries (`withStepFiles`, run in the import's worker), or
+ * encoded and hashed once per step and remembered, so the probe, the plan and
+ * the files to store never hash a body twice.
+ */
+export function stepFile(step: BodyStep): StepFile | undefined {
+  if (step.step === undefined) return undefined;
+  if (step.bytes !== undefined && step.sha256 !== undefined)
+    return { bytes: step.bytes, sha256: step.sha256 };
+  let file = stepFiles.get(step);
+  if (file === undefined) {
+    const bytes = new TextEncoder().encode(step.step);
+    file = { bytes, sha256: sha256Hex(bytes) };
+    stepFiles.set(step, file);
+  }
+  return file;
+}
+
+/** The steps with each written body's bytes and SHA-256 on it (`stepFile`). */
+export function withStepFiles(steps: readonly BodyStep[]): BodyStep[] {
+  return steps.map((step) => {
+    const file = stepFile(step);
+    return file ? { ...step, bytes: file.bytes, sha256: file.sha256 } : step;
+  });
+}
+
 /**
  * Builds the file-body list `planBodies` takes from the writer's steps, the
  * importer's links and what a kernel measured of each probe body. A record with
@@ -184,6 +219,7 @@ export function fileBodies(
   const linkOf = new Map(links.map((l) => [l.record, l]));
   return steps.map((step) => {
     const link = linkOf.get(step.record);
+    const file = stepFile(step);
     const got = measured.get(step.record);
     // A file body counts as checked only with a clean import (one body, a positive volume).
     const measure = got && !('error' in got) && got.volume > 0 ? got : undefined;
@@ -198,7 +234,7 @@ export function fileBodies(
       name: step.name,
       ...(link?.component !== undefined ? { component: link.component } : {}),
       ...(link?.hint !== undefined ? { hint: link.hint } : {}),
-      ...(step.step !== undefined ? { size: stepSize(step.step) } : {}),
+      ...(file ? { size: file.bytes.length } : {}),
       ...(measure ? { measure } : { unchecked: reason ?? 'the shape could not be read' }),
     };
   });
@@ -223,14 +259,15 @@ export function probeDocument(
   const files = new Map<AttachmentId, Uint8Array>(own);
   design.transaction('Probe the file bodies', () => {
     for (const step of steps) {
-      if (step.step === undefined) continue;
-      const bytes = new TextEncoder().encode(step.step);
+      const file = stepFile(step);
+      if (file === undefined) continue;
+      const { bytes, sha256 } = file;
       const attachment = newId<AttachmentId>();
       const record: Attachment = {
         name: step.name,
         fileName: `${step.name}.step`,
         mediaType: 'model/step',
-        sha256: sha256Hex(bytes),
+        sha256,
         size: bytes.length,
       };
       design.state.dispatch(addAttachment({ id: attachment, attachment: record }));
@@ -488,10 +525,9 @@ export function applyBodyPlan(design: Design, plan: BodyPlan, steps: readonly Bo
     const byHash = new Map<string, AttachmentId>();
     for (const f of plan.frozen) {
       const step = byRecord.get(f.record);
-      if (step?.step === undefined) continue;
-      const bytes = new TextEncoder().encode(step.step);
-      if (bytes.length > MAX_ATTACHMENT_BYTES) continue;
-      const sha256 = sha256Hex(bytes);
+      const file = step && stepFile(step);
+      if (file === undefined || file.bytes.length > MAX_ATTACHMENT_BYTES) continue;
+      const { bytes, sha256 } = file;
       let attachment = byHash.get(sha256);
       if (attachment === undefined) {
         const stored = Object.entries(design.doc.attachments ?? {}).find(
@@ -561,9 +597,8 @@ export function bodyFiles(
 ): Map<AttachmentId, Uint8Array> {
   const byHash = new Map<string, Uint8Array>();
   for (const step of steps) {
-    if (step.step === undefined) continue;
-    const bytes = new TextEncoder().encode(step.step);
-    byHash.set(sha256Hex(bytes), bytes);
+    const file = stepFile(step);
+    if (file) byHash.set(file.sha256, file.bytes);
   }
   const files = new Map<AttachmentId, Uint8Array>();
   for (const [id, attachment] of Object.entries(design.doc.attachments ?? {})) {

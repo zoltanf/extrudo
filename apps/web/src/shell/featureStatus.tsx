@@ -30,8 +30,17 @@ export function featureProblem(
   if (index >= marker || feature.suppressed) return undefined;
   const status = statuses[feature.id];
   if (!status || status.status === 'ok') return undefined;
-  return { status: status.status, message: status.message };
+  // One problem per status object: a chip's props stay the same while its status does
+  // (ADR-0156's amendment of 2026-11-19), so a kernel step doesn't render it.
+  let problem = problems.get(status);
+  if (!problem) {
+    problem = { status: status.status, message: status.message };
+    problems.set(status, problem);
+  }
+  return problem;
 }
+
+const problems = new WeakMap<FeatureStatus, FeatureProblem>();
 
 /**
  * ✕ or ⚠ in the status colour (UI spec §1: the colour always comes with a glyph). On a chip's

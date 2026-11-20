@@ -1,0 +1,1 @@
+- 2026-11-19 · **Opening designs**: a design with many sketches opens with fewer and shorter pauses while its sketches' shading arrives.
