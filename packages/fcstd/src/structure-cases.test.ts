@@ -14,6 +14,7 @@ import { nodeImportKernel } from './node-kernel-test-support';
 import {
   type StructureFileOptions,
   type StructureMeasure,
+  structureDocuments,
   structureFile,
   structureObject,
 } from './structure-parts';
@@ -486,5 +487,152 @@ describe('compounds at the top', () => {
     expect(r.report.compounds[0]).toMatchObject({ outcome: 'today', reason: 'check' });
     expect(r.report.shapes.map((s) => s.object)).toEqual(['Compound']);
     expect(named(r, 'Box')).toEqual([]);
+  });
+});
+
+const BODY = (n: number) => [
+  ...(n === 0 ? [] : ['offsetPlane BodySketch plane']),
+  'sketch BodySketch',
+  'extrude BodyPad',
+  'offsetPlane BodyHoleSketch plane',
+  'sketch BodyHoleSketch',
+  'extrude BodyHole',
+];
+
+/** Every fixture's timeline in order, and its bodies (name, hidden, component), sorted. */
+const TABLE: Readonly<Record<string, { features: readonly string[]; bodies: readonly string[] }>> =
+  {
+    part_basic: {
+      features: [...BODY(0), 'box Box', 'cylinder Cylinder', 'combine Cut', 'box Spacer'],
+      bodies: ['Body: Bracket', 'Cut: Bracket', 'Spacer: -'],
+    },
+    part_placed: {
+      features: [
+        ...BODY(1),
+        'box Box',
+        'move Place Box',
+        'cylinder Cylinder',
+        'move Place Cylinder',
+      ],
+      bodies: ['Body: Frame', 'Box: Frame', 'Cylinder: Axle'],
+    },
+    part_odd: {
+      features: ['box Box', 'cylinder Cylinder', 'box Box001'],
+      bodies: ['Box001: Hidden part', 'Box: In a folder', 'Cylinder: in a FOLDER (2)'],
+    },
+    links_basic: {
+      features: [
+        ...BODY(0),
+        'box Box',
+        'box Box001',
+        'cylinder Cylinder',
+        'combine Cut',
+        'move Link',
+        'move Link001',
+        'move Link002',
+      ],
+      bodies: ['Body: -', 'Box: -', 'Cut: -', 'Link001: -', 'Link002: -', 'Link: -'],
+    },
+    link_transform: {
+      features: ['box Box', 'move Link', 'move Link001'],
+      bodies: ['Box: -', 'Link001: -', 'Link: -'],
+    },
+    link_hidden_target: {
+      features: ['box Master', 'move Link', 'move Link001'],
+      bodies: ['Link001: -', 'Link: -', 'Master (hidden): -'],
+    },
+    link_to_part: {
+      features: ['box Box', 'cylinder Cylinder', 'move Wheel 2'],
+      bodies: ['Box: Wheel', 'Cylinder: Wheel', 'Wheel 2 2: Wheel 2', 'Wheel 2: Wheel 2'],
+    },
+    link_chain: {
+      features: ['box Box', 'move Link', 'move Link001'],
+      bodies: ['Box: -', 'Link001: -', 'Link: -'],
+    },
+    link_array: {
+      features: [
+        'box Box',
+        'cylinder Cylinder',
+        'move Link',
+        'move Link 2',
+        'move Link 3',
+        'move Link001',
+        'move Link001 2',
+        'move Link001 3',
+      ],
+      bodies: [
+        'Box: -',
+        'Cylinder: -',
+        'Link 2: -',
+        'Link 3: -',
+        'Link001 2: -',
+        'Link001 3: -',
+        'Link001: -',
+        'Link: -',
+      ],
+    },
+    link_scaled: { features: ['box Box'], bodies: ['Box: -'] },
+    compound_top: {
+      features: [
+        ...BODY(0),
+        'box Box',
+        'cylinder Cylinder',
+        'box Box001',
+        'cylinder Cylinder001',
+        'combine Cut',
+        'box Box002',
+        'box Box003',
+        'cylinder Cylinder002',
+        'move Place Compound001',
+      ],
+      bodies: [
+        'Body: Compound001',
+        'Box002: Compound003',
+        'Box003: Compound003',
+        'Box: Compound',
+        'Cut: Compound001',
+        'Cylinder002: Compound003',
+        'Cylinder: Compound',
+      ],
+    },
+    compound_touching: {
+      features: ['box Box', 'box Box001'],
+      bodies: ['Box001: Compound', 'Box: Compound'],
+    },
+    meshes: {
+      features: ['import Import Cube', 'import Import Turned', 'import Import Ball'],
+      bodies: ['Ball (hidden): -', 'Cube: -', 'Turned: -'],
+    },
+    mesh_in_part: {
+      features: ['box Box', 'move Place Box', 'import Import Mesh'],
+      bodies: ['Box: Scan', 'Mesh: Scan'],
+    },
+    mesh_odd: {
+      features: ['import Import Two pieces'],
+      bodies: ['Two pieces 2: -', 'Two pieces: -'],
+    },
+    mesh_and_solid: {
+      features: [...BODY(0), 'import Import Scanned'],
+      bodies: ['Body: -', 'Scanned: -'],
+    },
+  };
+
+describe('every fixture document, in full', () => {
+  it('has an expectation for each document', () => {
+    expect(Object.keys(TABLE).sort()).toEqual(structureDocuments().sort());
+  });
+
+  it.each(structureDocuments())('%s', { timeout: 120_000 }, async (name) => {
+    const r = await run(name);
+    const want = TABLE[name] as (typeof TABLE)[string];
+    expect(features(r.design)).toEqual(want.features);
+    expect(
+      r.measures.ids
+        .map((id) => {
+          const b = r.design.doc.bodies[id as never];
+          return `${b?.name ?? id}${b?.visible === false ? ' (hidden)' : ''}: ${componentOf(r.design, id)}`;
+        })
+        .sort(),
+    ).toEqual(want.bodies);
   });
 });
