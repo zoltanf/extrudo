@@ -42,7 +42,9 @@ function check(written: readonly BodyStep[]) {
   const file = fileBodies(written, [], measured);
   const plan: BodyPlan = {
     matched: [],
-    frozen: written.filter((s) => s.step !== undefined),
+    frozen: written
+      .filter((s) => s.step !== undefined)
+      .map(({ record, name }) => ({ record, name })),
     remove: [],
     outcomes: [],
   };
