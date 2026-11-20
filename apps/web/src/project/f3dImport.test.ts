@@ -6,6 +6,7 @@ import {
   type F3dWorkerLike,
   type F3dWorkerReply,
   type F3dWorkerRequest,
+  replyTransfer,
   workerImportRunner,
 } from './f3dImport';
 
@@ -98,5 +99,27 @@ describe('the .f3d import worker client (ADR-0083, 2026-10-16)', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("hands the bodies' bytes over, each buffer once, and nothing with an error", () => {
+    const one = new Uint8Array([1, 2]);
+    const two = new Uint8Array([3]);
+    const own = new Uint8Array([4]);
+    const doc = Design.create({ name: 'Bracket' }).toJSON();
+    const transfer = replyTransfer({
+      result: {
+        doc,
+        report: { imported: [], skipped: [], notes: [], problems: [] },
+        steps: [
+          { record: 1, name: 'Body1', step: 'A', bytes: one, sha256: 'a' },
+          { record: 2, name: 'Body2', step: 'B', bytes: two, sha256: 'b' },
+          { record: 3, name: 'Body3', step: 'A', bytes: one, sha256: 'a' },
+          { record: 4, name: 'Body4', reason: 'no stream' },
+        ],
+        files: new Map([['att-1' as never, own]]),
+      },
+    });
+    expect(transfer).toEqual([one.buffer, two.buffer, own.buffer]);
+    expect(replyTransfer({ error: 'no' })).toEqual([]);
   });
 });

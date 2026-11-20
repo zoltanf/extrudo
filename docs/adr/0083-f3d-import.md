@@ -2341,3 +2341,41 @@ imports differently: the gate (replay and body check, all 252 designs, against
 main 7fcc5da5) is unchanged design by design, timings aside (170 matches and 4
 matches despite skips; bodies 248 editable, 111 frozen, 26 unchecked with the
 same reasons), with no `RuntimeError`.
+
+## Amendment, 2026-11-20: each written body encoded and hashed once, in the worker
+
+After the worker answers, the page saves the import (ADR-0084's body check, then
+the plan). Each body the B-rep writer wrote was turned into bytes and hashed
+with the JavaScript SHA-256 on the page up to four times: by the probe
+(`probeDocument`), by the plan for each frozen body (`applyBodyPlan`), for the
+files to store (`bodyFiles`, every written body), and by storage when it writes
+the file (`writeAttachment` checks the bytes against their name). On the corpus
+that was up to 1.4 s of the page's time for one import, growing with the size of
+the bodies.
+
+Now `importF3d` encodes and hashes each written body once, in the import's
+worker (`withStepFiles`): a `BodyStep` carries `bytes` and `sha256` beside its
+text, and the worker hands the bytes over instead of copying them
+(`replyTransfer` in `f3dImport.ts`; the bytes of the files the design itself
+imports too). The probe, the plan and the files to store take them through
+`stepFile`, which encodes and hashes a step that has none (the corpus tools,
+tests) once and remembers it per step object. Storage's own check stays: it is
+what keeps a stored file true to its name.
+
+Rules: code after the worker never encodes or hashes a written body itself; it
+asks `stepFile`. A step's `bytes` are its text as stored and `sha256` their
+hash, or both absent.
+
+Numbers (Node on the Ubuntu dev machine, the page's steps after the worker,
+medians of 3): on the ten corpus designs with the most such work, the design
+with seventeen frozen bodies (24 MB of STEP) went from 1.4 s to 0.4 s, three
+designs with one to three frozen bodies of about 4 MB each from 0.25–0.35 s to
+0.07–0.15 s; what is left is mostly storage's own check. The worker takes the
+hashing on (on the corpus at most 0.35 s more, within its 30 s budget).
+
+Tests count the hashing, not the clock (`body-check-hash.test.ts`: none on the
+page for steps from the worker, one per body otherwise), and `replyTransfer`
+hands over each buffer once. On the corpus nothing imports differently: the
+documents saved (the replay and the design with the plan applied) and the
+stored files are byte for byte the same for all 252 designs, and the gate
+(replay and body check, against main c4ce6fb8) is unchanged design by design.
