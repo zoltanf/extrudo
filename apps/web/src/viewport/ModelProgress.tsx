@@ -5,7 +5,11 @@ import { useStore } from 'zustand';
 import { Button } from '../design-system/Button';
 import {
   activeFeatureCount,
+  BUILDING_TEXT,
   featureSeconds,
+  LONG_FEATURE_TEXT,
+  longFeatureIn,
+  longFeatureMs,
   nextTickIn,
   progressBar,
   progressDetail,
@@ -18,6 +22,13 @@ import {
   WAITING_AFTER_MS,
   type WaitInput,
 } from './progressRules';
+
+declare global {
+  interface Window {
+    /** A shorter long-feature threshold, ms, set by e2e tests before the app loads; it can only lower it. */
+    __extrudoLongFeatureMs?: number;
+  }
+}
 
 const NO_WAITS: readonly Wait[] = [];
 const NO_STOPS: StopState = { stopped: [], opening: false, stoppable: false, stopping: false };
@@ -132,8 +143,42 @@ function stopFocusTarget(feature: string | undefined): HTMLElement | null {
   );
 }
 
-/** The notice's Stop (ADR-0155): a quiet text button where Cancel sits after an edit. */
-function StopButton({ feature, onStop }: { feature: string | undefined; onStop(): void }) {
+/**
+ * Whether the feature that started at `since` has run `LONG_FEATURE_MS` (ADR-0155's
+ * amendment of 2026-11-19). One timer, set for the moment it turns long, and only
+ * while `watch` (Stop is offered); a new feature (`since`) starts over.
+ */
+export function useLongFeature(since: number | undefined, watch: boolean): boolean {
+  const limit = longFeatureMs(
+    typeof window === 'undefined' ? undefined : window.__extrudoLongFeatureMs,
+  );
+  const [longSince, setLongSince] = useState<number>();
+  useEffect(() => {
+    if (!watch || since === undefined) return;
+    const wait = longFeatureIn(since, Date.now(), limit);
+    if (wait === 0) {
+      setLongSince(since);
+      return;
+    }
+    const timer = setTimeout(() => setLongSince(since), wait);
+    return () => clearTimeout(timer);
+  }, [since, watch, limit]);
+  return watch && since !== undefined && longSince === since;
+}
+
+/**
+ * The notice's Stop (ADR-0155): a quiet text button where Cancel sits after an
+ * edit; the filled one once the feature has taken long (its amendment of 2026-11-19).
+ */
+function StopButton({
+  feature,
+  onStop,
+  long,
+}: {
+  feature: string | undefined;
+  onStop(): void;
+  long: boolean;
+}) {
   const button = useRef<HTMLButtonElement>(null);
   const target = useRef(feature);
   target.current = feature;
@@ -149,8 +194,8 @@ function StopButton({ feature, onStop }: { feature: string | undefined; onStop()
   return (
     <Button
       ref={button}
-      variant="ghost"
-      data-model-stop
+      variant={long ? 'primary' : 'ghost'}
+      data-model-stop={long ? 'long' : 'quiet'}
       title="Stop: open the design without this feature for now"
       aria-label="Stop: open the design without this feature for now"
       onClick={onStop}
@@ -242,6 +287,9 @@ export function ModelProgress({
     elapsed,
     ...(wait && { wait }),
   });
+  const building = progress?.building === true;
+  const offersStop = mode !== undefined && stop !== undefined && showsStop(mode, stops.stoppable);
+  const long = useLongFeature(progress?.since, offersStop && !building);
   if (!mode) return null;
 
   const bar =
@@ -264,8 +312,8 @@ export function ModelProgress({
       <div className="flex flex-col leading-tight">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
-          {stop && showsStop(mode, stops.stoppable) && (
-            <StopButton feature={progress?.feature} onStop={stop.run} />
+          {stop && offersStop && (
+            <StopButton feature={progress?.feature} onStop={stop.run} long={long} />
           )}
           {cancel && showsCancel(mode, cancel.can) && (
             <Button
@@ -283,18 +331,29 @@ export function ModelProgress({
         {bar ? (
           <>
             <progress
-              value={bar.value}
+              value={building ? bar.max : bar.value}
               max={bar.max}
               aria-label="Features computed"
               className="mt-1 h-1 w-40 accent-accent"
             />
-            <span data-progress-line className="mt-0.5 flex max-w-64 text-xs text-muted">
-              <span data-progress-feature className="min-w-0 truncate">
-                {bar.name}
+            {building ? (
+              <span data-progress-building className="mt-0.5 text-xs text-muted">
+                {BUILDING_TEXT}
               </span>
-              <span className="shrink-0 whitespace-pre">{` · ${bar.position}`}</span>
-              {progress && <FeatureSeconds since={progress.since} />}
-            </span>
+            ) : (
+              <span data-progress-line className="mt-0.5 flex max-w-64 text-xs text-muted">
+                <span data-progress-feature className="min-w-0 truncate">
+                  {bar.name}
+                </span>
+                <span className="shrink-0 whitespace-pre">{` · ${bar.position}`}</span>
+                {progress && <FeatureSeconds since={progress.since} />}
+              </span>
+            )}
+            {long && (
+              <span data-feature-long className="mt-1 text-xs text-ink">
+                {LONG_FEATURE_TEXT}
+              </span>
+            )}
           </>
         ) : (
           <span className="text-xs text-muted">

@@ -151,5 +151,46 @@ edit), once the kernel is on a feature. Stop:
   design.
 - **Wait for the running call** (supersede only): free, but the click does nothing visible for as
   long as the call runs.
-- **A time limit that stops by itself**, **a prominent button after 30 s**, **Stop during an
-  update after an edit**: later steps, decided separately.
+- **A time limit that stops by itself**, **Stop during an update after an edit**: later steps,
+  decided separately. (The prominent button after 30 s came with the amendment below.)
+
+## Amendment of 2026-11-19: a feature that takes long, and the model's last step
+
+**Decision.**
+
+- **After 30 s in one feature while a design opens** (`LONG_FEATURE_MS` in
+  `apps/web/src/viewport/progressRules.ts`), Stop becomes the filled button
+  (`variant="primary"`, `[data-model-stop="long"]`, else `"quiet"`) and the notice adds "This
+  feature is taking a long time." (`LONG_FEATURE_TEXT`, `[data-feature-long]`). Nothing happens
+  by itself. The 30 s count from the feature's start (`ModelProgress.since`), not from the
+  notice: a feature already 25 s in when the notice appears turns long 5 s later; the next
+  feature starts over. Margin: the repository's slowest single feature is B9's thread, 6.6 s
+  cold in Node on the Ubuntu machine (about 11 s in its browser) and up to 21.5 s on GitHub's
+  runners when an e2e waits for it; 30 s is 1.4× that worst case, and a false light only fills a
+  button. It applies wherever Stop is offered (opening, a Try again).
+- `useLongFeature` (`ModelProgress.tsx`) sets one timer for the moment the feature turns long,
+  only while Stop is offered; none otherwise. The sentence is plain text in the polite live
+  region: read once when it appears, never per second (the seconds stay `aria-hidden`).
+- **The model's last step.** When the kernel is past its last feature (the joint and annotation
+  passes, the meshes; `onFeature(undefined)`), the recomputer reports the progress with
+  `building: true` (core `ModelProgress.building`), and the notice's line says "Building the
+  model…" (`BUILDING_TEXT`, `[data-progress-building]`) with the bar full, instead of the last
+  feature's name and seconds; no Stop (nothing runs) and no long sentence. It is the same line in
+  the update notice after an edit, so both say it. A recompute whose features all came from the
+  cache reports nothing, and the notice keeps "Computing n features".
+- **Test hook:** `window.__extrudoLongFeatureMs`, set by an e2e before the app loads, may only
+  lower the threshold (`longFeatureMs`: a positive finite number below 30 s, anything else is
+  ignored), like `__extrudoRegionBudget`. The app never sets it.
+
+**Rejected.** Moving the count to the notice's appearance (a feature 25 s in when the page
+opened would wait 30 s more); a sentence that counts ("taking 35 s"): the seconds already show
+and a changing sentence would be read out again.
+
+**Tests.** `progressRules.test.ts` (the threshold, the hook only lowering, the count from the
+start); `ModelProgress.test.tsx` with fake timers (quiet until 30 s from `since`, then filled and
+the sentence once, the same text node 10 s later; counted from the start; starting over with the
+next feature; one timer only while Stop is offered; "Building the model…" with the bar full and
+no name, seconds or Stop; the hook lowering, never raising); `recomputer-stop.test.ts` (the
+`building` report, none when nothing was computed); `e2e/open-stop.spec.ts`'s second test (the
+threshold lowered to 2 s: the filled Stop and the sentence once in the accessibility tree).
+

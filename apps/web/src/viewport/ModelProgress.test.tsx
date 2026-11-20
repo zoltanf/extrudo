@@ -12,6 +12,7 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureSeconds, ModelProgress } from './ModelProgress';
+import { BUILDING_TEXT, LONG_FEATURE_MS, LONG_FEATURE_TEXT } from './progressRules';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -237,5 +238,149 @@ describe('Stop while a design opens (ADR-0155)', () => {
     expect(document.activeElement).toBe(stopButton());
     act(() => s.set({ stoppable: false, stopping: true }));
     expect(document.activeElement?.getAttribute('data-feature-id')).toBe(id);
+  });
+});
+
+describe("a long feature and the model's last step (ADR-0155's amendment of 2026-11-19)", () => {
+  function setup() {
+    const ids = ['f1', 'f2'] as FeatureId[];
+    const store = createDocumentStore({
+      ...createDocument({ name: 'Notice' }),
+      features: ids.map((id, i) => ({
+        id,
+        type: 'box',
+        name: `Pattern${i + 1}`,
+        suppressed: false,
+        inputs: {},
+      })),
+      timelineMarker: 2,
+    });
+    const model = createModelStore();
+    model.getState().computing();
+    let state: StopState = { stopped: [], opening: true, stoppable: true, stopping: false };
+    const listeners = new Set<() => void>();
+    const stops = {
+      get: () => state,
+      subscribe: (l: () => void) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    };
+    const set = (next: Partial<StopState>) =>
+      act(() => {
+        state = { ...state, ...next };
+        for (const l of listeners) l();
+      });
+    const view = render(
+      <ModelProgress
+        model={model}
+        store={store}
+        collapsed={false}
+        stop={{ stops, run: vi.fn() }}
+      />,
+    );
+    const report = (feature: FeatureId, more: { building?: boolean; since?: number } = {}) =>
+      act(() =>
+        model.getState().setProgress({
+          done: ids.indexOf(feature),
+          total: 2,
+          feature,
+          since: more.since ?? Date.now(),
+          ...(more.building && { building: true }),
+        }),
+      );
+    return { ...view, ids, report, set };
+  }
+  const stop = () => document.querySelector('[data-model-stop]');
+  const sentence = () => document.querySelectorAll('[data-feature-long]');
+
+  afterEach(() => {
+    delete window.__extrudoLongFeatureMs;
+  });
+
+  it('fills Stop and adds the sentence 30 s after the feature started, not before', () => {
+    const { ids, report } = setup();
+    report(ids[0] as FeatureId);
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS - 1));
+    expect(stop()?.getAttribute('data-model-stop')).toBe('quiet');
+    expect(sentence()).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(1));
+    expect(stop()?.getAttribute('data-model-stop')).toBe('long');
+    expect(stop()?.className).toContain('bg-accent');
+    expect(sentence()).toHaveLength(1);
+    expect(sentence()[0]?.textContent).toBe(LONG_FEATURE_TEXT);
+    // In the polite live region, as plain text: read once, not each second (the seconds are hidden).
+    expect(sentence()[0]?.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(sentence()[0]?.closest('[aria-hidden]')).toBeNull();
+    const node = sentence()[0];
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(sentence()[0]).toBe(node);
+    expect(sentence()[0]?.textContent).toBe(LONG_FEATURE_TEXT);
+  });
+
+  it('counts from the feature start, not from the notice: a feature 25 s in turns long 5 s later', () => {
+    const { ids, report } = setup();
+    report(ids[0] as FeatureId, { since: Date.now() - 25_000 });
+    act(() => vi.advanceTimersByTime(4_999));
+    expect(sentence()).toHaveLength(0);
+    act(() => vi.advanceTimersByTime(1));
+    expect(sentence()).toHaveLength(1);
+  });
+
+  it('starts over with the next feature', () => {
+    const { ids, report } = setup();
+    report(ids[0] as FeatureId);
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS));
+    expect(sentence()).toHaveLength(1);
+    report(ids[1] as FeatureId);
+    expect(sentence()).toHaveLength(0);
+    expect(stop()?.getAttribute('data-model-stop')).toBe('quiet');
+  });
+
+  it('runs no timer for it while Stop is not offered, and never while building the model', () => {
+    const { ids, report, set } = setup();
+    set({ stoppable: false });
+    report(ids[0] as FeatureId);
+    // The seconds' and the notice's own timers, none for the long feature...
+    const without = vi.getTimerCount();
+    // ...which adds exactly one while Stop is offered.
+    set({ stoppable: true });
+    expect(vi.getTimerCount()).toBe(without + 1);
+    set({ stoppable: false });
+    expect(vi.getTimerCount()).toBe(without);
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS * 2));
+    expect(sentence()).toHaveLength(0);
+    set({ stoppable: false });
+    report(ids[1] as FeatureId, { building: true, since: Date.now() - LONG_FEATURE_MS * 2 });
+    expect(sentence()).toHaveLength(0);
+    expect(stop()).toBeNull();
+  });
+
+  it('says "Building the model…" past the last feature: no name, no seconds, the bar full', () => {
+    const { ids, report, set } = setup();
+    report(ids[1] as FeatureId);
+    act(() => vi.advanceTimersByTime(5000));
+    set({ stoppable: false });
+    report(ids[1] as FeatureId, { building: true });
+    expect(document.querySelector('[data-progress-building]')?.textContent).toBe(BUILDING_TEXT);
+    expect(document.querySelector('[data-progress-line]')).toBeNull();
+    expect(document.querySelector('[data-feature-seconds]')).toBeNull();
+    const bar = document.querySelector('progress');
+    expect(bar?.getAttribute('value')).toBe(bar?.getAttribute('max'));
+    expect(stop()).toBeNull();
+  });
+
+  it('lets a test lower the threshold, never raise it', () => {
+    window.__extrudoLongFeatureMs = 1000;
+    const { ids, report } = setup();
+    report(ids[0] as FeatureId);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(sentence()).toHaveLength(1);
+    cleanup();
+    window.__extrudoLongFeatureMs = 120_000;
+    const again = setup();
+    again.report(again.ids[0] as FeatureId);
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS));
+    expect(sentence()).toHaveLength(1);
   });
 });

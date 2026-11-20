@@ -155,3 +155,30 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   await expect(chip(page)).not.toHaveAttribute('data-feature-status', 'error');
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 });
+
+test('a feature that takes long fills Stop and says so once (the threshold lowered for the test)', async ({
+  page,
+}, info) => {
+  // ADR-0155's amendment of 2026-11-19: 30 s in one feature; the hook may only lower it,
+  // so the test needn't wait 30 s. The pattern runs far longer than 2 s.
+  await page.addInitScript('window.__extrudoLongFeatureMs = 2000');
+  const file = info.outputPath('many-posts.extrudo');
+  manyPosts(file);
+  await page.goto('./');
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
+  ]);
+  await chooser.setFiles(file);
+  await patternRunning(page);
+  const long = notice(page).locator('[data-feature-long]');
+  await expect(long).toHaveText('This feature is taking a long time.', { timeout: 30_000 });
+  await expect(stopButton(page)).toHaveAttribute('data-model-stop', 'long');
+  // In the live region once, as text; the seconds stay out of it.
+  const spoken = await notice(page).ariaSnapshot();
+  expect(spoken.split('This feature is taking a long time.')).toHaveLength(2);
+  expect(spoken).not.toMatch(/\d+ s\b/);
+  await stopButton(page).click();
+  await kernelReady(page, 60_000);
+  await expect(chip(page)).toHaveAttribute('data-feature-status', 'error');
+});

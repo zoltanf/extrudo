@@ -1259,8 +1259,20 @@ export class Recomputer {
           this.#current = id;
           this.#currentSequence = id === undefined ? undefined : sequence;
           this.#notifyStops();
-          // Past the last feature (joints, meshes): nothing runs, the bar stays.
-          if (id === undefined) return;
+          // Past the last feature (joints, annotations, meshes): nothing runs; the
+          // notice says "Building the model…" (ADR-0155's amendment of 2026-11-19).
+          if (id === undefined) {
+            if (reported !== undefined) {
+              this.#reportProgress({
+                done,
+                total: steps.length,
+                feature: reported,
+                since,
+                building: true,
+              });
+            }
+            return;
+          }
           const at = stepOf.get(id);
           if (at !== undefined) done = at;
           if (id !== reported) {
