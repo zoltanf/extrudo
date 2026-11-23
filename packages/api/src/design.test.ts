@@ -654,7 +654,7 @@ describe('the IDs a call chooses (ADR-0003, amendments of 2026-11-23)', () => {
   const idMessage = 'An ID may have at most 1,000 characters.';
 
   it('takes IDs at the limits, and the design they make opens again', () => {
-    const d = Design.create({ ...FIXED, id: long(MAX_ID_LENGTH) });
+    const d = Design.create({ ...FIXED, id: long(MAX_ID_LENGTH) as never });
     d.parameter('w', '10 mm', { id: long(MAX_ID_LENGTH) });
     const box = d.box({}, { id: long(MAX_FEATURE_ID_LENGTH) });
     // The body of the longest feature ID fits: what the app stores for every body it shows.
