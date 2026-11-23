@@ -1567,9 +1567,10 @@ function Shell({
     [stores, exportSheets, notify, session],
   );
   // Cancel on a long update (ADR-0111): back to the shown model's step, with a toast.
-  const cancelUpdate = useCallback(() => {
-    if (kernel?.revertToShown?.())
-      notify('info', 'Update cancelled: your last changes were undone. Redo brings them back.');
+  const cancelUpdate = useCallback((): boolean => {
+    if (!kernel?.revertToShown?.()) return false;
+    notify('info', 'Update cancelled: your last changes were undone. Redo brings them back.');
+    return true;
   }, [kernel, notify]);
   // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {

@@ -469,7 +469,22 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
         model.getState().computing();
         for (const listener of listeners) listener();
       });
-    return { run, cancelRun, notice, cancelWaits, cancelLands, editedWhileRunning };
+    /** Redo changed the document: in one go the wait ends and Cancel is offered again. */
+    const redoEndsWait = () =>
+      act(() => {
+        canRevert = true;
+        stopState = { ...stopState, cancelling: false };
+        for (const listener of listeners) listener();
+      });
+    return {
+      run,
+      cancelRun,
+      notice,
+      cancelWaits,
+      cancelLands,
+      redoEndsWait,
+      editedWhileRunning,
+    };
   }
   const buttons = () =>
     [...document.querySelectorAll('[data-model-progress] button')].map((b) => b.textContent);
@@ -565,6 +580,38 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
     expect(cancelRun).toHaveBeenCalledTimes(1);
     cancelWaits();
     expect(document.activeElement).toBe(document.querySelector('[data-model-stop="cancel"]'));
+  });
+
+  it('moves it only for the wait its own click started, not for a later one by Ctrl+Z', () => {
+    const { cancelWaits, redoEndsWait } = setup();
+    const cancel = () => document.querySelector<HTMLButtonElement>('[data-model-cancel]');
+    act(() => {
+      cancel()?.focus();
+      cancel()?.click();
+    });
+    cancelWaits();
+    const stop = document.querySelector<HTMLButtonElement>('[data-model-stop="cancel"]');
+    expect(document.activeElement).toBe(stop);
+    // Redo: the wait ends and Cancel is offered again at once; the focus goes elsewhere.
+    redoEndsWait();
+    expect(cancel()).not.toBeNull();
+    act(() => stop?.blur());
+    // A Cancel by Ctrl+Z, waiting again: the focus stays where it was.
+    cancelWaits();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('moves nothing after a refused Cancel', () => {
+    const { cancelRun, cancelWaits } = setup();
+    cancelRun.mockReturnValue(false);
+    const cancel = document.querySelector<HTMLButtonElement>('[data-model-cancel]');
+    act(() => {
+      cancel?.focus();
+      cancel?.click();
+    });
+    act(() => cancel?.blur());
+    cancelWaits();
+    expect(document.activeElement).toBe(document.body);
   });
 
   it('leaves the focus alone when Cancel did not have it (Ctrl+Z)', () => {

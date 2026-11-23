@@ -265,10 +265,10 @@ export function ModelProgress({
   collapsed: boolean;
   /**
    * Returns the document to the shown model's step (ADR-0111); read at render
-   * time. `notice` hears what the notice offers, for Ctrl+Z's routing: Cancel,
+   * time; `run` says whether it changed the document. `notice` hears what the notice offers, for Ctrl+Z's routing: Cancel,
    * or a pressed Cancel that waits (ADR-0161).
    */
-  cancel?: { can(): boolean; run(): void; notice?(state: UpdateNotice): void };
+  cancel?: { can(): boolean; run(): boolean | undefined; notice?(state: UpdateNotice): void };
   /** Stops the running feature while the design opens (ADR-0155) or in a long update (ADR-0161). */
   stop?: { stops: KernelStops; run(during: StopDuring): void };
 }) {
@@ -354,10 +354,15 @@ export function ModelProgress({
   }, [tellNotice, notice]);
   useEffect(() => () => tellNotice?.(undefined), [tellNotice]);
   // Cancel pressed while it had the focus: the waiting state's Stop takes it (ADR-0161).
+  // Only for the wait that click started: cleared when Cancel goes without a wait, and when
+  // the wait ends (a later Cancel by Ctrl+Z must not move the focus).
   const [focusStop, setFocusStop] = useState(false);
+  const wasCancelling = useRef(false);
   useEffect(() => {
-    if (focusStop && !cancelling && !offersCancel) setFocusStop(false);
-  }, [focusStop, cancelling, offersCancel]);
+    if (wasCancelling.current && !cancelling) setFocusStop(false);
+    wasCancelling.current = cancelling;
+    if (!cancelling && !offersCancel) setFocusStop(false);
+  }, [cancelling, offersCancel]);
   if (!mode) return null;
   const during: StopDuring = cancelling
     ? 'cancel'
@@ -407,8 +412,9 @@ export function ModelProgress({
                   title="Cancel: undo the changes since the last model"
                   aria-label="Cancel: undo the changes since the last model"
                   onClick={(event) => {
-                    if (document.activeElement === event.currentTarget) setFocusStop(true);
-                    cancel.run();
+                    const focused = document.activeElement === event.currentTarget;
+                    // A refused Cancel (nothing changed) starts no wait.
+                    if (cancel.run() !== false && focused) setFocusStop(true);
                   }}
                   className="pointer-events-auto -my-1 h-6 px-2 text-sm"
                 >
