@@ -178,9 +178,8 @@ export function faceRelation(a: string, b: string): number {
 }
 
 /**
- * The face relations one comparison has found, by its two names: an edge's
- * pairing tries a pair of faces more than once, and each try would walk the
- * names nested in them again, so without it the work doubles per level.
+ * The face relations one comparison has found, by its two names: each pair's
+ * relation is found once per comparison.
  */
 type Relations = Map<string, Map<string, number>>;
 

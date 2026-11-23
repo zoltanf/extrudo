@@ -405,7 +405,7 @@ describe('the design-wide import budget', () => {
   });
 
   it('takes the longest of any number of thread faces', () => {
-    // More faces than a call takes arguments: the longest is found with a loop, not a spread.
+    // Any number of faces: the longest decides the charge.
     // 3 full threads of unknown length (3 × 150 turns) and 10 of 4 turns leave 10 turns.
     const threaded = (turns: number) => {
       const lengths = new Array<number>(500_000).fill(0.15);

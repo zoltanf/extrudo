@@ -2382,21 +2382,14 @@ stored files are byte for byte the same for all 252 designs, and the gate
 
 ## Amendment, 2026-11-23: no spreads of a file's lists in the mapping
 
-The budget's charge for a full-length thread took its longest face with a
-spread of all the thread's face lengths. A thread on more faces than a call
-takes arguments (about 125,000 in Node 24's V8, from a shallow stack) threw a
-`RangeError`, and the import failed with that raw message. A sweep's path curves
-were added to its list the same way: bounded by `MAX_IMPORT_ENTITIES`
-(100,000), close enough to that limit that a deeper stack reaches it (in Node,
-a spread of 100,000 values fails 2,000 calls deep).
-
-Now both are loops (`largest` in `map.ts`; the path's references in
-`map-more.ts`). Rule (round 3's, restated): never spread a list whose length a
-file sets into a call (`Math.max(...)`, `push(...)`, `String.fromCharCode(...)`,
-`apply`); a spread over a fixed-size vector or a list under a small constant
-cap (a hole's found centres, `MAX_FOUND_CENTRES` = 256) is fine.
-`import-budgets.test.ts` charges a thread of 500,000 faces and checks that its
-longest face decides the charge.
+The budget's charge for a full-length thread finds its longest face with a
+loop (`largest` in `map.ts`), and a sweep's path references are added to its
+list one by one (`map-more.ts`). Rule (round 3's, restated): a list whose
+length a file sets is never spread into a call (`Math.max(...)`, `push(...)`,
+`String.fromCharCode(...)`, `apply`); it is walked with a loop. A spread over a
+fixed-size vector or a list under a small constant cap (a hole's found
+centres, `MAX_FOUND_CENTRES` = 256) is fine. `import-budgets.test.ts` checks
+that a thread's longest face decides the charge.
 
 ## Amendment, 2026-11-23: round copies to a fixed depth
 

@@ -127,9 +127,8 @@ document may depend on live kernel objects.
 
 ## Amendment, 2026-11-23: a length limit for IDs
 
-The schema took any non-empty string as an ID, so a document's size was the
-only bound on one. IDs are map keys, cache keys and fields of the messages to
-the kernel's worker, and a reference repeats them.
+IDs are keys in many places (maps, caches, the messages to the kernel's
+worker, references), so their length is limited.
 
 Now every ID schema (`ids.ts`: document, feature, parameter, body, view,
 group, configuration, sketch entity, constraint, dimension, projection,

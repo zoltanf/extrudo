@@ -15,9 +15,9 @@ declare const crypto: {
 };
 
 /**
- * The most characters an ID may have (ADR-0003's amendment of 2026-11-23).
- * IDs are map keys, cache keys and worker message fields, so a document's
- * size must not be their only bound. The longest the app and the importers
+ * The most characters an ID may have (ADR-0003's amendments of 2026-11-23).
+ * IDs are keys in many places (maps, caches, the kernel worker's messages),
+ * so their length is limited. The longest the app and the importers
  * make is under 100 (an inserted design's body: two UUIDs and a counter).
  */
 export const MAX_ID_LENGTH = 1000;

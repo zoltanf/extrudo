@@ -2957,8 +2957,7 @@ function hintDistance(shape: EdgeShape, p: Vec3): number {
 
 /**
  * The largest of `values`; undefined when there are none or one is unknown.
- * A loop, not a spread: a file's thread may have more faces than a call takes
- * arguments.
+ * A loop, not a spread: a file sets how many a thread has.
  */
 function largest(values: readonly (number | undefined)[]): number | undefined {
   let most = Number.NEGATIVE_INFINITY;
