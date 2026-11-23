@@ -112,7 +112,7 @@ import {
   ParameterHandle,
   ref,
 } from './handles';
-import { CounterIds, type IdFactory, type IdKind } from './ids';
+import { CounterIds, checkedId, type IdFactory, type IdKind } from './ids';
 import { type FeatureInputValue, storedInputs } from './inputs';
 import { byNameThenId } from './lookup';
 import {
@@ -127,7 +127,7 @@ import { SketchBuilder, SketchHandle, type SketchOptions } from './sketch';
 
 /** What a feature may be named besides its default, and where it goes. */
 export interface FeatureOptions {
-  /** The feature's ID; the design's counter hands one out otherwise. */
+  /** The feature's ID, at most 980 characters; the design's counter hands one out otherwise. */
   id?: string;
   /** The feature's name; `nextFeatureName` gives "Extrude1" and the like. */
   name?: string;
@@ -291,6 +291,11 @@ export class Design {
   /** The components `build` callbacks are inside, innermost last (ADR-0081 §9). */
   readonly #componentStack: ComponentHandle[] = [];
 
+  /** The ID of a new entity of `kind`: `chosen`, else the factory's next, held to the document's limits. */
+  #id(kind: IdKind, chosen?: string): string {
+    return checkedId(kind, chosen ?? this.#ids(kind));
+  }
+
   private constructor(store: DocumentStore, ids: IdFactory, notices: readonly string[]) {
     this.#store = store;
     this.#ids = ids;
@@ -304,7 +309,7 @@ export class Design {
     const ids = options.ids ?? new CounterIds().next;
     const created: NewDocumentOptions = {
       ...newDocumentOptions(options),
-      id: options.id ?? (ids('document') as DocumentId),
+      id: checkedId('document', options.id ?? ids('document')) as DocumentId,
     };
     return new Design(createDocumentStore(createDocument(created)), ids, []);
   }
@@ -341,7 +346,7 @@ export class Design {
    * ``d.extrude({ profiles, distance: `2 * ${wall}` })``.
    */
   parameter(name: string, expression: string, options: ParameterOptions = {}): ParameterHandle {
-    const id = (options.id ?? this.#ids('parameter')) as ParameterId;
+    const id = this.#id('parameter', options.id) as ParameterId;
     const parameter: Parameter = {
       id,
       name,
@@ -398,7 +403,7 @@ export class Design {
     values: Readonly<Record<string, string>>,
     options: { id?: string } = {},
   ): ConfigurationId {
-    const id = (options.id ?? this.#ids('configuration')) as ConfigurationId;
+    const id = this.#id('configuration', options.id) as ConfigurationId;
     const held: Record<string, string> = {};
     for (const [parameter, expression] of Object.entries(values)) {
       held[this.#parameterOf(parameter).id] = expression;
@@ -470,7 +475,7 @@ export class Design {
       const construction = options.construction === true;
       const builder = new SketchBuilder(handle, emptyAdd(), {
         newId: (kind) =>
-          this.#ids(
+          this.#id(
             kind === 'constraint'
               ? 'constraint'
               : kind === 'dimension'
@@ -515,7 +520,7 @@ export class Design {
         path: 'type',
       });
     }
-    const id = (options.id ?? this.#ids('feature')) as FeatureId;
+    const id = this.#id('feature', options.id) as FeatureId;
     // A component: the call's option wins, else the component a `build` is
     // inside (ADR-0081 §9), else none (a loose body).
     const component = this.#componentOfOption(options.component);
@@ -571,7 +576,7 @@ export class Design {
       throw new ApiError('Group a run of features from the first to the last one.');
     }
     const features = this.doc.features.slice(from, to + 1).map((f) => f.id);
-    const id = this.#ids('group') as GroupId;
+    const id = this.#id('group') as GroupId;
     this.#dispatch(groupFeatures({ id, features, ...options }));
     return id;
   }
@@ -610,7 +615,7 @@ export class Design {
   ): ComponentHandle {
     const setup = typeof buildOrOptions === 'function' ? (options ?? {}) : (buildOrOptions ?? {});
     const build = typeof buildOrOptions === 'function' ? buildOrOptions : undefined;
-    const id = (setup.id ?? this.#ids('component')) as ComponentId;
+    const id = this.#id('component', setup.id) as ComponentId;
     const bodies = (setup.bodies ?? []).map((body) => this.#bodyIdOf(body));
     this.#dispatch(addComponent({ id, name, bodies }));
     const handle = new ComponentHandle(this, id);
@@ -654,8 +659,8 @@ export class Design {
 
   /** A body reference or ID as its ID. */
   #bodyIdOf(body: GeomRef | string): BodyId {
-    if (typeof body === 'string') return body as BodyId;
-    if (body.kind === 'body') return body.id as BodyId;
+    if (typeof body === 'string') return checkedId('body', body) as BodyId;
+    if (body.kind === 'body') return checkedId('body', body.id) as BodyId;
     throw new ApiError(`"${body.kind}" is not a body: pass a body reference or its ID.`);
   }
 
@@ -724,7 +729,7 @@ export class Design {
    * frame. Nothing moves when it is made (the frames must already agree).
    */
   joint(name: string, options: JointOptions): JointHandle {
-    const id = (options.id ?? this.#ids('joint')) as JointId;
+    const id = this.#id('joint', options.id) as JointId;
     const joint: Joint = {
       id,
       name,
@@ -783,7 +788,7 @@ export class Design {
     anchor: AnnotationAnchorInput,
     options: AnnotationOptions = {},
   ): AnnotationHandle {
-    const id = (options.id ?? this.#ids('annotation')) as AnnotationId;
+    const id = this.#id('annotation', options.id) as AnnotationId;
     this.#dispatch(
       addAnnotation({
         id,
@@ -895,7 +900,7 @@ export class Design {
    * ```
    */
   addSheet(name: string, options: SheetOptions = {}): SheetHandle {
-    const id = (options.id ?? this.#ids('sheet')) as SheetId;
+    const id = this.#id('sheet', options.id) as SheetId;
     const sheet = newApiSheet(this.#sheetContext, id, name, options);
     this.#dispatch(
       addSheet({ sheet, ...(options.index !== undefined && { index: options.index }) }),
@@ -920,7 +925,7 @@ export class Design {
       return design.doc;
     },
     dispatch: <P>(command: Command<P>) => design.#dispatch(command),
-    ids: (kind: IdKind) => design.#ids(kind),
+    ids: (kind: IdKind, chosen?: string) => design.#id(kind, chosen),
     bodyId: (body: GeomRef | string) => design.#bodyIdOf(body),
   }))(this);
 

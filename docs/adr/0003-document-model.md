@@ -162,10 +162,19 @@ repository's fixtures, demos and benchmark designs hold at most 39 (a body
 of a UUID feature), and the designs imported from the f3d corpus, before and
 after their bodies are checked, at most 36 (a UUID).
 
+The API holds every ID it takes to the same limits when the call is made
+(`checkedId` in `packages/api/src/ids.ts`, one helper): a caller's
+`options.id` (feature, parameter, configuration, component, joint,
+annotation, sheet, sheet view, sheet item, the document's own), every ID its
+factory hands out (a script's `<script>.f1` too) and a body's ID a call names
+(`setBody`, a component's or sheet view's bodies). A longer one is an
+`ApiError` with path `id` ("A feature's ID may have at most 980 characters.",
+"An ID may have at most 1,000 characters."), before anything is dispatched,
+so the CLI and the MCP tools refuse it at once and the design is never saved
+with it.
+
 Not covered: a reference's `id` (`GeomRef`) is a persistent name, which nests
-the names it is made from, and keeps no limit of its own here. The API takes
-an ID a caller passes (`options.id`) without checking its length; a design
-saved with a longer one is refused when it is opened again.
+the names it is made from, and keeps no limit of its own here.
 
 Rejected: a lower limit (256), which leaves less room for documents other
 tools write; refusing only past the document's own size limit, which is what

@@ -3,7 +3,7 @@
  * document and the file (ADR-0068 §2).
  */
 
-import { loadDocument } from '@extrudo/core';
+import { loadDocument, MAX_FEATURE_ID_LENGTH, MAX_ID_LENGTH } from '@extrudo/core';
 import { memoryProjectStore, readArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import { ApiError, Design } from './index';
@@ -635,5 +635,56 @@ describe('setBody (ADR-0030)', () => {
     expect(() => d.setBody(box.body(), { name: 'A', color: 'red' })).toThrow(ApiError);
     expect(() => d.setBody(box.body(), { name: 'A', opacity: 0 })).toThrow(ApiError);
     expect(d.doc.bodies).toEqual({});
+  });
+});
+
+describe('the IDs a call chooses (ADR-0003, amendments of 2026-11-23)', () => {
+  const long = (n: number) => 'x'.repeat(n);
+  const refused = (call: () => unknown, message: string) => {
+    let error: unknown;
+    try {
+      call();
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ message, path: 'id' });
+  };
+  const featureMessage = `A feature's ID may have at most ${MAX_FEATURE_ID_LENGTH} characters.`;
+  const idMessage = 'An ID may have at most 1,000 characters.';
+
+  it('takes IDs at the limits, and the design they make opens again', () => {
+    const d = Design.create({ ...FIXED, id: long(MAX_ID_LENGTH) });
+    d.parameter('w', '10 mm', { id: long(MAX_ID_LENGTH) });
+    const box = d.box({}, { id: long(MAX_FEATURE_ID_LENGTH) });
+    // The body of the longest feature ID fits: what the app stores for every body it shows.
+    d.setBody(box.body(), { name: 'Base' });
+    d.addSheet('Sheet', { id: long(MAX_ID_LENGTH) }).addText('Hi', [10, 10], {
+      id: `t${long(MAX_ID_LENGTH - 1)}`,
+    });
+    const again = Design.from(d.toJSON());
+    expect(Object.keys(again.doc.bodies)).toEqual([`${long(MAX_FEATURE_ID_LENGTH)}:0`]);
+  });
+
+  it('refuses a longer one at once, in plain words, and changes nothing', () => {
+    const d = Design.create(FIXED);
+    const before = d.toJSON();
+    refused(() => d.box({}, { id: long(MAX_FEATURE_ID_LENGTH + 1) }), featureMessage);
+    refused(() => d.parameter('w', '10 mm', { id: long(MAX_ID_LENGTH + 1) }), idMessage);
+    refused(() => d.configuration('A', {}, { id: long(MAX_ID_LENGTH + 1) }), idMessage);
+    refused(() => d.addSheet('Sheet', { id: long(MAX_ID_LENGTH + 1) }), idMessage);
+    refused(() => d.setBody(long(MAX_ID_LENGTH + 1), { name: 'Base' }), idMessage);
+    refused(() => Design.create({ ...FIXED, id: long(MAX_ID_LENGTH + 1) as never }), idMessage);
+    expect(d.toJSON()).toEqual(before);
+  });
+
+  it("holds the factory's IDs to the same limits", () => {
+    // A script's factory puts the script's ID in front: `<script>.f1`.
+    const d = Design.create({
+      ...FIXED,
+      ids: (kind) => `${long(MAX_FEATURE_ID_LENGTH - 2)}.${kind[0]}1`,
+    });
+    refused(() => d.box(), featureMessage);
+    expect(d.parameter('w', '10 mm').id).toHaveLength(MAX_FEATURE_ID_LENGTH + 1);
   });
 });

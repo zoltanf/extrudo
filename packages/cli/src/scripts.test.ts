@@ -410,7 +410,8 @@ describe("a generated feature's ID and the documents' ID limit (ADR-0003)", () =
     const { result, saved: json } = await saved(MAX_FEATURE_ID_LENGTH + 1);
     expect(statusOf(result, 'f1')).toMatchObject({
       status: 'error',
-      message: `The script made a feature with an ID longer than ${MAX_FEATURE_ID_LENGTH} characters.`,
+      // The API refuses the ID in the call; `checkedGenerated` would refuse what it returned.
+      message: `Line 1: A feature's ID may have at most ${MAX_FEATURE_ID_LENGTH} characters.`,
     });
     expect(result.bodies).toEqual([]);
     expect(Design.from(json).doc.bodies).toEqual({});

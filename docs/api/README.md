@@ -80,7 +80,10 @@ console.log(JSON.stringify(first) === JSON.stringify(second)); // true
 ```
 
 Any call takes `{ id }` and `{ name }` when its own IDs matter, and
-`options.ids` replaces the factory altogether:
+`options.ids` replaces the factory altogether. An ID, given or from the
+factory, and a body's ID a call names have at most 1,000 characters, a
+feature's ID at most 980 (its bodies are `<feature>:<n>`); a longer one is an
+`ApiError` at once (path `id`), and the design is left as it was:
 
 ```ts
 import { Design } from '@extrudo/api';

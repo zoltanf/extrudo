@@ -72,7 +72,8 @@ import { byNameThenId } from './lookup';
 export interface SheetHandleContext {
   readonly doc: ExtrudoDocument;
   dispatch<P>(command: Command<P>): void;
-  ids(kind: IdKind): string;
+  /** The ID of a new entity of `kind`: `chosen`, else the next, held to the document's limits. */
+  ids(kind: IdKind, chosen?: string): string;
   /** A body reference or ID as the body's ID. */
   bodyId(body: GeomRef | string): BodyId;
 }
@@ -564,7 +565,7 @@ export class SheetHandle {
    * with `view.project`.
    */
   addView(name: string, options: SheetViewOptions): SheetViewHandle {
-    const id = (options.id ?? this.#design.ids('sheetView')) as SheetViewId;
+    const id = this.#design.ids('sheetView', options.id) as SheetViewId;
     const view: SheetView = {
       id,
       name,
@@ -629,7 +630,7 @@ export class SheetHandle {
   }
 
   #itemId(id: string | undefined): SheetItemId {
-    return (id ?? this.#design.ids('sheetItem')) as SheetItemId;
+    return this.#design.ids('sheetItem', id) as SheetItemId;
   }
 
   #add(item: SheetItem): SheetItemHandle {
@@ -693,7 +694,7 @@ export class SheetViewHandle {
   project(side: SheetViewSide, at: Vec2, options: ProjectedViewOptions = {}): SheetViewHandle {
     const sheet = this.sheet.sheet;
     if (!sheet) throw new ApiError(`Sheet ${this.sheet.id} is gone.`);
-    const id = (options.id ?? this.#design.ids('sheetView')) as SheetViewId;
+    const id = this.#design.ids('sheetView', options.id) as SheetViewId;
     const view: SheetView = {
       id,
       name: options.name ?? freeViewName(sheet, projectedName(sheet, this.id, side)),
@@ -810,7 +811,7 @@ export class SheetViewHandle {
   }
 
   #itemId(id: string | undefined): SheetItemId {
-    return (id ?? this.#design.ids('sheetItem')) as SheetItemId;
+    return this.#design.ids('sheetItem', id) as SheetItemId;
   }
 
   toString(): string {
