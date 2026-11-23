@@ -32,7 +32,8 @@ export function stoppedText(name: string, during: StopDuring = 'open'): string {
  * stopped. Says nothing when nothing was stopped (the feature finished first,
  * or the document no longer reaches it: the worker was still replaced) or the
  * stop is already gone when the restart ends. A Stop while a pressed Cancel
- * waits (ADR-0161) records nothing, so it says nothing: Cancel's toast did.
+ * waits, or on a feature a newer edit superseded (ADR-0161), records nothing,
+ * so it says nothing (after Cancel, Cancel's toast did).
  */
 export async function stopAndTell(
   kernel: StopKernel,
@@ -41,6 +42,8 @@ export async function stopAndTell(
   during: StopDuring = 'open',
 ): Promise<FeatureId | undefined> {
   const id = await kernel.stop();
+  // A Stop while Cancel waits or after a newer edit records nothing (ADR-0161): never news.
+  if (during === 'cancel' || during === 'edit') return undefined;
   // Nothing recorded, or the stop is gone already (Try Again from the chip's
   // menu during the restart, a roll-back meanwhile): no "was stopped" news.
   if (id === undefined || !kernel.isStopped(id)) return undefined;

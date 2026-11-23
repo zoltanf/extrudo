@@ -61,7 +61,8 @@ function postsByParameter(path: string): void {
 }
 
 /** Opens the design (n = 2), then sets n = 12: a long update whose pattern is running. */
-async function longUpdate(page: Page, path: string) {
+/** `first`: a quick edit of n before the long one, so the undo stack has a step under it. */
+async function longUpdate(page: Page, path: string, first?: string) {
   await page.addInitScript('window.__extrudoLongFeatureMs = 2000');
   postsByParameter(path);
   await page.goto('./');
@@ -71,6 +72,10 @@ async function longUpdate(page: Page, path: string) {
   ]);
   await chooser.setFiles(path);
   await kernelReady(page, 60_000);
+  if (first !== undefined) {
+    await setN(page, first);
+    await kernelReady(page, 60_000);
+  }
   await setN(page, '12');
   await expect(updating(page).locator('[data-progress-feature]')).toHaveText(PATTERN, {
     timeout: 60_000,
@@ -139,7 +144,7 @@ test('Ctrl+Z during a long update is Cancel; while it waits, "Cancelling…" off
   page,
 }, info) => {
   test.setTimeout(240_000);
-  await longUpdate(page, info.outputPath('posts.extrudo'));
+  await longUpdate(page, info.outputPath('posts.extrudo'), '3');
   const notice = updating(page);
   await expect(cancelButton(page)).toBeVisible();
   const quiet = await cancelButton(page).getAttribute('class');
@@ -157,15 +162,17 @@ test('Ctrl+Z during a long update is Cancel; while it waits, "Cancelling…" off
   const stop = page.getByRole('button', { name: 'Stop: end the running feature now' });
   await expect(notice.getByRole('button')).toHaveText(['Stop']);
   expect(await stop.getAttribute('class')).toBe(quiet);
-  // Ctrl+Z again while it waits undoes nothing more.
+  // Ctrl+Z again while it waits undoes nothing more: n = 3 stays (an undo would give 2).
   await page.keyboard.press('Control+z');
   await expect(notice).toHaveAttribute('data-model-cancelling', 'true');
 
   await stop.click();
   await kernelReady(page, 60_000);
-  // Nothing was marked: no "was stopped" toast, the pattern built, n back at 2, Redo brings 12.
+  // Nothing was marked: no "was stopped" toast, the pattern built, n back at 3 (the step
+  // under the long edit, which the second Ctrl+Z left alone), Redo brings 12.
   await expect(page.locator('[data-toast]').filter({ hasText: 'was stopped' })).toHaveCount(0);
   await expect(chip(page)).not.toHaveAttribute('data-feature-status', 'error');
-  expect(await readN(page)).toBe('2');
+  expect(await readN(page)).toBe('3');
   await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 });

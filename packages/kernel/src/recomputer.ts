@@ -254,6 +254,18 @@ export interface StopState {
    * "Cancelling…" and offers Stop alone, which only ends the wait.
    */
   cancelling: boolean;
+  /**
+   * When the running feature started (`now()`'s clock, as `ModelProgress.since`),
+   * while one runs. Also for a call that is no longer the current one: after an
+   * edit the worker finishes the old feature first, and the notice keeps counting
+   * it for the long rule (ADR-0161).
+   */
+  since?: number;
+  /**
+   * The running feature belongs to a call that is no longer the current one (an
+   * edit was sent meanwhile). A Stop then records nothing (ADR-0161).
+   */
+  superseded: boolean;
 }
 
 export interface KernelStops {
@@ -280,20 +292,42 @@ export function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
-/**
- * A stopped feature, with what it was computed from when it was stopped
- * (ADR-0155). The stop holds by value (its amendment of 2026-11-23): `key`
- * hashes the feature, the features before it, the parameters and the settings,
- * so an undo or a Cancel back to those values brings the stop back. The object
- * fields are the last matching objects, a fast path that skips the hash while
- * nothing changed.
- */
-interface StoppedFeature {
+/** What a stop is computed from: the feature, the features before it, the parameters, the settings. */
+interface StopInputs {
   feature: Feature;
   before: readonly Feature[];
   parameters: ExtrudoDocument['parameters'];
   settings: ExtrudoDocument['settings'];
-  key: string;
+}
+
+/** Whether `doc` holds these very objects for the feature at `at` (no hashing). */
+function sameInputs(inputs: StopInputs, doc: ExtrudoDocument, at: number): boolean {
+  return (
+    doc.features[at] === inputs.feature &&
+    at === inputs.before.length &&
+    inputs.before.every((f, i) => doc.features[i] === f) &&
+    doc.parameters === inputs.parameters &&
+    doc.settings === inputs.settings
+  );
+}
+
+/** The most stops kept per feature, by value; the oldest goes first. */
+export const MAX_STOPS_PER_FEATURE = 8;
+
+/**
+ * A stopped feature (ADR-0155). Stops hold by value (its amendment of
+ * 2026-11-23): each of `keys` hashes the feature, the features before it, the
+ * parameters and the settings at one Stop, up to `MAX_STOPS_PER_FEATURE` of
+ * them, so an undo or a Cancel back to any of those values brings the stop
+ * back. The `StopInputs` fields are the last matching objects (`matched` is
+ * their key), a fast path that skips the hash while nothing changed; `miss`
+ * the last objects that matched none, so a run of previews over the same
+ * values hashes once.
+ */
+interface StoppedFeature extends StopInputs {
+  keys: string[];
+  matched: string;
+  miss?: StopInputs;
 }
 
 /** The value key of a stop (see `StoppedFeature`). */
@@ -390,6 +424,7 @@ export class Recomputer {
     stoppable: false,
     stopping: false,
     cancelling: false,
+    superseded: false,
   };
   readonly #stopListeners = new Set<() => void>();
   /** Meshes held, with the version the kernel gave each. */
@@ -536,6 +571,18 @@ export class Recomputer {
   }
 
   /**
+   * Whether Cancel would only undo (ADR-0161): the shown model's step is behind
+   * the document in the undo stack, so going back to it undoes steps and redoes
+   * none. Ctrl+Z runs Cancel only then; after an undo whose update runs long,
+   * the shown step is on the redo stack and Ctrl+Z stays a plain undo.
+   */
+  revertToShownUndoes(): boolean {
+    if (!this.canRevertToShown() || !this.#shown) return false;
+    const { step } = this.#shown;
+    return step === undefined || this.#document.getState().hasStep(step);
+  }
+
+  /**
    * Whether a Cancel waits for the running feature (`StopState.cancelling`):
    * the call that ran it when Cancel was pressed is still with the kernel, and
    * the document is still the one Cancel went back to.
@@ -596,19 +643,24 @@ export class Recomputer {
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (this.#disposed || this.#current !== id) return undefined;
       if (cancelling ? !this.#cancelling() : !this.#mayStop()) return undefined;
+      // In an update, a call that is no longer the current one ran the feature with
+      // values the document no longer has (ADR-0161): nothing to record, the edit builds.
+      const superseded = !opening && this.#currentSequence !== this.#sequence;
       const doc = this.#document.getState().doc;
       const at = doc.features.findIndex((f) => f.id === id);
       const feature = doc.features[at];
       const reached =
-        !cancelling && feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
+        !cancelling &&
+        !superseded &&
+        feature !== undefined &&
+        !feature.suppressed &&
+        at < doc.timelineMarker;
       if (reached) {
-        const before = doc.features.slice(0, at);
-        this.#stopped.set(id, {
+        this.#record(id, {
           feature,
-          before,
+          before: doc.features.slice(0, at),
           parameters: doc.parameters,
           settings: doc.settings,
-          key: stopKey(feature, before, doc.parameters, doc.settings),
         });
         this.#active.add(id);
       }
@@ -651,6 +703,18 @@ export class Recomputer {
     return this.#opening || this.#now() - this.#currentSince >= this.#longFeatureMs;
   }
 
+  /** Records a stop at these values; a feature keeps up to `MAX_STOPS_PER_FEATURE`. */
+  #record(id: FeatureId, inputs: StopInputs): void {
+    const key = stopKey(inputs.feature, inputs.before, inputs.parameters, inputs.settings);
+    const keys = (this.#stopped.get(id)?.keys ?? []).filter((k) => k !== key);
+    keys.push(key);
+    this.#stopped.set(id, {
+      ...inputs,
+      keys: keys.slice(-MAX_STOPS_PER_FEATURE),
+      matched: key,
+    });
+  }
+
   /** Whether a feature is stopped for now (ADR-0155): its chip menu offers Try again. */
   isStopped(id: FeatureId): boolean {
     return this.#active.has(id);
@@ -662,9 +726,12 @@ export class Recomputer {
    * whether the feature was stopped.
    */
   retry(id: FeatureId): boolean {
-    // Only a stop that applies now; Try again forgets it for good.
-    if (!this.#active.has(id) || this.#disposed) return false;
-    this.#stopped.delete(id);
+    // Only a stop that applies now; Try again forgets it for good: the stop at
+    // these values (the feature's stops at other values stay).
+    const stop = this.#stopped.get(id);
+    if (!this.#active.has(id) || !stop || this.#disposed) return false;
+    stop.keys = stop.keys.filter((k) => k !== stop.matched);
+    if (stop.keys.length === 0) this.#stopped.delete(id);
     this.#active.delete(id);
     this.#opening = true;
     this.#notifyStops();
@@ -681,11 +748,15 @@ export class Recomputer {
       stoppable: this.#running(),
       stopping: this.#stopping,
       cancelling: this.#cancelling(),
+      ...(this.#current !== undefined && { since: this.#currentSince }),
+      superseded: this.#current !== undefined && this.#currentSequence !== this.#sequence,
     };
     const prev = this.#stopState;
     if (
       prev.opening === next.opening &&
       prev.cancelling === next.cancelling &&
+      prev.since === next.since &&
+      prev.superseded === next.superseded &&
       prev.stoppable === next.stoppable &&
       prev.stopping === next.stopping &&
       prev.stopped.length === next.stopped.length &&
@@ -711,20 +782,23 @@ export class Recomputer {
       const at = doc.features.findIndex((f) => f.id === id);
       const feature = doc.features[at];
       if (!feature || at >= doc.timelineMarker) continue;
-      const same =
-        feature === stop.feature &&
-        at === stop.before.length &&
-        stop.before.every((f, i) => doc.features[i] === f) &&
-        doc.parameters === stop.parameters &&
-        doc.settings === stop.settings;
-      if (!same) {
-        const before = doc.features.slice(0, at);
-        if (stopKey(feature, before, doc.parameters, doc.settings) !== stop.key) continue;
-        // The same values in new objects (an undo, a Cancel): keep them for the fast path.
-        stop.feature = feature;
-        stop.before = before;
-        stop.parameters = doc.parameters;
-        stop.settings = doc.settings;
+      // The same objects as the last match (nothing changed), or as the last miss.
+      // (Try again may have forgotten the last match's key.)
+      if (!sameInputs(stop, doc, at) || !stop.keys.includes(stop.matched)) {
+        if (stop.miss && sameInputs(stop.miss, doc, at)) continue;
+        const inputs: StopInputs = {
+          feature,
+          before: doc.features.slice(0, at),
+          parameters: doc.parameters,
+          settings: doc.settings,
+        };
+        const key = stopKey(feature, inputs.before, inputs.parameters, inputs.settings);
+        if (!stop.keys.includes(key)) {
+          stop.miss = inputs;
+          continue;
+        }
+        // Values stopped before, in new objects (an undo, a Cancel): the fast path's now.
+        Object.assign(stop, inputs, { matched: key, miss: undefined });
       }
       active.push(id);
     }
@@ -1403,6 +1477,11 @@ export class Recomputer {
           if (sequence !== this.#sequence) return;
           this.#current = id;
           this.#currentSequence = id === undefined ? undefined : sequence;
+          if (id !== undefined && id !== reported) {
+            reported = id;
+            since = this.#now();
+          }
+          if (id !== undefined) this.#currentSince = since;
           this.#notifyStops();
           // Past the last feature (joints, annotations, meshes): nothing runs; the
           // notice says "Building the model…" (ADR-0155's amendment of 2026-11-19).
@@ -1420,11 +1499,6 @@ export class Recomputer {
           }
           const at = stepOf.get(id);
           if (at !== undefined) done = at;
-          if (id !== reported) {
-            reported = id;
-            since = this.#now();
-          }
-          this.#currentSince = since;
           this.#reportProgress({ done, total: steps.length, feature: id, since });
         }),
       );

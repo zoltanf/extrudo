@@ -205,10 +205,14 @@ feature in full (the first limit above; the review's probe A).
 canonical JSON (`recompute/hash.ts`) of the feature, the features before it, the parameters and
 the settings. A stop applies while the marker reaches the feature and the key matches; one that
 doesn't match is **left out, not forgotten**. An undo, a redo, a Cancel or rolling the marker
-forward to the same values brings it back. Only **Try again** (which applies only to a stop that
-applies now) and closing the design forget a stop for good. The last matching objects are kept as
-a fast path: while the feature, the features before it, the parameters and the settings are the
-same objects, no key is computed. `isStopped`, the stop store's `stopped` list, Try again and the
+forward to the same values brings it back. A feature stopped again at other values (in an update,
+ADR-0161) keeps its earlier stops too: up to `MAX_STOPS_PER_FEATURE` (8) value keys per feature,
+the oldest dropped first. Only **Try again** (which applies only to a stop that applies now, and
+forgets the stop at the current values, not the feature's stops at other values) and closing the
+design forget a stop for good. The last matching objects are kept as a fast path: while the
+feature, the features before it, the parameters and the settings are the same objects, no key is
+computed; the last objects that matched no key are kept too, so a run of sends or previews over
+the same values hashes once. `isStopped`, the stop store's `stopped` list, Try again and the
 toast's availability all read the stops that apply to the document last sent (`#active`).
 
 **Consequences.** A stopped feature renamed, suppressed or deleted is built (or left out) as
@@ -222,7 +226,10 @@ values different still builds the feature in full; ADR-0161 adds Stop on a long 
 - parameters changed and changed back;
 - suppressed, deleted or rolled past, then brought back by undo or by rolling forward;
 - Try again forgets for good;
-- the fast path reads no inputs.
+- the fast path reads no inputs;
+- "several stops of one feature, by value": an earlier stop kept after a second Stop at other
+  values; the last 8 kept, the oldest dropped; Try again forgetting the current values' stop
+  only; values that match no stop hashed once.
 
 ## Amendment of 2026-11-23: Stop is never filled
 
@@ -231,8 +238,9 @@ the filled orange button after 30 s in one feature. That is withdrawn: Stop is a
 button in Cancel's style in every state, at open and in an update (ADR-0161). The only sign of a
 long wait is the sentence "This feature is taking a long time.", which keeps its 30 s rule
 (`LONG_FEATURE_MS`, now the kernel's constant in `recomputer.ts`, re-exported by
-`progressRules.ts`). `[data-model-stop]` now says when the Stop is pressed (`"open"` or
-`"update"`), not whether it is long. The progress bar stretches to the notice's content width
+`progressRules.ts`). `[data-model-stop]` now says which Stop it is, not whether it is long:
+`"open"`, `"update"`, and ADR-0161's `"cancel"` (while a pressed Cancel waits) and `"edit"` (a
+feature a newer edit superseded). The progress bar stretches to the notice's content width
 (`w-full min-w-40`) in every state that shows it, so it follows the notice when the buttons or
 the sentence widen it. One chip message for every Stop: "Stopped: this feature took too long.
 Try again to build it." (`STOPPED_MESSAGE`; "while the design opened" dropped). The own

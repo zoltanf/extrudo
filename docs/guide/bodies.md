@@ -88,7 +88,10 @@ is done and the model's surfaces are being prepared for the view.
 The same can happen after a change: when one feature of the update takes longer than 30 s, the
 "Updating the model…" notice shows **Stop** next to **Cancel**. **Cancel** undoes your change;
 **Stop** keeps your change and updates the model without that feature, which you can build later
-with **Try again**. While the notice shows Cancel, `Ctrl+Z` does the same as Cancel.
+with **Try again** (it shows "Preparing your design…", with Stop from the start). While the
+notice shows Cancel, `Ctrl+Z` does the same as Cancel: it undoes every change since the model
+you see, also quick ones you made while waiting. If another change comes while the slow feature
+still runs, Stop stays: it ends that feature, and your newest change is built.
 
 Cancel undoes your change at once, but the model still waits for the feature that is running to
 end. While it waits, the notice says "Cancelling…" and shows **Stop** alone: Stop ends the wait

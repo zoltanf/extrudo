@@ -4114,9 +4114,11 @@ only tells of a stop still there; a stop applies while the marker reaches the fe
 value key matches (since the amendment of 2026-11-23: a hash of the canonical JSON of the feature,
 the features before it, the parameters and the settings, with the last matching objects as a fast
 path that computes no key); a stop that doesn't match is left out, not forgotten, so undo, redo,
-Cancel or rolling forward to the same values brings it back; only Try again (on a stop that
-applies now) and `dispose` forget it; `isStopped`, `stops.stopped` and the toast read the
-applying stops (`#active`);
+Cancel or rolling forward to the same values brings it back; a feature keeps up to
+`MAX_STOPS_PER_FEATURE` (8) value keys, the oldest dropped first; only Try again (on a stop that
+applies now; it forgets the current values' key, not the others) and `dispose` forget one; the
+last objects that matched no key are kept (`miss`), so the same values hash once; `isStopped`,
+`stops.stopped` and the toast read the applying stops (`#active`);
 previews skip it too, its own dialog while the draft's inputs equal the stopped ones
 (`sameValue`, `STOPPED_DRAFT_MESSAGE`);
 when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight
@@ -4125,7 +4127,7 @@ during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-st
 `LONG_FEATURE_MS` (30 s) in one feature, counted from `ModelProgress.since`, the notice adds
 `LONG_FEATURE_TEXT`; nothing happens by itself. (Stop was made filled then; **the amendment of
 2026-11-23 withdrew that: Stop is quiet, in Cancel's style, in every state**; `[data-model-stop]`
-says `"open"` or `"update"`; the bar is `w-full min-w-40`; one chip message `STOPPED_MESSAGE`
+says which Stop it is, `"open"`, `"update"`, `"cancel"` or `"edit"` (ADR-0161); the bar is `w-full min-w-40`; one chip message `STOPPED_MESSAGE`
 "Stopped: this feature took too long. Try again to build it." and the own dialog's
 `STOPPED_DRAFT_MESSAGE` "Stopped because it took too long, …", neither naming the opening;
 `LONG_FEATURE_MS` is the kernel's constant, re-exported by `progressRules.ts`.)
@@ -4156,9 +4158,20 @@ the kernel and the document is unchanged since; the notice then shows `CANCELLIN
 and Stop alone at once (`showsStop`'s `cancelling`, `[data-model-stop="cancel"]`, "Stop: end the
 running feature now"), no Cancel, no bar; that Stop replaces the worker, records nothing (also
 when long), leaves `opening` alone and has no toast (`stopAndTell` with `'cancel'`); Cancel itself
-never replaces the worker. **Ctrl+Z:** `AppShell`'s `undo` runs `cancelUpdate` while the notice
-says so through `cancel.takesUndo` (offered, or waiting: then a no-op), after an open dialog's own
-cancel. e2e: `e2e/update-stop.spec.ts`.
+never replaces the worker; when Cancel had the focus, the waiting Stop takes it. **A superseded
+call's long feature:** `StopState.since` (the running feature's start, also for a call an edit
+superseded) and `superseded`; the notice counts the long rule from `progress.since ?? stops.since`,
+so after an edit the sentence and Stop stay (no bar; `[data-model-stop="edit"]`, "Stop: end the
+running feature now"); that Stop records nothing (`stop()`: not opening and `#currentSequence !==
+#sequence`) and has no toast. **Ctrl+Z:** `shell/undoRouting.ts`'s `undoRoute` decides for the key
+and the top bar's Undo only (`AppShell`'s `undoKey`, `commandShortcuts(commands, { undo })`):
+Cancel while the notice offers it (`cancel.notice`) and `Recomputer.revertToShownUndoes()` (the
+shown step is on the undo stack; after an undo whose update runs long, Cancel would redo, so it
+stays an undo); nothing while Cancel waits; the plain undo otherwise and always while a dialog,
+sketch or transaction is open. The `undo` command (search, marking menu, agent) is the plain
+undo. Ctrl+Z as Cancel undoes every step since the shown model. Try again shows as opening
+("Preparing…"): Stop from the start, and Cancel would have nothing to undo. An update's Stop
+rebuilds every other feature in the new worker. e2e: `e2e/update-stop.spec.ts`.
 
 ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
 `packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a

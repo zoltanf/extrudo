@@ -23,6 +23,7 @@ function kernel(stopped: FeatureId | undefined): StopKernel & { held: Set<Featur
         stoppable: true,
         stopping: false,
         cancelling: false,
+        superseded: false,
       }),
       subscribe: () => () => {},
     },
@@ -77,13 +78,17 @@ describe('stopAndTell', () => {
     );
   });
 
-  it('says nothing after a Stop while Cancel waits: nothing was marked (ADR-0161)', async () => {
-    const k = kernel(undefined);
-    const notify = vi.fn();
-    expect(await stopAndTell(k, store(), notify, 'cancel')).toBeUndefined();
-    expect(k.stop).toHaveBeenCalledTimes(1);
-    expect(notify).not.toHaveBeenCalled();
-  });
+  it.each(['cancel', 'edit'] as const)(
+    'says nothing after a Stop in the %s state, whatever the kernel answers (ADR-0161)',
+    async (during) => {
+      // The kernel records nothing there; even a stopped feature in its answer gets no toast.
+      const k = kernel('f1' as FeatureId);
+      const notify = vi.fn();
+      expect(await stopAndTell(k, store(), notify, during)).toBeUndefined();
+      expect(k.stop).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+    },
+  );
 
   it('says nothing when there was nothing to stop', async () => {
     const notify = vi.fn();

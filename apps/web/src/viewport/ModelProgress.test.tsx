@@ -153,6 +153,7 @@ describe('Stop while a design opens (ADR-0155)', () => {
       stoppable: false,
       stopping: false,
       cancelling: false,
+      superseded: false,
       ...initial,
     };
     const listeners = new Set<() => void>();
@@ -269,6 +270,7 @@ describe("a long feature and the model's last step (ADR-0155's amendment of 2026
       stoppable: true,
       stopping: false,
       cancelling: false,
+      superseded: false,
     };
     const listeners = new Set<() => void>();
     const stops = {
@@ -416,6 +418,7 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
       stoppable: true,
       stopping: false,
       cancelling: false,
+      superseded: false,
     };
     const listeners = new Set<() => void>();
     const stops = {
@@ -427,7 +430,7 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
     };
     const run = vi.fn();
     const cancelRun = vi.fn();
-    const takesUndo = vi.fn();
+    const notice = vi.fn();
     let canRevert = true;
     render(
       <ModelProgress
@@ -435,10 +438,11 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
         store={store}
         collapsed={false}
         stop={{ stops, run }}
-        cancel={{ can: () => canRevert, run: cancelRun, takesUndo }}
+        cancel={{ can: () => canRevert, run: cancelRun, notice }}
       />,
     );
-    act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: Date.now() }));
+    const started = Date.now();
+    act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: started }));
     act(() => vi.advanceTimersByTime(1000));
     /** Cancel pressed while the feature runs: back at the shown step, the kernel still on it. */
     const cancelWaits = () =>
@@ -455,7 +459,17 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
         stopState = { ...stopState, cancelling: false };
         for (const listener of listeners) listener();
       });
-    return { run, cancelRun, takesUndo, cancelWaits, cancelLands };
+    /**
+     * Another edit while the worker still runs the feature: the new send clears the
+     * progress, and only the kernel's stop state still knows the running feature.
+     */
+    const editedWhileRunning = () =>
+      act(() => {
+        stopState = { ...stopState, superseded: true, since: started };
+        model.getState().computing();
+        for (const listener of listeners) listener();
+      });
+    return { run, cancelRun, notice, cancelWaits, cancelLands, editedWhileRunning };
   }
   const buttons = () =>
     [...document.querySelectorAll('[data-model-progress] button')].map((b) => b.textContent);
@@ -532,12 +546,46 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
     expect(document.querySelector('[data-cancelling-text]')).toBeNull();
   });
 
-  it('tells the shell when Ctrl+Z is Cancel: while offered and while it waits', () => {
-    const { takesUndo, cancelWaits, cancelLands } = setup();
-    expect(takesUndo).toHaveBeenLastCalledWith(true);
+  it('tells the shell what it offers, for Ctrl+Z: Cancel, then the waiting state', () => {
+    const { notice, cancelWaits, cancelLands } = setup();
+    expect(notice).toHaveBeenLastCalledWith('cancel');
     cancelWaits();
-    expect(takesUndo).toHaveBeenLastCalledWith(true);
+    expect(notice).toHaveBeenLastCalledWith('cancelling');
     cancelLands();
-    expect(takesUndo).toHaveBeenLastCalledWith(false);
+    expect(notice).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('moves the focus to the waiting Stop when Cancel had it', () => {
+    const { cancelRun, cancelWaits } = setup();
+    const cancel = document.querySelector<HTMLButtonElement>('[data-model-cancel]');
+    act(() => {
+      cancel?.focus();
+      cancel?.click();
+    });
+    expect(cancelRun).toHaveBeenCalledTimes(1);
+    cancelWaits();
+    expect(document.activeElement).toBe(document.querySelector('[data-model-stop="cancel"]'));
+  });
+
+  it('leaves the focus alone when Cancel did not have it (Ctrl+Z)', () => {
+    const { cancelWaits } = setup();
+    cancelWaits();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('keeps the sentence and Stop after an edit while the long feature still runs', () => {
+    const { run, editedWhileRunning } = setup();
+    editedWhileRunning();
+    // No bar: the newer call has reported nothing. The old feature is not long yet.
+    expect(document.querySelector('progress')).toBeNull();
+    expect(buttons()).toEqual(['Cancel']);
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS - 1000));
+    expect(buttons()).toEqual(['Stop', 'Cancel']);
+    expect(document.querySelector('[data-feature-long]')?.textContent).toBe(LONG_FEATURE_TEXT);
+    const stop = document.querySelector<HTMLButtonElement>('[data-model-stop]');
+    expect(stop?.getAttribute('data-model-stop')).toBe('edit');
+    expect(stop?.getAttribute('aria-label')).toBe('Stop: end the running feature now');
+    act(() => stop?.click());
+    expect(run).toHaveBeenCalledWith('edit');
   });
 });

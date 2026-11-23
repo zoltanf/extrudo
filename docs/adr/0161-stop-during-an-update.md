@@ -26,7 +26,9 @@ the stopped feature in full with no Stop.
    the update's notice: it doesn't turn into "Preparing your design…", and Cancel still applies.
    The toast says "Rectangular Pattern1 was stopped, so the model was updated without it. Your
    change is kept." with Try again. The chip says "Stopped: this feature took too long. Try again
-   to build it."
+   to build it." Try again shows "Preparing your design…" (it counts as opening, ADR-0155): Stop
+   is then there from the start, and Cancel would have nothing to undo, since the document is
+   still the shown model's.
 2. **The gate.** `Recomputer.stop()` allows a Stop while the design opens, or once the running
    feature has run `longFeatureMs` (a `RecomputerOptions` value the app sets from the notice's own
    rule, test hook included, measured with the injectable `now`). The stop store's `stoppable`
@@ -43,10 +45,24 @@ the stopped feature in full with no Stop.
    to the one on its way. The new worker computes the reverted document cold. No new toast:
    Cancel's toast already said the changes were undone. The state ends when the running call
    comes back, when the document changes again, or with that Stop.
-4. **Ctrl+Z as Cancel.** While the update notice offers Cancel, Ctrl+Z (the Undo command, and so
-   the top bar's Undo button too) runs Cancel: the same revert to the shown model's step, the same
-   toast. While a pressed Cancel waits, it undoes nothing more. The notice tells the shell when
-   (`cancel.takesUndo`); an open dialog still takes Ctrl+Z first.
+4. **Ctrl+Z as Cancel.** While the update notice offers Cancel and Cancel would only undo (the
+   shown model's step is on the undo stack: `Recomputer.revertToShownUndoes`), Ctrl+Z and the top
+   bar's Undo button run Cancel: the same revert to the shown model's step, the same toast. Like
+   the Cancel button, that undoes **every step since the shown model**, quick unrelated edits made
+   during the update included. While a pressed Cancel waits, they undo nothing more. Otherwise they
+   are the plain undo: after an undo whose update runs long, Cancel would redo, so Ctrl+Z undoes
+   one more step; a dialog, a sketch or any open transaction keeps its own undo, the waiting state
+   included. The routing is `shell/undoRouting.ts` (`undoRoute`), fed by what the notice offers
+   (`cancel.notice`); only the key and the top bar's button use it (`commandShortcuts`' `keyRuns`).
+   The command list's Undo (search, the marking menu, the agent) stays the plain undo.
+5. **A long feature an edit superseded.** After another edit the worker still finishes the
+   running feature of the older call; the newer call has reported nothing, so there is no bar.
+   The stop store keeps that feature's start (`StopState.since`) and says the call is superseded
+   (`superseded`), so once it has run 30 s the notice keeps "This feature is taking a long time."
+   and offers Stop beside Cancel (`[data-model-stop="edit"]`, "Stop: end the running feature
+   now"). That Stop replaces the worker and records nothing (the feature's values have changed),
+   shows no toast, and the current edit builds. The 30 s rule stays: not every superseded call
+   gets Stop at once.
 
 ## Rules
 
@@ -61,27 +77,47 @@ the stopped feature in full with no Stop.
   request has reported no feature yet).
 - Stops are kept by value (ADR-0155's amendment of 2026-11-23), so an undo or Cancel back to the
   stopped values brings a stop back.
+- `[data-model-stop]` says which Stop it is: `"open"`, `"update"`, `"cancel"` (while Cancel
+  waits) or `"edit"` (a superseded call's feature). Only `"open"` and `"update"` record a stop
+  and have a toast.
+- When Cancel had the focus, the waiting state's Stop takes it.
+
+## Consequences
+
+- Stop in an update replaces the worker, whose cache held the whole shown model: the features
+  before the stopped one, and after it, are built again in the new worker. A design with other
+  slow features pays them again.
+- Ctrl+Z, like Cancel, can undo more than one step: every step since the shown model.
 
 ## Tests
 
 - `recomputer-stop.test.ts`, with an injected clock:
-  - an update's Stop refused 1 ms before the long time and allowed at it;
-  - the edit kept, and the rebuild not opening;
-  - undo still works;
-  - the long rule counted from the running feature's start;
-  - while Cancel waits: Stop allowed at once, the worker replaced, nothing recorded (also when the
-    feature has run long), the reverted document recomputed; the state ending when the running
-    call comes back or the document changes again; never entered when no feature runs.
+  - "Stop while a design opens": an update's Stop refused 1 ms before the long time and allowed
+    at it, the edit kept, the rebuild not opening, undo still working; the long rule counted from
+    the running feature's start;
+  - "Stop while Cancel waits": Stop allowed at once, the worker replaced, nothing recorded (also
+    when the feature has run long), the reverted document recomputed; the state ending when the
+    running call comes back (then a running feature needs the long rule again) or the document
+    changes again; Cancel, Stop, then an edit; never entered when no feature runs;
+  - "Stop on a long feature after an edit superseded its call": `since` and `superseded`, the long
+    rule kept, Stop recording nothing and the edit building; a Stop then an immediate edit;
+  - "whether Cancel only undoes, for Ctrl+Z": yes after an edit, no after an undo.
 - `progressRules.test.ts`: `showsStop` for both modes and while Cancel waits.
-- `ModelProgress.test.tsx`: Cancel alone, then Stop before Cancel at 30 s with the sentence and
-  the update label; Stop's class equal to Cancel's; the bar's classes; "Cancelling…" with Stop
-  alone, its lines and label, back to the update notice once the cancel lands; `takesUndo`.
-- `stopFeature.test.ts`: the update toast; no toast after a Stop while Cancel waits.
+- `ModelProgress.test.tsx`, "Stop on a long update after an edit": Cancel alone, then Stop before
+  Cancel at 30 s with the sentence and the update label; Stop's class equal to Cancel's; the bar's
+  classes; "Cancelling…" with Stop alone, its lines and label, back to the update notice once the
+  cancel lands; what the notice tells the shell (`notice`); the focus moving from Cancel to the
+  waiting Stop, and left alone after Ctrl+Z; the sentence and the `"edit"` Stop after an edit.
+- `undoRouting.test.ts`: Cancel only when offered and only undoing; nothing while it waits; the
+  plain undo otherwise and always while editing. `commands.test.ts`, "commandShortcuts": the key
+  runs its own undo, the command the plain one.
+- `stopFeature.test.ts`: the update toast; no toast after a `"cancel"` or `"edit"` Stop, whatever
+  the kernel answers.
 - `e2e/update-stop.spec.ts`, first test: the lowered long time, Stop before Cancel in the same
-  style, the bar as wide as the sentence, the toast, the chip, and the edit kept. Second test:
-  Ctrl+Z as Cancel (its toast), "Cancelling…" with Stop alone in Cancel's style, a second Ctrl+Z
-  undoing nothing, then Stop: no "was stopped" toast, the feature built, the edit undone and
-  Redo available.
+  style, the bar as wide as the sentence, the toast, the chip, and the edit kept. Second test: a
+  quick edit (n = 3) under the long one (n = 12); Ctrl+Z as Cancel (its toast), "Cancelling…" with
+  Stop alone in Cancel's style, a second Ctrl+Z undoing nothing (n stays 3), then Stop: no "was
+  stopped" toast, the feature built, Undo and Redo both available.
 
 ## Rejected
 

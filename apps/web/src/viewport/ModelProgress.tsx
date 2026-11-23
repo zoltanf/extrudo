@@ -39,6 +39,7 @@ const NO_STOPS: StopState = {
   stoppable: false,
   stopping: false,
   cancelling: false,
+  superseded: false,
 };
 
 /**
@@ -181,11 +182,16 @@ export function stopLabel(during: StopDuring): string {
   return 'Stop: end the running feature now';
 }
 
+/** What the update notice offers, for Ctrl+Z's routing (ADR-0161, `shell/undoRouting.ts`). */
+export type UpdateNotice = 'cancel' | 'cancelling' | undefined;
+
 /**
  * When a Stop is pressed: while the design opens, during an update after an
- * edit, or while a pressed Cancel waits for the running feature (ADR-0161).
+ * edit, while a pressed Cancel waits for the running feature, or after a newer
+ * edit while the worker still runs the old feature (ADR-0161). The last two
+ * record nothing.
  */
-export type StopDuring = 'open' | 'update' | 'cancel';
+export type StopDuring = 'open' | 'update' | 'cancel' | 'edit';
 
 /**
  * The notice's Stop (ADR-0155, ADR-0161): a quiet text button in Cancel's style,
@@ -196,14 +202,20 @@ function StopButton({
   feature,
   during,
   onStop,
+  focus = false,
 }: {
   feature: string | undefined;
   during: StopDuring;
   onStop(): void;
+  /** Takes the focus when it appears: Cancel had it (ADR-0161). */
+  focus?: boolean;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const target = useRef(feature);
   target.current = feature;
+  useLayoutEffect(() => {
+    if (focus) button.current?.focus();
+  }, [focus]);
   // Runs before the button leaves the page (Stop hides it at once).
   useLayoutEffect(
     () => () => {
@@ -253,10 +265,10 @@ export function ModelProgress({
   collapsed: boolean;
   /**
    * Returns the document to the shown model's step (ADR-0111); read at render
-   * time. `takesUndo` hears whether Ctrl+Z should run Cancel now: while the
-   * notice offers Cancel and while a pressed one waits (ADR-0161).
+   * time. `notice` hears what the notice offers, for Ctrl+Z's routing: Cancel,
+   * or a pressed Cancel that waits (ADR-0161).
    */
-  cancel?: { can(): boolean; run(): void; takesUndo?(on: boolean): void };
+  cancel?: { can(): boolean; run(): void; notice?(state: UpdateNotice): void };
   /** Stops the running feature while the design opens (ADR-0155) or in a long update (ADR-0161). */
   stop?: { stops: KernelStops; run(during: StopDuring): void };
 }) {
@@ -316,11 +328,14 @@ export function ModelProgress({
     ...(wait && { wait }),
   });
   const building = progress?.building === true;
-  // The long-feature timer runs while a feature can be stopped, opening or updating.
+  // The long-feature timer runs while a feature can be stopped, opening or updating. It
+  // counts the feature the worker runs, also one an edit has superseded (ADR-0161), whose
+  // call no longer reports progress.
   const recomputing = mode === 'preparing' || mode === 'updating';
+  const since = progress?.since ?? stops.since;
   const long = useLongFeature(
-    progress?.since,
-    stop !== undefined && recomputing && stops.stoppable && !building && progress !== undefined,
+    since,
+    stop !== undefined && recomputing && stops.stoppable && !building && since !== undefined,
   );
   // A pressed Cancel waits for the running feature (ADR-0161): "Cancelling…" with Stop alone.
   const cancelling = mode === 'updating' && stops.cancelling;
@@ -331,15 +346,26 @@ export function ModelProgress({
     showsStop(mode, { stoppable: stops.stoppable, long, cancelling });
   const offersCancel =
     mode !== undefined && cancel !== undefined && !cancelling && showsCancel(mode, cancel.can);
-  // Ctrl+Z runs Cancel while it is offered or waits (ADR-0161).
-  const takesUndo = offersCancel || cancelling;
-  const tellUndo = cancel?.takesUndo;
+  // For Ctrl+Z's routing (ADR-0161, `undoRoute`).
+  const notice: UpdateNotice = cancelling ? 'cancelling' : offersCancel ? 'cancel' : undefined;
+  const tellNotice = cancel?.notice;
   useEffect(() => {
-    tellUndo?.(takesUndo);
-  }, [tellUndo, takesUndo]);
-  useEffect(() => () => tellUndo?.(false), [tellUndo]);
+    tellNotice?.(notice);
+  }, [tellNotice, notice]);
+  useEffect(() => () => tellNotice?.(undefined), [tellNotice]);
+  // Cancel pressed while it had the focus: the waiting state's Stop takes it (ADR-0161).
+  const [focusStop, setFocusStop] = useState(false);
+  useEffect(() => {
+    if (focusStop && !cancelling && !offersCancel) setFocusStop(false);
+  }, [focusStop, cancelling, offersCancel]);
   if (!mode) return null;
-  const during: StopDuring = cancelling ? 'cancel' : mode === 'preparing' ? 'open' : 'update';
+  const during: StopDuring = cancelling
+    ? 'cancel'
+    : mode === 'preparing'
+      ? 'open'
+      : stops.superseded
+        ? 'edit'
+        : 'update';
 
   const bar =
     !cancelling && progress && showsBar(mode, true)
@@ -371,6 +397,7 @@ export function ModelProgress({
                   feature={progress?.feature}
                   during={during}
                   onStop={() => stop.run(during)}
+                  focus={focusStop && cancelling}
                 />
               )}
               {cancel && offersCancel && (
@@ -379,7 +406,10 @@ export function ModelProgress({
                   data-model-cancel
                   title="Cancel: undo the changes since the last model"
                   aria-label="Cancel: undo the changes since the last model"
-                  onClick={cancel.run}
+                  onClick={(event) => {
+                    if (document.activeElement === event.currentTarget) setFocusStop(true);
+                    cancel.run();
+                  }}
                   className="pointer-events-auto -my-1 h-6 px-2 text-sm"
                 >
                   Cancel
@@ -423,10 +453,17 @@ export function ModelProgress({
                 mode === 'waiting' ? (wait as WaitInput) : activeFeatureCount(doc),
               )}
             </span>
-            {cancelling && (
+            {cancelling ? (
               <span data-cancelling-text className="mt-1 text-xs text-ink">
                 {CANCELLING_TEXT}
               </span>
+            ) : (
+              // After an edit the old feature runs on with no bar (ADR-0161).
+              long && (
+                <span data-feature-long className="mt-1 text-xs text-ink">
+                  {LONG_FEATURE_TEXT}
+                </span>
+              )
             )}
           </>
         )}
