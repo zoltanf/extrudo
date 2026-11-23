@@ -544,6 +544,22 @@ describe('base features', () => {
     expect(([...after.values()][0] as BodyMeasure).volume).toBeCloseTo(995, 3);
   });
 
+  it("names a base body's face only by a tag no other of its faces carries", () => {
+    // Every face of a thousand carries the top's tag too: the top can't be told by it.
+    const { f3d, bases } = baseDesign();
+    const [held] = bases;
+    if (!held) throw new Error('no base');
+    held.faces = [...(held.faces ?? []), ...Array.from({ length: 1000 }, () => ['2@900'])];
+    f3d.features.push(topChamfer());
+    const { design, report } = f3dToDesign(f3d, 'Box', { bases });
+    const id = design.doc.features[0]?.id;
+    const refs = JSON.stringify(design.doc.features[1]?.inputs ?? {});
+    expect(refs).not.toContain(`import:${id}:face:2`);
+    expect(report.skipped).toEqual([
+      { name: 'Chamfer1', kind: 'Chamfer', reason: 'none of its 1 edges could be named' },
+    ]);
+  });
+
   it('counts the base body as made by the timeline: editable, not frozen or written again', async () => {
     const { f3d, bases } = baseDesign();
     const { design, bodies, files } = f3dToDesign(f3d, 'Box', { bases });

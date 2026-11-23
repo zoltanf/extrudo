@@ -817,7 +817,11 @@ export function f3dToDesign(
     replayable.set(record, { id: made.id, name });
     const faces = new Map<string, number[]>();
     (step.faces ?? []).forEach((tags, i) => {
-      for (const tag of new Set(tags)) faces.set(tag, [...(faces.get(tag) ?? []), i]);
+      for (const tag of new Set(tags)) {
+        const at = faces.get(tag);
+        if (at) at.push(i);
+        else faces.set(tag, [i]);
+      }
     });
     naming.bases.set(record, { id: made.id, faces });
     report.notes.push(`${name}: its body is the file's own shape, without history.`);

@@ -2409,3 +2409,11 @@ this date); a deeper one is not copied and stays left out with the note every
 round that can't be told on the copies gets. `map-more.test.ts` copies a chain
 of 64 and not of 65.
 
+## Amendment, 2026-11-23: a base body's face lists in one pass
+
+A base feature's body lists, per tag, the faces that carry it (`keepBase` in
+`map.ts`, read by the base-body face names). Each face's index is now pushed
+onto its tag's list, so the lists take one step per face and tag, however many
+faces share a tag; a face is named by a tag only when it is the one face
+carrying it, as before.
+
