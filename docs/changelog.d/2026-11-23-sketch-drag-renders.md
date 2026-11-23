@@ -1,0 +1,1 @@
+- 2026-11-23 · **Smoother sketch editing in large designs**: dragging a point in a sketch, editing a feature and undoing no longer redraw every sketch, timeline chip and toolbar button, so the page stays responsive with dozens of plates.

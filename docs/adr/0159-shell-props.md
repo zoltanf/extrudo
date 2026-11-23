@@ -101,3 +101,38 @@ moved. An edit inside a feature renders that feature's chip only (its `feature` 
   never on the feature objects.
 - Tested: `Timeline.renders.test.tsx` (ten edits inside one of 30 features render that chip ten
   times and no other; swapping two features renders every chip).
+
+## Amendment (2026-11-23): the toolbar's and the app bar's callbacks stay the same
+
+**Context.** `Shell` handed the toolbar `onRun={run}` and the app bar `onTutorial` and an
+inline `helpTool`: new functions on every render of the shell (it isn't compiled). The toolbar
+is compiled and keeps its tiles while their props stay, but a new `onRun` gave every tile a
+new click handler, so each render of the shell rendered every tile with its tooltip and menu
+(about 12–18 tiles, a few hundred components, per render: once per pointer move while a
+sketch point is dragged).
+
+**Decision.** `useLatest(fn)` (`shell/latest.ts`): a function that stays the same object and
+calls the latest `fn`, taken in an insertion effect. The shell hands the toolbar
+`useLatest(run)` and the app bar `useLatest(startTutorial)` and `useLatest(helpTool)`. The
+existing refs (`runRef` and the others, written during render) are unchanged, so the order in
+which those refs get their value is unchanged; the new ones follow the owner's choice for refs
+(insertion effects: every layout and passive effect of the commit, and every event after it,
+sees this render's function).
+
+**Rules.**
+
+- A callback the shell hands to a component that renders many children (toolbar, app bar)
+  goes through `useLatest` (or is otherwise stable); never an inline function or a function
+  made in the shell's render.
+- `useLatest`'s result is called from events and effects, never during a render.
+- Vitest doesn't run the React Compiler, so the tiles' reuse can't be counted there: it rests on
+  the toolbar being compiled, which `compiler.test.ts` (§1) keeps. Tested: `latest.test.tsx`
+  (the same function across renders under StrictMode, calling the latest; a child's layout
+  effect already calls this render's function, which a passive effect would not).
+
+**Numbers (§2–§4 together).** Components rendered, production build, designs of 30 / 100
+plates with 30 holes each (a sketch and an extrude per plate), before → after: dragging a
+point in an open sketch (10 pointer moves) 51,981 → 29,681 / 118,286 → 53,801; undo of an
+edit 9,480 → 6,748 / 30,375 → 21,318; opening a sketch 10,280 → 9,833 / 25,031 → 23,460; a
+box select 12,056 → 11,803 / 29,066 → 28,279. The renders of `Shell` itself are unchanged
+(11 / 8 for the drag): what changed is what each of them renders.
