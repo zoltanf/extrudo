@@ -913,11 +913,9 @@ export function f3dToDesign(
     const added = d.doc.features.slice(from);
     if (added.length === 0) return;
     // A full-length thread runs its longest face's length (unknown: the most turns).
-    const lengths = feature.type === 'thread' ? (feature.lengths ?? []) : [];
+    const longest = feature.type === 'thread' ? largest(feature.lengths ?? []) : undefined;
     const fullTurns =
-      lengths.length > 0 && lengths.every((l) => l !== undefined) && feature.type === 'thread'
-        ? Math.max(...(lengths as number[])) / feature.spec.pitch
-        : undefined;
+      longest !== undefined && feature.type === 'thread' ? longest / feature.spec.pitch : undefined;
     // Once the budget is spent, nothing is evaluated: a count is taken as the most.
     const value: InputValue = budget.left > 0 ? inputValue : () => undefined;
     const units = budget.cost(added, value, copies, fullTurns);
@@ -2950,6 +2948,20 @@ function hintDistance(shape: EdgeShape, p: Vec3): number {
     return norm(sub(p, [a[0] + ab[0] * t, a[1] + ab[1] * t, a[2] + ab[2] * t]));
   }
   return Math.min(norm(sub(p, a)), norm(sub(p, b)), norm(sub(p, shape.mid)));
+}
+
+/**
+ * The largest of `values`; undefined when there are none or one is unknown.
+ * A loop, not a spread: a file's thread may have more faces than a call takes
+ * arguments.
+ */
+function largest(values: readonly (number | undefined)[]): number | undefined {
+  let most = Number.NEGATIVE_INFINITY;
+  for (const v of values) {
+    if (v === undefined) return undefined;
+    most = Math.max(most, v);
+  }
+  return values.length > 0 ? most : undefined;
 }
 
 /** Points along an edge: its ends and midpoint, or eight around a whole circle. */

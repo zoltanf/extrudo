@@ -251,6 +251,60 @@ function mapped(f3d: F3dDesign) {
   return { design, report, doc, byName, suppressed, hidden };
 }
 
+/** A thread on the rod's cylinder; `lengths` are its faces' lengths, cm. */
+const thread = (id: number, name: string, full: boolean, lengths?: number[]): F3dFeature => ({
+  type: 'thread',
+  id,
+  kind: 'Thread',
+  name,
+  suppressed: false,
+  spec: {
+    angle: 60,
+    external: true,
+    designation: 'M10x1.5',
+    family: 'ISO Metric profile',
+    full,
+    major: 0.985,
+    minor: 0.8141,
+    pitch: 0.15,
+  },
+  parameters: full
+    ? []
+    : [
+        parameter({ name: `l${id}`, kind: 'ThreadLength', value: 0.6 }),
+        parameter({ name: `o${id}`, kind: 'ThreadOffset', value: 0 }),
+      ],
+  faces: [
+    {
+      tags: [{ token: '3', designs: [301] }],
+      feature: 2,
+      surface: {
+        kind: 'cone',
+        center: [0, 0, 0],
+        axis: [0, 0, 1],
+        radius: 0.4925,
+        cylinder: true,
+        slope: 0,
+      },
+    },
+  ],
+  ...(lengths ? { lengths } : {}),
+});
+/** A 1 cm rod of 5 mm radius from a circle on XY. */
+const rod = (): F3dDesign => ({
+  parameters: [],
+  userParameters: [],
+  features: [
+    sketch(1, 5, 'Sketch1', [circle(10, 101n, 0.5)]),
+    {
+      ...extrude(2, 'Extrude1', 5, 'new-body', 101n),
+      parameters: [parameter({ name: 'd2', kind: 'AlongDistance', value: 1 })],
+    },
+  ],
+  bodies: [],
+  problems: [],
+  unreadParameters: 0,
+});
 const budgetNotes = (notes: string[]) => notes.filter((n) => n.includes("the import's limit"));
 
 describe('the design-wide import budget', () => {
@@ -327,58 +381,6 @@ describe('the design-wide import budget', () => {
   });
 
   it('charges thread turns: the length over the pitch, a full thread its face’s length (unknown: the most)', () => {
-    const thread = (id: number, name: string, full: boolean, lengths?: number[]): F3dFeature => ({
-      type: 'thread',
-      id,
-      kind: 'Thread',
-      name,
-      suppressed: false,
-      spec: {
-        angle: 60,
-        external: true,
-        designation: 'M10x1.5',
-        family: 'ISO Metric profile',
-        full,
-        major: 0.985,
-        minor: 0.8141,
-        pitch: 0.15,
-      },
-      parameters: full
-        ? []
-        : [
-            parameter({ name: `l${id}`, kind: 'ThreadLength', value: 0.6 }),
-            parameter({ name: `o${id}`, kind: 'ThreadOffset', value: 0 }),
-          ],
-      faces: [
-        {
-          tags: [{ token: '3', designs: [301] }],
-          feature: 2,
-          surface: {
-            kind: 'cone',
-            center: [0, 0, 0],
-            axis: [0, 0, 1],
-            radius: 0.4925,
-            cylinder: true,
-            slope: 0,
-          },
-        },
-      ],
-      ...(lengths ? { lengths } : {}),
-    });
-    const rod = (): F3dDesign => ({
-      parameters: [],
-      userParameters: [],
-      features: [
-        sketch(1, 5, 'Sketch1', [circle(10, 101n, 0.5)]),
-        {
-          ...extrude(2, 'Extrude1', 5, 'new-body', 101n),
-          parameters: [parameter({ name: 'd2', kind: 'AlongDistance', value: 1 })],
-        },
-      ],
-      bodies: [],
-      problems: [],
-      unreadParameters: 0,
-    });
     // Two units a turn: 3 full threads of unknown length (3 × 150 turns), 10 of 4 turns (0.6 cm
     // over 0.15) and a full one of 1.5 cm (10 turns): 1000.
     const threads = (extra: number): F3dFeature[] => [
@@ -400,6 +402,27 @@ describe('the design-wide import budget', () => {
     expect(b.suppressed).toEqual(['OneMore']);
     expect(budgetNotes(b.report.notes)).toEqual([overBudgetNote('OneMore')]);
     expect(b.byName('ExtrudeLast').suppressed).toBe(false);
+  });
+
+  it('takes the longest of any number of thread faces', () => {
+    // More faces than a call takes arguments: the longest is found with a loop, not a spread.
+    // 3 full threads of unknown length (3 × 150 turns) and 10 of 4 turns leave 10 turns.
+    const threaded = (turns: number) => {
+      const lengths = new Array<number>(500_000).fill(0.15);
+      lengths[123_456] = 0.15 * turns;
+      const design = rod();
+      design.features.push(
+        ...Array.from({ length: 3 }, (_, i) => thread(10 + i, `Full${i}`, true)),
+        ...Array.from({ length: 10 }, (_, i) => thread(30 + i, `Short${i}`, false)),
+        thread(50, 'Long', true, lengths),
+      );
+      tail(design);
+      return mapped(design);
+    };
+    const fits = threaded(10);
+    expect(fits.report.imported).toContain('Long');
+    expect(fits.suppressed).toEqual([]);
+    expect(threaded(11).suppressed).toEqual(['Long']);
   });
 
   it('charges text characters', () => {
