@@ -156,6 +156,11 @@ describe('Stop while a design opens (ADR-0155)', () => {
       showsStop('updating', { stoppable: true, long: true }) && showsCancel('updating', () => true),
     ).toBe(true);
   });
+  it('at once and alone while a pressed Cancel waits for the running feature (ADR-0161)', () => {
+    expect(showsStop('updating', { stoppable: true, long: false, cancelling: true })).toBe(true);
+    expect(showsStop('updating', { stoppable: false, long: false, cancelling: true })).toBe(false);
+    expect(showsStop('waiting', { stoppable: true, long: false, cancelling: true })).toBe(false);
+  });
   it('a Try again or a Stop after the first result shows as preparing, at once', () => {
     const base = { status: 'computing' as const, finished: true, elapsed: 0 };
     expect(progressMode(base)).toBeUndefined();

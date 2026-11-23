@@ -6,6 +6,8 @@ import { Button } from '../design-system/Button';
 import {
   activeFeatureCount,
   BUILDING_TEXT,
+  CANCELLING_TEXT,
+  CANCELLING_TITLE,
   featureSeconds,
   LONG_FEATURE_TEXT,
   longFeatureIn,
@@ -31,7 +33,13 @@ declare global {
 }
 
 const NO_WAITS: readonly Wait[] = [];
-const NO_STOPS: StopState = { stopped: [], opening: false, stoppable: false, stopping: false };
+const NO_STOPS: StopState = {
+  stopped: [],
+  opening: false,
+  stoppable: false,
+  stopping: false,
+  cancelling: false,
+};
 
 /**
  * A recompute has finished since the model store was last reset (ADR-0078).
@@ -168,13 +176,16 @@ export function useLongFeature(since: number | undefined, watch: boolean): boole
 
 /** What Stop says it does, for screen readers and as its tooltip. */
 export function stopLabel(during: StopDuring): string {
-  return during === 'open'
-    ? 'Stop: open the design without this feature for now'
-    : 'Stop: update the model without this feature for now';
+  if (during === 'open') return 'Stop: open the design without this feature for now';
+  if (during === 'update') return 'Stop: update the model without this feature for now';
+  return 'Stop: end the running feature now';
 }
 
-/** Whether a Stop is pressed while the design opens or during an update after an edit. */
-export type StopDuring = 'open' | 'update';
+/**
+ * When a Stop is pressed: while the design opens, during an update after an
+ * edit, or while a pressed Cancel waits for the running feature (ADR-0161).
+ */
+export type StopDuring = 'open' | 'update' | 'cancel';
 
 /**
  * The notice's Stop (ADR-0155, ADR-0161): a quiet text button in Cancel's style,
@@ -222,7 +233,9 @@ function StopButton({
  * long recompute runs, or a kernel call the user made is still out (ADR-0078,
  * ADR-0105 §2). It never takes pointer events, so it can't block a pick; a
  * failed kernel keeps its own message (the status bar's). A long update offers
- * Cancel (ADR-0111), the one part that takes the pointer.
+ * Cancel (ADR-0111) and, once its feature has taken long, Stop (ADR-0161); the
+ * buttons are the only parts that take the pointer. While a pressed Cancel waits
+ * for the running feature, it says "Cancelling…" with Stop alone.
  */
 export function ModelProgress({
   model,
@@ -238,8 +251,12 @@ export function ModelProgress({
   waits?: KernelWaits;
   /** The browser is folded away: its "Show browser" tab then sits at the view's corner. */
   collapsed: boolean;
-  /** Returns the document to the shown model's step (ADR-0111); read at render time. */
-  cancel?: { can(): boolean; run(): void };
+  /**
+   * Returns the document to the shown model's step (ADR-0111); read at render
+   * time. `takesUndo` hears whether Ctrl+Z should run Cancel now: while the
+   * notice offers Cancel and while a pressed one waits (ADR-0161).
+   */
+  cancel?: { can(): boolean; run(): void; takesUndo?(on: boolean): void };
   /** Stops the running feature while the design opens (ADR-0155) or in a long update (ADR-0161). */
   stop?: { stops: KernelStops; run(during: StopDuring): void };
 }) {
@@ -305,17 +322,27 @@ export function ModelProgress({
     progress?.since,
     stop !== undefined && recomputing && stops.stoppable && !building && progress !== undefined,
   );
+  // A pressed Cancel waits for the running feature (ADR-0161): "Cancelling…" with Stop alone.
+  const cancelling = mode === 'updating' && stops.cancelling;
   const offersStop =
     mode !== undefined &&
     stop !== undefined &&
     !building &&
-    showsStop(mode, { stoppable: stops.stoppable, long });
+    showsStop(mode, { stoppable: stops.stoppable, long, cancelling });
+  const offersCancel =
+    mode !== undefined && cancel !== undefined && !cancelling && showsCancel(mode, cancel.can);
+  // Ctrl+Z runs Cancel while it is offered or waits (ADR-0161).
+  const takesUndo = offersCancel || cancelling;
+  const tellUndo = cancel?.takesUndo;
+  useEffect(() => {
+    tellUndo?.(takesUndo);
+  }, [tellUndo, takesUndo]);
+  useEffect(() => () => tellUndo?.(false), [tellUndo]);
   if (!mode) return null;
-  const during: StopDuring = mode === 'preparing' ? 'open' : 'update';
-  const offersCancel = cancel !== undefined && showsCancel(mode, cancel.can);
+  const during: StopDuring = cancelling ? 'cancel' : mode === 'preparing' ? 'open' : 'update';
 
   const bar =
-    progress && showsBar(mode, true)
+    !cancelling && progress && showsBar(mode, true)
       ? progressBar({
           done: progress.done,
           total: progress.total,
@@ -327,13 +354,16 @@ export function ModelProgress({
       role="status"
       aria-live="polite"
       data-model-progress={mode}
+      data-model-cancelling={cancelling || undefined}
       className="pointer-events-none absolute top-3 z-10 flex items-center gap-2.5 rounded-control border border-line bg-panel px-3 py-2 shadow-raised"
       style={{ left: `calc(var(--x-browser-inset, 0px) + ${collapsed ? 52 : 12}px)` }}
     >
       <ProgressCube />
       <div className="flex flex-col leading-tight">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
+          <span className="text-sm font-medium text-ink">
+            {cancelling ? CANCELLING_TITLE : progressTitle(mode, wait)}
+          </span>
           {(offersStop || offersCancel) && (
             <span className="ml-auto flex items-center gap-1">
               {stop && offersStop && (
@@ -386,12 +416,19 @@ export function ModelProgress({
             )}
           </>
         ) : (
-          <span className="text-xs text-muted">
-            {progressDetail(
-              mode,
-              mode === 'waiting' ? (wait as WaitInput) : activeFeatureCount(doc),
+          <>
+            <span className="text-xs text-muted">
+              {progressDetail(
+                mode,
+                mode === 'waiting' ? (wait as WaitInput) : activeFeatureCount(doc),
+              )}
+            </span>
+            {cancelling && (
+              <span data-cancelling-text className="mt-1 text-xs text-ink">
+                {CANCELLING_TEXT}
+              </span>
             )}
-          </span>
+          </>
         )}
       </div>
     </div>

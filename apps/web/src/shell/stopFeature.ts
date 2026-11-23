@@ -7,6 +7,7 @@
 import type { DocumentStore, FeatureId } from '@extrudo/core';
 import type { KernelStops } from '@extrudo/kernel';
 import type { ToastOptions } from '../design-system';
+import type { StopDuring } from '../viewport/ModelProgress';
 
 /** The kernel side of Stop: the project's `Recomputer`. */
 export interface StopKernel {
@@ -20,7 +21,7 @@ export interface StopKernel {
 export const STOP_TOAST_MS = 12_000;
 
 /** What the toast says after a Stop, in the user's words: while opening, or in an update (ADR-0161). */
-export function stoppedText(name: string, during: 'open' | 'update' = 'open'): string {
+export function stoppedText(name: string, during: StopDuring = 'open'): string {
   return during === 'open'
     ? `${name} was stopped, so the design opened without it. Nothing in the design changed.`
     : `${name} was stopped, so the model was updated without it. Your change is kept.`;
@@ -30,13 +31,14 @@ export function stoppedText(name: string, during: 'open' | 'update' = 'open'): s
  * Stops the running feature and says so, with Try again while it is still
  * stopped. Says nothing when nothing was stopped (the feature finished first,
  * or the document no longer reaches it: the worker was still replaced) or the
- * stop is already gone when the restart ends.
+ * stop is already gone when the restart ends. A Stop while a pressed Cancel
+ * waits (ADR-0161) records nothing, so it says nothing: Cancel's toast did.
  */
 export async function stopAndTell(
   kernel: StopKernel,
   store: DocumentStore,
   notify: (tone: 'info', text: string, options?: ToastOptions) => void,
-  during: 'open' | 'update' = 'open',
+  during: StopDuring = 'open',
 ): Promise<FeatureId | undefined> {
   const id = await kernel.stop();
   // Nothing recorded, or the stop is gone already (Try Again from the chip's

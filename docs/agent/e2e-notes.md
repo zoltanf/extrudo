@@ -1666,6 +1666,14 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   After Stop: the toast "… was stopped, so the model was updated without it. Your change is kept."
   with "Try again", the chip `data-feature-status="error"` with the stop message in its tooltip,
   `n` still `12` (read back from Parameters) and Undo enabled. No time is asserted.
+- **Stop while Cancel waits** (the second test): the same long update; `Control+z` (focus is on
+  the page after the Parameters dialog's Escape) runs Cancel, so the "Update cancelled" toast
+  shows. The notice keeps `data-model-progress="updating"` and gets `data-model-cancelling="true"`,
+  the title "Cancelling…", `[data-cancelling-text]`, and one button, named "Stop: end the running
+  feature now", whose `class` equals the Cancel button's read before the key. A second
+  `Control+z` leaves the state as it is. After Stop and `kernelReady`: no toast with "was
+  stopped", the pattern's chip not `error`, `n` read back as `2`, Redo enabled. The pattern at
+  12 × 12 runs long enough that the key and the click land while it runs.
 
 ### `e2e/kernel-prewarm.spec.ts`
 

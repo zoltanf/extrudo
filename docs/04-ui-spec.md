@@ -1352,7 +1352,8 @@ command (replacing its first key).
   quiet **Cancel** button at the right of its title (the pill's only part that
   takes clicks), shown once a model is on screen and no sketch or dialog is
   open; it undoes the changes since the model on screen in one go, a toast says
-  so, and Redo brings them back. No keyboard shortcut.
+  so, and Redo brings them back. While the pill offers Cancel, Ctrl+Z does the
+  same (ADR-0161); Escape never does.
 - **Stop while a design opens (ADR-0155):** the "Preparing your design…" pill has a
   quiet **Stop** button in the same place, once the kernel is on a feature (opening
   never offers Cancel). Stop ends that feature's computation at once and opens the
@@ -1378,6 +1379,13 @@ command (replacing its first key).
   took too long. Try again to build it."), and a toast says "Rectangular Pattern1
   was stopped, so the model was updated without it. Your change is kept." with
   **Try again**.
+- **Stop while Cancel waits (ADR-0161):** Cancel (or Ctrl+Z) undoes the changes at
+  once, but the model waits for the running feature to end. Meanwhile the pill
+  says "Cancelling…", "Computing 9 features" and "Your changes are undone once the
+  running feature ends. Stop ends it now.", with **Stop** alone, in the same quiet
+  style. Stop ends the wait: the earlier model is built again without waiting for
+  that feature, nothing is marked as stopped and no new toast appears. Ctrl+Z
+  meanwhile undoes nothing more.
 - **The model's last step:** once the kernel is past its last feature (building the
   meshes), the line under the bar says "Building the model…" with the bar full, in
   the opening and the update notice alike, and no Stop is offered.

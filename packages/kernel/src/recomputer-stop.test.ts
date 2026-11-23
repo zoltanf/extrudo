@@ -736,3 +736,79 @@ describe('Stop after a document change while the old call still runs (ADR-0155, 
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
   });
 });
+
+describe('Stop while Cancel waits (ADR-0161)', () => {
+  /** A model on screen, an edit of f1, its update on f2, then Cancel while f2 runs. */
+  async function cancelledWhileRunning() {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    const update = await t.call(2);
+    update.report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    expect(t.r.stops.get().cancelling).toBe(false);
+    expect(t.r.revertToShown()).toBe(true);
+    // The document is back at once; the kernel is still on the edited document's f2.
+    expect(t.store.getState().doc.features[0]?.name).toBe('f1');
+    expect(t.r.stops.get()).toMatchObject({ cancelling: true, stoppable: true });
+    // Cancel's own request is with the kernel, behind f2.
+    const reverted = await t.call(3);
+    expect(reverted.request.doc.features[0]?.name).toBe('f1');
+    return t;
+  }
+
+  it('offers Stop at once; it replaces the worker and marks nothing as stopped', async () => {
+    const t = await cancelledWhileRunning();
+    // No long time has passed: the waiting Cancel alone allows Stop.
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(2);
+    expect(t.workers[0]?.terminated).toBe(true);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    expect(t.r.stops.get()).toMatchObject({ stopped: [], cancelling: false, opening: false });
+    // The new worker computes the document Cancel went back to, with nothing skipped.
+    const rebuild = await t.call(4);
+    expect(rebuild.worker).toBe(2);
+    expect(rebuild.request.stopped).toEqual([]);
+    expect(rebuild.request.doc.features[0]?.name).toBe('f1');
+    rebuild.finish();
+    await until(t.ready);
+    expect(status(t, 'f2')?.status).toBe('ok');
+    expect(t.r.client.restarts).toBe(0);
+    // Cancel's step stays: Redo brings the edit back.
+    expect(t.store.getState().canRedo).toBe(true);
+  });
+
+  it('marks nothing even when the feature has also run long', async () => {
+    const t = await cancelledWhileRunning();
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.r.stops.get().stopped).toEqual([]);
+    expect((await t.call(4)).request.stopped).toEqual([]);
+  });
+
+  it('ends when the running call comes back: then Stop is the long rule’s again', async () => {
+    const t = await cancelledWhileRunning();
+    t.calls[1]?.finish();
+    await until(() => !t.r.stops.get().cancelling);
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(1);
+  });
+
+  it('ends when the document changes again', async () => {
+    const t = await cancelledWhileRunning();
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await until(() => !t.r.stops.get().cancelling);
+    // f2 still runs, but has not taken long: no Stop.
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(1);
+  });
+
+  it('is not entered when no feature is running', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    await t.call(2);
+    expect(t.r.revertToShown()).toBe(true);
+    expect(t.r.stops.get().cancelling).toBe(false);
+  });
+});

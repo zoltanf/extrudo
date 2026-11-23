@@ -17,7 +17,13 @@ function kernel(stopped: FeatureId | undefined): StopKernel & { held: Set<Featur
   return {
     held,
     stops: {
-      get: () => ({ stopped: [], opening: true, stoppable: true, stopping: false }),
+      get: () => ({
+        stopped: [],
+        opening: true,
+        stoppable: true,
+        stopping: false,
+        cancelling: false,
+      }),
       subscribe: () => () => {},
     },
     stop: vi.fn(async () => {
@@ -69,6 +75,14 @@ describe('stopAndTell', () => {
     expect(notify.mock.calls[0]?.[1]).toBe(
       'Box1 was stopped, so the model was updated without it. Your change is kept.',
     );
+  });
+
+  it('says nothing after a Stop while Cancel waits: nothing was marked (ADR-0161)', async () => {
+    const k = kernel(undefined);
+    const notify = vi.fn();
+    expect(await stopAndTell(k, store(), notify, 'cancel')).toBeUndefined();
+    expect(k.stop).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it('says nothing when there was nothing to stop', async () => {

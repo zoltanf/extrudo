@@ -134,3 +134,38 @@ test('a long update offers Stop before Cancel after the long-feature time; Stop 
   expect(await readN(page)).toBe('12');
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 });
+
+test('Ctrl+Z during a long update is Cancel; while it waits, "Cancelling…" offers Stop alone, which ends the wait', async ({
+  page,
+}, info) => {
+  test.setTimeout(240_000);
+  await longUpdate(page, info.outputPath('posts.extrudo'));
+  const notice = updating(page);
+  await expect(cancelButton(page)).toBeVisible();
+  const quiet = await cancelButton(page).getAttribute('class');
+  // Ctrl+Z does what Cancel does: the changes are undone at once, with Cancel's toast.
+  await page.keyboard.press('Control+z');
+  await expect(page.locator('[data-toast]').filter({ hasText: 'Update cancelled' })).toContainText(
+    'Update cancelled: your last changes were undone. Redo brings them back.',
+  );
+  // The pattern still runs, so the cancel waits for it: "Cancelling…" with Stop alone, at once.
+  await expect(notice).toHaveAttribute('data-model-cancelling', 'true');
+  await expect(notice).toContainText('Cancelling…');
+  await expect(notice.locator('[data-cancelling-text]')).toHaveText(
+    'Your changes are undone once the running feature ends. Stop ends it now.',
+  );
+  const stop = page.getByRole('button', { name: 'Stop: end the running feature now' });
+  await expect(notice.getByRole('button')).toHaveText(['Stop']);
+  expect(await stop.getAttribute('class')).toBe(quiet);
+  // Ctrl+Z again while it waits undoes nothing more.
+  await page.keyboard.press('Control+z');
+  await expect(notice).toHaveAttribute('data-model-cancelling', 'true');
+
+  await stop.click();
+  await kernelReady(page, 60_000);
+  // Nothing was marked: no "was stopped" toast, the pattern built, n back at 2, Redo brings 12.
+  await expect(page.locator('[data-toast]').filter({ hasText: 'was stopped' })).toHaveCount(0);
+  await expect(chip(page)).not.toHaveAttribute('data-feature-status', 'error');
+  expect(await readN(page)).toBe('2');
+  await expect(page.getByRole('button', { name: 'Redo', exact: true })).toBeEnabled();
+});

@@ -81,16 +81,27 @@ export function showsCancel(mode: ProgressMode, canRevert: () => boolean): boole
 /**
  * Whether the notice offers Stop: while the design opens (or a Try again runs,
  * which shows the same way) as soon as the kernel is on a feature (ADR-0155);
- * in an update after an edit once that feature has taken long (ADR-0161), beside
- * Cancel.
+ * in an update after an edit once that feature has taken long, beside Cancel,
+ * or at once while a pressed Cancel waits for it, alone (ADR-0161).
  */
 export function showsStop(
   mode: ProgressMode,
-  { stoppable, long }: { stoppable: boolean; long: boolean },
+  {
+    stoppable,
+    long,
+    cancelling = false,
+  }: { stoppable: boolean; long: boolean; cancelling?: boolean },
 ): boolean {
   if (!stoppable) return false;
-  return mode === 'preparing' || (mode === 'updating' && long);
+  return mode === 'preparing' || (mode === 'updating' && (long || cancelling));
 }
+
+/** The update notice's title while a pressed Cancel waits for the running feature (ADR-0161). */
+export const CANCELLING_TITLE = 'Cancelling…';
+
+/** What the notice says under it, read once (polite region). */
+export const CANCELLING_TEXT =
+  'Your changes are undone once the running feature ends. Stop ends it now.';
 
 /**
  * After this long in one feature the notice says `LONG_FEATURE_TEXT` and, in an

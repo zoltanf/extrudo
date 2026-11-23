@@ -1559,15 +1559,28 @@ function Shell({
     }),
     [stores, exportSheets, notify, session],
   );
+  // Cancel on a long update (ADR-0111): back to the shown model's step, with a toast.
+  const cancelUpdate = useCallback(() => {
+    if (kernel?.revertToShown?.())
+      notify('info', 'Update cancelled: your last changes were undone. Redo brings them back.');
+  }, [kernel, notify]);
+  // The notice says when Ctrl+Z is Cancel (ADR-0161): while it offers Cancel, and while a
+  // pressed one waits for the running feature (then Cancel has nothing more to undo).
+  const undoCancels = useRef(false);
+  const cancelTakesUndo = useCallback((on: boolean) => {
+    undoCancels.current = on;
+  }, []);
   // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {
     if (dialogOpen || jointOpen) {
       dialog?.cancel();
       jointDialog?.cancel();
+    } else if (undoCancels.current) {
+      cancelUpdate();
     } else if (session.getState().mode === 'sheet' || !reopenSketch(stores)) {
       store.getState().undo();
     }
-  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session]);
+  }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session, cancelUpdate]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -3249,13 +3262,8 @@ function Shell({
               kernel.revertToShown && {
                 cancel: {
                   can: () => kernel.canRevertToShown?.() ?? false,
-                  run: () => {
-                    if (kernel.revertToShown?.())
-                      notify(
-                        'info',
-                        'Update cancelled: your last changes were undone. Redo brings them back.',
-                      );
-                  },
+                  run: cancelUpdate,
+                  takesUndo: cancelTakesUndo,
                 },
               })}
             {...(kernel?.stops &&

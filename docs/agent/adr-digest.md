@@ -4086,7 +4086,8 @@ recompute; `canRevertToShown`/`revertToShown`), `apps/web/src/viewport/progressR
 leaves the model out of step with the document: it changes the document, through the history; one
 `revertTo` is one document change (one `set`), so one recompute follows; no Cancel while a design
 first opens (`preparing`), for a kernel wait (`waiting`), or inside a transaction (sketch mode, a
-feature dialog); no keyboard shortcut (Escape must never undo edits); the notice stays
+feature dialog); no Escape shortcut (Escape must never undo edits; Ctrl+Z is Cancel during a long
+update since ADR-0161); the notice stays
 `pointer-events: none`, only the button takes the pointer. e2e: `e2e/kernel-cancel.spec.ts`.
 
 ADR-0155 (the owner, 2026-11-19): **Stop while a design opens skips the running feature for
@@ -4147,7 +4148,17 @@ Cancel alone; once the running feature has run `LONG_FEATURE_MS`, counted from i
 update notice shows Stop before Cancel in the same quiet style with `LONG_FEATURE_TEXT`; an
 update's Stop records the feature against the edited document, keeps the edit and the history,
 and the rebuild keeps the update's notice (Cancel still applies); the toast says the change is
-kept; the notice and `stop()` use the same time (the app passes it). e2e: `e2e/update-stop.spec.ts`.
+kept; the notice and `stop()` use the same time (the app passes it). **Stop while Cancel waits:**
+`revertToShown` that changes the document while a feature runs sets `#cancel` (that call's
+sequence and the reverted document); `StopState.cancelling` holds while that call is still with
+the kernel and the document is unchanged since; the notice then shows `CANCELLING_TITLE`,
+"Computing n features", `CANCELLING_TEXT` (`[data-cancelling-text]`), `[data-model-cancelling]`,
+and Stop alone at once (`showsStop`'s `cancelling`, `[data-model-stop="cancel"]`, "Stop: end the
+running feature now"), no Cancel, no bar; that Stop replaces the worker, records nothing (also
+when long), leaves `opening` alone and has no toast (`stopAndTell` with `'cancel'`); Cancel itself
+never replaces the worker. **Ctrl+Z:** `AppShell`'s `undo` runs `cancelUpdate` while the notice
+says so through `cancel.takesUndo` (offered, or waiting: then a no-op), after an open dialog's own
+cancel. e2e: `e2e/update-stop.spec.ts`.
 
 ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
 `packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a

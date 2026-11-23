@@ -247,6 +247,13 @@ export interface StopState {
   stoppable: boolean;
   /** A Stop is under way (the worker is being replaced). */
   stopping: boolean;
+  /**
+   * Cancel was pressed during an update and waits for the running feature to
+   * end (ADR-0161): the document is back at the shown model's step, but the
+   * kernel takes the new request only between features. The notice says
+   * "Cancelling…" and offers Stop alone, which only ends the wait.
+   */
+  cancelling: boolean;
 }
 
 export interface KernelStops {
@@ -372,7 +379,18 @@ export class Recomputer {
   /** The sequence a Stop ended: its rejected call is not a crash. */
   #stoppedSequence: number | undefined;
   #stopping = false;
-  #stopState: StopState = { stopped: [], opening: true, stoppable: false, stopping: false };
+  /**
+   * A Cancel that waits (`StopState.cancelling`): the call running a feature
+   * when it was pressed, and the document it went back to.
+   */
+  #cancel: { sequence: number; doc: ExtrudoDocument } | undefined;
+  #stopState: StopState = {
+    stopped: [],
+    opening: true,
+    stoppable: false,
+    stopping: false,
+    cancelling: false,
+  };
   readonly #stopListeners = new Set<() => void>();
   /** Meshes held, with the version the kernel gave each. */
   #meshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
@@ -502,10 +520,33 @@ export class Recomputer {
     return state.canRevertTo(this.#shown.step);
   }
 
-  /** Does it: one undo/redo run, one document change. Returns whether it changed anything. */
+  /**
+   * Does it: one undo/redo run, one document change. Returns whether it changed
+   * anything. When a feature is running, the new request waits for it to end:
+   * the stop store says `cancelling` until it does (ADR-0161).
+   */
   revertToShown(): boolean {
     if (!this.canRevertToShown() || !this.#shown) return false;
-    return this.#document.getState().revertTo(this.#shown.step);
+    if (!this.#document.getState().revertTo(this.#shown.step)) return false;
+    if (this.#current !== undefined && this.#currentSequence !== undefined) {
+      this.#cancel = { sequence: this.#currentSequence, doc: this.#document.getState().doc };
+      this.#notifyStops();
+    }
+    return true;
+  }
+
+  /**
+   * Whether a Cancel waits for the running feature (`StopState.cancelling`):
+   * the call that ran it when Cancel was pressed is still with the kernel, and
+   * the document is still the one Cancel went back to.
+   */
+  #cancelling(): boolean {
+    return (
+      this.#cancel !== undefined &&
+      !this.#disposed &&
+      this.#currentSequence === this.#cancel.sequence &&
+      this.#document.getState().doc === this.#cancel.doc
+    );
   }
 
   /**
@@ -527,6 +568,10 @@ export class Recomputer {
    * running feature has run `longFeatureMs`; the update's notice stays (it
    * doesn't turn into "Preparing your design…").
    *
+   * While a Cancel waits (`StopState.cancelling`, ADR-0161) Stop only ends the
+   * wait: the worker is replaced and nothing is recorded, since the running
+   * feature belongs to the document Cancel left. No long time is needed.
+   *
    * Resolves with the stopped feature; undefined when nothing was recorded, or
    * nothing could be stopped: neither opening nor long, no feature running (resources still
    * going out, the kernel past its features or restarting), a Stop already
@@ -539,6 +584,8 @@ export class Recomputer {
     // Opening, or an update whose feature has taken long (ADR-0161): an update's
     // stop keeps the update's notice (not "Preparing…") for the rebuild.
     const opening = this.#opening;
+    // A Cancel waiting for the feature: Stop ends the wait and records nothing.
+    const cancelling = this.#cancelling();
     this.#stopping = true;
     this.#notifyStops();
     try {
@@ -547,11 +594,13 @@ export class Recomputer {
       // call came back), there is nothing to stop. A send that started
       // meanwhile doesn't matter: the worker is still on the old feature.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      if (this.#disposed || this.#current !== id || !this.#mayStop()) return undefined;
+      if (this.#disposed || this.#current !== id) return undefined;
+      if (cancelling ? !this.#cancelling() : !this.#mayStop()) return undefined;
       const doc = this.#document.getState().doc;
       const at = doc.features.findIndex((f) => f.id === id);
       const feature = doc.features[at];
-      const reached = feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
+      const reached =
+        !cancelling && feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
       if (reached) {
         const before = doc.features.slice(0, at);
         this.#stopped.set(id, {
@@ -565,7 +614,8 @@ export class Recomputer {
       }
       // The send now under way gets the restart's rejection: not a crash.
       this.#stoppedSequence = this.#sequence;
-      if (opening) this.#opening = true;
+      if (opening && !cancelling) this.#opening = true;
+      this.#cancel = undefined;
       this.#notifyStops();
       try {
         await this.client.restart();
@@ -580,11 +630,12 @@ export class Recomputer {
   }
 
   /**
-   * Whether `stop` would stop something now: opening, and a feature reported by
-   * a call still with the kernel (`#current` is cleared when that call settles).
+   * Whether `stop` would stop something now: a feature reported by a call still
+   * with the kernel (`#current` is cleared when that call settles), while
+   * opening, once it has taken long, or while a Cancel waits for it.
    */
   #canStop(): boolean {
-    return this.#running() && this.#mayStop();
+    return this.#running() && (this.#mayStop() || this.#cancelling());
   }
 
   /** A feature is running in a call still with the kernel, and no Stop is under way. */
@@ -629,10 +680,12 @@ export class Recomputer {
       opening: this.#opening,
       stoppable: this.#running(),
       stopping: this.#stopping,
+      cancelling: this.#cancelling(),
     };
     const prev = this.#stopState;
     if (
       prev.opening === next.opening &&
+      prev.cancelling === next.cancelling &&
       prev.stoppable === next.stoppable &&
       prev.stopping === next.stopping &&
       prev.stopped.length === next.stopped.length &&
@@ -685,6 +738,7 @@ export class Recomputer {
     // A stop lives as long as the open design (ADR-0155).
     this.#stopped.clear();
     this.#active.clear();
+    this.#cancel = undefined;
     this.#unsubscribe?.();
     clearTimeout(this.#timer);
     this.#endPreview();
@@ -1394,6 +1448,8 @@ export class Recomputer {
         this.#current = undefined;
         this.#currentSequence = undefined;
       }
+      // A Cancel waiting for this call has landed (ADR-0161).
+      if (this.#cancel?.sequence === sequence) this.#cancel = undefined;
       this.#notifyStops();
     }
     if (sequence !== this.#sequence || result.status !== 'done' || this.#disposed) return;

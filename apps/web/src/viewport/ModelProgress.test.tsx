@@ -12,7 +12,12 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FeatureSeconds, ModelProgress } from './ModelProgress';
-import { BUILDING_TEXT, LONG_FEATURE_MS, LONG_FEATURE_TEXT } from './progressRules';
+import {
+  BUILDING_TEXT,
+  CANCELLING_TITLE,
+  LONG_FEATURE_MS,
+  LONG_FEATURE_TEXT,
+} from './progressRules';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -147,6 +152,7 @@ describe('Stop while a design opens (ADR-0155)', () => {
       opening: true,
       stoppable: false,
       stopping: false,
+      cancelling: false,
       ...initial,
     };
     const listeners = new Set<() => void>();
@@ -257,7 +263,13 @@ describe("a long feature and the model's last step (ADR-0155's amendment of 2026
     });
     const model = createModelStore();
     model.getState().computing();
-    let state: StopState = { stopped: [], opening: true, stoppable: true, stopping: false };
+    let state: StopState = {
+      stopped: [],
+      opening: true,
+      stoppable: true,
+      stopping: false,
+      cancelling: false,
+    };
     const listeners = new Set<() => void>();
     const stops = {
       get: () => state,
@@ -398,21 +410,52 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
     // A model is on screen, then an edit's update runs.
     model.getState().computed({ features: {}, bodies: {}, doc: store.getState().doc });
     model.getState().computing();
-    const stopState: StopState = { stopped: [], opening: false, stoppable: true, stopping: false };
+    let stopState: StopState = {
+      stopped: [],
+      opening: false,
+      stoppable: true,
+      stopping: false,
+      cancelling: false,
+    };
+    const listeners = new Set<() => void>();
+    const stops = {
+      get: () => stopState,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
     const run = vi.fn();
     const cancelRun = vi.fn();
+    const takesUndo = vi.fn();
+    let canRevert = true;
     render(
       <ModelProgress
         model={model}
         store={store}
         collapsed={false}
-        stop={{ stops: { get: () => stopState, subscribe: () => () => {} }, run }}
-        cancel={{ can: () => true, run: cancelRun }}
+        stop={{ stops, run }}
+        cancel={{ can: () => canRevert, run: cancelRun, takesUndo }}
       />,
     );
     act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: Date.now() }));
     act(() => vi.advanceTimersByTime(1000));
-    return { run, cancelRun };
+    /** Cancel pressed while the feature runs: back at the shown step, the kernel still on it. */
+    const cancelWaits = () =>
+      act(() => {
+        canRevert = false;
+        stopState = { ...stopState, cancelling: true };
+        // Cancel's own request has reported nothing yet.
+        model.getState().computing();
+        for (const listener of listeners) listener();
+      });
+    /** The running feature ended: Cancel's request runs on. */
+    const cancelLands = () =>
+      act(() => {
+        stopState = { ...stopState, cancelling: false };
+        for (const listener of listeners) listener();
+      });
+    return { run, cancelRun, takesUndo, cancelWaits, cancelLands };
   }
   const buttons = () =>
     [...document.querySelectorAll('[data-model-progress] button')].map((b) => b.textContent);
@@ -447,5 +490,54 @@ describe('Stop on a long update after an edit (ADR-0161)', () => {
     const bar = document.querySelector('progress');
     expect(bar?.className.split(/\s+/)).toEqual(expect.arrayContaining(['w-full', 'min-w-40']));
     expect(bar?.className.split(/\s+/)).not.toContain('w-40');
+  });
+
+  it('says "Cancelling…" with Stop alone while a pressed Cancel waits; Stop ends the wait', () => {
+    const { run, cancelWaits } = setup();
+    expect(buttons()).toEqual(['Cancel']);
+    cancelWaits();
+    const notice = document.querySelector('[data-model-progress="updating"]');
+    expect(notice?.hasAttribute('data-model-cancelling')).toBe(true);
+    expect(notice?.textContent).toContain(CANCELLING_TITLE);
+    expect(CANCELLING_TITLE).toBe('Cancelling…');
+    // No long time needed, no Cancel, no bar: the reverted request has reported nothing.
+    expect(buttons()).toEqual(['Stop']);
+    expect(document.querySelector('progress')).toBeNull();
+    expect(notice?.textContent).toContain('Computing 1 feature');
+    expect(document.querySelector('[data-cancelling-text]')?.textContent).toBe(
+      'Your changes are undone once the running feature ends. Stop ends it now.',
+    );
+    const stop = document.querySelector<HTMLButtonElement>('[data-model-stop]');
+    expect(stop?.getAttribute('data-model-stop')).toBe('cancel');
+    expect(stop?.getAttribute('aria-label')).toBe('Stop: end the running feature now');
+    act(() => stop?.click());
+    expect(run).toHaveBeenCalledWith('cancel');
+  });
+
+  it('gives the waiting Stop the quiet style too', () => {
+    const { cancelWaits } = setup();
+    const quiet = document.querySelector('[data-model-cancel]')?.className;
+    cancelWaits();
+    expect(document.querySelector('[data-model-stop]')?.className).toBe(quiet);
+  });
+
+  it('goes back to the update notice once the cancel has landed', () => {
+    const { cancelWaits, cancelLands } = setup();
+    cancelWaits();
+    cancelLands();
+    const notice = document.querySelector('[data-model-progress="updating"]');
+    expect(notice?.hasAttribute('data-model-cancelling')).toBe(false);
+    expect(notice?.textContent).toContain('Updating the model…');
+    expect(buttons()).toEqual([]);
+    expect(document.querySelector('[data-cancelling-text]')).toBeNull();
+  });
+
+  it('tells the shell when Ctrl+Z is Cancel: while offered and while it waits', () => {
+    const { takesUndo, cancelWaits, cancelLands } = setup();
+    expect(takesUndo).toHaveBeenLastCalledWith(true);
+    cancelWaits();
+    expect(takesUndo).toHaveBeenLastCalledWith(true);
+    cancelLands();
+    expect(takesUndo).toHaveBeenLastCalledWith(false);
   });
 });
