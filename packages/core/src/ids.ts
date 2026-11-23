@@ -14,7 +14,18 @@ declare const crypto: {
   getRandomValues<T extends ArrayBufferView>(array: T): T;
 };
 
-const id = z.string().min(1);
+/**
+ * The most characters an ID may have (ADR-0003's amendment of 2026-11-23).
+ * IDs are map keys, cache keys and worker message fields, so a document's
+ * size must not be their only bound. The longest the app and the importers
+ * make is under 100 (an inserted design's body: two UUIDs and a counter).
+ */
+export const MAX_ID_LENGTH = 1000;
+
+/** The schema's message for an ID past `MAX_ID_LENGTH` (`loadDocument` words the refusal). */
+export const ID_TOO_LONG = `is longer than ${MAX_ID_LENGTH.toLocaleString('en-US')} characters, the most an ID may have`;
+
+const id = z.string().min(1).max(MAX_ID_LENGTH, { message: ID_TOO_LONG });
 
 export const DocumentIdSchema = id.brand<'DocumentId'>();
 export const FeatureIdSchema = id.brand<'FeatureId'>();

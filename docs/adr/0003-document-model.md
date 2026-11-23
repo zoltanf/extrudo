@@ -124,3 +124,37 @@ document may depend on live kernel objects.
   undo step; add it when the first UI needs it. Reordering (FR-TL-04) is P2.
 - **Commands are pure and serialisable**, so they can later be logged, sent to
   a worker or produced by scripts (FR-PRG-01) without changes.
+
+## Amendment, 2026-11-23: a length limit for IDs
+
+The schema took any non-empty string as an ID, so a document's size was the
+only bound on one. IDs are map keys, cache keys and fields of the messages to
+the kernel's worker, and a reference repeats them.
+
+Now every ID schema (`ids.ts`: document, feature, parameter, body, view,
+group, configuration, sketch entity, constraint, dimension, projection,
+attachment, component, joint, annotation, sheet, sheet view, sheet item) takes
+at most `MAX_ID_LENGTH` = 1,000 characters, as a field and as a record key.
+`loadDocument` refuses a document with a longer one in plain words
+(`ID_TOO_LONG_TEXT`: "This design has an ID longer than 1,000 characters,
+too long to open.", code `invalid`), for a newer format version too (it is not
+called newer for it). A script's or plugin's feature is refused when what it
+puts after `<script>.` is longer (`checkedGenerated`), and IDs inside a
+feature's inputs (a sketch's entities) meet the schema when the API checks the
+inputs.
+
+Why 1,000: the app makes UUIDs (36 characters), the API and the importers
+counters (`f12`, `s340`, `fcp3`) and UUIDs for attachments, the kernel body IDs
+`<feature>:<n>`; the longest, an inserted design's body, is under 100. The
+repository's fixtures, demos and benchmark designs hold at most 39 (a body
+of a UUID feature), and the designs imported from the f3d corpus, before and
+after their bodies are checked, at most 36 (a UUID).
+
+Not covered: a reference's `id` (`GeomRef`) is a persistent name, which nests
+the names it is made from, and keeps no limit of its own here. The API takes
+an ID a caller passes (`options.id`) without checking its length; a design
+saved with a longer one is refused when it is opened again.
+
+Rejected: a lower limit (256), which leaves less room for documents other
+tools write; refusing only past the document's own size limit, which is what
+there was.

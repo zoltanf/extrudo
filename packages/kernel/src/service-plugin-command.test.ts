@@ -2,7 +2,7 @@
 // `runPluginCommand` with a fake script host — what the handler is given, how
 // a failure is worded, and the checks on what comes back. The real sandbox and
 // the example plugin run in `packages/cli/src/plugin-command.test.ts`.
-import type { Feature, FeatureId, GeomRef } from '@extrudo/core';
+import { type Feature, type FeatureId, type GeomRef, MAX_ID_LENGTH } from '@extrudo/core';
 import { writePluginFile } from '@extrudo/storage/plugin';
 import { describe, expect, it } from 'vitest';
 import { loadOcct } from './occt/load';
@@ -118,6 +118,26 @@ describe('a generated ID that collides with the document', () => {
       error: { message: 'Tiny 1.2.0: The plugin made a feature with the ID cmd.f1.' },
     });
     expect(runPluginCommand(host, file, request)).toMatchObject({ ok: true });
+  });
+});
+
+describe("a generated ID past the documents' ID limit", () => {
+  it('is refused after the prefix past MAX_ID_LENGTH characters', () => {
+    const made = (n: number) => {
+      const { host } = fakeHost(() => ({
+        ok: true,
+        features: [generated(`cmd.${'x'.repeat(n)}`)],
+        log: [],
+      }));
+      return runPluginCommand(host, file, request);
+    };
+    expect(made(MAX_ID_LENGTH)).toMatchObject({ ok: true });
+    expect(made(MAX_ID_LENGTH + 1)).toMatchObject({
+      ok: false,
+      error: {
+        message: 'Tiny 1.2.0: The plugin made a feature with an ID longer than 1,000 characters.',
+      },
+    });
   });
 });
 

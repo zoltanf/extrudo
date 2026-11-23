@@ -8,7 +8,7 @@
  */
 import type { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
-import { newId } from './ids';
+import { ID_TOO_LONG, MAX_ID_LENGTH, newId } from './ids';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
 import { isUnknownSheetItem } from './sheet-schema';
 
@@ -233,6 +233,19 @@ export function parseLeniently(
   }
 }
 
+/** Why a document holding an ID past `MAX_ID_LENGTH` is refused, in the person's words. */
+export const ID_TOO_LONG_TEXT = `This design has an ID longer than ${MAX_ID_LENGTH.toLocaleString('en-US')} characters, too long to open.`;
+
+/** Whether an issue, or one nested in it (a record's key, a union's branch), is an ID too long. */
+function longId(issues: readonly z.core.$ZodIssue[]): boolean {
+  return issues.some(
+    (issue) =>
+      issue.message === ID_TOO_LONG ||
+      ('issues' in issue && longId(issue.issues)) ||
+      ('errors' in issue && issue.errors.some(longId)),
+  );
+}
+
 const describeIssues = (issues: readonly z.core.$ZodIssue[]) =>
   issues
     .slice(0, 3)
@@ -258,6 +271,9 @@ export function loadDocument(raw: unknown, ctx?: Partial<MigrationContext>): Loa
     const doc = JSON.parse(JSON.stringify(raw)) as JsonObject;
     doc.formatVersion = FORMAT_VERSION;
     const parsed = parseLeniently(doc);
+    if (!parsed.ok && longId(parsed.issues)) {
+      throw new DocumentLoadError('invalid', ID_TOO_LONG_TEXT, parsed.issues);
+    }
     if (!parsed.ok) {
       throw new DocumentLoadError(
         'too-new',
@@ -281,6 +297,9 @@ export function loadDocument(raw: unknown, ctx?: Partial<MigrationContext>): Loa
     doc = step.migrate(doc, context);
   }
   const parsed = parseLeniently(doc);
+  if (!parsed.ok && longId(parsed.issues)) {
+    throw new DocumentLoadError('invalid', ID_TOO_LONG_TEXT, parsed.issues);
+  }
   if (!parsed.ok) {
     throw new DocumentLoadError(
       'invalid',

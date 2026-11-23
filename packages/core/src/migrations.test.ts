@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import v0Bracket from '../fixtures/v0-bracket.json' with { type: 'json' };
 import { FORMAT_VERSION } from './format';
-import { BodyIdSchema } from './ids';
+import { BodyIdSchema, MAX_ID_LENGTH } from './ids';
 import {
   DocumentLoadError,
+  ID_TOO_LONG_TEXT,
   loadDocument,
   loadNotice,
   MIGRATIONS,
@@ -277,6 +278,52 @@ describe('loadDocument errors', () => {
     expect(error.code).toBe('invalid');
     expect(error.issues.map((i) => i.path.join('.'))).toEqual(['name', 'timelineMarker']);
     expect(error.message).toMatch(/^The document is damaged: name .*; timelineMarker .*\.$/);
+  });
+});
+
+describe('the length of IDs (ADR-0003, amendment of 2026-11-23)', () => {
+  /** The sample with its document, parameter and feature IDs and a body key `length` characters long. */
+  const withIds = (length: number) => {
+    const id = (c: string) => c.repeat(length);
+    const doc = sampleDocument();
+    const [first, ...rest] = doc.features;
+    return {
+      ...doc,
+      id: id('d'),
+      parameters: doc.parameters.map((p, i) => (i === 0 ? { ...p, id: id('p') } : p)),
+      features: [{ ...first, id: id('f') }, ...rest],
+      bodies: { [id('b')]: { name: 'Body', visible: true } },
+    };
+  };
+
+  it(`opens a document whose IDs have ${MAX_ID_LENGTH} characters`, () => {
+    const { doc } = loadDocument(withIds(MAX_ID_LENGTH));
+    expect(doc.features[0]?.id).toHaveLength(MAX_ID_LENGTH);
+    expect(Object.keys(doc.bodies)[0]).toHaveLength(MAX_ID_LENGTH);
+  });
+
+  it('refuses one with a longer ID, in a field or a key, in plain words', () => {
+    const past = MAX_ID_LENGTH + 1;
+    const long = 'x'.repeat(past);
+    const sample = sampleDocument();
+    for (const raw of [
+      { ...sample, features: [{ ...sample.features[0], id: long }] },
+      { ...sample, bodies: { [long]: { name: 'Body', visible: true } } },
+      // A newer version's document too: refused for the ID, not called newer.
+      {
+        ...sample,
+        formatVersion: FORMAT_VERSION + 1,
+        parameters: [{ ...sample.parameters[0], id: long }],
+      },
+      withIds(past),
+    ]) {
+      const error = loadError(raw);
+      expect(error.code).toBe('invalid');
+      expect(error.message).toBe(ID_TOO_LONG_TEXT);
+    }
+    expect(ID_TOO_LONG_TEXT).toBe(
+      'This design has an ID longer than 1,000 characters, too long to open.',
+    );
   });
 });
 
