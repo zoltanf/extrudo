@@ -74,6 +74,7 @@ import type { MeshRegions } from './kernel';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
 import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
+import { canonicalJson, hashString } from './recompute/hash';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
 import type { ScadExportOptions } from './scad-export/file';
 import {
@@ -248,13 +249,30 @@ export function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
-/** A stopped feature, with what it was computed from when it was stopped (ADR-0155). */
+/**
+ * A stopped feature, with what it was computed from when it was stopped
+ * (ADR-0155). The stop holds by value (its amendment of 2026-11-23): `key`
+ * hashes the feature, the features before it, the parameters and the settings,
+ * so an undo or a Cancel back to those values brings the stop back. The object
+ * fields are the last matching objects, a fast path that skips the hash while
+ * nothing changed.
+ */
 interface StoppedFeature {
   feature: Feature;
-  /** The features before it, by identity: an edit to any of them forgets the stop. */
   before: readonly Feature[];
   parameters: ExtrudoDocument['parameters'];
   settings: ExtrudoDocument['settings'];
+  key: string;
+}
+
+/** The value key of a stop (see `StoppedFeature`). */
+function stopKey(
+  feature: Feature,
+  before: readonly Feature[],
+  parameters: ExtrudoDocument['parameters'],
+  settings: ExtrudoDocument['settings'],
+): string {
+  return hashString(canonicalJson({ feature, before, parameters, settings }));
 }
 
 export interface Preview {
@@ -319,6 +337,8 @@ export class Recomputer {
   readonly #crashed = new Map<FeatureId, Feature>();
   /** Features the person stopped while the design opened (ADR-0155); never stored. */
   readonly #stopped = new Map<FeatureId, StoppedFeature>();
+  /** The stops that match the document last sent (`#stillStopped`). */
+  #active = new Set<FeatureId>();
   /** The send whose call reported `#current`: it is cleared when that call settles. */
   #currentSequence: number | undefined;
   /** See `StopState.opening`: true until a recompute finishes, again after Try again or Stop. */
@@ -496,12 +516,15 @@ export class Recomputer {
       const feature = doc.features[at];
       const reached = feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
       if (reached) {
+        const before = doc.features.slice(0, at);
         this.#stopped.set(id, {
           feature,
-          before: doc.features.slice(0, at),
+          before,
           parameters: doc.parameters,
           settings: doc.settings,
+          key: stopKey(feature, before, doc.parameters, doc.settings),
         });
+        this.#active.add(id);
       }
       // The send now under way gets the restart's rejection: not a crash.
       this.#stoppedSequence = this.#sequence;
@@ -512,7 +535,7 @@ export class Recomputer {
       } catch {
         // A kernel that can't start again says so through the kernel status.
       }
-      return reached && this.#stopped.has(id) ? id : undefined;
+      return reached && this.#active.has(id) ? id : undefined;
     } finally {
       this.#stopping = false;
       this.#notifyStops();
@@ -529,7 +552,7 @@ export class Recomputer {
 
   /** Whether a feature is stopped for now (ADR-0155): its chip menu offers Try again. */
   isStopped(id: FeatureId): boolean {
-    return this.#stopped.has(id);
+    return this.#active.has(id);
   }
 
   /**
@@ -538,7 +561,10 @@ export class Recomputer {
    * whether the feature was stopped.
    */
   retry(id: FeatureId): boolean {
-    if (!this.#stopped.delete(id) || this.#disposed) return false;
+    // Only a stop that applies now; Try again forgets it for good.
+    if (!this.#active.has(id) || this.#disposed) return false;
+    this.#stopped.delete(id);
+    this.#active.delete(id);
     this.#opening = true;
     this.#notifyStops();
     // The document hasn't changed, so the send has to be asked for.
@@ -549,7 +575,7 @@ export class Recomputer {
 
   #notifyStops(): void {
     const next: StopState = {
-      stopped: [...this.#stopped.keys()],
+      stopped: [...this.#active],
       opening: this.#opening,
       stoppable: this.#canStop(),
       stopping: this.#stopping,
@@ -569,24 +595,38 @@ export class Recomputer {
   }
 
   /**
-   * Stopped features still as they were (ADR-0155); forgets one whose feature,
-   * any feature before it, the parameters or the settings changed, or which
-   * the marker no longer reaches (rolled past, deleted, suppressed).
+   * The stops that apply to `doc` (ADR-0155, by value since its amendment of
+   * 2026-11-23): the feature is reached by the marker and it, the features
+   * before it, the parameters and the settings have the values they had when
+   * it was stopped. A stop that doesn't match is left out, not forgotten, so an
+   * undo or a Cancel back to those values brings it back; only Try again and
+   * closing the design forget a stop for good.
    */
   #stillStopped(doc: ExtrudoDocument): FeatureId[] {
+    const active: FeatureId[] = [];
     for (const [id, stop] of this.#stopped) {
       const at = doc.features.findIndex((f) => f.id === id);
+      const feature = doc.features[at];
+      if (!feature || at >= doc.timelineMarker) continue;
       const same =
-        at >= 0 &&
-        at < doc.timelineMarker &&
-        doc.features[at] === stop.feature &&
+        feature === stop.feature &&
         at === stop.before.length &&
         stop.before.every((f, i) => doc.features[i] === f) &&
         doc.parameters === stop.parameters &&
         doc.settings === stop.settings;
-      if (!same) this.#stopped.delete(id);
+      if (!same) {
+        const before = doc.features.slice(0, at);
+        if (stopKey(feature, before, doc.parameters, doc.settings) !== stop.key) continue;
+        // The same values in new objects (an undo, a Cancel): keep them for the fast path.
+        stop.feature = feature;
+        stop.before = before;
+        stop.parameters = doc.parameters;
+        stop.settings = doc.settings;
+      }
+      active.push(id);
     }
-    return [...this.#stopped.keys()];
+    this.#active = new Set(active);
+    return active;
   }
 
   /** Stops following the document and shuts the kernel down. */
@@ -594,6 +634,7 @@ export class Recomputer {
     this.#disposed = true;
     // A stop lives as long as the open design (ADR-0155).
     this.#stopped.clear();
+    this.#active.clear();
     this.#unsubscribe?.();
     clearTimeout(this.#timer);
     this.#endPreview();

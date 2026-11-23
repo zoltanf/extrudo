@@ -47,7 +47,7 @@ edit), once the kernel is on a feature. Stop:
    build it." (`STOPPED_DRAFT_MESSAGE`; OK stays off, as for any refused draft, since there is
    nothing to commit). Once a value changes the preview builds it; OK commits the change, which
    forgets the stop.
-6. **A stop is forgotten** when the feature changes, when a feature before it, the parameters or
+6. **A stop is forgotten** (left out by value since the amendment of 2026-11-23, below) when the feature changes, when a feature before it, the parameters or
    the settings change (the stop keeps them by identity: a conservative stand-in for "what it
    depends on"), when the marker no longer reaches it (rolled back, deleted, suppressed: the
    feature object changes too), and when the design closes (`dispose`).
@@ -193,4 +193,34 @@ next feature; one timer only while Stop is offered; "Building the model…" with
 no name, seconds or Stop; the hook lowering, never raising); `recomputer-stop.test.ts` (the
 `building` report, none when nothing was computed); `e2e/open-stop.spec.ts`'s second test (the
 threshold lowered to 2 s: the filled Stop and the sentence once in the accessibility tree).
+
+## Amendment of 2026-11-23: stops are kept by value
+
+**Context.** A stop was compared by identity and deleted at the first difference (rule 6). An
+undo or a Cancel returns the document to earlier values in new objects, so it could never bring a
+stopped state back: after a Stop, an edit to an earlier feature and a Cancel built the stopped
+feature in full (the first limit above; the review's probe A).
+
+**Decision.** `Recomputer.#stillStopped` keeps each stop with a value key: a hash of the
+canonical JSON (`recompute/hash.ts`) of the feature, the features before it, the parameters and
+the settings. A stop applies while the marker reaches the feature and the key matches; one that
+doesn't match is **left out, not forgotten**. An undo, a redo, a Cancel or rolling the marker
+forward to the same values brings it back. Only **Try again** (which applies only to a stop that
+applies now) and closing the design forget a stop for good. The last matching objects are kept as
+a fast path: while the feature, the features before it, the parameters and the settings are the
+same objects, no key is computed. `isStopped`, the stop store's `stopped` list, Try again and the
+toast's availability all read the stops that apply to the document last sent (`#active`).
+
+**Consequences.** A stopped feature renamed, suppressed or deleted is built (or left out) as
+before. Undoing the rename, suppress or delete brings the stop back instead of building the
+feature in full. The first limit above is closed for Cancel and undo. An edit that leaves the
+values different still builds the feature in full; ADR-0161 adds Stop on a long update for that.
+
+**Tests.** `recomputer-stop.test.ts`, "forgetting a stop":
+- a feature left out while it differs, back on undo;
+- a feature before it edited, then Cancel brings the stop back (probe A);
+- parameters changed and changed back;
+- suppressed, deleted or rolled past, then brought back by undo or by rolling forward;
+- Try again forgets for good;
+- the fast path reads no inputs.
 

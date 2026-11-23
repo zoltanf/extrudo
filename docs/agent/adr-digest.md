@@ -4109,8 +4109,13 @@ when that call settles via `#currentSequence`: a newer send doesn't end it, so S
 offered), lets the worker's delivered messages land first and gives up when the feature
 finished; it records the feature against the document as it is then (an edited one in its new
 version; one no longer reached is not recorded, but the worker is still replaced); the toast
-only tells of a stop still there; a stop is forgotten when the feature, a feature before it, the
-parameters or the settings change, when the marker no longer reaches it, and on `dispose`;
+only tells of a stop still there; a stop applies while the marker reaches the feature and its
+value key matches (since the amendment of 2026-11-23: a hash of the canonical JSON of the feature,
+the features before it, the parameters and the settings, with the last matching objects as a fast
+path that computes no key); a stop that doesn't match is left out, not forgotten, so undo, redo,
+Cancel or rolling forward to the same values brings it back; only Try again (on a stop that
+applies now) and `dispose` forget it; `isStopped`, `stops.stopped` and the toast read the
+applying stops (`#active`);
 previews skip it too, its own dialog while the draft's inputs equal the stopped ones
 (`sameValue`, `STOPPED_DRAFT_MESSAGE`);
 when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight

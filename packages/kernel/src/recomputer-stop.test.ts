@@ -451,41 +451,61 @@ describe('forgetting a stop (ADR-0155)', () => {
     expect(t.last().request.stopped).toEqual(['f2']);
   });
 
-  it('forgets it when the feature changes', async () => {
+  it('leaves it out while the feature differs, and brings it back with the same values (amendment of 2026-11-23)', async () => {
     const t = await stopped();
     dispatch(t.store, renameFeature({ id: 'f2' as FeatureId, name: 'Changed' }));
     await settle(t);
     expect(t.last().request.stopped).toEqual([]);
     expect(t.r.stops.get().stopped).toEqual([]);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    // Undo builds new objects with the old values: the stop applies again.
+    t.store.getState().undo();
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(true);
   });
 
-  it('forgets it when a feature before it changes', async () => {
+  it('leaves it out while a feature before it differs; a Cancel back brings it back (review probe A)', async () => {
     const t = await stopped();
     dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Earlier' }));
+    const update = await t.call(t.calls.length + 1);
+    expect(update.request.stopped).toEqual([]);
+    // Cancel: back to the step the shown model was computed at.
+    expect(t.r.canRevertToShown()).toBe(true);
+    expect(t.r.revertToShown()).toBe(true);
     await settle(t);
-    expect(t.last().request.stopped).toEqual([]);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(status(t, 'f2')?.message).toBe(STOPPED_MESSAGE);
   });
 
-  it('forgets it when the parameters change', async () => {
+  it('leaves it out when the parameters change, and back with the same values', async () => {
     const t = await stopped();
-    t.store.setState((s) => ({ doc: { ...s.doc, parameters: [...s.doc.parameters] } }));
+    t.store.setState((s) => ({
+      doc: { ...s.doc, parameters: [{ name: 'w', expr: '1 mm' } as never] },
+    }));
     await settle(t);
     expect(t.last().request.stopped).toEqual([]);
+    t.store.setState((s) => ({ doc: { ...s.doc, parameters: [] } }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
   });
 
-  it('forgets it when it is suppressed, deleted or rolled past, and for good', async () => {
+  it('leaves it out while suppressed, deleted or rolled past; undo or rolling forward brings it back', async () => {
     let t = await stopped();
     dispatch(t.store, setFeatureSuppressed({ id: 'f2' as FeatureId, suppressed: true }));
     await settle(t);
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
     t.store.getState().undo();
     await settle(t);
-    expect(t.last().request.stopped).toEqual([]);
+    expect(t.last().request.stopped).toEqual(['f2']);
 
     t = await stopped();
     dispatch(t.store, removeFeature({ id: 'f2' as FeatureId }));
     await settle(t);
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    t.store.getState().undo();
+    await settle(t);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(true);
 
     t = await stopped();
     dispatch(t.store, moveTimelineMarker({ index: 1 }));
@@ -493,7 +513,46 @@ describe('forgetting a stop (ADR-0155)', () => {
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
     dispatch(t.store, moveTimelineMarker({ index: 3 }));
     await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+  });
+
+  it('forgets it for good on Try again, even when the values come back', async () => {
+    const t = await stopped();
+    expect(t.r.retry('f2' as FeatureId)).toBe(true);
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f2' as FeatureId, name: 'Changed' }));
+    await settle(t);
+    t.store.getState().undo();
+    await settle(t);
     expect(t.last().request.stopped).toEqual([]);
+    // Try again applies only to a stop that applies now.
+    expect(t.r.retry('f2' as FeatureId)).toBe(false);
+  });
+
+  it('checks a stop by value only when the objects changed (the fast path reads no inputs)', async () => {
+    // f1's inputs count their reads: the value key reads every feature before the stop.
+    let reads = 0;
+    const f1 = feature('f1');
+    const inputs = f1.inputs;
+    Object.defineProperty(f1, 'inputs', {
+      enumerable: true,
+      get: () => {
+        reads++;
+        return inputs;
+      },
+    });
+    const doc = threeFeatures();
+    const t = setup({ ...doc, features: [f1, ...doc.features.slice(1)] });
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    await t.r.stop();
+    await settle(t);
+    reads = 0;
+    // A later feature changed: f2 and f1 are the same objects, so no key is computed.
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(reads).toBe(0);
   });
 
   it('keeps it out of a dialog preview, and out of its own dialog until a value changes', async () => {
