@@ -1,0 +1,1 @@
+- 2026-11-23 · **Security updates**: the desktop app is built on Electron 44.11.5 (was 44.5.1), and Zod 4.6.7 (was 4.6.5) checks the size limit of a list before it reads the items.

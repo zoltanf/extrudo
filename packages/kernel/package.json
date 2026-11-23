@@ -28,6 +28,6 @@
     "@extrudo/fonts": "workspace:*",
     "@libcascade/toolchain": "3.1.0",
     "fflate": "^0.8.3",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   }
 }
