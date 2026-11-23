@@ -74,6 +74,7 @@ import type { MeshRegions } from './kernel';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
 import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
+import { canonicalJson, hashString } from './recompute/hash';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
 import type { ScadExportOptions } from './scad-export/file';
 import {
@@ -101,6 +102,13 @@ export interface RecomputerOptions {
    * 0 never recycles.
    */
   heapRecycleBytes?: number;
+  /**
+   * How long one feature runs before an update's Stop is allowed (ADR-0161);
+   * `LONG_FEATURE_MS` by default. The app passes what its notice uses.
+   */
+  longFeatureMs?: number;
+  /** The clock for feature start times and that rule; `Date.now` by default (tests inject one). */
+  now?: () => number;
   client?: Omit<KernelClientOptions, 'onRestart'>;
   onKernelStatus?(status: KernelStatus, detail?: string): void;
   /**
@@ -143,6 +151,18 @@ export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
  * stops (ADR-0024's amendment of 2026-11-10).
  */
 export const MAX_CRASHED_FEATURES = 8;
+
+/**
+ * After this long in one feature, the notice says "This feature is taking a long
+ * time." (ADR-0155's amendment of 2026-11-19) and, during an update after an
+ * edit, offers Stop beside Cancel (ADR-0161). Nothing happens by itself.
+ * Counted from the feature's start (`ModelProgress.since`), so a new feature
+ * starts over. Margin: the repository's slowest single feature is B9's thread,
+ * 6.6 s cold in Node on the Ubuntu machine (about 11 s in its browser) and up to
+ * 21.5 s on GitHub's runners when an e2e waits for it (`docs/agent/e2e-notes.md`,
+ * the kernel-cancel spec): 30 s is 1.4× that worst case and 4.5× the local one.
+ */
+export const LONG_FEATURE_MS = 30_000;
 
 /** Where the bytes of the fonts a design uses come from (ADR-0058 §4). */
 export interface FontSource {
@@ -218,10 +238,34 @@ export interface StopState {
    * hasn't changed since. Only then is Stop offered.
    */
   opening: boolean;
-  /** A feature is running in that recompute, so Stop has something to stop. */
+  /**
+   * A feature is running in a call still with the kernel and no Stop is under
+   * way: Stop has something to stop. The notice offers it while opening, or once
+   * the feature has run `LONG_FEATURE_MS` in an update (ADR-0161); `stop()`
+   * checks the same.
+   */
   stoppable: boolean;
   /** A Stop is under way (the worker is being replaced). */
   stopping: boolean;
+  /**
+   * Cancel was pressed during an update and waits for the running feature to
+   * end (ADR-0161): the document is back at the shown model's step, but the
+   * kernel takes the new request only between features. The notice says
+   * "Cancelling…" and offers Stop alone, which only ends the wait.
+   */
+  cancelling: boolean;
+  /**
+   * When the running feature started (`now()`'s clock, as `ModelProgress.since`),
+   * while one runs. Also for a call that is no longer the current one: after an
+   * edit the worker finishes the old feature first, and the notice keeps counting
+   * it for the long rule (ADR-0161).
+   */
+  since?: number;
+  /**
+   * The running feature belongs to a call that is no longer the current one (an
+   * edit was sent meanwhile). A Stop then records nothing (ADR-0161).
+   */
+  superseded: boolean;
 }
 
 export interface KernelStops {
@@ -248,13 +292,52 @@ export function sameValue(a: unknown, b: unknown): boolean {
   );
 }
 
-/** A stopped feature, with what it was computed from when it was stopped (ADR-0155). */
-interface StoppedFeature {
+/** What a stop is computed from: the feature, the features before it, the parameters, the settings. */
+interface StopInputs {
   feature: Feature;
-  /** The features before it, by identity: an edit to any of them forgets the stop. */
   before: readonly Feature[];
   parameters: ExtrudoDocument['parameters'];
   settings: ExtrudoDocument['settings'];
+}
+
+/** Whether `doc` holds these very objects for the feature at `at` (no hashing). */
+function sameInputs(inputs: StopInputs, doc: ExtrudoDocument, at: number): boolean {
+  return (
+    doc.features[at] === inputs.feature &&
+    at === inputs.before.length &&
+    inputs.before.every((f, i) => doc.features[i] === f) &&
+    doc.parameters === inputs.parameters &&
+    doc.settings === inputs.settings
+  );
+}
+
+/** The most stops kept per feature, by value; the oldest goes first. */
+export const MAX_STOPS_PER_FEATURE = 8;
+
+/**
+ * A stopped feature (ADR-0155). Stops hold by value (its amendment of
+ * 2026-11-23): each of `keys` hashes the feature, the features before it, the
+ * parameters and the settings at one Stop, up to `MAX_STOPS_PER_FEATURE` of
+ * them, so an undo or a Cancel back to any of those values brings the stop
+ * back. The `StopInputs` fields are the last matching objects (`matched` is
+ * their key), a fast path that skips the hash while nothing changed; `miss`
+ * the last objects that matched none, so a run of previews over the same
+ * values hashes once.
+ */
+interface StoppedFeature extends StopInputs {
+  keys: string[];
+  matched: string;
+  miss?: StopInputs;
+}
+
+/** The value key of a stop (see `StoppedFeature`). */
+function stopKey(
+  feature: Feature,
+  before: readonly Feature[],
+  parameters: ExtrudoDocument['parameters'],
+  settings: ExtrudoDocument['settings'],
+): string {
+  return hashString(canonicalJson({ feature, before, parameters, settings }));
 }
 
 export interface Preview {
@@ -319,6 +402,8 @@ export class Recomputer {
   readonly #crashed = new Map<FeatureId, Feature>();
   /** Features the person stopped while the design opened (ADR-0155); never stored. */
   readonly #stopped = new Map<FeatureId, StoppedFeature>();
+  /** The stops that match the document last sent (`#stillStopped`). */
+  #active = new Set<FeatureId>();
   /** The send whose call reported `#current`: it is cleared when that call settles. */
   #currentSequence: number | undefined;
   /** See `StopState.opening`: true until a recompute finishes, again after Try again or Stop. */
@@ -328,7 +413,19 @@ export class Recomputer {
   /** The sequence a Stop ended: its rejected call is not a crash. */
   #stoppedSequence: number | undefined;
   #stopping = false;
-  #stopState: StopState = { stopped: [], opening: true, stoppable: false, stopping: false };
+  /**
+   * A Cancel that waits (`StopState.cancelling`): the call running a feature
+   * when it was pressed, and the document it went back to.
+   */
+  #cancel: { sequence: number; doc: ExtrudoDocument } | undefined;
+  #stopState: StopState = {
+    stopped: [],
+    opening: true,
+    stoppable: false,
+    stopping: false,
+    cancelling: false,
+    superseded: false,
+  };
   readonly #stopListeners = new Set<() => void>();
   /** Meshes held, with the version the kernel gave each. */
   #meshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
@@ -364,6 +461,10 @@ export class Recomputer {
   /** The heap has been under the limit since the last recycle, so one is due. */
   #recycleArmed = true;
   readonly #heapRecycleBytes: number;
+  readonly #longFeatureMs: number;
+  readonly #now: () => number;
+  /** When the kernel first reported `#current` (`#now()`). */
+  #currentSince = 0;
   readonly #onRecycle: (() => void) | undefined;
   /** The waits the user is on, oldest first (P6-17, ADR-0105 §1). */
   #waitList: Wait[] = [];
@@ -406,6 +507,8 @@ export class Recomputer {
     this.#delayMs = options.delayMs ?? 30;
     this.#previewDelayMs = options.previewDelayMs ?? 0;
     this.#heapRecycleBytes = options.heapRecycleBytes ?? HEAP_RECYCLE_BYTES;
+    this.#longFeatureMs = options.longFeatureMs ?? LONG_FEATURE_MS;
+    this.#now = options.now ?? Date.now;
     this.#onRecycle = options.onRecycle;
     this.client = new KernelClient(options.spawn, {
       ...options.client,
@@ -452,10 +555,45 @@ export class Recomputer {
     return state.canRevertTo(this.#shown.step);
   }
 
-  /** Does it: one undo/redo run, one document change. Returns whether it changed anything. */
+  /**
+   * Does it: one undo/redo run, one document change. Returns whether it changed
+   * anything. When a feature is running, the new request waits for it to end:
+   * the stop store says `cancelling` until it does (ADR-0161).
+   */
   revertToShown(): boolean {
     if (!this.canRevertToShown() || !this.#shown) return false;
-    return this.#document.getState().revertTo(this.#shown.step);
+    if (!this.#document.getState().revertTo(this.#shown.step)) return false;
+    if (this.#current !== undefined && this.#currentSequence !== undefined) {
+      this.#cancel = { sequence: this.#currentSequence, doc: this.#document.getState().doc };
+      this.#notifyStops();
+    }
+    return true;
+  }
+
+  /**
+   * Whether Cancel would only undo (ADR-0161): the shown model's step is behind
+   * the document in the undo stack, so going back to it undoes steps and redoes
+   * none. Ctrl+Z runs Cancel only then; after an undo whose update runs long,
+   * the shown step is on the redo stack and Ctrl+Z stays a plain undo.
+   */
+  revertToShownUndoes(): boolean {
+    if (!this.canRevertToShown() || !this.#shown) return false;
+    const { step } = this.#shown;
+    return step === undefined || this.#document.getState().hasStep(step);
+  }
+
+  /**
+   * Whether a Cancel waits for the running feature (`StopState.cancelling`):
+   * the call that ran it when Cancel was pressed is still with the kernel, and
+   * the document is still the one Cancel went back to.
+   */
+  #cancelling(): boolean {
+    return (
+      this.#cancel !== undefined &&
+      !this.#disposed &&
+      this.#currentSequence === this.#cancel.sequence &&
+      this.#document.getState().doc === this.#cancel.doc
+    );
   }
 
   /**
@@ -473,8 +611,16 @@ export class Recomputer {
    * deleted) is not recorded at all, but the worker is still replaced, which
    * ends the old call.
    *
+   * During an update after an edit (ADR-0161) the same Stop is allowed once the
+   * running feature has run `longFeatureMs`; the update's notice stays (it
+   * doesn't turn into "Preparing your design…").
+   *
+   * While a Cancel waits (`StopState.cancelling`, ADR-0161) Stop only ends the
+   * wait: the worker is replaced and nothing is recorded, since the running
+   * feature belongs to the document Cancel left. No long time is needed.
+   *
    * Resolves with the stopped feature; undefined when nothing was recorded, or
-   * nothing could be stopped: not opening, no feature running (resources still
+   * nothing could be stopped: neither opening nor long, no feature running (resources still
    * going out, the kernel past its features or restarting), a Stop already
    * under way, or the feature finished before the worker could be ended (the
    * kernel's last messages are let in first).
@@ -482,6 +628,11 @@ export class Recomputer {
   async stop(): Promise<FeatureId | undefined> {
     if (!this.#canStop()) return undefined;
     const id = this.#current as FeatureId;
+    // Opening, or an update whose feature has taken long (ADR-0161): an update's
+    // stop keeps the update's notice (not "Preparing…") for the rebuild.
+    const opening = this.#opening;
+    // A Cancel waiting for the feature: Stop ends the wait and records nothing.
+    const cancelling = this.#cancelling();
     this.#stopping = true;
     this.#notifyStops();
     try {
@@ -490,29 +641,40 @@ export class Recomputer {
       // call came back), there is nothing to stop. A send that started
       // meanwhile doesn't matter: the worker is still on the old feature.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      if (this.#disposed || !this.#opening || this.#current !== id) return undefined;
+      if (this.#disposed || this.#current !== id) return undefined;
+      if (cancelling ? !this.#cancelling() : !this.#mayStop()) return undefined;
+      // In an update, a call that is no longer the current one ran the feature with
+      // values the document no longer has (ADR-0161): nothing to record, the edit builds.
+      const superseded = !opening && this.#currentSequence !== this.#sequence;
       const doc = this.#document.getState().doc;
       const at = doc.features.findIndex((f) => f.id === id);
       const feature = doc.features[at];
-      const reached = feature !== undefined && !feature.suppressed && at < doc.timelineMarker;
+      const reached =
+        !cancelling &&
+        !superseded &&
+        feature !== undefined &&
+        !feature.suppressed &&
+        at < doc.timelineMarker;
       if (reached) {
-        this.#stopped.set(id, {
+        this.#record(id, {
           feature,
           before: doc.features.slice(0, at),
           parameters: doc.parameters,
           settings: doc.settings,
         });
+        this.#active.add(id);
       }
       // The send now under way gets the restart's rejection: not a crash.
       this.#stoppedSequence = this.#sequence;
-      this.#opening = true;
+      if (opening && !cancelling) this.#opening = true;
+      this.#cancel = undefined;
       this.#notifyStops();
       try {
         await this.client.restart();
       } catch {
         // A kernel that can't start again says so through the kernel status.
       }
-      return reached && this.#stopped.has(id) ? id : undefined;
+      return reached && this.#active.has(id) ? id : undefined;
     } finally {
       this.#stopping = false;
       this.#notifyStops();
@@ -520,16 +682,42 @@ export class Recomputer {
   }
 
   /**
-   * Whether `stop` would stop something now: opening, and a feature reported by
-   * a call still with the kernel (`#current` is cleared when that call settles).
+   * Whether `stop` would stop something now: a feature reported by a call still
+   * with the kernel (`#current` is cleared when that call settles), while
+   * opening, once it has taken long, or while a Cancel waits for it.
    */
   #canStop(): boolean {
-    return !this.#disposed && !this.#stopping && this.#opening && this.#current !== undefined;
+    return this.#running() && (this.#mayStop() || this.#cancelling());
+  }
+
+  /** A feature is running in a call still with the kernel, and no Stop is under way. */
+  #running(): boolean {
+    return !this.#disposed && !this.#stopping && this.#current !== undefined;
+  }
+
+  /**
+   * Whether a Stop is allowed for the running feature: while the design opens
+   * (ADR-0155), or once it has run `#longFeatureMs` in an update (ADR-0161).
+   */
+  #mayStop(): boolean {
+    return this.#opening || this.#now() - this.#currentSince >= this.#longFeatureMs;
+  }
+
+  /** Records a stop at these values; a feature keeps up to `MAX_STOPS_PER_FEATURE`. */
+  #record(id: FeatureId, inputs: StopInputs): void {
+    const key = stopKey(inputs.feature, inputs.before, inputs.parameters, inputs.settings);
+    const keys = (this.#stopped.get(id)?.keys ?? []).filter((k) => k !== key);
+    keys.push(key);
+    this.#stopped.set(id, {
+      ...inputs,
+      keys: keys.slice(-MAX_STOPS_PER_FEATURE),
+      matched: key,
+    });
   }
 
   /** Whether a feature is stopped for now (ADR-0155): its chip menu offers Try again. */
   isStopped(id: FeatureId): boolean {
-    return this.#stopped.has(id);
+    return this.#active.has(id);
   }
 
   /**
@@ -538,7 +726,13 @@ export class Recomputer {
    * whether the feature was stopped.
    */
   retry(id: FeatureId): boolean {
-    if (!this.#stopped.delete(id) || this.#disposed) return false;
+    // Only a stop that applies now; Try again forgets it for good: the stop at
+    // these values (the feature's stops at other values stay).
+    const stop = this.#stopped.get(id);
+    if (!this.#active.has(id) || !stop || this.#disposed) return false;
+    stop.keys = stop.keys.filter((k) => k !== stop.matched);
+    if (stop.keys.length === 0) this.#stopped.delete(id);
+    this.#active.delete(id);
     this.#opening = true;
     this.#notifyStops();
     // The document hasn't changed, so the send has to be asked for.
@@ -549,14 +743,20 @@ export class Recomputer {
 
   #notifyStops(): void {
     const next: StopState = {
-      stopped: [...this.#stopped.keys()],
+      stopped: [...this.#active],
       opening: this.#opening,
-      stoppable: this.#canStop(),
+      stoppable: this.#running(),
       stopping: this.#stopping,
+      cancelling: this.#cancelling(),
+      ...(this.#current !== undefined && { since: this.#currentSince }),
+      superseded: this.#current !== undefined && this.#currentSequence !== this.#sequence,
     };
     const prev = this.#stopState;
     if (
       prev.opening === next.opening &&
+      prev.cancelling === next.cancelling &&
+      prev.since === next.since &&
+      prev.superseded === next.superseded &&
       prev.stoppable === next.stoppable &&
       prev.stopping === next.stopping &&
       prev.stopped.length === next.stopped.length &&
@@ -569,24 +769,41 @@ export class Recomputer {
   }
 
   /**
-   * Stopped features still as they were (ADR-0155); forgets one whose feature,
-   * any feature before it, the parameters or the settings changed, or which
-   * the marker no longer reaches (rolled past, deleted, suppressed).
+   * The stops that apply to `doc` (ADR-0155, by value since its amendment of
+   * 2026-11-23): the feature is reached by the marker and it, the features
+   * before it, the parameters and the settings have the values they had when
+   * it was stopped. A stop that doesn't match is left out, not forgotten, so an
+   * undo or a Cancel back to those values brings it back; only Try again and
+   * closing the design forget a stop for good.
    */
   #stillStopped(doc: ExtrudoDocument): FeatureId[] {
+    const active: FeatureId[] = [];
     for (const [id, stop] of this.#stopped) {
       const at = doc.features.findIndex((f) => f.id === id);
-      const same =
-        at >= 0 &&
-        at < doc.timelineMarker &&
-        doc.features[at] === stop.feature &&
-        at === stop.before.length &&
-        stop.before.every((f, i) => doc.features[i] === f) &&
-        doc.parameters === stop.parameters &&
-        doc.settings === stop.settings;
-      if (!same) this.#stopped.delete(id);
+      const feature = doc.features[at];
+      if (!feature || at >= doc.timelineMarker) continue;
+      // The same objects as the last match (nothing changed), or as the last miss.
+      // (Try again may have forgotten the last match's key.)
+      if (!sameInputs(stop, doc, at) || !stop.keys.includes(stop.matched)) {
+        if (stop.miss && sameInputs(stop.miss, doc, at)) continue;
+        const inputs: StopInputs = {
+          feature,
+          before: doc.features.slice(0, at),
+          parameters: doc.parameters,
+          settings: doc.settings,
+        };
+        const key = stopKey(feature, inputs.before, inputs.parameters, inputs.settings);
+        if (!stop.keys.includes(key)) {
+          stop.miss = inputs;
+          continue;
+        }
+        // Values stopped before, in new objects (an undo, a Cancel): the fast path's now.
+        Object.assign(stop, inputs, { matched: key, miss: undefined });
+      }
+      active.push(id);
     }
-    return [...this.#stopped.keys()];
+    this.#active = new Set(active);
+    return active;
   }
 
   /** Stops following the document and shuts the kernel down. */
@@ -594,6 +811,8 @@ export class Recomputer {
     this.#disposed = true;
     // A stop lives as long as the open design (ADR-0155).
     this.#stopped.clear();
+    this.#active.clear();
+    this.#cancel = undefined;
     this.#unsubscribe?.();
     clearTimeout(this.#timer);
     this.#endPreview();
@@ -1258,6 +1477,11 @@ export class Recomputer {
           if (sequence !== this.#sequence) return;
           this.#current = id;
           this.#currentSequence = id === undefined ? undefined : sequence;
+          if (id !== undefined && id !== reported) {
+            reported = id;
+            since = this.#now();
+          }
+          if (id !== undefined) this.#currentSince = since;
           this.#notifyStops();
           // Past the last feature (joints, annotations, meshes): nothing runs; the
           // notice says "Building the model…" (ADR-0155's amendment of 2026-11-19).
@@ -1275,10 +1499,6 @@ export class Recomputer {
           }
           const at = stepOf.get(id);
           if (at !== undefined) done = at;
-          if (id !== reported) {
-            reported = id;
-            since = Date.now();
-          }
           this.#reportProgress({ done, total: steps.length, feature: id, since });
         }),
       );
@@ -1302,6 +1522,8 @@ export class Recomputer {
         this.#current = undefined;
         this.#currentSequence = undefined;
       }
+      // A Cancel waiting for this call has landed (ADR-0161).
+      if (this.#cancel?.sequence === sequence) this.#cancel = undefined;
       this.#notifyStops();
     }
     if (sequence !== this.#sequence || result.status !== 'done' || this.#disposed) return;

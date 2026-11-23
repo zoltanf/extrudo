@@ -255,7 +255,12 @@ import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
 import { JointHandle } from '../viewport/JointHandle';
 import type { JointDrawing } from '../viewport/jointGeometry';
-import { ModelProgress, useKernelWaits, useRecomputeFinished } from '../viewport/ModelProgress';
+import {
+  ModelProgress,
+  type UpdateNotice,
+  useKernelWaits,
+  useRecomputeFinished,
+} from '../viewport/ModelProgress';
 import { viewToCamera } from '../viewport/namedView';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
 import { fillCost, fillFailed, fillWork } from '../viewport/profileFills';
@@ -313,6 +318,7 @@ import {
   type TimelineSelectionStore,
 } from './timelineGroups';
 import { FILE_COMMANDS, isFileCommand, TOOLS, type ToolId } from './tools';
+import { undoRoute } from './undoRouting';
 import { applyUpdate } from './useUpdateNotice';
 import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
 import { WhatsNewDialog } from './WhatsNewDialog';
@@ -421,6 +427,7 @@ export interface AppShellProps {
         | 'waits'
         | 'canRevertToShown'
         | 'revertToShown'
+        | 'revertToShownUndoes'
         | 'stops'
         | 'stop'
         | 'retry'
@@ -1559,6 +1566,12 @@ function Shell({
     }),
     [stores, exportSheets, notify, session],
   );
+  // Cancel on a long update (ADR-0111): back to the shown model's step, with a toast.
+  const cancelUpdate = useCallback((): boolean => {
+    if (!kernel?.revertToShown?.()) return false;
+    notify('info', 'Update cancelled: your last changes were undone. Redo brings them back.');
+    return true;
+  }, [kernel, notify]);
   // In the drawing an undo stays there: it never reopens the sketch finished before it.
   const undo = useCallback(() => {
     if (dialogOpen || jointOpen) {
@@ -1568,6 +1581,26 @@ function Shell({
       store.getState().undo();
     }
   }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session]);
+  // What the update notice offers (ADR-0161): the key's undo below reads it.
+  const updateNotice = useRef<UpdateNotice>(undefined);
+  const tellUpdateNotice = useCallback((notice: UpdateNotice) => {
+    updateNotice.current = notice;
+  }, []);
+  // Ctrl+Z and the top bar's Undo (ADR-0161): Cancel while the notice offers it and Cancel
+  // would only undo, nothing while a pressed Cancel waits, else the plain undo. The command
+  // list's Undo (search, marking menu, the agent) stays the plain one.
+  const undoKey = useCallback(() => {
+    const route = undoRoute({
+      notice: updateNotice.current,
+      cancelUndoes: kernel?.revertToShownUndoes?.() ?? false,
+      editing:
+        Boolean(dialogOpen || jointOpen) ||
+        store.getState().transactionDepth > 0 ||
+        session.getState().mode === 'sketch',
+    });
+    if (route === 'cancel') cancelUpdate();
+    else if (route === 'undo') undo();
+  }, [kernel, dialogOpen, jointOpen, store, session, cancelUpdate, undo]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -1892,7 +1925,7 @@ function Shell({
             { keys: 'Enter', run: () => void jointDialog.ok() },
           ]
         : []),
-      ...commandShortcuts(commands),
+      ...commandShortcuts(commands, { undo: undoKey }),
       ...keysFor('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
       ...keysFor('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
@@ -1972,6 +2005,7 @@ function Shell({
     ],
     [
       commands,
+      undoKey,
       searchAtPointer,
       session,
       stores,
@@ -3049,7 +3083,7 @@ function Shell({
           tabs={<ToolbarTabs mode={mode} tab={toolbarTab} onTab={setToolbarTab} />}
           theme={choice}
           onThemeChange={setChoice}
-          onUndo={undo}
+          onUndo={undoKey}
           onRedo={redo}
           dialogOpen={dialogOpen !== undefined || jointOpen !== undefined}
           onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
@@ -3249,13 +3283,8 @@ function Shell({
               kernel.revertToShown && {
                 cancel: {
                   can: () => kernel.canRevertToShown?.() ?? false,
-                  run: () => {
-                    if (kernel.revertToShown?.())
-                      notify(
-                        'info',
-                        'Update cancelled: your last changes were undone. Redo brings them back.',
-                      );
-                  },
+                  run: cancelUpdate,
+                  notice: tellUpdateNotice,
                 },
               })}
             {...(kernel?.stops &&
@@ -3264,8 +3293,10 @@ function Shell({
               kernel.isStopped && {
                 stop: {
                   stops: kernel.stops,
-                  run: () =>
-                    void stopAndTell(kernel as StopKernel, store, notify).catch(() => undefined),
+                  run: (during) =>
+                    void stopAndTell(kernel as StopKernel, store, notify, during).catch(
+                      () => undefined,
+                    ),
                 },
               })}
           />

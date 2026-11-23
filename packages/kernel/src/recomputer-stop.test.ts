@@ -27,7 +27,7 @@ import {
   type RecomputeResult,
   STOPPED_MESSAGE,
 } from './recompute/types';
-import { type FontSource, Recomputer } from './recomputer';
+import { type FontSource, LONG_FEATURE_MS, MAX_STOPS_PER_FEATURE, Recomputer } from './recomputer';
 import { type KernelApi, KernelCrashError } from './service';
 
 const until = async (condition: () => boolean, ms = 10_000) => {
@@ -93,6 +93,9 @@ afterEach(() => {
   live = [];
 });
 
+/** The recomputer's clock in these tests: moved by hand, never read from the machine. */
+const clock = { now: 1_000_000 };
+
 function setup(doc: ExtrudoDocument = threeFeatures(), options: { fonts?: FontSource } = {}) {
   const calls: Call[] = [];
   const workers: Worker[] = [];
@@ -141,6 +144,8 @@ function setup(doc: ExtrudoDocument = threeFeatures(), options: { fonts?: FontSo
     model,
     delayMs: 1,
     heapRecycleBytes: 0,
+    longFeatureMs: LONG_FEATURE_MS,
+    now: () => clock.now,
     ...(options.fonts && { fonts: options.fonts }),
   });
   live.push(r);
@@ -367,17 +372,56 @@ describe('Stop while a design opens (ADR-0155)', () => {
     expect(t.model.getState().status).toBe('computing');
   });
 
-  it('is offered only while opening: not during an update after an edit', async () => {
+  it('during an update after an edit, allows Stop only once the feature has taken long (ADR-0161)', async () => {
     const t = setup();
     await settle(t);
     expect(t.r.stops.get().opening).toBe(false);
     dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
     const update = await t.call(2);
     update.report('f2' as FeatureId);
-    await new Promise((r) => setTimeout(r, 10));
-    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: false });
+    await until(() => t.r.stops.get().stoppable);
+    // A feature is running, so the notice may offer Stop once it has taken long; not yet.
+    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: true });
+    clock.now += LONG_FEATURE_MS - 1;
     expect(await t.r.stop()).toBeUndefined();
     expect(t.workers).toHaveLength(1);
+    clock.now += 1;
+    expect(await t.r.stop()).toBe('f2');
+    expect(t.workers).toHaveLength(2);
+    // The rebuild belongs to the update: not "opening" again, so Cancel still applies.
+    expect(t.r.stops.get().opening).toBe(false);
+    const rebuild = await t.call(3);
+    expect(rebuild.request.stopped).toEqual(['f2']);
+    expect(rebuild.request.doc.features[0]?.name).toBe('Renamed');
+    rebuild.finish();
+    await until(t.ready);
+    expect(status(t, 'f2')?.message).toBe(STOPPED_MESSAGE);
+    expect(status(t, 'f2')?.message).toBe(
+      'Stopped: this feature took too long. Try again to build it.',
+    );
+    // The edit is kept in the document and the history; Stop added no step.
+    expect(t.store.getState().doc.features[0]?.name).toBe('Renamed');
+    expect(t.r.canRevertToShown()).toBe(false);
+    t.store.getState().undo();
+    await settle(t);
+    expect(t.store.getState().doc.features[0]?.name).toBe('f1');
+  });
+
+  it('counts the long rule from the running feature’s start, not from the update', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    const update = await t.call(2);
+    update.report('f1' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    clock.now += LONG_FEATURE_MS - 10;
+    update.report('f2' as FeatureId);
+    await until(() => t.model.getState().progress?.feature === 'f2');
+    clock.now += 20;
+    // f2 has run 20 ms: not long, though the update has run 30 s.
+    expect(await t.r.stop()).toBeUndefined();
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBe('f2');
   });
 
   it('Try again computes the feature with Stop offered again; an edit meanwhile ends that', async () => {
@@ -398,7 +442,9 @@ describe('Stop while a design opens (ADR-0155)', () => {
     const edit = await t.call(4);
     edit.report('f2' as FeatureId);
     await new Promise((r) => setTimeout(r, 10));
-    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: false });
+    // An update now: Stop waits for the long rule.
+    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: true });
+    expect(await t.r.stop()).toBeUndefined();
   });
 });
 
@@ -451,41 +497,61 @@ describe('forgetting a stop (ADR-0155)', () => {
     expect(t.last().request.stopped).toEqual(['f2']);
   });
 
-  it('forgets it when the feature changes', async () => {
+  it('leaves it out while the feature differs, and brings it back with the same values (amendment of 2026-11-23)', async () => {
     const t = await stopped();
     dispatch(t.store, renameFeature({ id: 'f2' as FeatureId, name: 'Changed' }));
     await settle(t);
     expect(t.last().request.stopped).toEqual([]);
     expect(t.r.stops.get().stopped).toEqual([]);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    // Undo builds new objects with the old values: the stop applies again.
+    t.store.getState().undo();
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(true);
   });
 
-  it('forgets it when a feature before it changes', async () => {
+  it('leaves it out while a feature before it differs; a Cancel back brings it back (review probe A)', async () => {
     const t = await stopped();
     dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Earlier' }));
+    const update = await t.call(t.calls.length + 1);
+    expect(update.request.stopped).toEqual([]);
+    // Cancel: back to the step the shown model was computed at.
+    expect(t.r.canRevertToShown()).toBe(true);
+    expect(t.r.revertToShown()).toBe(true);
     await settle(t);
-    expect(t.last().request.stopped).toEqual([]);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(status(t, 'f2')?.message).toBe(STOPPED_MESSAGE);
   });
 
-  it('forgets it when the parameters change', async () => {
+  it('leaves it out when the parameters change, and back with the same values', async () => {
     const t = await stopped();
-    t.store.setState((s) => ({ doc: { ...s.doc, parameters: [...s.doc.parameters] } }));
+    t.store.setState((s) => ({
+      doc: { ...s.doc, parameters: [{ name: 'w', expr: '1 mm' } as never] },
+    }));
     await settle(t);
     expect(t.last().request.stopped).toEqual([]);
+    t.store.setState((s) => ({ doc: { ...s.doc, parameters: [] } }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
   });
 
-  it('forgets it when it is suppressed, deleted or rolled past, and for good', async () => {
+  it('leaves it out while suppressed, deleted or rolled past; undo or rolling forward brings it back', async () => {
     let t = await stopped();
     dispatch(t.store, setFeatureSuppressed({ id: 'f2' as FeatureId, suppressed: true }));
     await settle(t);
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
     t.store.getState().undo();
     await settle(t);
-    expect(t.last().request.stopped).toEqual([]);
+    expect(t.last().request.stopped).toEqual(['f2']);
 
     t = await stopped();
     dispatch(t.store, removeFeature({ id: 'f2' as FeatureId }));
     await settle(t);
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    t.store.getState().undo();
+    await settle(t);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(true);
 
     t = await stopped();
     dispatch(t.store, moveTimelineMarker({ index: 1 }));
@@ -493,7 +559,46 @@ describe('forgetting a stop (ADR-0155)', () => {
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
     dispatch(t.store, moveTimelineMarker({ index: 3 }));
     await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+  });
+
+  it('forgets it for good on Try again, even when the values come back', async () => {
+    const t = await stopped();
+    expect(t.r.retry('f2' as FeatureId)).toBe(true);
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f2' as FeatureId, name: 'Changed' }));
+    await settle(t);
+    t.store.getState().undo();
+    await settle(t);
     expect(t.last().request.stopped).toEqual([]);
+    // Try again applies only to a stop that applies now.
+    expect(t.r.retry('f2' as FeatureId)).toBe(false);
+  });
+
+  it('checks a stop by value only when the objects changed (the fast path reads no inputs)', async () => {
+    // f1's inputs count their reads: the value key reads every feature before the stop.
+    let reads = 0;
+    const f1 = feature('f1');
+    const inputs = f1.inputs;
+    Object.defineProperty(f1, 'inputs', {
+      enumerable: true,
+      get: () => {
+        reads++;
+        return inputs;
+      },
+    });
+    const doc = threeFeatures();
+    const t = setup({ ...doc, features: [f1, ...doc.features.slice(1)] });
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    await t.r.stop();
+    await settle(t);
+    reads = 0;
+    // A later feature changed: f2 and f1 are the same objects, so no key is computed.
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(reads).toBe(0);
   });
 
   it('keeps it out of a dialog preview, and out of its own dialog until a value changes', async () => {
@@ -629,5 +734,266 @@ describe('Stop after a document change while the old call still runs (ADR-0155, 
     // Nothing to tell: `stop()` says so, and `stopAndTell` checks `isStopped` too.
     expect(await stop).toBeUndefined();
     expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+  });
+});
+
+describe('Stop while Cancel waits (ADR-0161)', () => {
+  /** A model on screen, an edit of f1, its update on f2, then Cancel while f2 runs. */
+  async function cancelledWhileRunning() {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    const update = await t.call(2);
+    update.report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    expect(t.r.stops.get().cancelling).toBe(false);
+    expect(t.r.revertToShown()).toBe(true);
+    // The document is back at once; the kernel is still on the edited document's f2.
+    expect(t.store.getState().doc.features[0]?.name).toBe('f1');
+    expect(t.r.stops.get()).toMatchObject({ cancelling: true, stoppable: true });
+    // Cancel's own request is with the kernel, behind f2.
+    const reverted = await t.call(3);
+    expect(reverted.request.doc.features[0]?.name).toBe('f1');
+    return t;
+  }
+
+  it('offers Stop at once; it replaces the worker and marks nothing as stopped', async () => {
+    const t = await cancelledWhileRunning();
+    // No long time has passed: the waiting Cancel alone allows Stop.
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(2);
+    expect(t.workers[0]?.terminated).toBe(true);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    expect(t.r.stops.get()).toMatchObject({ stopped: [], cancelling: false, opening: false });
+    // The new worker computes the document Cancel went back to, with nothing skipped.
+    const rebuild = await t.call(4);
+    expect(rebuild.worker).toBe(2);
+    expect(rebuild.request.stopped).toEqual([]);
+    expect(rebuild.request.doc.features[0]?.name).toBe('f1');
+    rebuild.finish();
+    await until(t.ready);
+    expect(status(t, 'f2')?.status).toBe('ok');
+    expect(t.r.client.restarts).toBe(0);
+    // Cancel's step stays: Redo brings the edit back.
+    expect(t.store.getState().canRedo).toBe(true);
+  });
+
+  it('marks nothing even when the feature has also run long', async () => {
+    const t = await cancelledWhileRunning();
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.r.stops.get().stopped).toEqual([]);
+    expect((await t.call(4)).request.stopped).toEqual([]);
+  });
+
+  it('ends when the running call comes back: then Stop is the long rule’s again', async () => {
+    const t = await cancelledWhileRunning();
+    t.calls[1]?.finish();
+    await until(() => !t.r.stops.get().cancelling);
+    // Cancel's own request runs a feature now, which has not taken long.
+    t.calls[2]?.report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable && !t.r.stops.get().superseded);
+    expect(t.r.stops.get().cancelling).toBe(false);
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(1);
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBe('f2');
+  });
+
+  it('then an edit: the edit builds, nothing skipped', async () => {
+    const t = await cancelledWhileRunning();
+    expect(await t.r.stop()).toBeUndefined();
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual([]);
+    expect(t.last().request.doc.features.map((f) => f.name)).toEqual(['f1', 'f2', 'Later']);
+    expect(status(t, 'f2')?.status).toBe('ok');
+  });
+
+  it('ends when the document changes again', async () => {
+    const t = await cancelledWhileRunning();
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await until(() => !t.r.stops.get().cancelling);
+    // f2 still runs, but has not taken long: no Stop.
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(1);
+  });
+
+  it('is not entered when no feature is running', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    await t.call(2);
+    expect(t.r.revertToShown()).toBe(true);
+    expect(t.r.stops.get().cancelling).toBe(false);
+  });
+});
+
+describe('Stop on a long feature after an edit superseded its call (ADR-0161)', () => {
+  /** An update on f2, then another edit while the worker is still on f2. */
+  async function editedWhileRunning() {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    const update = await t.call(2);
+    const started = clock.now;
+    update.report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    expect(t.r.stops.get()).toMatchObject({ since: started, superseded: false });
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await t.call(3);
+    // The worker still runs f2 for the old call: its start is kept for the long rule.
+    expect(t.r.stops.get()).toMatchObject({ since: started, superseded: true, stoppable: true });
+    return t;
+  }
+
+  it('keeps the long rule for the running feature; Stop ends it and records nothing', async () => {
+    const t = await editedWhileRunning();
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(1);
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBeUndefined();
+    expect(t.workers).toHaveLength(2);
+    expect(t.r.isStopped('f2' as FeatureId)).toBe(false);
+    // The current edit builds in the new worker, in full.
+    const rebuild = await t.call(4);
+    expect(rebuild.worker).toBe(2);
+    expect(rebuild.request.stopped).toEqual([]);
+    expect(rebuild.request.doc.features.map((f) => f.name)).toEqual(['Renamed', 'f2', 'Later']);
+    rebuild.finish();
+    await until(t.ready);
+    expect(status(t, 'f2')?.status).toBe('ok');
+    expect(t.r.stops.get().opening).toBe(false);
+  });
+
+  it('a Stop then an immediate edit: the stop holds, the edit builds', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    (await t.call(2)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    clock.now += LONG_FEATURE_MS;
+    const stopping = t.r.stop();
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    expect(await stopping).toBe('f2');
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    expect(t.last().request.doc.features.map((f) => f.name)).toEqual(['Renamed', 'f2', 'Later']);
+    expect(status(t, 'f2')?.message).toBe(STOPPED_MESSAGE);
+  });
+});
+
+describe('several stops of one feature, by value (ADR-0155, amendment of 2026-11-23)', () => {
+  /** Opening: f2 stopped at its first values. */
+  async function stoppedAtOpen() {
+    const t = setup();
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    expect(await t.r.stop()).toBe('f2');
+    await settle(t);
+    return t;
+  }
+
+  /** Renames f2 and stops its update once it has run long. */
+  async function renameAndStop(t: ReturnType<typeof setup>, name: string) {
+    dispatch(t.store, renameFeature({ id: 'f2' as FeatureId, name }));
+    const n = t.calls.length + 1;
+    (await t.call(n)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable && !t.r.stops.get().superseded);
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBe('f2');
+    await settle(t);
+  }
+
+  async function undo(t: ReturnType<typeof setup>) {
+    t.store.getState().undo();
+    await settle(t);
+  }
+
+  it('keeps an earlier stop when the feature is stopped again at other values', async () => {
+    const t = await stoppedAtOpen();
+    await renameAndStop(t, 'v1');
+    await undo(t);
+    expect(t.last().request.doc.features[1]?.name).toBe('f2');
+    expect(t.last().request.stopped).toEqual(['f2']);
+    t.store.getState().redo();
+    await settle(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+  });
+
+  it(`keeps the last ${MAX_STOPS_PER_FEATURE}, the oldest going first`, async () => {
+    const t = await stoppedAtOpen();
+    for (let i = 1; i <= MAX_STOPS_PER_FEATURE; i++) await renameAndStop(t, `v${i}`);
+    for (let i = 0; i < MAX_STOPS_PER_FEATURE - 1; i++) await undo(t);
+    expect(t.last().request.doc.features[1]?.name).toBe('v1');
+    expect(t.last().request.stopped).toEqual(['f2']);
+    await undo(t);
+    // The stop at open was the ninth and oldest: dropped.
+    expect(t.last().request.doc.features[1]?.name).toBe('f2');
+    expect(t.last().request.stopped).toEqual([]);
+  });
+
+  it('Try again forgets the stop at the current values only', async () => {
+    const t = await stoppedAtOpen();
+    await renameAndStop(t, 'v1');
+    const n = t.calls.length + 1;
+    expect(t.r.retry('f2' as FeatureId)).toBe(true);
+    const again = await t.call(n);
+    expect(again.request.stopped).toEqual([]);
+    again.finish();
+    await settle(t);
+    await undo(t);
+    expect(t.last().request.stopped).toEqual(['f2']);
+    t.store.getState().redo();
+    await settle(t);
+    expect(t.last().request.stopped).toEqual([]);
+  });
+
+  it('hashes values that match no stop once, not on every later send', async () => {
+    let reads = 0;
+    const f1 = feature('f1');
+    const inputs = f1.inputs;
+    Object.defineProperty(f1, 'inputs', {
+      enumerable: true,
+      get: () => {
+        reads++;
+        return inputs;
+      },
+    });
+    const doc = threeFeatures();
+    const t = setup({ ...doc, features: [f1, ...doc.features.slice(1)] });
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    await t.r.stop();
+    await settle(t);
+    // f2 changed: one hash, no match.
+    dispatch(t.store, renameFeature({ id: 'f2' as FeatureId, name: 'Changed' }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual([]);
+    reads = 0;
+    // A later feature changes: f1 and f2 are the objects that matched nothing, so no hash.
+    dispatch(t.store, renameFeature({ id: 'f3' as FeatureId, name: 'Later' }));
+    await settle(t);
+    expect(t.last().request.stopped).toEqual([]);
+    expect(reads).toBe(0);
+  });
+});
+
+describe('whether Cancel only undoes, for Ctrl+Z (ADR-0161)', () => {
+  it('yes after an edit; no after an undo, where Cancel would redo', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'A' }));
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'B' }));
+    await t.call(t.calls.length + 1);
+    expect(t.r.canRevertToShown()).toBe(true);
+    expect(t.r.revertToShownUndoes()).toBe(true);
+    await settle(t);
+    // The model shows B; an undo's update runs: Cancel would redo B.
+    t.store.getState().undo();
+    await t.call(t.calls.length + 1);
+    expect(t.r.canRevertToShown()).toBe(true);
+    expect(t.r.revertToShownUndoes()).toBe(false);
   });
 });

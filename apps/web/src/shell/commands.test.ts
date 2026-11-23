@@ -118,6 +118,22 @@ describe('the desktop commands (ADR-0075, 2026-10-09)', () => {
   });
 });
 
+describe('commandShortcuts', () => {
+  it('lets the key run its own undo while the command list keeps the plain one (ADR-0161)', () => {
+    const ctx = context('model');
+    const commands = buildCommands(ctx);
+    const undoKey = vi.fn();
+    const shortcut = commandShortcuts(commands, { undo: undoKey }).find((s) => s.keys === 'Mod+Z');
+    shortcut?.run();
+    expect(undoKey).toHaveBeenCalledTimes(1);
+    expect(ctx.undo).not.toHaveBeenCalled();
+    // Search, the marking menu and the agent run the command: the plain undo.
+    commands.find((c) => c.id === 'undo')?.run();
+    expect(ctx.undo).toHaveBeenCalledTimes(1);
+    expect(undoKey).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('buildCommands', () => {
   it.each(['model', 'sketch'] as const)('gives no key to two commands in %s mode', (mode) => {
     const keys = commandShortcuts(buildCommands(context(mode))).map((s) => s.keys);

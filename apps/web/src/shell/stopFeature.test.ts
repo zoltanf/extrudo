@@ -17,7 +17,14 @@ function kernel(stopped: FeatureId | undefined): StopKernel & { held: Set<Featur
   return {
     held,
     stops: {
-      get: () => ({ stopped: [], opening: true, stoppable: true, stopping: false }),
+      get: () => ({
+        stopped: [],
+        opening: true,
+        stoppable: true,
+        stopping: false,
+        cancelling: false,
+        superseded: false,
+      }),
       subscribe: () => () => {},
     },
     stop: vi.fn(async () => {
@@ -62,6 +69,26 @@ describe('stopAndTell', () => {
     expect(await stopAndTell(k, store(), notify)).toBeUndefined();
     expect(notify).not.toHaveBeenCalled();
   });
+
+  it('says the edit is kept after a Stop in an update (ADR-0161)', async () => {
+    const notify = vi.fn();
+    expect(await stopAndTell(kernel('f1' as FeatureId), store(), notify, 'update')).toBe('f1');
+    expect(notify.mock.calls[0]?.[1]).toBe(
+      'Box1 was stopped, so the model was updated without it. Your change is kept.',
+    );
+  });
+
+  it.each(['cancel', 'edit'] as const)(
+    'says nothing after a Stop in the %s state, whatever the kernel answers (ADR-0161)',
+    async (during) => {
+      // The kernel records nothing there; even a stopped feature in its answer gets no toast.
+      const k = kernel('f1' as FeatureId);
+      const notify = vi.fn();
+      expect(await stopAndTell(k, store(), notify, during)).toBeUndefined();
+      expect(k.stop).toHaveBeenCalledTimes(1);
+      expect(notify).not.toHaveBeenCalled();
+    },
+  );
 
   it('says nothing when there was nothing to stop', async () => {
     const notify = vi.fn();

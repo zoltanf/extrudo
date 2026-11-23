@@ -71,3 +71,12 @@ the long update came from an Undo, redoing) top-level steps in one run:
 **Stop** does replace the worker: at open there is little cache to lose, and the alternative
 was waiting for the running call. Cancel after an edit is unchanged, and the two buttons never
 show together.
+
+**Later (2026-11-23):** ADR-0161 adds Stop to a long update once its running feature has taken
+30 s, so from then on Stop and Cancel show together (Stop first, both quiet). Cancel itself is
+unchanged: it still never terminates the worker. While a pressed Cancel waits for the running
+feature, the notice says "Cancelling…" and offers Stop alone, which replaces the worker to end the
+wait. **Ctrl+Z during a long update is Cancel** (the owner's choice): the key and the top bar's
+Undo run the same revert, with the same toast, while the notice offers Cancel and Cancel would
+only undo, and undo nothing more while a pressed Cancel waits; in a sketch or dialog, and when
+Cancel would redo, they stay the plain undo (ADR-0161). The rule above about shortcuts was about Escape; Ctrl+Z already undoes.

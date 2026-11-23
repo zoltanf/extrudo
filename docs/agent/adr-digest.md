@@ -4092,7 +4092,8 @@ recompute; `canRevertToShown`/`revertToShown`), `apps/web/src/viewport/progressR
 leaves the model out of step with the document: it changes the document, through the history; one
 `revertTo` is one document change (one `set`), so one recompute follows; no Cancel while a design
 first opens (`preparing`), for a kernel wait (`waiting`), or inside a transaction (sketch mode, a
-feature dialog); no keyboard shortcut (Escape must never undo edits); the notice stays
+feature dialog); no Escape shortcut (Escape must never undo edits; Ctrl+Z is Cancel during a long
+update since ADR-0161); the notice stays
 `pointer-events: none`, only the button takes the pointer. e2e: `e2e/kernel-cancel.spec.ts`.
 
 ADR-0155 (the owner, 2026-11-19): **Stop while a design opens skips the running feature for
@@ -4115,21 +4116,68 @@ when that call settles via `#currentSequence`: a newer send doesn't end it, so S
 offered), lets the worker's delivered messages land first and gives up when the feature
 finished; it records the feature against the document as it is then (an edited one in its new
 version; one no longer reached is not recorded, but the worker is still replaced); the toast
-only tells of a stop still there; a stop is forgotten when the feature, a feature before it, the
-parameters or the settings change, when the marker no longer reaches it, and on `dispose`;
+only tells of a stop still there; a stop applies while the marker reaches the feature and its
+value key matches (since the amendment of 2026-11-23: a hash of the canonical JSON of the feature,
+the features before it, the parameters and the settings, with the last matching objects as a fast
+path that computes no key); a stop that doesn't match is left out, not forgotten, so undo, redo,
+Cancel or rolling forward to the same values brings it back; a feature keeps up to
+`MAX_STOPS_PER_FEATURE` (8) value keys, the oldest dropped first; only Try again (on a stop that
+applies now; it forgets the current values' key, not the others) and `dispose` forget one; the
+last objects that matched no key are kept (`miss`), so the same values hash once; `isStopped`,
+`stops.stopped` and the toast read the applying stops (`#active`);
 previews skip it too, its own dialog while the draft's inputs equal the stopped ones
 (`sameValue`, `STOPPED_DRAFT_MESSAGE`);
 when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight
 during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-stop.spec.ts`.
 **Its amendment (2026-11-19), a feature that takes long and the model's last step:** after
-`LONG_FEATURE_MS` (30 s) in one feature, counted from `ModelProgress.since`, Stop is filled
-(`[data-model-stop="long"]`) and the notice adds `LONG_FEATURE_TEXT`; nothing happens by itself.
+`LONG_FEATURE_MS` (30 s) in one feature, counted from `ModelProgress.since`, the notice adds
+`LONG_FEATURE_TEXT`; nothing happens by itself. (Stop was made filled then; **the amendment of
+2026-11-23 withdrew that: Stop is quiet, in Cancel's style, in every state**; `[data-model-stop]`
+says which Stop it is, `"open"`, `"update"`, `"cancel"` or `"edit"` (ADR-0161); the bar is `w-full min-w-40`; one chip message `STOPPED_MESSAGE`
+"Stopped: this feature took too long. Try again to build it." and the own dialog's
+`STOPPED_DRAFT_MESSAGE` "Stopped because it took too long, …", neither naming the opening;
+`LONG_FEATURE_MS` is the kernel's constant, re-exported by `progressRules.ts`.)
 Past the last feature the recomputer reports `building: true` and the line says `BUILDING_TEXT`
 with the bar full, no Stop, in both notices. **Rules:** one timer (`useLongFeature`) and only
 while Stop is offered; the sentence is plain text in the polite region (read once), the seconds
 stay hidden; the threshold's comment keeps the margin against B9's thread (21.5 s on a slow
 runner); `window.__extrudoLongFeatureMs` may only lower it (`longFeatureMs`), never set by the
 app; a recompute with nothing computed reports no `building`.
+
+ADR-0161 (the owner, 2026-11-23): **Stop during a long update after an edit.** Option 3 of the
+plan, without Cancel replacing the worker. Files: `packages/kernel/src/recomputer.ts` (`stop()`'s
+gate `#mayStop`: opening, or the running feature has run `longFeatureMs`, a `RecomputerOptions`
+value with an injectable `now`; `stoppable` = a feature running and no Stop under way; an
+update's Stop doesn't set `opening`), `apps/web/src/viewport/progressRules.ts`
+(`showsStop(mode, { stoppable, long })`), `ModelProgress.tsx` (Stop before Cancel in one quiet
+group, `stopLabel`, `run(during)`), `shell/stopFeature.ts` (the update toast),
+`project/useRecompute.ts` (passes the notice's `longFeatureMs`). **Rules:** quick updates show
+Cancel alone; once the running feature has run `LONG_FEATURE_MS`, counted from its start, the
+update notice shows Stop before Cancel in the same quiet style with `LONG_FEATURE_TEXT`; an
+update's Stop records the feature against the edited document, keeps the edit and the history,
+and the rebuild keeps the update's notice (Cancel still applies); the toast says the change is
+kept; the notice and `stop()` use the same time (the app passes it). **Stop while Cancel waits:**
+`revertToShown` that changes the document while a feature runs sets `#cancel` (that call's
+sequence and the reverted document); `StopState.cancelling` holds while that call is still with
+the kernel and the document is unchanged since; the notice then shows `CANCELLING_TITLE`,
+"Computing n features", `CANCELLING_TEXT` (`[data-cancelling-text]`), `[data-model-cancelling]`,
+and Stop alone at once (`showsStop`'s `cancelling`, `[data-model-stop="cancel"]`, "Stop: end the
+running feature now"), no Cancel, no bar; that Stop replaces the worker, records nothing (also
+when long), leaves `opening` alone and has no toast (`stopAndTell` with `'cancel'`); Cancel itself
+never replaces the worker; when Cancel had the focus, the waiting Stop takes it. **A superseded
+call's long feature:** `StopState.since` (the running feature's start, also for a call an edit
+superseded) and `superseded`; the notice counts the long rule from `progress.since ?? stops.since`,
+so after an edit the sentence and Stop stay (no bar; `[data-model-stop="edit"]`, "Stop: end the
+running feature now"); that Stop records nothing (`stop()`: not opening and `#currentSequence !==
+#sequence`) and has no toast. **Ctrl+Z:** `shell/undoRouting.ts`'s `undoRoute` decides for the key
+and the top bar's Undo only (`AppShell`'s `undoKey`, `commandShortcuts(commands, { undo })`):
+Cancel while the notice offers it (`cancel.notice`) and `Recomputer.revertToShownUndoes()` (the
+shown step is on the undo stack; after an undo whose update runs long, Cancel would redo, so it
+stays an undo); nothing while Cancel waits; the plain undo otherwise and always while a dialog,
+sketch or transaction is open. The `undo` command (search, marking menu, agent) is the plain
+undo. Ctrl+Z as Cancel undoes every step since the shown model. Try again shows as opening
+("Preparing…"): Stop from the start, and Cancel would have nothing to undo. An update's Stop
+rebuilds every other feature in the new worker. e2e: `e2e/update-stop.spec.ts`.
 
 ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
 `packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a

@@ -1352,24 +1352,49 @@ command (replacing its first key).
   quiet **Cancel** button at the right of its title (the pill's only part that
   takes clicks), shown once a model is on screen and no sketch or dialog is
   open; it undoes the changes since the model on screen in one go, a toast says
-  so, and Redo brings them back. No keyboard shortcut.
+  so, and Redo brings them back. While the pill offers Cancel, Ctrl+Z and the
+  top bar's Undo do the same (ADR-0161), undoing every step since the model on
+  screen, quick unrelated edits made during the update included; when that would
+  redo instead (the long update came from an undo), Ctrl+Z stays a plain undo,
+  and in a sketch or a dialog it is always their own undo. The command search,
+  the marking menu and the agent's Undo stay a plain undo. Escape never cancels.
 - **Stop while a design opens (ADR-0155):** the "Preparing your design…" pill has a
-  quiet **Stop** button in the same place, once the kernel is on a feature (never
-  together with Cancel). Stop ends that feature's computation at once and opens the
+  quiet **Stop** button in the same place, once the kernel is on a feature (opening
+  never offers Cancel). Stop ends that feature's computation at once and opens the
   design without it: its timeline chip shows ✕ with "Stopped: this feature took too
-  long while the design opened. Try again to build it.", the status bar counts it
+  long. Try again to build it.", the status bar counts it
   as an error, and a toast says "Rectangular Pattern1 was stopped, so the design
   opened without it. Nothing in the design changed." with **Try again**. The
   feature's menu has **Try Again** while it is stopped; it computes the feature
   with no limit, shown like opening, with Stop again. Edit Feature on a stopped
-  feature shows no preview until a value changes ("Stopped while the design opened,
+  feature shows no preview until a value changes ("Stopped because it took too long,
   so there is no preview yet. Change a value to build it."). Nothing in the design changes
   and nothing is saved: opening the design again computes the feature again. The
   button has a name for screen readers; when it goes while focused, the focus moves
   to the stopped feature's chip. After 30 s in one feature, counted from that
-  feature's start, Stop becomes the filled accent button and the pill adds "This
-  feature is taking a long time." (read once by screen readers); nothing happens by
-  itself.
+  feature's start, the pill adds "This feature is taking a long time." (read once
+  by screen readers); Stop stays a quiet text button in Cancel's style in every
+  state, never filled (ADR-0155's amendment of 2026-11-23), and nothing happens by
+  itself. The progress bar stretches to the pill's content width in every state.
+- **Stop on a long update (ADR-0161):** once a feature of an update after an edit
+  has run 30 s, the "Updating the model…" pill shows **Stop** before **Cancel**,
+  both quiet, with "This feature is taking a long time.". Stop keeps the edit and
+  updates the model without that feature: its chip shows ✕ ("Stopped: this feature
+  took too long. Try again to build it."), and a toast says "Rectangular Pattern1
+  was stopped, so the model was updated without it. Your change is kept." with
+  **Try again**. Try again shows "Preparing your design…" with Stop from the start
+  (Cancel would have nothing to undo). Stop replaces the kernel worker, so the
+  other features are built again. After another edit while the long feature still
+  runs, the pill keeps the sentence and Stop; that Stop ends the old feature, marks
+  nothing and the new edit builds.
+- **Stop while Cancel waits (ADR-0161):** Cancel (or Ctrl+Z) undoes the changes at
+  once, but the model waits for the running feature to end. Meanwhile the pill
+  says "Cancelling…", "Computing 9 features" and "Your changes are undone once the
+  running feature ends. Stop ends it now.", with **Stop** alone, in the same quiet
+  style. Stop ends the wait: the earlier model is built again without waiting for
+  that feature, nothing is marked as stopped and no new toast appears. Ctrl+Z
+  meanwhile undoes nothing more (outside a sketch or dialog). When Cancel had the
+  keyboard focus, Stop takes it.
 - **The model's last step:** once the kernel is past its last feature (building the
   meshes), the line under the bar says "Building the model…" with the bar full, in
   the opening and the update notice alike, and no Stop is offered.

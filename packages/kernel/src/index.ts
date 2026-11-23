@@ -230,6 +230,7 @@ export { STOPPED_DRAFT_MESSAGE, STOPPED_MESSAGE } from './recompute/types';
 export {
   type KernelStops,
   type KernelWaits,
+  LONG_FEATURE_MS,
   type Preview,
   Recomputer,
   type RecomputerOptions,

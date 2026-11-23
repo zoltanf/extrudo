@@ -6,6 +6,7 @@
  * the oldest wait.
  */
 import { activeFeatures, type ExtrudoDocument } from '@extrudo/core';
+import { LONG_FEATURE_MS } from '@extrudo/kernel';
 
 /** A recompute that runs longer than this gets the notice (quick edits never flash it). */
 export const UPDATING_AFTER_MS = 800;
@@ -78,27 +79,37 @@ export function showsCancel(mode: ProgressMode, canRevert: () => boolean): boole
 }
 
 /**
- * Whether the notice offers Stop (ADR-0155): only while the design opens (or a
- * Try again runs, which shows the same way), and only while the kernel is on
- * a feature it can stop. Cancel (ADR-0111) is for `updating` alone, so the two
- * never show together.
+ * Whether the notice offers Stop: while the design opens (or a Try again runs,
+ * which shows the same way) as soon as the kernel is on a feature (ADR-0155);
+ * in an update after an edit once that feature has taken long, beside Cancel,
+ * or at once while a pressed Cancel waits for it, alone (ADR-0161).
  */
-export function showsStop(mode: ProgressMode, stoppable: boolean): boolean {
-  return mode === 'preparing' && stoppable;
+export function showsStop(
+  mode: ProgressMode,
+  {
+    stoppable,
+    long,
+    cancelling = false,
+  }: { stoppable: boolean; long: boolean; cancelling?: boolean },
+): boolean {
+  if (!stoppable) return false;
+  return mode === 'preparing' || (mode === 'updating' && (long || cancelling));
 }
 
+/** The update notice's title while a pressed Cancel waits for the running feature (ADR-0161). */
+export const CANCELLING_TITLE = 'Cancelling…';
+
+/** What the notice says under it, read once (polite region). */
+export const CANCELLING_TEXT =
+  'Your changes are undone once the running feature ends. Stop ends it now.';
+
 /**
- * After this long in one feature while a design opens, Stop becomes the filled
- * button and the notice adds `LONG_FEATURE_TEXT` (ADR-0155's amendment of
- * 2026-11-19). Nothing happens by itself. Counted from the feature's start
- * (`ModelProgress.since`), so a new feature starts over. Margin: the
- * repository's slowest single feature is B9's thread, 6.6 s cold in Node on the
- * Ubuntu machine (about 11 s in its browser) and up to 21.5 s on GitHub's
- * runners when an e2e waits for it (`docs/agent/e2e-notes.md`, the kernel-cancel
- * spec): 30 s is 1.4× that worst case and 4.5× the local one, and a false light
- * only fills a button.
+ * After this long in one feature the notice says `LONG_FEATURE_TEXT` and, in an
+ * update after an edit, offers Stop beside Cancel (ADR-0161). The kernel's
+ * constant, where its margin is written down; the notice's timer and the
+ * recomputer's rule use the same value.
  */
-export const LONG_FEATURE_MS = 30_000;
+export { LONG_FEATURE_MS };
 
 /** What the notice adds once a feature has run `LONG_FEATURE_MS`; read once (polite region). */
 export const LONG_FEATURE_TEXT = 'This feature is taking a long time.';

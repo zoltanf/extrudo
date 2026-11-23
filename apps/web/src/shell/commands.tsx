@@ -693,8 +693,16 @@ export function isToolReady(tool: Pick<Tool, 'id' | 'comesWith'>, ready?: Readon
 }
 
 /** One shortcut per key of every command that has keys. */
-export function commandShortcuts(commands: readonly AppCommand[]): Shortcut[] {
+export function commandShortcuts(
+  commands: readonly AppCommand[],
+  /** What a key runs instead of the command, by command ID (Ctrl+Z's routing, ADR-0161). */
+  keyRuns: Readonly<Record<string, () => void>> = {},
+): Shortcut[] {
   return commands.flatMap((command) =>
-    command.keys.map((keys) => ({ keys, run: command.run, inFields: command.inFields })),
+    command.keys.map((keys) => ({
+      keys,
+      run: keyRuns[command.id] ?? command.run,
+      inFields: command.inFields,
+    })),
   );
 }

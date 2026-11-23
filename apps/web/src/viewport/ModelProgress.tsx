@@ -6,6 +6,8 @@ import { Button } from '../design-system/Button';
 import {
   activeFeatureCount,
   BUILDING_TEXT,
+  CANCELLING_TEXT,
+  CANCELLING_TITLE,
   featureSeconds,
   LONG_FEATURE_TEXT,
   longFeatureIn,
@@ -31,7 +33,14 @@ declare global {
 }
 
 const NO_WAITS: readonly Wait[] = [];
-const NO_STOPS: StopState = { stopped: [], opening: false, stoppable: false, stopping: false };
+const NO_STOPS: StopState = {
+  stopped: [],
+  opening: false,
+  stoppable: false,
+  stopping: false,
+  cancelling: false,
+  superseded: false,
+};
 
 /**
  * A recompute has finished since the model store was last reset (ADR-0078).
@@ -166,22 +175,47 @@ export function useLongFeature(since: number | undefined, watch: boolean): boole
   return watch && since !== undefined && longSince === since;
 }
 
+/** What Stop says it does, for screen readers and as its tooltip. */
+export function stopLabel(during: StopDuring): string {
+  if (during === 'open') return 'Stop: open the design without this feature for now';
+  if (during === 'update') return 'Stop: update the model without this feature for now';
+  return 'Stop: end the running feature now';
+}
+
+/** What the update notice offers, for Ctrl+Z's routing (ADR-0161, `shell/undoRouting.ts`). */
+export type UpdateNotice = 'cancel' | 'cancelling' | undefined;
+
 /**
- * The notice's Stop (ADR-0155): a quiet text button where Cancel sits after an
- * edit; the filled one once the feature has taken long (its amendment of 2026-11-19).
+ * When a Stop is pressed: while the design opens, during an update after an
+ * edit, while a pressed Cancel waits for the running feature, or after a newer
+ * edit while the worker still runs the old feature (ADR-0161). The last two
+ * record nothing.
+ */
+export type StopDuring = 'open' | 'update' | 'cancel' | 'edit';
+
+/**
+ * The notice's Stop (ADR-0155, ADR-0161): a quiet text button in Cancel's style,
+ * in every state (the owner's choice of 2026-11-23: never filled); before Cancel
+ * when both show.
  */
 function StopButton({
   feature,
+  during,
   onStop,
-  long,
+  focus = false,
 }: {
   feature: string | undefined;
+  during: StopDuring;
   onStop(): void;
-  long: boolean;
+  /** Takes the focus when it appears: Cancel had it (ADR-0161). */
+  focus?: boolean;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const target = useRef(feature);
   target.current = feature;
+  useLayoutEffect(() => {
+    if (focus) button.current?.focus();
+  }, [focus]);
   // Runs before the button leaves the page (Stop hides it at once).
   useLayoutEffect(
     () => () => {
@@ -194,12 +228,12 @@ function StopButton({
   return (
     <Button
       ref={button}
-      variant={long ? 'primary' : 'ghost'}
-      data-model-stop={long ? 'long' : 'quiet'}
-      title="Stop: open the design without this feature for now"
-      aria-label="Stop: open the design without this feature for now"
+      variant="ghost"
+      data-model-stop={during}
+      title={stopLabel(during)}
+      aria-label={stopLabel(during)}
       onClick={onStop}
-      className="pointer-events-auto -my-1 ml-auto h-6 px-2 text-sm"
+      className="pointer-events-auto -my-1 h-6 px-2 text-sm"
     >
       Stop
     </Button>
@@ -211,7 +245,9 @@ function StopButton({
  * long recompute runs, or a kernel call the user made is still out (ADR-0078,
  * ADR-0105 §2). It never takes pointer events, so it can't block a pick; a
  * failed kernel keeps its own message (the status bar's). A long update offers
- * Cancel (ADR-0111), the one part that takes the pointer.
+ * Cancel (ADR-0111) and, once its feature has taken long, Stop (ADR-0161); the
+ * buttons are the only parts that take the pointer. While a pressed Cancel waits
+ * for the running feature, it says "Cancelling…" with Stop alone.
  */
 export function ModelProgress({
   model,
@@ -227,10 +263,14 @@ export function ModelProgress({
   waits?: KernelWaits;
   /** The browser is folded away: its "Show browser" tab then sits at the view's corner. */
   collapsed: boolean;
-  /** Returns the document to the shown model's step (ADR-0111); read at render time. */
-  cancel?: { can(): boolean; run(): void };
-  /** Stops the running feature while the design opens (ADR-0155). */
-  stop?: { stops: KernelStops; run(): void };
+  /**
+   * Returns the document to the shown model's step (ADR-0111); read at render
+   * time; `run` says whether it changed the document. `notice` hears what the notice offers, for Ctrl+Z's routing: Cancel,
+   * or a pressed Cancel that waits (ADR-0161).
+   */
+  cancel?: { can(): boolean; run(): boolean | undefined; notice?(state: UpdateNotice): void };
+  /** Stops the running feature while the design opens (ADR-0155) or in a long update (ADR-0161). */
+  stop?: { stops: KernelStops; run(during: StopDuring): void };
 }) {
   const status = useStore(model, (s) => s.status);
   const finished = useRecomputeFinished(model);
@@ -288,12 +328,52 @@ export function ModelProgress({
     ...(wait && { wait }),
   });
   const building = progress?.building === true;
-  const offersStop = mode !== undefined && stop !== undefined && showsStop(mode, stops.stoppable);
-  const long = useLongFeature(progress?.since, offersStop && !building);
+  // The long-feature timer runs while a feature can be stopped, opening or updating. It
+  // counts the feature the worker runs, also one an edit has superseded (ADR-0161), whose
+  // call no longer reports progress.
+  const recomputing = mode === 'preparing' || mode === 'updating';
+  const since = progress?.since ?? stops.since;
+  const long = useLongFeature(
+    since,
+    stop !== undefined && recomputing && stops.stoppable && !building && since !== undefined,
+  );
+  // A pressed Cancel waits for the running feature (ADR-0161): "Cancelling…" with Stop alone.
+  const cancelling = mode === 'updating' && stops.cancelling;
+  const offersStop =
+    mode !== undefined &&
+    stop !== undefined &&
+    !building &&
+    showsStop(mode, { stoppable: stops.stoppable, long, cancelling });
+  const offersCancel =
+    mode !== undefined && cancel !== undefined && !cancelling && showsCancel(mode, cancel.can);
+  // For Ctrl+Z's routing (ADR-0161, `undoRoute`).
+  const notice: UpdateNotice = cancelling ? 'cancelling' : offersCancel ? 'cancel' : undefined;
+  const tellNotice = cancel?.notice;
+  useEffect(() => {
+    tellNotice?.(notice);
+  }, [tellNotice, notice]);
+  useEffect(() => () => tellNotice?.(undefined), [tellNotice]);
+  // Cancel pressed while it had the focus: the waiting state's Stop takes it (ADR-0161).
+  // Only for the wait that click started: cleared when Cancel goes without a wait, and when
+  // the wait ends (a later Cancel by Ctrl+Z must not move the focus).
+  const [focusStop, setFocusStop] = useState(false);
+  const wasCancelling = useRef(false);
+  useEffect(() => {
+    if (wasCancelling.current && !cancelling) setFocusStop(false);
+    wasCancelling.current = cancelling;
+    if (!cancelling && !offersCancel) setFocusStop(false);
+  }, [cancelling, offersCancel]);
   if (!mode) return null;
+  const during: StopDuring = cancelling
+    ? 'cancel'
+    : mode === 'preparing'
+      ? 'open'
+      : stops.superseded
+        ? 'edit'
+        : 'update';
 
   const bar =
-    progress && showsBar(mode, true)
+    !cancelling && progress && showsBar(mode, true)
       ? progressBar({
           done: progress.done,
           total: progress.total,
@@ -305,27 +385,43 @@ export function ModelProgress({
       role="status"
       aria-live="polite"
       data-model-progress={mode}
+      data-model-cancelling={cancelling || undefined}
       className="pointer-events-none absolute top-3 z-10 flex items-center gap-2.5 rounded-control border border-line bg-panel px-3 py-2 shadow-raised"
       style={{ left: `calc(var(--x-browser-inset, 0px) + ${collapsed ? 52 : 12}px)` }}
     >
       <ProgressCube />
       <div className="flex flex-col leading-tight">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
-          {stop && offersStop && (
-            <StopButton feature={progress?.feature} onStop={stop.run} long={long} />
-          )}
-          {cancel && showsCancel(mode, cancel.can) && (
-            <Button
-              variant="ghost"
-              data-model-cancel
-              title="Cancel: undo the changes since the last model"
-              aria-label="Cancel: undo the changes since the last model"
-              onClick={cancel.run}
-              className="pointer-events-auto -my-1 ml-auto h-6 px-2 text-sm"
-            >
-              Cancel
-            </Button>
+          <span className="text-sm font-medium text-ink">
+            {cancelling ? CANCELLING_TITLE : progressTitle(mode, wait)}
+          </span>
+          {(offersStop || offersCancel) && (
+            <span className="ml-auto flex items-center gap-1">
+              {stop && offersStop && (
+                <StopButton
+                  feature={progress?.feature}
+                  during={during}
+                  onStop={() => stop.run(during)}
+                  focus={focusStop && cancelling}
+                />
+              )}
+              {cancel && offersCancel && (
+                <Button
+                  variant="ghost"
+                  data-model-cancel
+                  title="Cancel: undo the changes since the last model"
+                  aria-label="Cancel: undo the changes since the last model"
+                  onClick={(event) => {
+                    const focused = document.activeElement === event.currentTarget;
+                    // A refused Cancel (nothing changed) starts no wait.
+                    if (cancel.run() !== false && focused) setFocusStop(true);
+                  }}
+                  className="pointer-events-auto -my-1 h-6 px-2 text-sm"
+                >
+                  Cancel
+                </Button>
+              )}
+            </span>
           )}
         </div>
         {bar ? (
@@ -334,7 +430,7 @@ export function ModelProgress({
               value={building ? bar.max : bar.value}
               max={bar.max}
               aria-label="Features computed"
-              className="mt-1 h-1 w-40 accent-accent"
+              className="mt-1 h-1 w-full min-w-40 accent-accent"
             />
             {building ? (
               <span data-progress-building className="mt-0.5 text-xs text-muted">
@@ -356,12 +452,26 @@ export function ModelProgress({
             )}
           </>
         ) : (
-          <span className="text-xs text-muted">
-            {progressDetail(
-              mode,
-              mode === 'waiting' ? (wait as WaitInput) : activeFeatureCount(doc),
+          <>
+            <span className="text-xs text-muted">
+              {progressDetail(
+                mode,
+                mode === 'waiting' ? (wait as WaitInput) : activeFeatureCount(doc),
+              )}
+            </span>
+            {cancelling ? (
+              <span data-cancelling-text className="mt-1 text-xs text-ink">
+                {CANCELLING_TEXT}
+              </span>
+            ) : (
+              // After an edit the old feature runs on with no bar (ADR-0161).
+              long && (
+                <span data-feature-long className="mt-1 text-xs text-ink">
+                  {LONG_FEATURE_TEXT}
+                </span>
+              )
             )}
-          </span>
+          </>
         )}
       </div>
     </div>

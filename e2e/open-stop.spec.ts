@@ -107,7 +107,7 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   await expect(status(page)).toContainText('1 error');
   await chip(page).hover();
   await expect(page.getByRole('tooltip')).toContainText(
-    'Stopped: this feature took too long while the design opened. Try again to build it.',
+    'Stopped: this feature took too long. Try again to build it.',
   );
   await page.mouse.move(700, 450);
 
@@ -144,7 +144,7 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   const edit = page.getByRole('region', { name: `Edit ${PATTERN} dialog` });
   await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 30_000 });
   await expect(edit.getByRole('status', { name: 'Feature status' })).toContainText(
-    'Stopped while the design opened, so there is no preview yet. Change a value to build it.',
+    'Stopped because it took too long, so there is no preview yet. Change a value to build it.',
   );
   await edit.getByRole('textbox', { name: 'Count', exact: true }).first().fill('2');
   await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
@@ -156,7 +156,7 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeEnabled();
 });
 
-test('a feature that takes long fills Stop and says so once (the threshold lowered for the test)', async ({
+test('a feature that takes long is said once, Stop stays quiet (the threshold lowered for the test)', async ({
   page,
 }, info) => {
   // ADR-0155's amendment of 2026-11-19: 30 s in one feature; the hook may only lower it,
@@ -173,7 +173,8 @@ test('a feature that takes long fills Stop and says so once (the threshold lower
   await patternRunning(page);
   const long = notice(page).locator('[data-feature-long]');
   await expect(long).toHaveText('This feature is taking a long time.', { timeout: 30_000 });
-  await expect(stopButton(page)).toHaveAttribute('data-model-stop', 'long');
+  // Never filled or orange (the owner, 2026-11-23): the sentence alone says the wait is long.
+  await expect(stopButton(page)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   // In the live region once, as text; the seconds stay out of it.
   const spoken = await notice(page).ariaSnapshot();
   expect(spoken.split('This feature is taking a long time.')).toHaveLength(2);
