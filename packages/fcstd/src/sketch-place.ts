@@ -91,7 +91,7 @@ const isGeoGroup = (o: FcObject) =>
 
 /** Each object's container, built once per document. */
 const parents = new WeakMap<FcDocument, Map<string, FcObject>>();
-function parentsOf(doc: FcDocument): Map<string, FcObject> {
+export function parentsOf(doc: FcDocument): Map<string, FcObject> {
   let parent = parents.get(doc);
   if (parent) return parent;
   parent = new Map();

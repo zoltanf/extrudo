@@ -18,14 +18,8 @@
  */
 import { supportsOf } from './attach';
 import { FEATURE_TYPES, MAX_ORIGINALS } from './features';
-import { type FinalShape, linkedObjects } from './final-shapes';
-import {
-  brepBytesHaveSolid,
-  type FcDocument,
-  type FcObject,
-  MAX_STORED_BREP_BYTES,
-  storedShapeEntry,
-} from './model';
+import { type FinalShape, linkedObjects, storedSolid } from './final-shapes';
+import { type FcDocument, type FcObject, storedShapeEntry } from './model';
 import { cleanName } from './names';
 
 /** The most loose chains one import plans at its top (the library has 14). */
@@ -132,29 +126,13 @@ export function loosePlanner(doc: FcDocument): LoosePlanner {
     !BINDER.test(o.type) &&
     !members.has(o.name);
 
-  const solids = new Map<string, boolean>();
   /**
    * Whether `o` stores a solid. Each entry is read once, however many objects name it and whether
    * or not it can be read; one past what the import's kernel reads is never inflated.
    */
   const holdsSolid = (o: FcObject): boolean => {
     const entry = storedShapeEntry(doc, o);
-    if (entry === undefined || entry.endsWith('.bin')) return false;
-    const known = solids.get(entry);
-    if (known !== undefined) return known;
-    let result = false;
-    const before = doc.problems.length;
-    try {
-      if ((doc.entries.size(entry) ?? 0) <= MAX_STORED_BREP_BYTES) {
-        const bytes = doc.entries.get(entry);
-        result = bytes !== undefined && brepBytesHaveSolid(bytes);
-      }
-    } catch {
-      result = false;
-    }
-    doc.problems.length = before;
-    solids.set(entry, result);
-    return result;
+    return entry !== undefined && storedSolid(doc, entry) === 'solid';
   };
 
   /** The first object a sketch is attached to, read once per sketch whatever its list holds. */

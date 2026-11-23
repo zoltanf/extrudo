@@ -401,7 +401,13 @@ describe('Part trees with the file’s own shapes below a live boolean', () => {
     timeout: T,
   }, async () => {
     const r = await runPart('compounds');
-    expect(r.trees).toEqual({ Cut: 'history', Cut001: 'leaves' });
+    // The compound at the top comes in as its members (S12b): two trees of one primitive each.
+    expect(r.trees).toEqual({
+      Cut: 'history',
+      Cut001: 'leaves',
+      Box: 'history',
+      Cylinder: 'history',
+    });
     expect(r.outcomes).toEqual({
       Box001: 'feature',
       Cylinder001: 'feature',
@@ -411,9 +417,12 @@ describe('Part trees with the file’s own shapes below a live boolean', () => {
       Blocks: 'leaf:compound',
       Box004: 'feature',
       Cut001: 'feature',
+      Box: 'feature',
+      Cylinder: 'feature',
     });
-    // A compound at the top stays as today; the base compound's two solids are cut each.
-    expect(r.report.shapes.map((s) => s.name)).toEqual(['Compound']);
+    // A compound at the top comes in as its members; the base compound's two solids are cut each.
+    expect(r.report.shapes.map((s) => s.name)).toEqual([]);
+    expect(r.report.compounds.map((c) => [c.name, c.outcome])).toEqual([['Compound', 'members']]);
     expect(r.features).toContain('combine Cut001 2');
     await measuresHold(r, 'compounds');
   });

@@ -9,7 +9,13 @@
  * so a rebuild meshes only the bodies the newest feature changed. A new
  * kernel (after a restart) needs a new `importRebuilder`.
  */
-import type { AttachmentId, BodyId, ExtrudoDocument, GeomRef } from '@extrudo/core';
+import {
+  type AttachmentId,
+  type BodyId,
+  type ExtrudoDocument,
+  type GeomRef,
+  isMeshMediaType,
+} from '@extrudo/core';
 import type { KernelApi } from './service';
 import type { StoredShapeMeasure } from './stored-shape';
 
@@ -47,10 +53,13 @@ export interface ImportRebuilder {
 }
 
 export function importRebuilder(
-  api: Pick<KernelApi, 'addFile' | 'recompute' | 'measureBodies'>,
+  api: Pick<KernelApi, 'addFile' | 'recompute' | 'measureBodies'> &
+    Partial<Pick<KernelApi, 'enableMeshes'>>,
 ): ImportRebuilder {
   const sent = new Set<AttachmentId>();
   let have: Record<BodyId, string> = {};
+  // A mesh attachment (S12b: a FreeCAD mesh as STL) needs manifold-3d in the kernel, once.
+  let meshes = false;
   return {
     async rebuild(doc, files, skip = [], reports = []) {
       for (const [id, bytes] of files) {
@@ -60,6 +69,10 @@ export function importRebuilder(
         const copy = bytes.slice().buffer as ArrayBuffer;
         await api.addFile(id, copy, attachment.mediaType, attachment.fileName);
         sent.add(id);
+        if (!meshes && isMeshMediaType(attachment.mediaType) && api.enableMeshes) {
+          await api.enableMeshes();
+          meshes = true;
+        }
       }
       const result = await api.recompute({ doc, have });
       if (result.status !== 'done') throw new Error('the rebuild was cancelled');

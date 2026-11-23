@@ -54,11 +54,13 @@ const ALLOWED = {
   ],
   // The FreeCAD importer (ADR-0144 decision 1): reads the archive and, from
   // its mapping slice on, builds the design through the document API. The
-  // sketch package for profiles, storage for its hash; the kernel only in its
-  // tests (the import's geometry goes through an interface the caller supplies).
+  // sketch package for profiles, storage for its hash, io for a mesh's STL
+  // (S12b); the kernel only in its tests (the import's geometry goes through an
+  // interface the caller supplies).
   '@extrudo/fcstd': [
     '@extrudo/api',
     '@extrudo/core',
+    '@extrudo/io',
     '@extrudo/sketch',
     '@extrudo/storage',
     '@extrudo/kernel',

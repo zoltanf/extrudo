@@ -195,6 +195,7 @@ describe('stored shapes too large to read', () => {
       names: entries.names,
       problems: entries.problems,
       has: (name: string) => entries.has(name),
+      head: (name: string, n: number) => entries.head(name, n),
       size: (name: string) =>
         name === 'BodyPad.brp' ? MAX_STORED_BREP_BYTES + 1 : entries.size(name),
       get: (name: string) => {

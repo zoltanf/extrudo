@@ -46,6 +46,10 @@ const report: FcstdImportReport = {
   bodies: [],
   parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
   trees: [],
+  meshes: [],
+  links: [],
+  compounds: [],
+  components: { made: [], parts: 0, partsWithout: 0, overLimit: 0 },
 };
 
 describe('the FreeCAD import worker client (ADR-0144 decision 9)', () => {

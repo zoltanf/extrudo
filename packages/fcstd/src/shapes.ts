@@ -40,8 +40,14 @@ export { IMPORT_TIMEOUT_MS, MAX_RESTARTS, NONSENSE_REPLY, SHAPE_TIMEOUT_MS } fro
 export const MAX_SOLIDS_PER_SHAPE = 10_000;
 
 export type LeftOutReason =
-  /** A mesh object (S12). */
+  /** A link to a mesh that couldn't be copied (S12b): S3 never brought a mesh in, so nothing does. */
   | 'mesh'
+  /** A mesh whose surface doesn't close (S12b). */
+  | 'not-closed'
+  /** Past one of the import's limits on how many (S12b: meshes, copies). */
+  | 'limit'
+  /** A link that scales what it shows, which a copy can't (S12b). */
+  | 'scaled'
   /** The object stores no shape, or an empty one. */
   | 'empty'
   /** FreeCAD's binary shape form, which is not read. */
@@ -101,6 +107,31 @@ export interface ShapeImportOptions {
   readonly now?: () => number;
   /** ADR-0066's 100 MB per design (`MAX_ATTACHMENTS_BYTES`), for tests. */
   readonly maxAttachmentsBytes?: number;
+  /**
+   * Final shapes converted with the rest but not added (S12b: links and
+   * compounds that may come in another way first): `deferred.add` adds the
+   * ones that didn't, from the bytes made here, with no kernel call.
+   */
+  readonly defer?: ReadonlySet<string>;
+}
+
+/**
+ * Shapes converted but not added yet (`ShapeImportOptions.defer`). Their bytes are held for
+ * them until each is settled: released when it came in another way, added when it falls back.
+ * Whatever adds attachments meanwhile is judged against the design plus `held()`, so the add can
+ * never pass the design's limit.
+ */
+export interface DeferredShapes {
+  /** The bytes still held: each distinct file of an unsettled shape once, none the design has. */
+  held(): number;
+  /** These objects came in another way: their bytes are no longer held. */
+  release(objects: Iterable<string>): void;
+  /** Adds these objects' imports (the ones that converted), in one undo step, and settles every one. */
+  add(objects: ReadonlySet<string>): {
+    imported: ImportedShape[];
+    leftOut: LeftOutShape[];
+    files: Map<AttachmentId, Uint8Array>;
+  };
 }
 
 export interface ShapeImportResult {
@@ -112,6 +143,8 @@ export interface ShapeImportResult {
   readonly restarts: number;
   /** The most STEP bytes held at once while converting (kept files plus the shape at hand). */
   readonly peakBytes: number;
+  /** The deferred shapes (none without `defer`). */
+  readonly deferred: DeferredShapes;
 }
 
 /**
@@ -272,6 +305,8 @@ export async function importShapes(
     existing.set(a.sha256, id as AttachmentId);
   }
   const kept = new Map<string, Uint8Array>();
+  /** Deferred shapes that couldn't be converted: left out only if they are added. */
+  const deferredOut: LeftOutShape[] = [];
   let keptBytes = 0;
   let peakBytes = 0;
   let done = 0;
@@ -279,7 +314,7 @@ export async function importShapes(
   for (const shape of shapes) {
     const name = cleanName(shape.name, shape.object.name);
     const leave = (reason: LeftOutReason, detail?: string) =>
-      leftOut.push({
+      (options.defer?.has(shape.object.name) ? deferredOut : leftOut).push({
         object: shape.object.name,
         name,
         reason,
@@ -336,12 +371,54 @@ export async function importShapes(
     }
   }
 
+  const now = converted.filter((c) => !options.defer?.has(c.shape.object.name));
+  const later = converted.filter((c) => options.defer?.has(c.shape.object.name));
+  const { imported, files } = addConverted(design, now, kept, "Import the file's shapes");
+  const unsettled = new Set(later.map((c) => c.shape.object.name));
+  const deferred: DeferredShapes = {
+    held: () => {
+      const inDesign = new Set(Object.values(design.doc.attachments ?? {}).map((a) => a.sha256));
+      const seen = new Set<string>();
+      let bytes = 0;
+      for (const c of later) {
+        if (!unsettled.has(c.shape.object.name) || inDesign.has(c.sha256) || seen.has(c.sha256))
+          continue;
+        seen.add(c.sha256);
+        bytes += c.size;
+      }
+      return bytes;
+    },
+    release: (objects) => {
+      for (const o of objects) unsettled.delete(o);
+    },
+    add: (objects) => {
+      for (const o of unsettled) unsettled.delete(o);
+      const out = addConverted(
+        design,
+        later.filter((c) => objects.has(c.shape.object.name)),
+        kept,
+        "Import the file's own shapes for what didn't come in another way",
+      );
+      return { ...out, leftOut: deferredOut.filter((l) => objects.has(l.object)) };
+    },
+  };
+  return { imported, leftOut, files, restarts: budget.restarts, peakBytes, deferred };
+}
+
+/** One `import` feature per converted shape, in order, as one undo step; equal bytes share one attachment. */
+function addConverted(
+  design: Design,
+  converted: readonly Converted[],
+  kept: ReadonlyMap<string, Uint8Array>,
+  label: string,
+): { imported: ImportedShape[]; files: Map<AttachmentId, Uint8Array> } {
   const imported: ImportedShape[] = [];
   const files = new Map<AttachmentId, Uint8Array>();
-  if (converted.length === 0)
-    return { imported, leftOut, files, restarts: budget.restarts, peakBytes };
-  const byHash = new Map(existing);
-  design.transaction("Import the file's shapes", () => {
+  if (converted.length === 0) return { imported, files };
+  const byHash = new Map<string, AttachmentId>();
+  for (const [id, a] of Object.entries(design.doc.attachments ?? {}))
+    if (!byHash.has(a.sha256)) byHash.set(a.sha256, id as AttachmentId);
+  design.transaction(label, () => {
     for (const { shape, name, solids, drift, sha256, size } of converted) {
       let attachment = byHash.get(sha256);
       if (attachment === undefined) {
@@ -369,7 +446,7 @@ export async function importShapes(
       });
     }
   });
-  return { imported, leftOut, files, restarts: budget.restarts, peakBytes };
+  return { imported, files };
 }
 
 /** What converting one stored shape came to: its STEP bytes and measures, or why it can't come in. */

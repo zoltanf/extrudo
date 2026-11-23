@@ -451,7 +451,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             shapes: [
               { object: 'Body', name: 'Plate', feature: 'f1', solids: 1, drift: 0, stepBytes: 30 },
             ],
-            leftOut: [{ object: 'Mesh', name: 'Scan', reason: 'mesh' }],
+            leftOut: [{ object: 'Mesh', name: 'Scan', reason: 'not-closed' }],
             finalShapes: 2,
             problems: [],
             linkArrays: [],
@@ -459,6 +459,10 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             bodies: [],
             parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
             trees: [],
+            meshes: [],
+            links: [],
+            compounds: [],
+            components: { made: [], parts: 0, partsWithout: 0, overLimit: 0 },
           },
         };
       },
@@ -471,7 +475,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
     expect(await projects.readAttachment?.(id as never, sha256)).toEqual(step);
     expect(takeOpenNotices(id as never)).toEqual([
       'Imported from the FreeCAD file: 1 of 2 shapes, as a body without history.',
-      "Not imported: Scan (a mesh, which Extrudo doesn't import from FreeCAD files yet).",
+      "Not imported: Scan (a mesh whose surface isn't closed).",
     ]);
   });
 });
@@ -522,6 +526,139 @@ describe('fcstdNotices', () => {
     ]);
   });
 
+  it('S12b: counts a compound once and a copy with what it copies; meshes as bodies; components', () => {
+    const history = (object: string) =>
+      ({
+        object,
+        name: object,
+        features: 1,
+        mapped: [],
+        bodies: [`${object}:0`],
+        sketches: [],
+        secondAttempts: 0,
+        steps: [],
+        heldAfterLastStep: 1,
+        outcome: 'history',
+      }) as never;
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 6,
+      // Body is a member of Pair; Box001 is a plain shape; Link copies Body; Mesh came in.
+      // Other came in as the file's own shape (a link not copied).
+      shapes: [shape('Box001'), shape('Member'), shape('Other')],
+      bodies: [history('Body'), history('Alone')],
+      trees: [],
+      meshes: [{ object: 'Mesh', name: 'Scan', outcome: 'in', bodies: ['m:0'] }],
+      compounds: [
+        {
+          object: 'Pair',
+          name: 'Pair',
+          outcome: 'members',
+          members: ['Body', 'Member'],
+          bodies: ['Body:0', 'f:0'],
+          moves: [],
+          withoutSolid: 0,
+          nested: 0,
+        },
+      ],
+      links: [
+        {
+          object: 'Link',
+          name: 'Link',
+          outcome: 'copy',
+          sources: ['Alone'],
+          moves: ['f9'],
+          bodies: ['f9:0'],
+        },
+        {
+          object: 'Other',
+          name: 'Other',
+          outcome: 'today',
+          reason: 'target',
+          moves: [],
+          bodies: [],
+        },
+      ],
+      components: {
+        made: [
+          { id: 'c1', name: 'Frame', kind: 'part', object: 'Part', bodies: 2 },
+          { id: 'c2', name: 'Pair', kind: 'compound', object: 'Pair', bodies: 2 },
+        ],
+        parts: 1,
+        partsWithout: 0,
+        overLimit: 0,
+      },
+    });
+    expect(notices).toEqual([
+      // Alone and its copy with their history; Pair with part of it (a body and a plain shape);
+      // Box001, Other and the mesh without.
+      "Imported from the FreeCAD file: 6 of 6 shapes, 2 with their history, 1 with part of its history and 3 as bodies without history. Grouped into components as the file's parts and compounds group them: Frame; Pair.",
+      "Taken from the file's own shape, not copied from what it links to: Other, because what it links to didn't come into the design.",
+    ]);
+  });
+
+  it('S12b: a link whose own shape didn’t come in is named only as not imported', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 2,
+      shapes: [shape('Box'), shape('Other')],
+      leftOut: [{ object: 'ToSketch', name: 'ToSketch', reason: 'empty' }],
+      links: [
+        {
+          object: 'ToSketch',
+          name: 'ToSketch',
+          outcome: 'today',
+          reason: 'target',
+          moves: [],
+          bodies: [],
+        },
+        {
+          object: 'Other',
+          name: 'Other',
+          outcome: 'today',
+          reason: 'target',
+          moves: [],
+          bodies: [],
+        },
+      ],
+    });
+    expect(notices.filter((n) => n.includes('ToSketch'))).toEqual([
+      'Not imported: ToSketch (no shape).',
+    ]);
+    expect(
+      notices.some(
+        (n) => n.startsWith("Taken from the file's own shape, not copied") && n.includes('Other'),
+      ),
+    ).toBe(true);
+  });
+
+  it('S12b: a link to a mesh it couldn’t copy says why', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 2,
+      shapes: [],
+      leftOut: [
+        { object: 'Mesh', name: 'Scan', reason: 'not-closed' },
+        { object: 'Link', name: 'Scan copy', reason: 'mesh' },
+      ],
+    });
+    expect(notices[1]).toBe(
+      "Not imported: Scan (a mesh whose surface isn't closed); Scan copy (a link to a mesh: the mesh didn't come in, or its copy didn't hold).",
+    );
+  });
+
+  it('S12b: a scaled link is not imported, with its reason', () => {
+    const notices = fcstdNotices({
+      ...base,
+      finalShapes: 2,
+      shapes: [shape('Box')],
+      leftOut: [{ object: 'Link', name: 'Big', reason: 'scaled' }],
+    });
+    expect(notices[1]).toBe(
+      "Not imported: Big (a link with a scale, which Extrudo's copies don't have).",
+    );
+  });
+
   it('says when a file has no shapes at all', () => {
     expect(fcstdNotices(base)).toEqual([
       'The FreeCAD file has no shapes to import, so the design is empty.',
@@ -534,8 +671,8 @@ describe('fcstdNotices', () => {
       finalShapes: 5,
       shapes: [shape('A')],
       leftOut: [
-        { object: 'm1', name: 'Scan', reason: 'mesh' },
-        { object: 'm2', name: 'Scan 2', reason: 'mesh' },
+        { object: 'm1', name: 'Scan', reason: 'not-closed' },
+        { object: 'm2', name: 'Scan 2', reason: 'not-closed' },
         { object: 'c', name: 'Fillet', reason: 'check', detail: 'the volume differs by 2 %' },
         { object: 'k', name: 'Broken', reason: 'kernel', detail: 'refused' },
       ],
@@ -544,7 +681,7 @@ describe('fcstdNotices', () => {
     });
     expect(notices).toEqual([
       'Imported from the FreeCAD file: 1 of 5 shapes, as a body without history.',
-      "Not imported: Scan; Scan 2 (a mesh, which Extrudo doesn't import from FreeCAD files yet); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
+      "Not imported: Scan; Scan 2 (a mesh whose surface isn't closed); Fillet (its shape didn't come through unchanged); Broken (the geometry kernel couldn't read it).",
       'Of each link array only one copy came in: Bolts.',
       '1 thing in the file could not be read; shapes that depend on them may be missing. Please report it with the file: Help › Report a Bug…',
     ]);
