@@ -19,6 +19,8 @@
  * (`<sketch>/<region>`, ADR-0024).
  */
 
+import { MAX_NAME_DEPTH } from '@extrudo/core';
+
 const TOKEN = /^[A-Za-z0-9_.~-]+$/;
 
 /** A face name made by a feature: `op:feature:role` or `op:feature:role:source`. */
@@ -143,10 +145,11 @@ function splitTopLevel(text: string, separator = '|'): string[] {
  */
 export function featuresOfName(name: string): string[] {
   const found = new Set<string>();
-  const visit = (text: string) => {
+  // `depth`: the names nested around `text`; past `MAX_NAME_DEPTH` none is read.
+  const visit = (text: string, depth: number) => {
     const compound = parseCompound(text);
     if (compound) {
-      for (const face of compound.faces) visit(face);
+      for (const face of compound.faces) visit(face, depth);
       return;
     }
     // op ":" feature ":" role (":" source)?; a role may have colons of its own.
@@ -154,11 +157,12 @@ export function featuresOfName(name: string): string[] {
     const feature = parts[1];
     if (parts.length < 3 || feature === undefined || !TOKEN.test(feature)) return;
     found.add(feature);
+    if (depth >= MAX_NAME_DEPTH) return;
     for (const part of parts.slice(2)) {
-      if (part.startsWith('(') && part.endsWith(')')) visit(part.slice(1, -1));
+      if (part.startsWith('(') && part.endsWith(')')) visit(part.slice(1, -1), depth + 1);
     }
   };
-  visit(name);
+  visit(name, 0);
   return [...found];
 }
 
@@ -170,20 +174,48 @@ export function featuresOfName(name: string): string[] {
  * and the round of a piece of it, `fillet:F:from:(e[a#2|b])`.
  */
 export function faceRelation(a: string, b: string): number {
-  if (a === b) return 2;
-  const pa = parseFace(a);
-  const pb = parseFace(b);
-  if (pa.stem !== pb.stem && !nestedRelated(pa.stem, pb.stem)) return 0;
-  const n = Math.min(pa.splits.length, pb.splits.length);
-  for (let i = 0; i < n; i++) if (pa.splits[i] !== pb.splits[i]) return 0;
-  return 1;
+  return faceRelationAt(a, b, 0, []);
 }
 
-/** Two stems `head(x)` and `head(y)` with the same head and related nested names. */
-function nestedRelated(a: string, b: string): boolean {
+/**
+ * The face relations one comparison has found, by depth and then by the two
+ * names: each pair's relation at a depth is found once per comparison. The
+ * depth is part of the key because `MAX_NAME_DEPTH` makes a pair's relation
+ * depend on it, so the result is the same whichever order pairs are tried in.
+ */
+type Relations = Map<string, Map<string, number>>[];
+
+/** `faceRelation` of two names `depth` names deep in the ones compared. */
+function faceRelationAt(a: string, b: string, depth: number, known: Relations): number {
+  if (a === b) return 2;
+  const atDepth = known[depth] ?? new Map<string, Map<string, number>>();
+  known[depth] = atDepth;
+  const found = atDepth.get(a)?.get(b);
+  if (found !== undefined) return found;
+  const pa = parseFace(a);
+  const pb = parseFace(b);
+  let relation = 1;
+  if (pa.stem !== pb.stem && !nestedRelated(pa.stem, pb.stem, depth, known)) relation = 0;
+  const n = Math.min(pa.splits.length, pb.splits.length);
+  for (let i = 0; i < n && relation > 0; i++) if (pa.splits[i] !== pb.splits[i]) relation = 0;
+  const row = atDepth.get(a) ?? new Map<string, number>();
+  atDepth.set(a, row);
+  row.set(b, relation);
+  return relation;
+}
+
+/**
+ * Two stems `head(x)` and `head(y)` with the same head and related nested
+ * names; `depth` names are nested around them, and past `MAX_NAME_DEPTH`
+ * different stems are not related.
+ */
+function nestedRelated(a: string, b: string, depth: number, known: Relations): boolean {
+  if (depth >= MAX_NAME_DEPTH) return false;
   const na = nestedSource(a);
   const nb = nestedSource(b);
-  return !!na && !!nb && na.head === nb.head && nameRelation(na.inner, nb.inner) > 0;
+  return (
+    !!na && !!nb && na.head === nb.head && nameRelationAt(na.inner, nb.inner, depth + 1, known) > 0
+  );
 }
 
 /** A stem ending in a nested name, `head(inner)`: its two parts. */
@@ -211,12 +243,17 @@ function nestedSource(stem: string): { head: string; inner: string } | undefined
  *   numbers agree. An exact match scores highest.
  */
 export function nameRelation(a: string, b: string): number {
+  return nameRelationAt(a, b, 0, []);
+}
+
+/** `nameRelation` of two names `depth` names deep in the ones compared. */
+function nameRelationAt(a: string, b: string, depth: number, known: Relations): number {
   if (a === b) return Number.POSITIVE_INFINITY;
   const ca = parseCompound(a);
   const cb = parseCompound(b);
-  if (!ca || !cb) return ca || cb ? 0 : faceRelation(a, b);
+  if (!ca || !cb) return ca || cb ? 0 : faceRelationAt(a, b, depth, known);
   if (ca.kind !== cb.kind || ca.faces.length !== cb.faces.length) return 0;
-  const equal = bestPairing(ca.faces, cb.faces);
+  const equal = bestPairing(ca.faces, cb.faces, depth, known);
   if (equal < 0) return 0;
   return 1 + equal + (ca.index === cb.index ? 1 : 0);
 }
@@ -227,19 +264,29 @@ export function nameRelation(a: string, b: string): number {
  * exists. Equal names pair first; the rest is paired by brute force, which
  * is cheap for the handful of faces an edge or vertex has.
  */
-function bestPairing(a: readonly string[], b: readonly string[]): number {
+function bestPairing(
+  a: readonly string[],
+  b: readonly string[],
+  depth: number,
+  known: Relations,
+): number {
   const inA = new Set(a);
   const inB = new Set(b);
   const restA = a.filter((name) => !inB.has(name));
   const restB = b.filter((name) => !inA.has(name));
   const equal = a.length - restA.length;
   if (restA.length === 0) return equal;
-  if (restA.length <= 7 && anyPairing(restA, restB) >= 0) return equal;
+  if (restA.length <= 7 && anyPairing(restA, restB, depth, known) >= 0) return equal;
   // Pairing equal names first can leave the rest unpairable; try all ways.
-  return a.length <= 7 ? anyPairing(a, b) : -1;
+  return a.length <= 7 ? anyPairing(a, b, depth, known) : -1;
 }
 
-function anyPairing(a: readonly string[], b: readonly string[]): number {
+function anyPairing(
+  a: readonly string[],
+  b: readonly string[],
+  depth: number,
+  known: Relations,
+): number {
   const used = new Array<boolean>(b.length).fill(false);
   let best = -1;
   const visit = (i: number, equal: number) => {
@@ -249,7 +296,7 @@ function anyPairing(a: readonly string[], b: readonly string[]): number {
     }
     for (let j = 0; j < b.length; j++) {
       if (used[j]) continue;
-      const relation = faceRelation(a[i] as string, b[j] as string);
+      const relation = faceRelationAt(a[i] as string, b[j] as string, depth, known);
       if (relation === 0) continue;
       used[j] = true;
       visit(i + 1, equal + (relation === 2 ? 1 : 0));

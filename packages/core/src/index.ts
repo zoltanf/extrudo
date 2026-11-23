@@ -64,6 +64,7 @@ export * from './mesh-to-solid';
 export {
   DocumentLoadError,
   type DocumentLoadErrorCode,
+  ID_TOO_LONG_TEXT,
   type JsonObject,
   type LoadResult,
   loadDocument,

@@ -32,6 +32,7 @@ import {
   heightOf,
   importInputs,
   isConstructionType,
+  MAX_NAME_DEPTH,
   MAX_PARAMETER_DEPTH,
   type Node,
   newId,
@@ -816,7 +817,11 @@ export function f3dToDesign(
     replayable.set(record, { id: made.id, name });
     const faces = new Map<string, number[]>();
     (step.faces ?? []).forEach((tags, i) => {
-      for (const tag of new Set(tags)) faces.set(tag, [...(faces.get(tag) ?? []), i]);
+      for (const tag of new Set(tags)) {
+        const at = faces.get(tag);
+        if (at) at.push(i);
+        else faces.set(tag, [i]);
+      }
     });
     naming.bases.set(record, { id: made.id, faces });
     report.notes.push(`${name}: its body is the file's own shape, without history.`);
@@ -913,11 +918,9 @@ export function f3dToDesign(
     const added = d.doc.features.slice(from);
     if (added.length === 0) return;
     // A full-length thread runs its longest face's length (unknown: the most turns).
-    const lengths = feature.type === 'thread' ? (feature.lengths ?? []) : [];
+    const longest = feature.type === 'thread' ? largest(feature.lengths ?? []) : undefined;
     const fullTurns =
-      lengths.length > 0 && lengths.every((l) => l !== undefined) && feature.type === 'thread'
-        ? Math.max(...(lengths as number[])) / feature.spec.pitch
-        : undefined;
+      longest !== undefined && feature.type === 'thread' ? longest / feature.spec.pitch : undefined;
     // Once the budget is spent, nothing is evaluated: a count is taken as the most.
     const value: InputValue = budget.left > 0 ? inputValue : () => undefined;
     const units = budget.cost(added, value, copies, fullTurns);
@@ -2952,6 +2955,19 @@ function hintDistance(shape: EdgeShape, p: Vec3): number {
   return Math.min(norm(sub(p, a)), norm(sub(p, b)), norm(sub(p, shape.mid)));
 }
 
+/**
+ * The largest of `values`; undefined when there are none or one is unknown.
+ * A loop, not a spread: a file sets how many a thread has.
+ */
+function largest(values: readonly (number | undefined)[]): number | undefined {
+  let most = Number.NEGATIVE_INFINITY;
+  for (const v of values) {
+    if (v === undefined) return undefined;
+    most = Math.max(most, v);
+  }
+  return values.length > 0 ? most : undefined;
+}
+
 /** Points along an edge: its ends and midpoint, or eight around a whole circle. */
 function edgePoints(shape: EdgeShape): Vec3[] {
   if (shape.ends) return [shape.ends[0], shape.ends[1], shape.mid];
@@ -3187,26 +3203,7 @@ function copyRounds(
   }
   // The repeated rounds so far: the original's id → the repeat's.
   const repeated = new Map<string, string>();
-  const copyOf = (face: string, label: string): string | undefined => {
-    const [op, owner] = face.split(':', 2);
-    if (!op || !owner) return undefined;
-    const copy = (name: string) =>
-      `${copies.op}:${copies.id}:${label === '' ? '' : `${label}:`}from:(${name})`;
-    if (copied.has(owner)) return /[()|#[\]]/.test(face) ? undefined : copy(face);
-    // A face of a round repeated already: the repeat's face from the copy of its edge.
-    const again = repeated.get(owner);
-    const from = `${op}:${owner}:from:(`;
-    if (!again || !face.startsWith(from) || !face.endsWith(')')) return undefined;
-    const edge = edgeCopy(face.slice(from.length, -1), label);
-    return edge && `${op}:${again}:from:(${edge})`;
-  };
-  const edgeCopy = (edge: string, label: string): string | undefined => {
-    const m = /^e\[(.*)\](@\d+)?$/.exec(edge);
-    if (!m) return undefined;
-    const faces = topLevel(m[1] as string).map((face) => copyOf(face, label));
-    if (faces.length === 0 || faces.some((face) => face === undefined)) return undefined;
-    return `e[${[...new Set(faces as string[])].sort().join('|')}]${m[2] ?? ''}`;
-  };
+  const { copyOf, edgeCopy } = roundCopies(copies, copied, repeated);
   const wanted = new Set(f.features);
   // In timeline order: a round on an earlier one's faces comes after it.
   for (const [record, round] of rounds) {
@@ -3263,6 +3260,50 @@ function copyRounds(
     report.notes.push(`${f.name}: ${source.name} is repeated on its copies as ${name}.`);
   }
   return repeated.size;
+}
+
+/**
+ * The names of a face's and an edge's copies for `copyRounds`: a face of a
+ * copied feature is `<op>:<copy>:<label>:from:(<face>)`, a face of a round
+ * repeated already (`repeated`: the original's id → the repeat's) the
+ * repeat's face from the copy of its edge, and an edge the edge between its
+ * faces' copies. `undefined` when one can't be told, and past `MAX_NAME_DEPTH`
+ * rounds nested in one another (each repeated round's face names the edge it
+ * rounds, so the names nest one level per round).
+ */
+export function roundCopies(
+  copies: Pick<MadeCopies, 'op' | 'id'>,
+  copied: ReadonlySet<string>,
+  repeated: ReadonlyMap<string, string>,
+): {
+  copyOf: (face: string, label: string) => string | undefined;
+  edgeCopy: (edge: string, label: string) => string | undefined;
+} {
+  const copyOf = (face: string, label: string, depth = 0): string | undefined => {
+    const [op, owner] = face.split(':', 2);
+    if (!op || !owner) return undefined;
+    const copy = (name: string) =>
+      `${copies.op}:${copies.id}:${label === '' ? '' : `${label}:`}from:(${name})`;
+    if (copied.has(owner)) return /[()|#[\]]/.test(face) ? undefined : copy(face);
+    // A face of a round repeated already: the repeat's face from the copy of its edge.
+    const again = repeated.get(owner);
+    const from = `${op}:${owner}:from:(`;
+    if (!again || !face.startsWith(from) || !face.endsWith(')')) return undefined;
+    if (depth >= MAX_NAME_DEPTH) return undefined;
+    const edge = edgeCopy(face.slice(from.length, -1), label, depth + 1);
+    return edge && `${op}:${again}:from:(${edge})`;
+  };
+  const edgeCopy = (edge: string, label: string, depth = 0): string | undefined => {
+    const m = /^e\[(.*)\](@\d+)?$/.exec(edge);
+    if (!m) return undefined;
+    const faces = topLevel(m[1] as string).map((face) => copyOf(face, label, depth));
+    if (faces.length === 0 || faces.some((face) => face === undefined)) return undefined;
+    return `e[${[...new Set(faces as string[])].sort().join('|')}]${m[2] ?? ''}`;
+  };
+  return {
+    copyOf: (face, label) => copyOf(face, label),
+    edgeCopy: (edge, label) => edgeCopy(edge, label),
+  };
 }
 
 /** The note on the features a mirror or pattern copies that it leaves out: neither imported nor repeated (`copyRounds`). */

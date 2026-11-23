@@ -2379,3 +2379,34 @@ hands over each buffer once. On the corpus nothing imports differently: the
 documents saved (the replay and the design with the plan applied) and the
 stored files are byte for byte the same for all 252 designs, and the gate
 (replay and body check, against main c4ce6fb8) is unchanged design by design.
+
+## Amendment, 2026-11-23: no spreads of a file's lists in the mapping
+
+The budget's charge for a full-length thread finds its longest face with a
+loop (`largest` in `map.ts`), and a sweep's path references are added to its
+list one by one (`map-more.ts`). Rule (round 3's, restated): a list whose
+length a file sets is never spread into a call (`Math.max(...)`, `push(...)`,
+`String.fromCharCode(...)`, `apply`); it is walked with a loop. A spread over a
+fixed-size vector or a list under a small constant cap (a hole's found
+centres, `MAX_FOUND_CENTRES` = 256) is fine. `import-budgets.test.ts` checks
+that a thread's longest face decides the charge.
+
+## Amendment, 2026-11-23: round copies to a fixed depth
+
+A mirror's or pattern's repeat of a round names the copies of its edges
+(`copyRounds`); a round on a round repeated already names its face through the
+copy of that round's edge, one nested name per round. That walk
+(`roundCopies`: `copyOf` and `edgeCopy`) now goes at most `MAX_NAME_DEPTH` = 64
+rounds deep, the depth the kernel's name walks read (ADR-0005's amendment of
+this date); a deeper one is not copied and stays left out with the note every
+round that can't be told on the copies gets. `map-more.test.ts` copies a chain
+of 64 and not of 65.
+
+## Amendment, 2026-11-23: a base body's face lists in one pass
+
+A base feature's body lists, per tag, the faces that carry it (`keepBase` in
+`map.ts`, read by the base-body face names). Each face's index is now pushed
+onto its tag's list, so the lists take one step per face and tag, however many
+faces share a tag; a face is named by a tag only when it is the one face
+carrying it, as before.
+

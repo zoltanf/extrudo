@@ -16,6 +16,7 @@ import {
   type FeatureId,
   type FeatureStatus,
   faceRoleIssues,
+  MAX_FEATURE_ID_LENGTH,
   updateFeatureInputs,
 } from '@extrudo/core';
 import { Kernel, NO_SCRIPT_HOST, type RecomputeResult } from '@extrudo/kernel';
@@ -379,6 +380,41 @@ describe('a script in the engine', () => {
       status: 'error',
       message: 'Needs Script1, which has an error.',
     });
+  });
+});
+
+describe("a generated feature's ID and the documents' ID limit (ADR-0003)", () => {
+  /**
+   * A script that makes one box with a feature ID of `length` characters, its
+   * body named as the app names every body it shows, and the design saved.
+   */
+  async function saved(length: number) {
+    const d = Design.create({ name: 'Long', now: '2026-10-05T00:00:00.000Z' });
+    d.script({
+      code: `design.box({ length: 5, width: 5, height: 5 }, { id: 'f1.' + 'x'.repeat(${length - 3}) });`,
+    });
+    const result = await compute(engineOf(), doc(d));
+    for (const body of result.bodies) d.setBody(body.id, { name: 'Body1' });
+    return { result, saved: d.toJSON() };
+  }
+
+  it('runs a feature whose bodies fit in the limit, and the saved design opens again', async () => {
+    const { result, saved: json } = await saved(MAX_FEATURE_ID_LENGTH);
+    expect(statusOf(result, 'f1')).toMatchObject({ status: 'ok' });
+    const [body] = result.bodies;
+    expect(body?.id).toHaveLength(MAX_FEATURE_ID_LENGTH + 2);
+    expect(Object.keys(Design.from(json).doc.bodies)).toEqual([body?.id]);
+  });
+
+  it('refuses a longer one when the script runs, so nothing of it is saved', async () => {
+    const { result, saved: json } = await saved(MAX_FEATURE_ID_LENGTH + 1);
+    expect(statusOf(result, 'f1')).toMatchObject({
+      status: 'error',
+      // The API refuses the ID in the call; `checkedGenerated` would refuse what it returned.
+      message: `Line 1: A feature's ID may have at most ${MAX_FEATURE_ID_LENGTH} characters.`,
+    });
+    expect(result.bodies).toEqual([]);
+    expect(Design.from(json).doc.bodies).toEqual({});
   });
 });
 

@@ -370,3 +370,21 @@ in the feature's inputs (`ReferenceIssue` carries only kind and ID); a
 reference without one (a sketch profile, a plane) has no ghost. No label is
 drawn in the view yet: `data-ghosts` and the Fix References prompt name the
 feature.
+
+## Amendment, 2026-11-23: how deep a name's walks go
+
+A name nests the names it is made from: a round's face names the edge it
+rounds, `fillet:F:from:(e[…])`, and a round on that round's edge nests one
+level more.
+
+`featuresOfName` and the related-name test (`nameRelation`, `faceRelation`,
+`nestedRelated`) read at most `MAX_NAME_DEPTH` = 64 nested names (core
+`refs.ts`): `featuresOfName` names the features of the outer 65 levels, and
+two names that differ only deeper are not related (equal names still are, at
+any depth). One comparison finds each pair of faces' relation once per depth
+(`Relations`, keyed by depth because the cap makes a relation depend on it),
+so its work grows with the number of pairs it compares and its result does
+not depend on the order the pairs are tried in. The f3d import
+copies rounds on rounds to the same depth (ADR-0083's amendment of this date).
+`topo-id.test.ts` relates names 64 levels deep and not 65.
+

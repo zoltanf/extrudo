@@ -538,7 +538,7 @@ export function pathPattern(
       (id): GeomRef => ({ kind: 'sketchEntity', id: `${entry.handle.id}/${id}` }),
     );
     if (!first && (at[0] || at[1])) first = { ref: refs[0] as GeomRef, flip: !at[0] };
-    else rest.push(...refs);
+    else for (const ref of refs) rest.push(ref);
   }
   if (!first) return 'its path does not start with a sketch line at its start point';
   const inputs: Record<string, unknown> = {

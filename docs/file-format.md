@@ -18,7 +18,8 @@ The rest of Extrudo is GPL-3.0-or-later.
 Conventions: "must" and "may" are meant in the RFC sense. Numbers are JSON
 numbers (IEEE doubles). Lengths are millimetres and angles degrees wherever a
 plain number is stored (only sketch coordinates and radii; every other number
-is an expression string). An "ID" is a non-empty string.
+is an expression string). An "ID" is a non-empty string of at most 1,000
+characters, a feature's ID at most 980 (section 10).
 
 Contents: 1 Overview, 2 The container, 3 Versioning and migrations, 4 The
 document, 5 Expressions and parameters, 6 Features, 7 Sketch data,
@@ -213,7 +214,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 |---|---|---|---|
 | `format` | `"extrudo"` | yes | Literal. |
 | `formatVersion` | `2` | yes | Literal 2 in this specification. |
-| `id` | ID | yes | The project's identity (a UUID v4 from `crypto.randomUUID()` in practice; any non-empty string is accepted). Names the project in storage. |
+| `id` | ID | yes | The project's identity (a UUID v4 from `crypto.randomUUID()` in practice; any ID is accepted). Names the project in storage. |
 | `name` | string | yes | Non-empty. Shown in the app bar and the home screen. |
 | `settings` | object | yes | Section 4.1. |
 | `parameters` | array of Parameter | yes | User parameters (section 5.1). May be empty. |
@@ -2119,7 +2120,9 @@ side swept from sketch line `l8`), `box:B:side:front`,
 writers can create references to origin planes, axes and sketch profiles and
 entities; face, edge and vertex names must come from the kernel's naming
 tables (`packages/kernel/src/naming/`), which is why a tool that needs them
-has to run a kernel.
+has to run a kernel. A reader relates two names that differ by a split piece
+(`#n`) at most 64 nested names deep (`MAX_NAME_DEPTH`); deeper, only an equal
+name matches.
 
 ### 8.1 `fingerprint`
 
@@ -2305,11 +2308,21 @@ and `versions/1.json` (a document of the same shape).
 configuration, group, component (`ComponentId`, 4.7), joint (`JointId`, 4.8), sketch entity,
 constraint, dimension, projection) gets a random UUID (v4, from
 `crypto.randomUUID()`) when it is created and keeps it for life; IDs are never
-reused. The schema only requires a non-empty string, and readers
-must accept any. IDs of features are used as tokens inside references and
-persistent names, so a hand-written feature ID should use only
-`[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a `script` makes has the ID
-`<script>.<n>` (6.30), which is never stored, and so has a feature of an inserted design, `<insert>.<id>` (6.37). Sketch entity, constraint, dimension and
+reused. The schema requires a non-empty string of at most 1,000 characters
+(`MAX_ID_LENGTH`), a feature's ID at most 980 (`MAX_FEATURE_ID_LENGTH`), and
+readers must accept any such string. A feature's ID leaves 20 characters for
+its bodies' IDs, `<feature>:<n>`, which a document stores as keys. A document
+with a longer ID, as a field or as a key, is refused (`invalid`: "This design
+has an ID too long to open: an ID may have at most 1,000 characters, a
+feature's 980."). What the app and the importers make is far shorter: a UUID
+is 36 characters, an inserted design's body under 100. IDs of features are
+used as tokens inside references and persistent names, so a hand-written
+feature ID should use only `[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a
+`script` makes has the ID `<script>.<n>` (6.30), which is never stored, and so
+has a feature of an inserted design, `<insert>.<id>` (6.37); either whole ID
+is held to the same 980 characters when the feature runs (a script's or
+plugin's feature past it is the script's error, an inserted design whose
+features would pass it is refused). Sketch entity, constraint, dimension and
 projection IDs share one
 space per sketch (section 7). Body IDs are made by the kernel (`<feature>:<n>`)
 and profile region IDs by the sketch profile detector; a third-party writer

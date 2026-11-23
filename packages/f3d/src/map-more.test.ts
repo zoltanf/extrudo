@@ -3,12 +3,14 @@
  * hand-built decoded designs: a 1 mm hole cut through a washer, then
  * mirrored or repeated in a row. Real files stay out of the repository.
  */
+
+import { MAX_NAME_DEPTH } from '@extrudo/core';
 import type { Kernel as KernelType } from '@extrudo/kernel';
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ParameterValue } from './decode/parameters';
-import { f3dToDesign, MAX_REPEATED_ROUND_REFS, MAX_ROUND_EDGES } from './map';
+import { f3dToDesign, MAX_REPEATED_ROUND_REFS, MAX_ROUND_EDGES, roundCopies } from './map';
 import {
   type F3dDesign,
   type F3dEdge,
@@ -884,6 +886,26 @@ describe('f3dToDesign: copying features', () => {
     // The copy is rounded as the original is: twice the original's material on the ring.
     const [both] = await volumes(f3d);
     expect(both).toBeCloseTo(RING + 2 * ((one as number) - RING), 4);
+  });
+
+  it('copies a round on rounds nested up to MAX_NAME_DEPTH deep, and no deeper', () => {
+    // Round k rounds an edge between round k − 1's face and a copied extrude's
+    // side, so its edge's name nests k rounds; each was repeated already.
+    const side = 'extrude:E:side:a';
+    const repeated = new Map<string, string>();
+    let edge = `e[extrude:E:cap:end|${side}]`;
+    const edges = [edge];
+    for (let k = 1; k <= MAX_NAME_DEPTH + 1; k++) {
+      repeated.set(`r${k}`, `R${k}`);
+      edge = `e[fillet:r${k}:from:(${edge})|${side}]`;
+      edges.push(edge);
+    }
+    const { edgeCopy } = roundCopies({ op: 'pattern', id: 'P' }, new Set(['E']), repeated);
+    const copy = edgeCopy(edges[MAX_NAME_DEPTH] as string, '1');
+    // Every round's face is its repeat's, every extrude face its copy.
+    expect(copy?.match(/fillet:R\d+:from:/g)).toHaveLength(MAX_NAME_DEPTH);
+    expect(copy).toContain('fillet:R1:from:(e[pattern:P:1:from:(extrude:E:cap:end)|');
+    expect(edgeCopy(edges[MAX_NAME_DEPTH + 1] as string, '1')).toBeUndefined();
   });
 
   it.each([

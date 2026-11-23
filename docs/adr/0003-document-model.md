@@ -124,3 +124,61 @@ document may depend on live kernel objects.
   undo step; add it when the first UI needs it. Reordering (FR-TL-04) is P2.
 - **Commands are pure and serialisable**, so they can later be logged, sent to
   a worker or produced by scripts (FR-PRG-01) without changes.
+
+## Amendment, 2026-11-23: a length limit for IDs
+
+IDs are keys in many places (maps, caches, the messages to the kernel's
+worker, references), so their length is limited.
+
+Now every ID schema (`ids.ts`: document, feature, parameter, body, view,
+group, configuration, sketch entity, constraint, dimension, projection,
+attachment, component, joint, annotation, sheet, sheet view, sheet item) takes
+at most `MAX_ID_LENGTH` = 1,000 characters, as a field and as a record key,
+and a feature's ID at most `MAX_FEATURE_ID_LENGTH` = 980.
+`loadDocument` refuses a document with a longer one in plain words
+(`ID_TOO_LONG_TEXT`: "This design has an ID too long to open: an ID may
+have at most 1,000 characters, a feature's 980.", code `invalid`), for a newer
+format version too (it is not called newer for it). IDs inside a feature's
+inputs (a sketch's entities) meet the schema when the API checks the inputs.
+
+A feature's ID leaves room (`BODY_ID_ROOM` = 20) for the IDs made from it that
+a document stores: its bodies are `<feature>:<n>`, and the app stores every
+body it shows in `bodies` (`nameBodies`), so the colon and the body's number
+(a safe integer, at most 16 digits) must fit too. The same 980 holds every
+feature ID the engine runs, so each of their bodies fits as well, and the
+refusal comes when the feature runs, never when the design is opened again:
+a script's or plugin's feature (`<script>.<id>`, its whole ID, in
+`checkedGenerated`: "The script made a feature with an ID longer than 980
+characters.") and an inserted design's (`<insert>.<id>`, `insertedFeatures`;
+the insert command refuses such a copy at once). An inserted design's stored
+body key that would pass 1,000 characters under the insert is no body of the
+copy and is left out.
+
+Why 1,000: the app makes UUIDs (36 characters), the API and the importers
+counters (`f12`, `s340`, `fcp3`) and UUIDs for attachments, the kernel body IDs
+`<feature>:<n>`; the longest, an inserted design's body, is under 100. The
+repository's fixtures, demos and benchmark designs hold at most 39 (a body
+of a UUID feature), and the designs imported from the f3d corpus, before and
+after their bodies are checked, at most 36 (a UUID).
+
+The API holds every ID it takes to the same limits when the call is made
+(`checkedId` in `packages/api/src/ids.ts`, one helper): a caller's
+`options.id` (feature, parameter, configuration, component, joint,
+annotation, sheet, sheet view, sheet item, the document's own), every ID its
+factory hands out (a script's `<script>.f1` too) and a body's ID a call names
+(`setBody`, a component's or sheet view's bodies, a parts list's rows). A
+longer one is an `ApiError` whose path names the argument (`id`, `body`,
+`bodies`, `rows`; "A feature's ID may have at most 980 characters.", "An ID
+may have at most 1,000 characters."), and an inserted design whose features
+would run past 980 under the new insert's ID is refused with path `design`
+and the insert command's sentence (`longInsertedId`), before anything is
+dispatched,
+so the CLI and the MCP tools refuse it at once and the design is never saved
+with it.
+
+Not covered: a reference's `id` (`GeomRef`) is a persistent name, which nests
+the names it is made from, and keeps no limit of its own here.
+
+Rejected: a lower limit (256), which leaves less room for documents other
+tools write; refusing only past the document's own size limit, which is what
+there was.

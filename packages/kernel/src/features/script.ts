@@ -10,6 +10,7 @@ import {
   type Feature,
   type FeatureId,
   GENERATED_SEPARATOR,
+  MAX_FEATURE_ID_LENGTH,
   PLUGIN_TYPE,
   SCRIPT_TYPE,
   type ScriptInputs,
@@ -65,6 +66,13 @@ export function checkedGenerated(
   // one with that ID would collide with it in the engine's walk.
   const seen = new Set<string>(existing.map((feature) => feature.id));
   for (const feature of features) {
+    // The whole ID, prefix included, is held to a feature's limit, so the
+    // bodies the app stores under it (`<feature>:<n>`) fit the documents' one.
+    if (feature.id.length > MAX_FEATURE_ID_LENGTH) {
+      throw new ScriptRunError({
+        message: `The ${what} made a feature with an ID longer than ${MAX_FEATURE_ID_LENGTH} characters.`,
+      });
+    }
     if (!feature.id.startsWith(prefix) || seen.has(feature.id)) {
       throw new ScriptRunError({
         message: `The ${what} made a feature with the ID ${feature.id}.`,

@@ -32,7 +32,14 @@ import { CommandError, defineCommand } from './commands';
 import { copyComponentName } from './components';
 import { evaluateParameters } from './expr/parameters';
 import type { FeatureDefinition } from './features';
-import type { AttachmentId, BodyId, ComponentId, FeatureId } from './ids';
+import {
+  type AttachmentId,
+  type BodyId,
+  type ComponentId,
+  type FeatureId,
+  MAX_FEATURE_ID_LENGTH,
+  MAX_ID_LENGTH,
+} from './ids';
 import { PLUGIN_TYPE } from './plugin-feature';
 import {
   type Attachment,
@@ -158,6 +165,8 @@ export function insertDesignPayload(
       `${source.name} can't be inserted: ${issue?.path.join('.') ?? ''} ${issue?.message ?? ''}`.trim(),
     );
   }
+  const long = longInsertedId(ids.feature, design);
+  if (long) throw new CommandError(`${source.name} can't be inserted: ${long}`);
 
   // The files the copy names become the host's: the same bytes are one file,
   // and an ID the host already gives other bytes gets a new one in the copy.
@@ -187,7 +196,10 @@ export function insertDesignPayload(
     const at = id.lastIndexOf(':');
     if (at <= 0 || !own.has(id.slice(0, at))) continue;
     const { component: _was, ...rest } = meta;
-    bodies[prefixIds(id, own, ids.feature) as BodyId] = { ...rest, component: ids.component };
+    const key = prefixIds(id, own, ids.feature);
+    // Past the limit only a key no body of the copy has (its features' IDs fit, above).
+    if (key.length > MAX_ID_LENGTH) continue;
+    bodies[key as BodyId] = { ...rest, component: ids.component };
   }
 
   const feature: Feature = {
@@ -345,6 +357,8 @@ export function insertedFeatures(
       appVersion: '',
     },
   } as unknown as ExtrudoDocument);
+  const long = longInsertedId(insert.id, design);
+  if (long) return long;
   const ids = new Set<string>(design.features.map((f) => f.id));
   const out: Feature[] = [];
   for (const source of design.features) {
@@ -411,6 +425,21 @@ export function insertedFeatures(
     });
   }
   return out;
+}
+
+/**
+ * What is wrong when a feature of the copy would run under an ID past
+ * `MAX_FEATURE_ID_LENGTH` (`<insert>.<id>`, whose bodies the host stores), or
+ * `undefined`. The insert command, the kernel's expansion and the API's call
+ * say the same.
+ */
+export function longInsertedId(insert: FeatureId, design: EmbeddedDesign): string | undefined {
+  const long = design.features.find(
+    (f) => generatedFeatureId(insert, f.id).length > MAX_FEATURE_ID_LENGTH,
+  );
+  return long
+    ? `${long.name} would have an ID longer than ${MAX_FEATURE_ID_LENGTH} characters in this design.`
+    : undefined;
 }
 
 /** A deep copy of plain JSON (core has no DOM, so no `structuredClone`). */
