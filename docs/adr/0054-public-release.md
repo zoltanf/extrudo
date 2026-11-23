@@ -215,3 +215,33 @@ A browser that kept the broken worker picks up the new one on its next
 navigation, and the new worker activates once no open tab still uses the old
 one: a reload, or two.
 
+## Amendment (2026-11-23): a reload already runs the waiting version (issue #273)
+
+A self-hosted user saw "Update ready" in the menu strip next to the version
+they ran, at every load, after a plain browser reload. The cause is the
+worker's design, on any host: installing an update rewrites the precached
+`index.html` in the one cache the old, still active worker serves every page
+from, and fetches the new hashed files into it, so the next navigation runs the
+new version. But the browser lets a waiting worker take over only once no tab
+uses the old one, and a reload keeps its tab, so the worker kept waiting and
+every load reported it again (the toast too), until someone pressed Reload.
+
+The page now compares its own entry script (Vite's `index-<hash>.js`, which
+changes with any change to the app) with the precached `index.html`'s
+(`pageIsOlder` in `platform/updates.ts`). When a worker waits and the page
+already runs its version, the page sends it `SKIP_WAITING` and shows nothing:
+nothing needs a reload. When no worker waits but the page is older (another tab
+opened on the new version and let its worker in), the page still says "Update
+ready", and Reload only reloads; until then it keeps running its own bundle, whose
+lazy chunks the new worker still serves (activation keeps the previous version's
+files one more round, ADR-0037). When the page can't tell (no entry script, no
+cached index), a waiting worker counts as an update, as before. The check runs
+whenever the state is checked, and once more on `controllerchange`.
+
+Rejected: installing the new version into a cache of its own until activation,
+so that "Update ready" stays true and a reload keeps the old version. It
+reverses the rule above ("the new version's index.html shows on the next
+navigation") and would make a self-hoster who pulled a new image press Reload
+as well as reload. Rejected too: comparing the worker's `VERSION`, which hashes
+every file `index.html` included, so the page can't carry it.
+

@@ -11,7 +11,9 @@ const NONE = createUpdateStore();
 /**
  * Tells the person, through the page's toasts, that a new version is waiting
  * (ADR-0054). Every page with toasts calls it (home, a project): the toast
- * appears when the update arrives, or when the page opens with one waiting.
+ * appears when the update arrives, or when the page opens with one waiting that
+ * it doesn't run yet (a reload already runs it, and its worker then takes over
+ * quietly: `platform/updates.ts`, issue #273).
  * The updates are the platform's (P6-01 slice 4): the web's service worker or
  * the desktop's updater; a platform without `updates` shows nothing.
  */

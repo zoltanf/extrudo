@@ -177,15 +177,29 @@ test.describe('an update is waiting', () => {
       // Polled while the page reloads: a context that is being replaced answers "not yet".
       .catch(() => null);
 
-  /** Serves a changed sw.js and asks the browser to look for it, as it does on its own at times. */
+  /**
+   * Serves a new build and asks the browser to look for it, as it does on its own at times: a
+   * changed sw.js, and an index.html whose entry script differs (a query on the same file),
+   * which is how the page tells that it runs an older build (issue #273).
+   */
   async function publishUpdate(page: Page, version: string) {
     const current = await (await fetch(`${host.url}/sw.js`)).text();
+    const index = await (await fetch(`${host.url}/`)).text();
+    host.override(
+      '/',
+      index.replace(/(<script type="module"[^>]*src="[^"?]+)[^"]*"/, `$1?v=${version}"`),
+      'text/html; charset=utf-8',
+    );
     host.override(
       '/sw.js',
       current.replace(/const VERSION = '[^']*'/, `const VERSION = '${version}'`),
     );
     await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.update())`);
   }
+
+  /** The page's own entry script, which says which build it runs. */
+  const entry = (page: Page) =>
+    page.evaluate(`document.querySelector('script[type="module"][src]').src`) as Promise<string>;
 
   // The host redirects /index.html to / like Cloudflare Pages: a precached redirected
   // response used to fail every visit after the first with ERR_FAILED (2026-10-02).
@@ -243,6 +257,58 @@ test.describe('an update is waiting', () => {
     await strip.getByRole('button', { name: 'Reload' }).click();
     await expect.poll(() => activeVersion(page), { timeout: 15_000 }).toBe('test-v4');
     await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+  });
+
+  // Issue #273: installing rewrites the index.html the old worker serves, so the browser's own
+  // reload already runs the new build, but a reload never lets a waiting worker in. The page
+  // said "Update ready" on the new version at every load until someone pressed Reload.
+  test("the browser's reload brings the new version, and its worker takes over quietly", async ({
+    page,
+  }) => {
+    await page.goto(`${host.url}/`);
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+    await expect.poll(() => activeVersion(page)).toBeTruthy();
+
+    await publishUpdate(page, 'test-v5');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    expect(await entry(page)).toContain('?v=test-v5');
+    await expect.poll(() => activeVersion(page), { timeout: 15_000 }).toBe('test-v5');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toHaveCount(0);
+    const strip = (await openAppMenu(page)).locator('[data-update-strip]');
+    await expect(strip).toHaveAttribute('data-update-word', '');
+    await expect(strip.getByRole('button')).toHaveText(['GitHub']);
+  });
+
+  // The other side of it: a tab still on the old build when another one let the new worker in.
+  test('a tab on the old version still offers the reload once another tab took the update', async ({
+    page,
+  }) => {
+    await page.goto(`${host.url}/`);
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+    await expect.poll(() => activeVersion(page)).toBeTruthy();
+    await publishUpdate(page, 'test-v6');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toBeVisible();
+
+    const other = await page.context().newPage();
+    await other.goto(`${host.url}/`);
+    await expect(other.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    expect(await entry(other)).toContain('?v=test-v6');
+    await expect.poll(() => activeVersion(other), { timeout: 15_000 }).toBe('test-v6');
+    await expect(other.getByText('A new version of Extrudo is ready.')).toHaveCount(0);
+
+    await page.bringToFront();
+    const strip = (await openAppMenu(page)).locator('[data-update-strip]');
+    await expect(strip).toHaveAttribute('data-update-word', 'Update ready');
+    await strip.getByRole('button', { name: 'Reload' }).click();
+    await expect
+      .poll(() => entry(page).catch(() => ''), { timeout: 15_000 })
+      .toContain('?v=test-v6');
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await expect(page.getByText('A new version of Extrudo is ready.')).toHaveCount(0);
   });
 
   test('the reload keeps what you were doing: the open design is saved first', async ({ page }) => {
