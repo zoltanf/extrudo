@@ -107,6 +107,16 @@ function dressed(
   return drawing;
 }
 
+/** The drawings `keepDrawings` kept, by sketch ID, and the fonts' version they were made for. */
+export interface KeptDrawings {
+  fontsVersion: number;
+  drawings: ReadonlyMap<string, SketchDrawing>;
+}
+
+const NOTHING_KEPT: ReadonlyMap<string, SketchDrawing> = new Map();
+/** Nothing kept yet. */
+export const NO_KEPT_DRAWINGS: KeptDrawings = { fontsVersion: -1, drawings: NOTHING_KEPT };
+
 /**
  * The base with each sketch's drawing from `kept` (the last base's, by sketch) where the new
  * one draws the same (ADR-0159 §2): the shell makes every drawing again on each document
@@ -115,22 +125,31 @@ function dressed(
  * data is frozen and changes with every edit of its sketch); everything else by value. The
  * same base comes back while nothing is replaced; a replaced item is a copy (the base is
  * never written to). The returned `kept` holds this base's drawings only.
+ *
+ * What a drawing's readers take from outside it is left to the outside: the open sketch's
+ * fill reads the profile cache by its data and the fonts' version, and a font that arrives
+ * changes what the same data draws. So nothing is kept across a new fonts version: every
+ * drawing is the shell's new one, as before drawings were kept.
  */
 export function keepDrawings(
   base: ShownSketchBase,
-  kept: ReadonlyMap<string, SketchDrawing>,
-): { base: ShownSketchBase; kept: Map<string, SketchDrawing> } {
+  kept: KeptDrawings,
+): { base: ShownSketchBase; kept: KeptDrawings } {
   const next = new Map<string, SketchDrawing>();
+  const before = kept.fontsVersion === base.fontsVersion ? kept.drawings : NOTHING_KEPT;
   let replaced = false;
   const items = base.items.map((item) => {
-    const old = kept.get(item.drawing.id);
+    const old = before.get(item.drawing.id);
     const drawing = old && drawsTheSame(old, item.drawing) ? old : item.drawing;
     next.set(drawing.id, drawing);
     if (drawing === item.drawing) return item;
     replaced = true;
     return { ...item, drawing };
   });
-  return { base: replaced ? { ...base, items } : base, kept: next };
+  return {
+    base: replaced ? { ...base, items } : base,
+    kept: { fontsVersion: base.fontsVersion, drawings: next },
+  };
 }
 
 function drawsTheSame(a: SketchDrawing, b: SketchDrawing): boolean {
@@ -272,7 +291,7 @@ export function ShownSketchesProvider({
   const memo = useRef(new WeakMap<SketchDrawing, Dressed>());
   // Each sketch's drawing stays the same object while it draws the same (ADR-0159 §2), so its
   // dressed drawing does too, and a document change draws only the sketches it changed.
-  const kept = useRef<ReadonlyMap<string, SketchDrawing>>(new Map());
+  const kept = useRef<KeptDrawings>(NO_KEPT_DRAWINGS);
   const steady = useMemo(() => {
     const next = keepDrawings(base, kept.current);
     kept.current = next.kept;

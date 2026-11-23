@@ -174,4 +174,59 @@ describe('Sketches renders', () => {
     expect(renders.sketches).toBe(1);
     expect([...renders.fills.keys()]).toEqual(['sk9']);
   });
+
+  it('a new fonts version gives every shown sketch a new drawing, the open one too (ADR-0159 §2)', () => {
+    const regions = createStore<RegionsState>()(() => ({ version: 0, fallback: false }));
+    const client = {
+      store: regions,
+      get: () => undefined,
+      want: () => {},
+      keep: () => {},
+      addFont: () => {},
+    } as unknown as RegionsClient;
+    const datas = Array.from(
+      { length: 5 },
+      () => Object.freeze({ ...emptySketchData() }) as SketchData,
+    );
+    // What the shell makes: sketch 0 open (its fill reads the profile cache by its data and
+    // the fonts' version, ADR-0154), the others closed; every object new each time.
+    const shell = (fontsVersion: number): ShownSketchBase => ({
+      items: datas.map((data, i) => {
+        const drawing = {
+          id: `sk${i}`,
+          frame: JSON.parse(JSON.stringify(frame)) as SketchFrame,
+          data,
+          active: i === 0,
+          selectedEntities: [],
+          selectedProfiles: [],
+        };
+        return i === 0
+          ? {
+              drawing,
+              kind: 'open' as const,
+              claim: { id: 'sk0', active: true, regionBytes: 0, fillBytes: 0, fillable: true },
+            }
+          : {
+              drawing,
+              kind: 'closed' as const,
+              job: { key: `sk${i}`, data, version: fontsVersion, text: false },
+            };
+      }),
+      fontsVersion,
+      activeSketchId: 'sk0',
+    });
+    const tree = (base: ShownSketchBase) => (
+      <ShownSketchesProvider base={base} client={client}>
+        <View />
+      </ShownSketchesProvider>
+    );
+    const view = render(tree(shell(0)));
+    renders.fills.clear();
+    // The same fonts: the kept drawings, no fill renders.
+    view.rerender(tree(shell(0)));
+    expect(renders.fills.size).toBe(0);
+    // A font arrived: every fill renders again, the open sketch's first of all.
+    view.rerender(tree(shell(1)));
+    expect([...renders.fills.keys()].sort()).toEqual(['sk0', 'sk1', 'sk2', 'sk3', 'sk4']);
+  });
 });

@@ -79,10 +79,19 @@ untouched.
   compared by identity in `drawsTheSame`; anything else is compared by value.
 - `keepDrawings` never writes into the base's items or drawings, and keeps only the drawings
   it returned.
+- "Draws the same" covers only what is in the drawing. What its readers take from outside it
+  during a render stays with the outside: the open sketch's fill reads the profile cache by
+  its data **and the fonts' version** (`sketchProfiles`, `sketchRegions`), so a new fonts
+  version keeps nothing (the kept drawings carry the version they were made for, and every
+  drawing is the shell's new one, as before drawings were kept). Checked, nothing else: the
+  view's size is read per frame (`useFrame`), not in render; colours, the curve cache and the
+  pick state are props; lengths don't depend on the unit. A new outside input read in render
+  must reset the kept drawings the same way.
 - Tested: `shownSketches.test.tsx` (an edit in one of 30 sketches renders that sketch's
   stand-in only; the same values in new objects render none; each kind of change gives the
   new drawing; the base is not written to), `Sketches.renders.test.tsx` (the real `Sketches`:
-  an edit in one of 30 renders one sketch and one fill).
+  an edit in one of 30 renders one sketch and one fill; a new fonts version renders every
+  fill, the open sketch's included, and the same fonts none).
 
 ## Amendment (2026-11-23): the timeline keeps its chip order
 

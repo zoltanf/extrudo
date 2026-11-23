@@ -22,6 +22,7 @@ import { fillFailed, noteUnbuiltFill, type ProfileFill } from '../viewport/profi
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import {
   keepDrawings,
+  NO_KEPT_DRAWINGS,
   type ShownSketchBase,
   ShownSketchesProvider,
   useShownDrawings,
@@ -217,10 +218,10 @@ describe('ShownSketchesProvider renders', () => {
 
   it('keeps a drawing that draws the same, by value, and never writes into the base', () => {
     const base = base30();
-    const first = keepDrawings(base, new Map());
+    const first = keepDrawings(base, NO_KEPT_DRAWINGS);
     // Nothing kept yet: the base itself.
     expect(first.base).toBe(base);
-    expect(first.kept.size).toBe(30);
+    expect(first.kept.drawings.size).toBe(30);
     // The same values in new objects: the old drawings, in a copy of the base.
     const again = remade(base);
     const frozen = JSON.stringify(again);
@@ -254,7 +255,15 @@ describe('ShownSketchesProvider renders', () => {
     }
     // Only the shown sketches are kept: a hidden one is let go.
     const fewer = { ...base, items: base.items.slice(0, 10) };
-    expect([...keepDrawings(fewer, first.kept).kept.keys()]).toHaveLength(10);
+    expect([...keepDrawings(fewer, first.kept).kept.drawings.keys()]).toHaveLength(10);
+    // A new fonts version keeps nothing: every drawing is the new one.
+    const fonts = keepDrawings({ ...again, fontsVersion: 1 }, first.kept);
+    fonts.base.items.forEach((item, i) => {
+      expect(item.drawing).toBe(again.items[i]?.drawing);
+    });
+    // And from then on the drawings made for it are kept again.
+    const fontsAgain = keepDrawings({ ...remade(again), fontsVersion: 1 }, fonts.kept);
+    expect(fontsAgain.base.items[0]?.drawing).toBe(again.items[0]?.drawing);
   });
 
   it('keeps a drawing while its results stay, and makes fresh jobs every time', () => {
