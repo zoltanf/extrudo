@@ -71,6 +71,7 @@ import {
   type LoadResult,
   loadDocument,
   loadNotice,
+  longInsertedId,
   modifySketch,
   moveFeature,
   type NewDocumentOptions,
@@ -532,6 +533,10 @@ export class Design {
       inputs: checkInputs(type, definition, storedInputs(type, inputs)),
       ...(component !== undefined && { component }),
     };
+    // An inserted design's features run as `<insert>.<id>`: held to a feature's limit too.
+    const copy = feature.inputs.design;
+    const long = copy?.kind === 'design' ? longInsertedId(id, copy.design) : undefined;
+    if (long) throw new ApiError(long, { path: 'design', featureType: type });
     this.#dispatch(insertFeature({ feature, index: options.index }));
     return new FeatureHandle<T>(this, id, type);
   }
@@ -616,7 +621,7 @@ export class Design {
     const setup = typeof buildOrOptions === 'function' ? (options ?? {}) : (buildOrOptions ?? {});
     const build = typeof buildOrOptions === 'function' ? buildOrOptions : undefined;
     const id = this.#id('component', setup.id) as ComponentId;
-    const bodies = (setup.bodies ?? []).map((body) => this.#bodyIdOf(body));
+    const bodies = (setup.bodies ?? []).map((body) => this.#bodyIdOf(body, 'bodies'));
     this.#dispatch(addComponent({ id, name, bodies }));
     const handle = new ComponentHandle(this, id);
     if (!build) return handle;
@@ -658,9 +663,9 @@ export class Design {
   }
 
   /** A body reference or ID as its ID. */
-  #bodyIdOf(body: GeomRef | string): BodyId {
-    if (typeof body === 'string') return checkedId('body', body) as BodyId;
-    if (body.kind === 'body') return checkedId('body', body.id) as BodyId;
+  #bodyIdOf(body: GeomRef | string, path = 'body'): BodyId {
+    if (typeof body === 'string') return checkedId('body', body, path) as BodyId;
+    if (body.kind === 'body') return checkedId('body', body.id, path) as BodyId;
     throw new ApiError(`"${body.kind}" is not a body: pass a body reference or its ID.`);
   }
 
@@ -671,7 +676,7 @@ export class Design {
    */
   setComponentBodies(component: ComponentId, bodies: readonly (GeomRef | string)[]): void {
     this.#dispatch(
-      setBodyComponent({ ids: bodies.map((body) => this.#bodyIdOf(body)), component }),
+      setBodyComponent({ ids: bodies.map((body) => this.#bodyIdOf(body, 'bodies')), component }),
     );
   }
 
@@ -926,7 +931,7 @@ export class Design {
     },
     dispatch: <P>(command: Command<P>) => design.#dispatch(command),
     ids: (kind: IdKind, chosen?: string) => design.#id(kind, chosen),
-    bodyId: (body: GeomRef | string) => design.#bodyIdOf(body),
+    bodyId: (body: GeomRef | string, path?: string) => design.#bodyIdOf(body, path),
   }))(this);
 
   // -------------------------------------------------------------------- other

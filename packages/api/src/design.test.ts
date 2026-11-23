@@ -640,7 +640,7 @@ describe('setBody (ADR-0030)', () => {
 
 describe('the IDs a call chooses (ADR-0003, amendments of 2026-11-23)', () => {
   const long = (n: number) => 'x'.repeat(n);
-  const refused = (call: () => unknown, message: string) => {
+  const refused = (call: () => unknown, message: string, path = 'id') => {
     let error: unknown;
     try {
       call();
@@ -648,7 +648,7 @@ describe('the IDs a call chooses (ADR-0003, amendments of 2026-11-23)', () => {
       error = e;
     }
     expect(error).toBeInstanceOf(ApiError);
-    expect(error).toMatchObject({ message, path: 'id' });
+    expect(error).toMatchObject({ message, path });
   };
   const featureMessage = `A feature's ID may have at most ${MAX_FEATURE_ID_LENGTH} characters.`;
   const idMessage = 'An ID may have at most 1,000 characters.';
@@ -673,8 +673,30 @@ describe('the IDs a call chooses (ADR-0003, amendments of 2026-11-23)', () => {
     refused(() => d.parameter('w', '10 mm', { id: long(MAX_ID_LENGTH + 1) }), idMessage);
     refused(() => d.configuration('A', {}, { id: long(MAX_ID_LENGTH + 1) }), idMessage);
     refused(() => d.addSheet('Sheet', { id: long(MAX_ID_LENGTH + 1) }), idMessage);
-    refused(() => d.setBody(long(MAX_ID_LENGTH + 1), { name: 'Base' }), idMessage);
+    refused(() => d.setBody(long(MAX_ID_LENGTH + 1), { name: 'Base' }), idMessage, 'body');
+    refused(() => d.component('Part', { bodies: [long(MAX_ID_LENGTH + 1)] }), idMessage, 'bodies');
     refused(() => Design.create({ ...FIXED, id: long(MAX_ID_LENGTH + 1) as never }), idMessage);
+    expect(d.toJSON()).toEqual(before);
+  });
+
+  it("refuses an inserted design whose features would run past a feature's limit", () => {
+    // `<insert>.b1` is 3 characters past the insert's own ID.
+    const design = {
+      name: 'Spacer',
+      units: 'mm' as const,
+      parameters: [],
+      features: [{ id: 'b1', type: 'box', name: 'Box1', suppressed: false, inputs: {} }],
+    };
+    const d = Design.create(FIXED);
+    expect(d.insertDesign({ design }, { id: long(MAX_FEATURE_ID_LENGTH - 3) }).id).toHaveLength(
+      MAX_FEATURE_ID_LENGTH - 3,
+    );
+    const before = d.toJSON();
+    refused(
+      () => d.insertDesign({ design }, { id: long(MAX_FEATURE_ID_LENGTH - 2) }),
+      `Box1 would have an ID longer than ${MAX_FEATURE_ID_LENGTH} characters in this design.`,
+      'design',
+    );
     expect(d.toJSON()).toEqual(before);
   });
 

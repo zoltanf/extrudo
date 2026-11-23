@@ -57,6 +57,12 @@ describe('TopoId grammar', () => {
     expect(nameRelation(a(MAX_NAME_DEPTH + 1), a(MAX_NAME_DEPTH + 1))).toBe(
       Number.POSITIVE_INFINITY,
     );
+    // Either way round, the same answer, at the cap and past it.
+    for (const k of [MAX_NAME_DEPTH, MAX_NAME_DEPTH + 1, MAX_NAME_DEPTH + 6]) {
+      expect(faceRelation(b(k), a(k))).toBe(faceRelation(a(k), b(k)));
+      const [ea, eb] = [edgeName([a(k), b(2)]), edgeName([b(k), a(2)])];
+      expect(nameRelation(eb, ea)).toBe(nameRelation(ea, eb));
+    }
     expect(featuresOfName(a(MAX_NAME_DEPTH))).toContain('F0');
     const deeper = featuresOfName(a(MAX_NAME_DEPTH + 1));
     expect(deeper).toContain('F1');

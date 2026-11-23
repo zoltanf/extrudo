@@ -166,9 +166,13 @@ The API holds every ID it takes to the same limits when the call is made
 `options.id` (feature, parameter, configuration, component, joint,
 annotation, sheet, sheet view, sheet item, the document's own), every ID its
 factory hands out (a script's `<script>.f1` too) and a body's ID a call names
-(`setBody`, a component's or sheet view's bodies). A longer one is an
-`ApiError` with path `id` ("A feature's ID may have at most 980 characters.",
-"An ID may have at most 1,000 characters."), before anything is dispatched,
+(`setBody`, a component's or sheet view's bodies, a parts list's rows). A
+longer one is an `ApiError` whose path names the argument (`id`, `body`,
+`bodies`, `rows`; "A feature's ID may have at most 980 characters.", "An ID
+may have at most 1,000 characters."), and an inserted design whose features
+would run past 980 under the new insert's ID is refused with path `design`
+and the insert command's sentence (`longInsertedId`), before anything is
+dispatched,
 so the CLI and the MCP tools refuse it at once and the design is never saved
 with it.
 

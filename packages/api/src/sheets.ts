@@ -75,7 +75,7 @@ export interface SheetHandleContext {
   /** The ID of a new entity of `kind`: `chosen`, else the next, held to the document's limits. */
   ids(kind: IdKind, chosen?: string): string;
   /** A body reference or ID as the body's ID. */
-  bodyId(body: GeomRef | string): BodyId;
+  bodyId(body: GeomRef | string, path?: string): BodyId;
 }
 
 /** A sheet, named however the caller has it: its handle, its ID or its name. */
@@ -298,11 +298,11 @@ function anchorRef(
   };
 }
 
-function bodyOf(design: SheetHandleContext, body: SheetBodyInput): BodyId {
+function bodyOf(design: SheetHandleContext, body: SheetBodyInput, path = 'bodies'): BodyId {
   if (typeof body === 'object' && 'body' in body && typeof body.body === 'function') {
-    return design.bodyId(body.body());
+    return design.bodyId(body.body(), path);
   }
-  return design.bodyId(body as GeomRef | string);
+  return design.bodyId(body as GeomRef | string, path);
 }
 
 // ------------------------------------------------------------------- setups
@@ -781,7 +781,8 @@ export class SheetViewHandle {
     let rows: Record<BodyId, SheetPartsRow> | undefined;
     if (options.rows) {
       rows = {};
-      for (const { body, ...typed } of options.rows) rows[bodyOf(this.#design, body)] = typed;
+      for (const { body, ...typed } of options.rows)
+        rows[bodyOf(this.#design, body, 'rows')] = typed;
     }
     return this.sheet.addItem({
       kind: 'partsList',

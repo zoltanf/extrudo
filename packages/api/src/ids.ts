@@ -136,18 +136,19 @@ export function storedIds(doc: StoredIdDocument): string[] {
  * `MAX_ID_LENGTH` characters, a feature's at most `MAX_FEATURE_ID_LENGTH`
  * (its bodies' IDs, `<feature>:<n>`, must fit too). Every ID the API takes
  * from a caller (`options.id`, a body's ID) or its factory passes here, so
- * the call is refused, never the design when it is opened again.
+ * the call is refused, never the design when it is opened again. `path` is
+ * the argument the ID came in: `id`, or `body`, `bodies`, `rows` for a body's.
  */
-export function checkedId(kind: IdKind | 'body', id: string): string {
+export function checkedId(kind: IdKind | 'body', id: string, path = 'id'): string {
   if (kind === 'feature' && id.length > MAX_FEATURE_ID_LENGTH) {
     throw new ApiError(`A feature's ID may have at most ${MAX_FEATURE_ID_LENGTH} characters.`, {
-      path: 'id',
+      path,
     });
   }
   if (id.length > MAX_ID_LENGTH) {
     throw new ApiError(
       `An ID may have at most ${MAX_ID_LENGTH.toLocaleString('en-US')} characters.`,
-      { path: 'id' },
+      { path },
     );
   }
   return id;

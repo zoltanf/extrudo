@@ -381,8 +381,10 @@ level more.
 `nestedRelated`) read at most `MAX_NAME_DEPTH` = 64 nested names (core
 `refs.ts`): `featuresOfName` names the features of the outer 65 levels, and
 two names that differ only deeper are not related (equal names still are, at
-any depth). One comparison finds each pair of faces' relation once
-(`Relations`), so its work grows with the number of pairs it compares. The f3d import
+any depth). One comparison finds each pair of faces' relation once per depth
+(`Relations`, keyed by depth because the cap makes a relation depend on it),
+so its work grows with the number of pairs it compares and its result does
+not depend on the order the pairs are tried in. The f3d import
 copies rounds on rounds to the same depth (ADR-0083's amendment of this date).
 `topo-id.test.ts` relates names 64 levels deep and not 65.
 

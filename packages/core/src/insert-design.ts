@@ -430,9 +430,10 @@ export function insertedFeatures(
 /**
  * What is wrong when a feature of the copy would run under an ID past
  * `MAX_FEATURE_ID_LENGTH` (`<insert>.<id>`, whose bodies the host stores), or
- * `undefined`.
+ * `undefined`. The insert command, the kernel's expansion and the API's call
+ * say the same.
  */
-function longInsertedId(insert: FeatureId, design: EmbeddedDesign): string | undefined {
+export function longInsertedId(insert: FeatureId, design: EmbeddedDesign): string | undefined {
   const long = design.features.find(
     (f) => generatedFeatureId(insert, f.id).length > MAX_FEATURE_ID_LENGTH,
   );

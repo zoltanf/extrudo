@@ -174,19 +174,23 @@ export function featuresOfName(name: string): string[] {
  * and the round of a piece of it, `fillet:F:from:(e[a#2|b])`.
  */
 export function faceRelation(a: string, b: string): number {
-  return faceRelationAt(a, b, 0, new Map());
+  return faceRelationAt(a, b, 0, []);
 }
 
 /**
- * The face relations one comparison has found, by its two names: each pair's
- * relation is found once per comparison.
+ * The face relations one comparison has found, by depth and then by the two
+ * names: each pair's relation at a depth is found once per comparison. The
+ * depth is part of the key because `MAX_NAME_DEPTH` makes a pair's relation
+ * depend on it, so the result is the same whichever order pairs are tried in.
  */
-type Relations = Map<string, Map<string, number>>;
+type Relations = Map<string, Map<string, number>>[];
 
 /** `faceRelation` of two names `depth` names deep in the ones compared. */
 function faceRelationAt(a: string, b: string, depth: number, known: Relations): number {
   if (a === b) return 2;
-  const found = known.get(a)?.get(b);
+  const atDepth = known[depth] ?? new Map<string, Map<string, number>>();
+  known[depth] = atDepth;
+  const found = atDepth.get(a)?.get(b);
   if (found !== undefined) return found;
   const pa = parseFace(a);
   const pb = parseFace(b);
@@ -194,8 +198,8 @@ function faceRelationAt(a: string, b: string, depth: number, known: Relations): 
   if (pa.stem !== pb.stem && !nestedRelated(pa.stem, pb.stem, depth, known)) relation = 0;
   const n = Math.min(pa.splits.length, pb.splits.length);
   for (let i = 0; i < n && relation > 0; i++) if (pa.splits[i] !== pb.splits[i]) relation = 0;
-  const row = known.get(a) ?? new Map<string, number>();
-  known.set(a, row);
+  const row = atDepth.get(a) ?? new Map<string, number>();
+  atDepth.set(a, row);
   row.set(b, relation);
   return relation;
 }
@@ -239,7 +243,7 @@ function nestedSource(stem: string): { head: string; inner: string } | undefined
  *   numbers agree. An exact match scores highest.
  */
 export function nameRelation(a: string, b: string): number {
-  return nameRelationAt(a, b, 0, new Map());
+  return nameRelationAt(a, b, 0, []);
 }
 
 /** `nameRelation` of two names `depth` names deep in the ones compared. */
