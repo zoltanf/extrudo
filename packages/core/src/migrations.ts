@@ -8,7 +8,13 @@
  */
 import type { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
-import { ID_TOO_LONG, MAX_ID_LENGTH, newId } from './ids';
+import {
+  FEATURE_ID_TOO_LONG,
+  ID_TOO_LONG,
+  MAX_FEATURE_ID_LENGTH,
+  MAX_ID_LENGTH,
+  newId,
+} from './ids';
 import { DocumentSchema, type ExtrudoDocument } from './schema';
 import { isUnknownSheetItem } from './sheet-schema';
 
@@ -233,14 +239,18 @@ export function parseLeniently(
   }
 }
 
-/** Why a document holding an ID past `MAX_ID_LENGTH` is refused, in the person's words. */
-export const ID_TOO_LONG_TEXT = `This design has an ID longer than ${MAX_ID_LENGTH.toLocaleString('en-US')} characters, too long to open.`;
+/**
+ * Why a document holding an ID past `MAX_ID_LENGTH` (a feature's past
+ * `MAX_FEATURE_ID_LENGTH`) is refused, in the person's words.
+ */
+export const ID_TOO_LONG_TEXT = `This design has an ID too long to open: an ID may have at most ${MAX_ID_LENGTH.toLocaleString('en-US')} characters, a feature's ${MAX_FEATURE_ID_LENGTH}.`;
 
 /** Whether an issue, or one nested in it (a record's key, a union's branch), is an ID too long. */
 function longId(issues: readonly z.core.$ZodIssue[]): boolean {
   return issues.some(
     (issue) =>
       issue.message === ID_TOO_LONG ||
+      issue.message === FEATURE_ID_TOO_LONG ||
       ('issues' in issue && longId(issue.issues)) ||
       ('errors' in issue && issue.errors.some(longId)),
   );

@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand } from './commands';
 import { evaluateParameters } from './expr/parameters';
-import type { AttachmentId, ComponentId, DimensionId } from './ids';
+import {
+  type AttachmentId,
+  type ComponentId,
+  type DimensionId,
+  MAX_FEATURE_ID_LENGTH,
+} from './ids';
 import {
   INSERT_DESIGN_TYPE,
   insertDesign,
@@ -221,6 +226,31 @@ describe('insertDesignPayload and insertDesign (ADR-0140)', () => {
     const doc = insert(host());
     expect(DocumentSchema.safeParse(doc).error?.issues).toBeUndefined();
     expect(loadDocument(JSON.parse(JSON.stringify(doc))).doc).toEqual(doc);
+  });
+
+  it("refuses a copy whose features would run under IDs past a feature's limit (ADR-0003)", () => {
+    // `<insert>.f12` is the copy's longest ID: 4 characters past the insert's.
+    const under = (n: number) => ({ ...ids, feature: fid('i'.repeat(n)) });
+    const fits = under(MAX_FEATURE_ID_LENGTH - 4);
+    // A stored key no body of the copy has, past the limit once under the insert: left out.
+    const odd = {
+      ...source(),
+      bodies: { ...source().bodies, [`f12:${'x'.repeat(996)}`]: { name: 'Odd', visible: true } },
+    };
+    const doc = applyCommand(host(), insertDesign(insertDesignPayload(host(), odd, fits, 'b'))).doc;
+    expect(Object.keys(doc.bodies)).toEqual([`${fits.feature}.f12:0`]);
+    expect(loadDocument(JSON.parse(JSON.stringify(doc))).doc).toEqual(doc);
+
+    const past = under(MAX_FEATURE_ID_LENGTH - 3);
+    expect(() => insertDesignPayload(host(), source(), past, 'b')).toThrow(
+      `Bracket can't be inserted: Extrude1 would have an ID longer than ${MAX_FEATURE_ID_LENGTH} characters in this design.`,
+    );
+    // A stored insert that would: the kernel's expansion says so instead of running it.
+    const feature = doc.features.at(-1) as Feature;
+    if (feature.inputs.design?.kind !== 'design') throw new Error('no design');
+    expect(insertedFeatures({ ...feature, id: past.feature }, feature.inputs.design.design)).toBe(
+      `Extrude1 would have an ID longer than ${MAX_FEATURE_ID_LENGTH} characters in this design.`,
+    );
   });
 
   it("leaves the host's parameter table as it was: no name of the copy joins it", () => {

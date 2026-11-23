@@ -19,7 +19,7 @@ Conventions: "must" and "may" are meant in the RFC sense. Numbers are JSON
 numbers (IEEE doubles). Lengths are millimetres and angles degrees wherever a
 plain number is stored (only sketch coordinates and radii; every other number
 is an expression string). An "ID" is a non-empty string of at most 1,000
-characters (section 10).
+characters, a feature's ID at most 980 (section 10).
 
 Contents: 1 Overview, 2 The container, 3 Versioning and migrations, 4 The
 document, 5 Expressions and parameters, 6 Features, 7 Sketch data,
@@ -2307,14 +2307,20 @@ configuration, group, component (`ComponentId`, 4.7), joint (`JointId`, 4.8), sk
 constraint, dimension, projection) gets a random UUID (v4, from
 `crypto.randomUUID()`) when it is created and keeps it for life; IDs are never
 reused. The schema requires a non-empty string of at most 1,000 characters
-(`MAX_ID_LENGTH`), and readers must accept any such string. A document with a
-longer ID, as a field or as a key, is refused (`invalid`: "This design has an
-ID longer than 1,000 characters, too long to open."). What the app and the
-importers make is far shorter: a UUID is 36 characters, an inserted design's
-body under 100. IDs of features are used as tokens inside references and
-persistent names, so a hand-written feature ID should use only
-`[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a `script` makes has the ID
-`<script>.<n>` (6.30), which is never stored (what a script or plugin puts after `<script>.` is held to the same 1,000 characters), and so has a feature of an inserted design, `<insert>.<id>` (6.37). Sketch entity, constraint, dimension and
+(`MAX_ID_LENGTH`), a feature's ID at most 980 (`MAX_FEATURE_ID_LENGTH`), and
+readers must accept any such string. A feature's ID leaves 20 characters for
+its bodies' IDs, `<feature>:<n>`, which a document stores as keys. A document
+with a longer ID, as a field or as a key, is refused (`invalid`: "This design
+has an ID too long to open: an ID may have at most 1,000 characters, a
+feature's 980."). What the app and the importers make is far shorter: a UUID
+is 36 characters, an inserted design's body under 100. IDs of features are
+used as tokens inside references and persistent names, so a hand-written
+feature ID should use only `[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a
+`script` makes has the ID `<script>.<n>` (6.30), which is never stored, and so
+has a feature of an inserted design, `<insert>.<id>` (6.37); either whole ID
+is held to the same 980 characters when the feature runs (a script's or
+plugin's feature past it is the script's error, an inserted design whose
+features would pass it is refused). Sketch entity, constraint, dimension and
 projection IDs share one
 space per sketch (section 7). Body IDs are made by the kernel (`<feature>:<n>`)
 and profile region IDs by the sketch profile detector; a third-party writer

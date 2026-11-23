@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import v0Bracket from '../fixtures/v0-bracket.json' with { type: 'json' };
 import { FORMAT_VERSION } from './format';
-import { BodyIdSchema, MAX_ID_LENGTH } from './ids';
+import { BODY_ID_ROOM, BodyIdSchema, MAX_FEATURE_ID_LENGTH, MAX_ID_LENGTH } from './ids';
 import {
   DocumentLoadError,
   ID_TOO_LONG_TEXT,
@@ -281,33 +281,41 @@ describe('loadDocument errors', () => {
   });
 });
 
-describe('the length of IDs (ADR-0003, amendment of 2026-11-23)', () => {
-  /** The sample with its document, parameter and feature IDs and a body key `length` characters long. */
+describe('the length of IDs (ADR-0003, amendments of 2026-11-23)', () => {
+  /**
+   * The sample with its document and parameter IDs and a body key `length`
+   * characters long, and its first feature's ID `length - BODY_ID_ROOM`.
+   */
   const withIds = (length: number) => {
-    const id = (c: string) => c.repeat(length);
+    const id = (c: string, n = length) => c.repeat(n);
     const doc = sampleDocument();
     const [first, ...rest] = doc.features;
     return {
       ...doc,
       id: id('d'),
       parameters: doc.parameters.map((p, i) => (i === 0 ? { ...p, id: id('p') } : p)),
-      features: [{ ...first, id: id('f') }, ...rest],
+      features: [{ ...first, id: id('f', length - BODY_ID_ROOM) }, ...rest],
       bodies: { [id('b')]: { name: 'Body', visible: true } },
     };
   };
 
-  it(`opens a document whose IDs have ${MAX_ID_LENGTH} characters`, () => {
+  it(`opens a document whose IDs have ${MAX_ID_LENGTH} characters, a feature's ${MAX_FEATURE_ID_LENGTH}`, () => {
     const { doc } = loadDocument(withIds(MAX_ID_LENGTH));
-    expect(doc.features[0]?.id).toHaveLength(MAX_ID_LENGTH);
+    expect(doc.features[0]?.id).toHaveLength(MAX_FEATURE_ID_LENGTH);
     expect(Object.keys(doc.bodies)[0]).toHaveLength(MAX_ID_LENGTH);
+    // The longest feature ID leaves room for its bodies' IDs.
+    const body = `${doc.features[0]?.id}:${Number.MAX_SAFE_INTEGER}`;
+    expect(BodyIdSchema.safeParse(body).success).toBe(true);
   });
 
   it('refuses one with a longer ID, in a field or a key, in plain words', () => {
-    const past = MAX_ID_LENGTH + 1;
-    const long = 'x'.repeat(past);
+    const long = 'x'.repeat(MAX_ID_LENGTH + 1);
     const sample = sampleDocument();
     for (const raw of [
-      { ...sample, features: [{ ...sample.features[0], id: long }] },
+      {
+        ...sample,
+        features: [{ ...sample.features[0], id: 'x'.repeat(MAX_FEATURE_ID_LENGTH + 1) }],
+      },
       { ...sample, bodies: { [long]: { name: 'Body', visible: true } } },
       // A newer version's document too: refused for the ID, not called newer.
       {
@@ -315,14 +323,14 @@ describe('the length of IDs (ADR-0003, amendment of 2026-11-23)', () => {
         formatVersion: FORMAT_VERSION + 1,
         parameters: [{ ...sample.parameters[0], id: long }],
       },
-      withIds(past),
+      withIds(MAX_ID_LENGTH + 1),
     ]) {
       const error = loadError(raw);
       expect(error.code).toBe('invalid');
       expect(error.message).toBe(ID_TOO_LONG_TEXT);
     }
     expect(ID_TOO_LONG_TEXT).toBe(
-      'This design has an ID longer than 1,000 characters, too long to open.',
+      "This design has an ID too long to open: an ID may have at most 1,000 characters, a feature's 980.",
     );
   });
 });

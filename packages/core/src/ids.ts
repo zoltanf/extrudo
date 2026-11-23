@@ -22,13 +22,34 @@ declare const crypto: {
  */
 export const MAX_ID_LENGTH = 1000;
 
+/**
+ * What a feature's ID leaves of `MAX_ID_LENGTH` for the IDs made from it and
+ * stored: its bodies are `<feature>:<n>`, so a colon and up to 19 digits (a
+ * body's number is a safe integer, at most 16 digits).
+ */
+export const BODY_ID_ROOM = 20;
+
+/**
+ * The most characters a feature's ID may have: a stored one, and one the
+ * engine runs (a script's or plugin's `<script>.<id>`, an inserted design's
+ * `<insert>.<id>`), so that each of its body IDs is within `MAX_ID_LENGTH`.
+ */
+export const MAX_FEATURE_ID_LENGTH = MAX_ID_LENGTH - BODY_ID_ROOM;
+
 /** The schema's message for an ID past `MAX_ID_LENGTH` (`loadDocument` words the refusal). */
 export const ID_TOO_LONG = `is longer than ${MAX_ID_LENGTH.toLocaleString('en-US')} characters, the most an ID may have`;
+
+/** The schema's message for a feature's ID past `MAX_FEATURE_ID_LENGTH`. */
+export const FEATURE_ID_TOO_LONG = `is longer than ${MAX_FEATURE_ID_LENGTH} characters, the most a feature's ID may have`;
 
 const id = z.string().min(1).max(MAX_ID_LENGTH, { message: ID_TOO_LONG });
 
 export const DocumentIdSchema = id.brand<'DocumentId'>();
-export const FeatureIdSchema = id.brand<'FeatureId'>();
+export const FeatureIdSchema = z
+  .string()
+  .min(1)
+  .max(MAX_FEATURE_ID_LENGTH, { message: FEATURE_ID_TOO_LONG })
+  .brand<'FeatureId'>();
 export const ParameterIdSchema = id.brand<'ParameterId'>();
 export const BodyIdSchema = id.brand<'BodyId'>();
 export const ViewIdSchema = id.brand<'ViewId'>();
