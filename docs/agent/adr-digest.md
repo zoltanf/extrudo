@@ -5224,6 +5224,51 @@ all visits (`PLAN_VISITS_PER_FEATURE` × `MAX_FILE_FEATURES`) and one for links 
 on its own count (500 a call) and is bounded by the walk's shared `MAX_FILE_FEATURES`; a stored shape is scanned once per entry,
 never past `MAX_STORED_BREP_BYTES`. Report: `BodyHistory.loose`; the library's bodies' numbers count real bodies only (`!b.loose`).
 
+**ADR-0144, S12b (structure):** files `mesh-read.ts` (`readMeshKernel`, `meshFacts`: pure, the `.bms` entry), `meshes.ts`
+(`importMeshes`), `structure-build.ts` (`StructureBuild`: one transaction an attempt, a rebuild measuring only new or moved
+bodies, cancelled unless the check holds), `compounds.ts` (`planCompounds`, `placeCompound`), `links.ts` (`planLink`,
+`copyLink`, `readPlacementList`), `components.ts` (`componentGroups`, `makeComponents`), `structure.ts`
+(`placeStructure`: meshes, then compounds, then links); `@extrudo/io` is a dependency (`writeStl`; io must stay
+dependency-free); the kernel's `importRebuilder` enables mesh bodies once for a mesh attachment. Rules: **nothing comes in
+unproven** (each mesh, compound and link in a transaction of its own, checked, else as before); **no shape that came in
+before is lost or changed** (the count of final shapes is unchanged; the shapes import converts every link and compound
+that may come in another way with the rest and keeps the bytes, `ShapeImportOptions.defer`, and one whose attempt doesn't
+hold is added from them by `DeferredShapes.add` with no kernel call, so no new attempt's cost can lose it); the one
+exception is a **scaled link**, left out (`scaled`) because S3 baked it unscaled. The deferred bytes stay **held**
+(`DeferredShapes.held`/`release`) until each shape is settled; the meshes and a compound's members are judged against the
+design plus what is held, so the fallbacks' add never passes 100 MB. A compound's member walk reports no progress and its
+planning notes no problem. Order after the shapes import: each
+compound's members (walked inside one transaction with their move and check, cancelled whole if it doesn't hold: binder,
+walk counters, planes and attachment bytes go back), then meshes, then links, then the fallbacks' imports.
+A mesh entry is exactly 296 + 12 p + 24 f bytes, little-endian, version `0x00010000` only, every count checked against the
+length before allocating, at most `MAX_MESH_FACETS` (500,000: the STL stays under 25 MiB) and `MAX_IMPORT_MESHES` (512);
+a mesh is a `Mesh::Feature` (a link to a mesh is a copy); each entry is read once, more points than three a facet is
+refused, `MAX_IMPORT_MESH_FACETS` (2,000,000) bounds an import's meshes together, and the first kernel failure ends the
+meshes; its points are in the object's own frame (placement and containers applied, rounded to single precision once, measured from
+those numbers); pieces by shared edges; open edges leave it out (`not-closed`). The check compares pieces, volume, area and
+box (S5's tolerances). Components: one per `App::Part` that brought a body, a body in its **innermost** part's, none for an
+outer part without bodies of its own, a compound's members (two bodies or more) and a link to a part's copies their own;
+names by `uniqueComponentName` (cleaned, cut to 90, " (n)" ignoring case); membership on the bodies (their metadata wins)
+and on every feature whose live bodies are all in one component; placement and visibility untouched;
+`MAX_IMPORT_COMPONENTS` (1,000). A link is one `move` with `copy` an instance, placed by C · F⁻¹ (C S3's chain for the
+instance, F the target's containers) about the target bodies' box centre, checked against the target's stored shape under C
+(S3's tolerances plus the centre of mass); arrays expand by `App::LinkElement`s when shown, else the placement list
+(`uint32`, seven `float64` each; `float32` when single precision), each element on top of the array's `LinkPlacement`;
+`MAX_ARRAY_ELEMENTS` (1,000), `MAX_LINK_COPIES` (2,000, **one count for the import**, each plan given what is left before
+it expands); **scale is judged first** along the whole way (`scaledOnTheWay`); links to parts are settled in dependency
+order (a count of unsettled links per part, built once; never a wait loop), the budget checked at each link's turn; a
+link to a part's copies keep their sources' names; a stored shape is decoded once for all checks (64 MB cache), a mesh
+target measured once and placed; a cycle is a part on the way from the link (a part reached twice is not one); `MAX_PART_MEMBERS` (10,000, one count for
+the import of shapes the checks visit) and `MAX_OPERAND_BODIES` (256 bodies a copy) bound the walk; a part holding a
+link back to itself ends `cycle`. A compound at the top hands its members (through nested compounds, iteratively, at most
+`MAX_COMPOUND_OBJECTS`) to the body walk, the trees and the shapes import as final shapes of their own, then one `move` per
+distinct placement beyond their own (F · P · F⁻¹) and one check of all their bodies against the compound's stored shape
+(solids, volume, box); if it fails, the members' transaction is cancelled and the compound comes in as before. The shared check stops at the
+first outside user; the solid test is by entry (`storedSolid`, shared with S12a, never past `MAX_STORED_BREP_BYTES`). A member
+used by another object, a member twice, a compound in itself, a link member, members in other containers: as before, with
+the reason. Report: `FcstdImportReport.meshes`, `links`, `compounds`, `components`; `linkArrays` only the arrays not
+expanded. `fcstdNotices`: a compound counts once and a copy with what it copies.
+
 ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
 **Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
 `embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,

@@ -70,14 +70,21 @@ describe('importFcstd with a kernel in Node', () => {
       ['Hidden box', 1],
       ['Red box', 1],
       ['Moved box', 1],
-      ['Holed box copy', 1],
       ['Pair', 2],
       ['Twin A', 1],
       ['Twin B', 1],
     ]);
+    // The link is a copy of what its target became (S12b), no import of its own.
+    expect(report.links.map((l) => [l.name, l.outcome])).toEqual([['Holed box copy', 'copy']]);
+    // This hand-written file's mesh entry is a stand-in (S12b reads meshes; before, every mesh was left out).
     expect(report.leftOut).toEqual([
-      { object: 'Mesh', name: 'Scan', reason: 'mesh' },
       { object: 'Body001', name: 'Empty body', reason: 'empty' },
+      {
+        object: 'Mesh',
+        name: 'Scan',
+        reason: 'unreadable',
+        detail: 'the mesh entry is 16 bytes, too short',
+      },
     ]);
     expect(report.restarts).toBe(0);
     expect(kernel.restarts).toBe(0);
@@ -93,8 +100,8 @@ describe('importFcstd with a kernel in Node', () => {
     expect(fileOf('Twin A')).toBe(fileOf('Twin B'));
     expect(fileOf('Hidden box')).toBe(fileOf('Twin A'));
     expect(Object.keys(attachments)).toHaveLength(files.size);
-    // The box at the origin is five objects' shape: one file for them all.
-    expect(files.size).toBe(5);
+    // The box at the origin is five objects' shape: one file for them all; the link is a copy.
+    expect(files.size).toBe(4);
     for (const [id, bytes] of files) {
       expect(attachments[id]?.mediaType).toBe('model/step');
       expect(attachments[id]?.size).toBe(bytes.length);
@@ -120,14 +127,21 @@ describe('importFcstd with a kernel in Node', () => {
     close(at('Bracket').box, [0, 0, 0, 10, 20, 30]);
     close(at('Moved box').box, [0, 0, 5, 10, 20, 35]);
     const cut = at('Holed box').box;
-    close(at('Holed box copy').box, [
-      (cut[0] as number) + 20,
-      cut[1] as number,
-      cut[2] as number,
-      (cut[3] as number) + 20,
-      cut[4] as number,
-      cut[5] as number,
-    ]);
+    // The link's copy, 20 mm along X from what it links to (a rebuild measures it).
+    const rebuilt = await kernel.rebuild(doc, files);
+    const copy = rebuilt.ids.find((id) => doc.bodies[id as never]?.name === 'Holed box copy');
+    const copied = rebuilt.bodies[copy as string]?.box;
+    close(
+      [...(copied?.min ?? []), ...(copied?.max ?? [])],
+      [
+        (cut[0] as number) + 20,
+        cut[1] as number,
+        cut[2] as number,
+        (cut[3] as number) + 20,
+        cut[4] as number,
+        cut[5] as number,
+      ],
+    );
     const pair = at('Pair');
     expect(pair.solids).toBe(2);
     expect(pair.volume).toBeCloseTo(12_000, 4);

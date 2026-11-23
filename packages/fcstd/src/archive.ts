@@ -59,6 +59,12 @@ export interface FcEntries {
    * such entry. Throws `FcstdFormatError` when the entry's data is bad.
    */
   get(name: string): Uint8Array | undefined;
+  /**
+   * The entry's first `n` bytes (fewer when it is shorter), inflating only that far and
+   * checking nothing past them: enough to read a header's counts before deciding to read the
+   * rest. `undefined` when there is no such entry.
+   */
+  head(name: string, n: number): Uint8Array | undefined;
   /** What the archive had that was left out (duplicate names, refused names, other compression methods). */
   readonly problems: readonly string[];
 }
@@ -93,6 +99,32 @@ function crc32(data: Uint8Array): number {
   for (let i = 0; i < data.length; i++)
     c = (CRC_TABLE[(c ^ (data[i] as number)) & 0xff] as number) ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
+}
+
+/** Stops a streaming inflate once enough bytes came out. */
+class Enough extends Error {}
+
+/** The first `n` bytes of an entry (no CRC check: the rest isn't read). */
+function inflateHead(bytes: Uint8Array, entry: Entry, name: string, n: number): Uint8Array {
+  const data = bytes.subarray(entry.start, entry.start + entry.compressed);
+  const want = Math.min(n, entry.size);
+  if (entry.method === 0) return data.subarray(0, want);
+  const out = new Uint8Array(want);
+  let at = 0;
+  try {
+    const stream = new Inflate((chunk) => {
+      const take = Math.min(chunk.length, want - at);
+      out.set(chunk.subarray(0, take), at);
+      at += take;
+      if (at >= want) throw new Enough();
+    });
+    for (let i = 0; at < want && (i === 0 || i < data.length); i += CHUNK)
+      stream.push(data.subarray(i, i + CHUNK), i + CHUNK >= data.length);
+  } catch (error) {
+    if (!(error instanceof Enough))
+      throw new FcstdFormatError(`Bad compressed data in ${name}: ${(error as Error).message}`);
+  }
+  return out.subarray(0, at);
 }
 
 /**
@@ -255,6 +287,13 @@ export function unzipFcstd(bytes: Uint8Array): FcEntries {
       const out = inflate(bytes, entry, name);
       inflated.set(name, out);
       return out;
+    },
+    head(name, n) {
+      const done = inflated.get(name);
+      if (done) return done.subarray(0, n);
+      const entry = entries.get(name);
+      if (!entry) return undefined;
+      return inflateHead(bytes, entry, name, n);
     },
   };
 }

@@ -211,7 +211,7 @@ const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 const scale3 = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
 
 /** A free move's inputs that place bodies whose box centre is `pivot` by `p` (`p · x`). */
-function moveFor(p: FcPlacement, pivot: Vec3): Record<string, string> {
+export function moveFor(p: FcPlacement, pivot: Vec3): Record<string, string> {
   const [rx, ry, rz] = eulerXYZ(p.rotation);
   // The move turns about the pivot, then moves: d = t + R·c − c.
   const d = sub3(add3(p.position, rotate(p.rotation, pivot)), pivot);

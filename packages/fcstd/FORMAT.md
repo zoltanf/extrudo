@@ -29,7 +29,7 @@ treats them as keys only, never as paths.
 | `Document.xml` | every object, its properties, links and expressions | always; the file is refused without it |
 | `GuiDocument.xml` | per object: visibility, colours, display settings; the camera | when present (files saved without the GUI have none) |
 | `*.brp` | one OCCT B-rep text per shape property (see Stored shapes) | on demand |
-| `*.bms` | a mesh kernel (binary) | named only, not decoded yet |
+| `*.bms` | a mesh kernel (binary; see Meshes, links and compounds) | for a mesh that is a final shape |
 | `DiffuseColor*`, `ShapeAppearance*` | binary colour and material lists of `GuiDocument.xml` | the first colour, when the GUI document names one |
 | `*.Map.txt`, `StringHasher.Table.txt` | FreeCAD 1.0's topological element maps | not read (ADR-0144 decision 4) |
 | other side entries without an extension | vector, float and placement lists saved as files (`<VectorList file="Nodes3"/>`) | named only |
@@ -166,7 +166,8 @@ sketcher's visual layer list (71, typed `BadType` in the files).
 - **Links** (`App::Link`): `LinkedObject` (an XLink; only targets in this
   document are followed), `LinkPlacement` (else `Placement`),
   `LinkTransform` (false: the link's placement replaces the target's; true:
-  it applies on top of it), `ElementCount` (an array; not expanded yet).
+  it applies on top of it), `ElementCount` (an array: see Meshes, links and
+  compounds).
 
 ## Stored shapes
 
@@ -727,15 +728,71 @@ to 0.16 without bodies, for the features and sketches outside a body):
 The reader needed nothing new for this grammar: S4 to S7 already read every one of these forms.
 No `Refine` means nothing to the importer, which never reads it: the check compares the solids.
 
+## Meshes, links and compounds (S12b)
+
+### The mesh kernel entry (`*.bms`)
+
+`Mesh::Feature`'s `Mesh` property (`Mesh::PropertyMeshKernel`) names an entry
+(`<Mesh file="MeshKernel.bms"/>`, then `MeshKernel1.bms` …). FreeCAD writes it
+little-endian (`MeshKernel::Write`):
+
+| Bytes | What |
+|---|---|
+| 4 | magic `0xA0B0C0D0` (`d0 c0 b0 a0`) |
+| 4 | version `0x00010000` (`00 00 01 00`) |
+| 256 | header text (`MESH-MESH-…`), not read |
+| 4 + 4 | the point count *p* and the facet count *f* (`uint32`) |
+| 12 · *p* | the points, three `float32` each |
+| 24 · *f* | the facets: three `uint32` point indices, then three `uint32` neighbour facets (`0xFFFFFFFF` for an open edge) |
+| 24 | the bounding box: min x, max x, min y, max y, min z, max z (`float32`), not read |
+
+So an entry is exactly 296 + 12 *p* + 24 *f* bytes (the 8-point, 12-facet box:
+680). FreeCAD also reads the same layout big-endian (the magic and version
+byte-swapped) and, with no magic at all, an older layout of its own; neither
+is written by FreeCAD 0.14 or later, the library has neither, and the reader
+refuses both. More points than three a facet can't all be used and are refused too. **The points
+are in the object's own frame**: FreeCAD shows the
+mesh at its `Placement`, inside its containers.
+
+### Placement and scale lists
+
+A link array's `PlacementList` (`App::PropertyPlacementList`) is an entry of
+its own (`<PlacementList file="PlacementList"/>`): a `uint32` count *n*, then
+per element seven `float64` (position x, y, z; the rotation quaternion x, y, z,
+w), little-endian, 4 + 56 *n* bytes. FreeCAD can also write it single
+precision (seven `float32`, 4 + 28 *n*) when the property is marked so. A
+`ScaleList` (`App::PropertyVectorList`) is a `uint32` count and three
+`float64` per element; any value but 1, or an entry that isn't exactly
+4 + 24 *n* bytes, is read as a scale (an absent or empty entry as none).
+
+### Links
+
+- `App::Link` with `ElementCount` > 0 is an **array**: with `ShowElement`
+  false its elements are the placement list (and the scale list), each placed
+  by `LinkPlacement`, then its own placement; with `ShowElement` true each
+  element is an `App::LinkElement` named in `ElementList`, a link of its own
+  (`LinkedObject`, `LinkPlacement`, `LinkTransform`, `Scale`) placed by the
+  array's `LinkPlacement`.
+- `Scale` (a number) and `ScaleVector` scale what a link shows about the
+  link's origin, before its placement.
+- A link to an `App::Part` shows everything in the part, at the link's
+  placement (with `LinkTransform` false, the part's own placement replaced).
+
+### Compounds
+
+`Part::Compound`'s `Links` (`App::PropertyLinkList`) are its members, in
+order; its stored shape is theirs as they are placed, with the compound's own
+`Placement` applied on top.
+
 ## Not read yet
 
 - Sketches: `ExternalTypes`' intersections, external geometry from objects
   outside the body, `Defining` external curves, the 1.1 n-ary element lists
   past the first three, geometry ids and layers.
-- Mesh kernels, colour lists past the first entry, vector/float/placement
-  list entries, the 1.0 element maps and string hasher, thumbnails.
-- Link arrays (`ElementCount`, `PlacementList`, `LinkElement`s) and links to
-  other documents: one instance or a problem.
+- Mesh kernels in the big-endian and the older layout, mesh colours, colour
+  lists past the first entry, vector and float list entries other than a
+  link array's, the 1.0 element maps and string hasher, thumbnails.
+- Links to other documents: a problem.
 - FreeCAD's binary shape form.
 - PartDesign features other than Pad, Pocket, Revolution, Groove, Fillet,
   Chamfer, LinearPattern, PolarPattern, Mirrored, MultiTransform and Hole, and

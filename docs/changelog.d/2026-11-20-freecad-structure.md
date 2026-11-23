@@ -1,0 +1,1 @@
+- 2026-11-20 · **FreeCAD parts, links, compounds and meshes come in as such**: an App::Part is a component, a link is a copy that follows what it links to (an array one copy an element), a compound comes in as its members with their history, and a closed mesh as a mesh body, each checked against the file (ADR-0144's S12b amendment).

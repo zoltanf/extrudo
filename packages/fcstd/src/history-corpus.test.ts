@@ -22,7 +22,13 @@ import { edgeDistance, toleranceAt } from './match';
 import { floatList, readFcstd } from './model';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { parameterCounts } from './parameters-report';
-import { containerChain, fitsOriginPlane, frameIsSound, sketchFrame } from './sketch-place';
+import {
+  containerChain,
+  fitsOriginPlane,
+  frameIsSound,
+  parentsOf,
+  sketchFrame,
+} from './sketch-place';
 
 const PAD_TYPE_NAMES = ['Length', 'UpToLast', 'UpToFirst', 'UpToFace', 'TwoLengths', 'UpToShape'];
 const POCKET_TYPE_NAMES = [
@@ -257,6 +263,159 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       for (const a of Object.values(d.doc.attachments ?? {})) seen.set(a.sha256, a.size);
       return [...seen.values()].reduce((n, b) => n + b, 0);
     };
+    // S12b: meshes, parts, links and compounds, as counts (from the file alone, then what came in).
+    const s12b = {
+      meshes: {
+        objects: 0,
+        files: 0,
+        placed: 0,
+        inContainers: 0,
+        in: 0,
+        bodies: 0,
+        leftOut: {} as Record<string, number>,
+        mostFacets: 0,
+        largestEntryBytes: 0,
+      },
+      parts: {
+        objects: 0,
+        files: 0,
+        placed: 0,
+        nested: 0,
+        empty: 0,
+        components: 0,
+        componentsByKind: {} as Record<string, number>,
+        partsWithout: 0,
+        bodiesInComponents: 0,
+      },
+      links: {
+        objects: 0,
+        files: 0,
+        arrays: 0,
+        transformOn: 0,
+        targets: {} as Record<string, number>,
+        outcomes: {} as Record<string, number>,
+        arraysExpanded: 0,
+        elements: 0,
+      },
+      compounds: {
+        objects: 0,
+        placed: 0,
+        atTop: 0,
+        memberKinds: {} as Record<string, number>,
+        outcomes: {} as Record<string, number>,
+        withoutSolid: 0,
+        nested: 0,
+        memberChains: 0,
+        memberBodies: {} as Record<string, number>,
+        memberTrees: {} as Record<string, number>,
+      },
+      imports: { before: 0, after: 0, meshes: 0, copies: 0 },
+    };
+    const s12bCount = (
+      doc: ReturnType<typeof readFcstd>,
+      report: Awaited<ReturnType<typeof importFcstd>>['report'],
+      before: Awaited<ReturnType<typeof importFcstd>>['report'],
+      file: string,
+    ) => {
+      const parents = parentsOf(doc);
+      const placed = (o: (typeof doc.objects)[number]) => {
+        const v = o.properties.Placement?.value;
+        if (v?.kind !== 'placement') return false;
+        const p = v.value;
+        return (
+          p.position.some((x) => x !== 0) ||
+          Math.hypot(p.rotation[0], p.rotation[1], p.rotation[2]) > 1e-12
+        );
+      };
+      const has = { mesh: false, part: false, link: false };
+      for (const o of doc.objects) {
+        if (o.type === 'Mesh::Feature') {
+          has.mesh = true;
+          s12b.meshes.objects++;
+          if (placed(o)) s12b.meshes.placed++;
+          if (parents.has(o.name)) s12b.meshes.inContainers++;
+          const m = o.properties.Mesh?.value;
+          if (m?.kind === 'mesh' && m.entry)
+            s12b.meshes.largestEntryBytes = Math.max(
+              s12b.meshes.largestEntryBytes,
+              doc.entries.size(m.entry) ?? 0,
+            );
+        } else if (o.type === 'App::Part') {
+          has.part = true;
+          s12b.parts.objects++;
+          if (placed(o)) s12b.parts.placed++;
+          let p = parents.get(o.name);
+          for (let d = 0; p && d < 64; p = parents.get(p.name), d++)
+            if (p.type === 'App::Part') {
+              s12b.parts.nested++;
+              break;
+            }
+          const g = o.properties.Group?.value;
+          if (g?.kind !== 'linkList' || g.objects.length === 0) s12b.parts.empty++;
+        } else if (o.type === 'App::Link') {
+          has.link = true;
+          s12b.links.objects++;
+          const n = o.properties.ElementCount?.value;
+          if (n?.kind === 'integer' && n.value > 0) s12b.links.arrays++;
+          const tr = o.properties.LinkTransform?.value;
+          if (tr?.kind === 'bool' && tr.value) s12b.links.transformOn++;
+          const v = o.properties.LinkedObject?.value;
+          const name =
+            v?.kind === 'xlink' ? v.items[0]?.object : v?.kind === 'link' ? v.object : undefined;
+          bump(s12b.links.targets, doc.byName.get(name ?? '')?.type ?? 'nothing');
+        } else if (o.type === 'Part::Compound') {
+          s12b.compounds.objects++;
+          if (placed(o)) s12b.compounds.placed++;
+        }
+      }
+      if (has.mesh) s12b.meshes.files++;
+      if (has.part) s12b.parts.files++;
+      if (has.link) s12b.links.files++;
+      for (const m of report.meshes) {
+        if (m.outcome === 'in') {
+          s12b.meshes.in++;
+          s12b.meshes.bodies += m.bodies.length;
+        } else bump(s12b.meshes.leftOut, m.reason ?? '?');
+        s12b.meshes.mostFacets = Math.max(s12b.meshes.mostFacets, m.facets ?? 0);
+      }
+      s12b.parts.components += report.components.made.length;
+      for (const c of report.components.made) {
+        bump(s12b.parts.componentsByKind, c.kind);
+        s12b.parts.bodiesInComponents += c.bodies;
+      }
+      s12b.parts.partsWithout += report.components.partsWithout;
+      for (const l of report.links) {
+        bump(s12b.links.outcomes, l.outcome === 'copy' ? 'copy' : `${l.outcome}: ${l.reason}`);
+        if (l.array?.expanded) {
+          s12b.links.arraysExpanded++;
+          s12b.links.elements += l.array.elements;
+        }
+        if (l.outcome !== 'copy') lines.push(JSON.stringify({ file, link: l.object, ...l }));
+      }
+      const members = new Set<string>();
+      for (const c of report.compounds) {
+        s12b.compounds.atTop++;
+        bump(s12b.compounds.outcomes, c.outcome === 'members' ? 'members' : `today: ${c.reason}`);
+        s12b.compounds.withoutSolid += c.withoutSolid;
+        s12b.compounds.nested += c.nested;
+        for (const m of c.members) {
+          members.add(m);
+          bump(s12b.compounds.memberKinds, doc.byName.get(m)?.type ?? '?');
+        }
+        if (c.outcome !== 'members') lines.push(JSON.stringify({ file, compound: c.object, ...c }));
+      }
+      for (const b of report.bodies)
+        if (members.has(b.object)) {
+          if (b.loose) s12b.compounds.memberChains++;
+          bump(s12b.compounds.memberBodies, `${b.loose ? 'chain' : 'body'} ${b.outcome}`);
+        }
+      for (const t of report.trees)
+        if (members.has(t.object)) bump(s12b.compounds.memberTrees, t.outcome);
+      s12b.imports.before += before.shapes.length;
+      s12b.imports.after += report.shapes.length;
+      s12b.imports.meshes += report.meshes.filter((m) => m.outcome === 'in').length;
+      s12b.imports.copies += report.links.filter((l) => l.outcome === 'copy').length;
+    };
     for (const file of files) {
       const bytes = new Uint8Array(readFileSync(file));
       const doc = readFcstd(bytes);
@@ -374,6 +533,10 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         kernel,
         maxFileFeatures: 0,
         maxImportTreeNodes: 0,
+        // And none of S12b: no mesh, no copy, no compound as its members.
+        maxMeshes: 0,
+        maxLinkCopies: 0,
+        maxCompoundObjects: 0,
       });
       const withoutSteps = await importFcstd(bytes, 'X', { kernel, solver, maxSteps: 0 });
       s8.bytesWithoutSteps += bytesOf(withoutSteps.design);
@@ -392,6 +555,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         },
       });
       times.push(performance.now() - t);
+      s12bCount(doc, report, s3.report, file);
       {
         const p = parameterCounts(report.parameters);
         for (const [source, kinds] of Object.entries(p.parameters))
@@ -449,6 +613,10 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       importsS3 += s3.report.shapes.length;
       importsS5 += report.shapes.length;
       const bodyNames = new Set(report.bodies.map((b) => b.object));
+      // S12b's own checks prove these; meshes, copies and compounds have their table.
+      for (const m of report.meshes) bodyNames.add(m.object);
+      for (const l of report.links) if (l.outcome !== 'today') bodyNames.add(l.object);
+      for (const c of report.compounds) if (c.outcome === 'members') bodyNames.add(c.object);
       // S11: the Part trees, as counts.
       for (const t of report.trees) {
         bump(
@@ -513,8 +681,10 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
         if (after.get(object) === o) otherSame++;
         else otherDiffer++;
       }
-      // The bodies' standing numbers are real bodies': loose chains have `chain-corpus.test.ts`.
-      for (const b of report.bodies.filter((x) => !x.loose)) {
+      // The bodies' standing numbers are real bodies': loose chains have `chain-corpus.test.ts`,
+      // a compound's members S12b's table.
+      const members = new Set(report.compounds.flatMap((c) => c.members));
+      for (const b of report.bodies.filter((x) => !x.loose && !members.has(x.object))) {
         bump(bodies, b.outcome);
         s7.secondAttempts += b.secondAttempts;
         s9.upToTries += b.upToTries;
@@ -734,6 +904,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       s10,
       s11,
       s11census,
+      s12b,
     };
     console.log(JSON.stringify(summary, null, 1));
     if (reportFile) writeFileSync(reportFile, `${JSON.stringify(summary)}\n${lines.join('\n')}\n`);

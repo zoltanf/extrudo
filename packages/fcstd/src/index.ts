@@ -50,6 +50,16 @@ export {
   HISTORY_VOLUME_TOLERANCE,
   historyDisagreement,
 } from './check';
+export {
+  type ComponentMade,
+  type ComponentsReport,
+  MAX_IMPORT_COMPONENTS,
+} from './components';
+export {
+  type CompoundImport,
+  type CompoundReason,
+  MAX_COMPOUND_OBJECTS,
+} from './compounds';
 export { FcstdFormatError, finite } from './errors';
 export {
   EXPRESSION_REASONS,
@@ -99,7 +109,16 @@ export type {
   ShapeMeasure,
   StoredShapeStep,
 } from './import-kernel';
+export {
+  type LinkImport,
+  type LinkReason,
+  MAX_ARRAY_ELEMENTS,
+  MAX_LINK_COPIES,
+  readPlacementList,
+} from './links';
 export { type LooseChain, looseChains, MAX_LOOSE_CHAINS } from './loose-chains';
+export { MAX_MESH_FACETS, type MeshFacts, meshFacts, readMeshKernel } from './mesh-read';
+export { MAX_IMPORT_MESHES, type MeshImport } from './meshes';
 export {
   binaryFormProblem,
   brepHasSolid,

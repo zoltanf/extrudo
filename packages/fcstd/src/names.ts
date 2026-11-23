@@ -33,12 +33,17 @@ function tidy(text: string): string {
  * leading dots dropped, then `.step`.
  */
 export function stepFileName(name: string): string {
+  return modelFileName(name, 'step');
+}
+
+/** An attachment's file name for a cleaned name and an extension (`stl`): `stepFileName`'s rule. */
+export function modelFileName(name: string, extension: string): string {
   const base = name
     .replace(/[<>:"/\\|?*]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/^\.+/, '');
-  return `${base || 'Shape'}.step`;
+  return `${base || 'Shape'}.${extension}`;
 }
 
 /** `text` cut to `MAX_DETAIL_LENGTH` characters (with an ellipsis when cut). */

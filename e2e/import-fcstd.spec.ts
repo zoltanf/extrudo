@@ -21,6 +21,7 @@ import { refFile } from '../packages/fcstd/src/reference-parts';
 import { shapesFile } from '../packages/fcstd/src/shape-fixtures';
 import { circle } from '../packages/fcstd/src/sketch-fixtures';
 import { STEP_FIXTURES } from '../packages/fcstd/src/step-parts';
+import { structureFile } from '../packages/fcstd/src/structure-parts';
 import { boxBrep } from '../packages/kernel/src/read-brep-test-support';
 import {
   closeParameters,
@@ -77,7 +78,7 @@ test("a FreeCAD file opens as a new design with the file's shapes as bodies", as
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Not imported: Scan (a mesh, which Extrudo doesn't import from FreeCAD files yet); Empty body (no shape).",
+      "Not imported: Empty body (no shape); Scan (its shape can't be read from the file).",
     ),
   ).toBeVisible();
   for (const name of [
@@ -468,4 +469,84 @@ test('features from before bodies come in as a timeline, live (S12a)', async ({ 
   await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
   const after = solidFacts(meshOfStl(await exportModel(page, 'STL')));
   expect(after.volume).toBeCloseTo(40 * 30 * 6 - Math.PI * 16 * 5, -1);
+});
+
+test("a FreeCAD file's part comes in as a component holding its bodies (S12b)", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await importFile(page, 'Bracket.FCStd', Buffer.from(structureFile('part_basic')));
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await expect(
+    page.getByText(
+      'Imported from the FreeCAD file: 3 of 3 shapes, with their history (sketches, features, primitives and booleans).',
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Grouped into components as the file's parts group them: Bracket."),
+  ).toBeVisible();
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  // The body and the cut in the part's component; the box outside the part stays loose.
+  await expect(viewport).toHaveAttribute('data-components', 'Bracket:Body,Cut', {
+    timeout: 60_000,
+  });
+  await expect(
+    browserOf(page)
+      .locator('[data-component]')
+      .filter({ has: page.getByRole('button', { name: 'Bracket', exact: true }) }),
+  ).toBeVisible();
+  for (const name of ['Body', 'Cut', 'Spacer'])
+    await expect(bodyLeaf(page, name)).toHaveAttribute('data-body-display', 'shown');
+});
+
+test('a FreeCAD link comes in as a copy that follows what it links to (S12b)', async ({ page }) => {
+  test.setTimeout(180_000);
+  await importFile(page, 'Links.FCStd', Buffer.from(structureFile('links_basic')));
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await expect(
+    page.getByText(
+      'Imported from the FreeCAD file: 6 of 6 shapes, with their history (sketches, features, primitives and booleans).',
+    ),
+  ).toBeVisible();
+  const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
+  await expect
+    .poll(() => chips.evaluateAll((els) => els.map((el) => el.getAttribute('aria-label'))), {
+      timeout: 60_000,
+    })
+    .toEqual([
+      'BodySketch',
+      'BodyPad',
+      'BodyHoleSketch plane',
+      'BodyHoleSketch',
+      'BodyHole',
+      'Box',
+      'Box001',
+      'Cylinder',
+      'Cut',
+      'Link',
+      'Link001',
+      'Link002',
+    ]);
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  // The body (40 × 20 × 10) and its copy, turned half a turn about X.
+  await expect(viewport).toHaveAttribute('data-bodies', /\bLink002:\d+:40,20,10\b/, {
+    timeout: 60_000,
+  });
+  await page
+    .getByRole('list', { name: 'Features' })
+    .getByRole('button', { name: /^BodyPad\b/ })
+    .dblclick();
+  const edit = page.getByRole('region', { name: 'Edit BodyPad dialog' });
+  const distance = edit.getByRole('textbox', { name: 'Distance' });
+  await expect(distance).toHaveValue('10 mm');
+  await distance.fill('20 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await distance.press('Enter');
+  await expect(edit).toBeHidden();
+  // The copy follows its target.
+  await expect(viewport).toHaveAttribute('data-bodies', /\bBody:\d+:40,20,20\b/, {
+    timeout: 60_000,
+  });
+  await expect(viewport).toHaveAttribute('data-bodies', /\bLink002:\d+:40,20,20\b/);
+  await expect(chips.and(page.locator('[data-feature-status="error"]'))).toHaveCount(0);
 });
