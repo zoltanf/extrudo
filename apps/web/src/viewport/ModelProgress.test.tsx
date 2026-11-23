@@ -298,15 +298,16 @@ describe("a long feature and the model's last step (ADR-0155's amendment of 2026
     delete window.__extrudoLongFeatureMs;
   });
 
-  it('fills Stop and adds the sentence 30 s after the feature started, not before', () => {
+  it('adds the sentence 30 s after the feature started, not before; Stop stays quiet (2026-11-23)', () => {
     const { ids, report } = setup();
     report(ids[0] as FeatureId);
     act(() => vi.advanceTimersByTime(LONG_FEATURE_MS - 1));
-    expect(stop()?.getAttribute('data-model-stop')).toBe('quiet');
+    expect(stop()?.className.split(/\s+/)).not.toContain('bg-accent');
     expect(sentence()).toHaveLength(0);
     act(() => vi.advanceTimersByTime(1));
-    expect(stop()?.getAttribute('data-model-stop')).toBe('long');
-    expect(stop()?.className).toContain('bg-accent');
+    // Never filled or orange: the sentence alone says the wait is long.
+    expect(stop()?.className.split(/\s+/)).not.toContain('bg-accent');
+    expect(stop()?.className).toContain('text-muted');
     expect(sentence()).toHaveLength(1);
     expect(sentence()[0]?.textContent).toBe(LONG_FEATURE_TEXT);
     // In the polite live region, as plain text: read once, not each second (the seconds are hidden).
@@ -334,7 +335,7 @@ describe("a long feature and the model's last step (ADR-0155's amendment of 2026
     expect(sentence()).toHaveLength(1);
     report(ids[1] as FeatureId);
     expect(sentence()).toHaveLength(0);
-    expect(stop()?.getAttribute('data-model-stop')).toBe('quiet');
+    expect(stop()?.className.split(/\s+/)).not.toContain('bg-accent');
   });
 
   it('runs no timer for it while Stop is not offered, and never while building the model', () => {
@@ -382,5 +383,69 @@ describe("a long feature and the model's last step (ADR-0155's amendment of 2026
     again.report(again.ids[0] as FeatureId);
     act(() => vi.advanceTimersByTime(LONG_FEATURE_MS));
     expect(sentence()).toHaveLength(1);
+  });
+});
+
+describe('Stop on a long update after an edit (ADR-0161)', () => {
+  function setup() {
+    const id = 'f1' as FeatureId;
+    const store = createDocumentStore({
+      ...createDocument({ name: 'Notice' }),
+      features: [{ id, type: 'box', name: 'Pattern1', suppressed: false, inputs: {} }],
+      timelineMarker: 1,
+    });
+    const model = createModelStore();
+    // A model is on screen, then an edit's update runs.
+    model.getState().computed({ features: {}, bodies: {}, doc: store.getState().doc });
+    model.getState().computing();
+    const stopState: StopState = { stopped: [], opening: false, stoppable: true, stopping: false };
+    const run = vi.fn();
+    const cancelRun = vi.fn();
+    render(
+      <ModelProgress
+        model={model}
+        store={store}
+        collapsed={false}
+        stop={{ stops: { get: () => stopState, subscribe: () => () => {} }, run }}
+        cancel={{ can: () => true, run: cancelRun }}
+      />,
+    );
+    act(() => model.getState().setProgress({ done: 0, total: 1, feature: id, since: Date.now() }));
+    act(() => vi.advanceTimersByTime(1000));
+    return { run, cancelRun };
+  }
+  const buttons = () =>
+    [...document.querySelectorAll('[data-model-progress] button')].map((b) => b.textContent);
+
+  it('offers Cancel alone at first, then Stop before Cancel once the feature has run 30 s', () => {
+    const { run } = setup();
+    expect(document.querySelector('[data-model-progress="updating"]')).not.toBeNull();
+    expect(buttons()).toEqual(['Cancel']);
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS - 1000 - 1));
+    expect(buttons()).toEqual(['Cancel']);
+    act(() => vi.advanceTimersByTime(1));
+    expect(buttons()).toEqual(['Stop', 'Cancel']);
+    expect(document.querySelector('[data-feature-long]')?.textContent).toBe(LONG_FEATURE_TEXT);
+    const stop = document.querySelector<HTMLButtonElement>('[data-model-stop]');
+    expect(stop?.getAttribute('aria-label')).toBe(
+      'Stop: update the model without this feature for now',
+    );
+    act(() => stop?.click());
+    expect(run).toHaveBeenCalledWith('update');
+  });
+
+  it('gives Stop the same quiet style as Cancel (the owner, 2026-11-23)', () => {
+    setup();
+    act(() => vi.advanceTimersByTime(LONG_FEATURE_MS));
+    const stop = document.querySelector('[data-model-stop]');
+    const cancel = document.querySelector('[data-model-cancel]');
+    expect(stop?.className).toBe(cancel?.className);
+  });
+
+  it('stretches the bar to the notice’s content width in every state', () => {
+    setup();
+    const bar = document.querySelector('progress');
+    expect(bar?.className.split(/\s+/)).toEqual(expect.arrayContaining(['w-full', 'min-w-40']));
+    expect(bar?.className.split(/\s+/)).not.toContain('w-40');
   });
 });

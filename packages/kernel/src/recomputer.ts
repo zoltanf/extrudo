@@ -102,6 +102,13 @@ export interface RecomputerOptions {
    * 0 never recycles.
    */
   heapRecycleBytes?: number;
+  /**
+   * How long one feature runs before an update's Stop is allowed (ADR-0161);
+   * `LONG_FEATURE_MS` by default. The app passes what its notice uses.
+   */
+  longFeatureMs?: number;
+  /** The clock for feature start times and that rule; `Date.now` by default (tests inject one). */
+  now?: () => number;
   client?: Omit<KernelClientOptions, 'onRestart'>;
   onKernelStatus?(status: KernelStatus, detail?: string): void;
   /**
@@ -144,6 +151,18 @@ export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
  * stops (ADR-0024's amendment of 2026-11-10).
  */
 export const MAX_CRASHED_FEATURES = 8;
+
+/**
+ * After this long in one feature, the notice says "This feature is taking a long
+ * time." (ADR-0155's amendment of 2026-11-19) and, during an update after an
+ * edit, offers Stop beside Cancel (ADR-0161). Nothing happens by itself.
+ * Counted from the feature's start (`ModelProgress.since`), so a new feature
+ * starts over. Margin: the repository's slowest single feature is B9's thread,
+ * 6.6 s cold in Node on the Ubuntu machine (about 11 s in its browser) and up to
+ * 21.5 s on GitHub's runners when an e2e waits for it (`docs/agent/e2e-notes.md`,
+ * the kernel-cancel spec): 30 s is 1.4× that worst case and 4.5× the local one.
+ */
+export const LONG_FEATURE_MS = 30_000;
 
 /** Where the bytes of the fonts a design uses come from (ADR-0058 §4). */
 export interface FontSource {
@@ -219,7 +238,12 @@ export interface StopState {
    * hasn't changed since. Only then is Stop offered.
    */
   opening: boolean;
-  /** A feature is running in that recompute, so Stop has something to stop. */
+  /**
+   * A feature is running in a call still with the kernel and no Stop is under
+   * way: Stop has something to stop. The notice offers it while opening, or once
+   * the feature has run `LONG_FEATURE_MS` in an update (ADR-0161); `stop()`
+   * checks the same.
+   */
   stoppable: boolean;
   /** A Stop is under way (the worker is being replaced). */
   stopping: boolean;
@@ -384,6 +408,10 @@ export class Recomputer {
   /** The heap has been under the limit since the last recycle, so one is due. */
   #recycleArmed = true;
   readonly #heapRecycleBytes: number;
+  readonly #longFeatureMs: number;
+  readonly #now: () => number;
+  /** When the kernel first reported `#current` (`#now()`). */
+  #currentSince = 0;
   readonly #onRecycle: (() => void) | undefined;
   /** The waits the user is on, oldest first (P6-17, ADR-0105 §1). */
   #waitList: Wait[] = [];
@@ -426,6 +454,8 @@ export class Recomputer {
     this.#delayMs = options.delayMs ?? 30;
     this.#previewDelayMs = options.previewDelayMs ?? 0;
     this.#heapRecycleBytes = options.heapRecycleBytes ?? HEAP_RECYCLE_BYTES;
+    this.#longFeatureMs = options.longFeatureMs ?? LONG_FEATURE_MS;
+    this.#now = options.now ?? Date.now;
     this.#onRecycle = options.onRecycle;
     this.client = new KernelClient(options.spawn, {
       ...options.client,
@@ -493,8 +523,12 @@ export class Recomputer {
    * deleted) is not recorded at all, but the worker is still replaced, which
    * ends the old call.
    *
+   * During an update after an edit (ADR-0161) the same Stop is allowed once the
+   * running feature has run `longFeatureMs`; the update's notice stays (it
+   * doesn't turn into "Preparing your design…").
+   *
    * Resolves with the stopped feature; undefined when nothing was recorded, or
-   * nothing could be stopped: not opening, no feature running (resources still
+   * nothing could be stopped: neither opening nor long, no feature running (resources still
    * going out, the kernel past its features or restarting), a Stop already
    * under way, or the feature finished before the worker could be ended (the
    * kernel's last messages are let in first).
@@ -502,6 +536,9 @@ export class Recomputer {
   async stop(): Promise<FeatureId | undefined> {
     if (!this.#canStop()) return undefined;
     const id = this.#current as FeatureId;
+    // Opening, or an update whose feature has taken long (ADR-0161): an update's
+    // stop keeps the update's notice (not "Preparing…") for the rebuild.
+    const opening = this.#opening;
     this.#stopping = true;
     this.#notifyStops();
     try {
@@ -510,7 +547,7 @@ export class Recomputer {
       // call came back), there is nothing to stop. A send that started
       // meanwhile doesn't matter: the worker is still on the old feature.
       await new Promise((resolve) => setTimeout(resolve, 0));
-      if (this.#disposed || !this.#opening || this.#current !== id) return undefined;
+      if (this.#disposed || this.#current !== id || !this.#mayStop()) return undefined;
       const doc = this.#document.getState().doc;
       const at = doc.features.findIndex((f) => f.id === id);
       const feature = doc.features[at];
@@ -528,7 +565,7 @@ export class Recomputer {
       }
       // The send now under way gets the restart's rejection: not a crash.
       this.#stoppedSequence = this.#sequence;
-      this.#opening = true;
+      if (opening) this.#opening = true;
       this.#notifyStops();
       try {
         await this.client.restart();
@@ -547,7 +584,20 @@ export class Recomputer {
    * a call still with the kernel (`#current` is cleared when that call settles).
    */
   #canStop(): boolean {
-    return !this.#disposed && !this.#stopping && this.#opening && this.#current !== undefined;
+    return this.#running() && this.#mayStop();
+  }
+
+  /** A feature is running in a call still with the kernel, and no Stop is under way. */
+  #running(): boolean {
+    return !this.#disposed && !this.#stopping && this.#current !== undefined;
+  }
+
+  /**
+   * Whether a Stop is allowed for the running feature: while the design opens
+   * (ADR-0155), or once it has run `#longFeatureMs` in an update (ADR-0161).
+   */
+  #mayStop(): boolean {
+    return this.#opening || this.#now() - this.#currentSince >= this.#longFeatureMs;
   }
 
   /** Whether a feature is stopped for now (ADR-0155): its chip menu offers Try again. */
@@ -577,7 +627,7 @@ export class Recomputer {
     const next: StopState = {
       stopped: [...this.#active],
       opening: this.#opening,
-      stoppable: this.#canStop(),
+      stoppable: this.#running(),
       stopping: this.#stopping,
     };
     const prev = this.#stopState;
@@ -1318,8 +1368,9 @@ export class Recomputer {
           if (at !== undefined) done = at;
           if (id !== reported) {
             reported = id;
-            since = Date.now();
+            since = this.#now();
           }
+          this.#currentSince = since;
           this.#reportProgress({ done, total: steps.length, feature: id, since });
         }),
       );

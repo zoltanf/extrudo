@@ -4121,14 +4121,32 @@ previews skip it too, its own dialog while the draft's inputs equal the stopped 
 when the focused button goes, the focus moves to the stopped feature's chip. Callers in flight
 during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-stop.spec.ts`.
 **Its amendment (2026-11-19), a feature that takes long and the model's last step:** after
-`LONG_FEATURE_MS` (30 s) in one feature, counted from `ModelProgress.since`, Stop is filled
-(`[data-model-stop="long"]`) and the notice adds `LONG_FEATURE_TEXT`; nothing happens by itself.
+`LONG_FEATURE_MS` (30 s) in one feature, counted from `ModelProgress.since`, the notice adds
+`LONG_FEATURE_TEXT`; nothing happens by itself. (Stop was made filled then; **the amendment of
+2026-11-23 withdrew that: Stop is quiet, in Cancel's style, in every state**; `[data-model-stop]`
+says `"open"` or `"update"`; the bar is `w-full min-w-40`; one chip message `STOPPED_MESSAGE`
+"Stopped: this feature took too long. Try again to build it."; `LONG_FEATURE_MS` is the kernel's
+constant, re-exported by `progressRules.ts`.)
 Past the last feature the recomputer reports `building: true` and the line says `BUILDING_TEXT`
 with the bar full, no Stop, in both notices. **Rules:** one timer (`useLongFeature`) and only
 while Stop is offered; the sentence is plain text in the polite region (read once), the seconds
 stay hidden; the threshold's comment keeps the margin against B9's thread (21.5 s on a slow
 runner); `window.__extrudoLongFeatureMs` may only lower it (`longFeatureMs`), never set by the
 app; a recompute with nothing computed reports no `building`.
+
+ADR-0161 (the owner, 2026-11-23): **Stop during a long update after an edit.** Option 3 of the
+plan, without Cancel replacing the worker. Files: `packages/kernel/src/recomputer.ts` (`stop()`'s
+gate `#mayStop`: opening, or the running feature has run `longFeatureMs`, a `RecomputerOptions`
+value with an injectable `now`; `stoppable` = a feature running and no Stop under way; an
+update's Stop doesn't set `opening`), `apps/web/src/viewport/progressRules.ts`
+(`showsStop(mode, { stoppable, long })`), `ModelProgress.tsx` (Stop before Cancel in one quiet
+group, `stopLabel`, `run(during)`), `shell/stopFeature.ts` (the update toast),
+`project/useRecompute.ts` (passes the notice's `longFeatureMs`). **Rules:** quick updates show
+Cancel alone; once the running feature has run `LONG_FEATURE_MS`, counted from its start, the
+update notice shows Stop before Cancel in the same quiet style with `LONG_FEATURE_TEXT`; an
+update's Stop records the feature against the edited document, keeps the edit and the history,
+and the rebuild keeps the update's notice (Cancel still applies); the toast says the change is
+kept; the notice and `stop()` use the same time (the app passes it). e2e: `e2e/update-stop.spec.ts`.
 
 ADR-0112 (the owner, 2026-10-28): **distance dimensions to a circle's or an arc's edge.**
 `packages/core/src/sketch/schema.ts` (`distance` takes a circle or an arc as `a`/`b` with a

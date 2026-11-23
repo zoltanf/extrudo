@@ -27,7 +27,7 @@ import {
   type RecomputeResult,
   STOPPED_MESSAGE,
 } from './recompute/types';
-import { type FontSource, Recomputer } from './recomputer';
+import { type FontSource, LONG_FEATURE_MS, Recomputer } from './recomputer';
 import { type KernelApi, KernelCrashError } from './service';
 
 const until = async (condition: () => boolean, ms = 10_000) => {
@@ -93,6 +93,9 @@ afterEach(() => {
   live = [];
 });
 
+/** The recomputer's clock in these tests: moved by hand, never read from the machine. */
+const clock = { now: 1_000_000 };
+
 function setup(doc: ExtrudoDocument = threeFeatures(), options: { fonts?: FontSource } = {}) {
   const calls: Call[] = [];
   const workers: Worker[] = [];
@@ -141,6 +144,8 @@ function setup(doc: ExtrudoDocument = threeFeatures(), options: { fonts?: FontSo
     model,
     delayMs: 1,
     heapRecycleBytes: 0,
+    longFeatureMs: LONG_FEATURE_MS,
+    now: () => clock.now,
     ...(options.fonts && { fonts: options.fonts }),
   });
   live.push(r);
@@ -367,17 +372,56 @@ describe('Stop while a design opens (ADR-0155)', () => {
     expect(t.model.getState().status).toBe('computing');
   });
 
-  it('is offered only while opening: not during an update after an edit', async () => {
+  it('during an update after an edit, allows Stop only once the feature has taken long (ADR-0161)', async () => {
     const t = setup();
     await settle(t);
     expect(t.r.stops.get().opening).toBe(false);
     dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
     const update = await t.call(2);
     update.report('f2' as FeatureId);
-    await new Promise((r) => setTimeout(r, 10));
-    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: false });
+    await until(() => t.r.stops.get().stoppable);
+    // A feature is running, so the notice may offer Stop once it has taken long; not yet.
+    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: true });
+    clock.now += LONG_FEATURE_MS - 1;
     expect(await t.r.stop()).toBeUndefined();
     expect(t.workers).toHaveLength(1);
+    clock.now += 1;
+    expect(await t.r.stop()).toBe('f2');
+    expect(t.workers).toHaveLength(2);
+    // The rebuild belongs to the update: not "opening" again, so Cancel still applies.
+    expect(t.r.stops.get().opening).toBe(false);
+    const rebuild = await t.call(3);
+    expect(rebuild.request.stopped).toEqual(['f2']);
+    expect(rebuild.request.doc.features[0]?.name).toBe('Renamed');
+    rebuild.finish();
+    await until(t.ready);
+    expect(status(t, 'f2')?.message).toBe(STOPPED_MESSAGE);
+    expect(status(t, 'f2')?.message).toBe(
+      'Stopped: this feature took too long. Try again to build it.',
+    );
+    // The edit is kept in the document and the history; Stop added no step.
+    expect(t.store.getState().doc.features[0]?.name).toBe('Renamed');
+    expect(t.r.canRevertToShown()).toBe(false);
+    t.store.getState().undo();
+    await settle(t);
+    expect(t.store.getState().doc.features[0]?.name).toBe('f1');
+  });
+
+  it('counts the long rule from the running feature’s start, not from the update', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    const update = await t.call(2);
+    update.report('f1' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    clock.now += LONG_FEATURE_MS - 10;
+    update.report('f2' as FeatureId);
+    await until(() => t.model.getState().progress?.feature === 'f2');
+    clock.now += 20;
+    // f2 has run 20 ms: not long, though the update has run 30 s.
+    expect(await t.r.stop()).toBeUndefined();
+    clock.now += LONG_FEATURE_MS;
+    expect(await t.r.stop()).toBe('f2');
   });
 
   it('Try again computes the feature with Stop offered again; an edit meanwhile ends that', async () => {
@@ -398,7 +442,9 @@ describe('Stop while a design opens (ADR-0155)', () => {
     const edit = await t.call(4);
     edit.report('f2' as FeatureId);
     await new Promise((r) => setTimeout(r, 10));
-    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: false });
+    // An update now: Stop waits for the long rule.
+    expect(t.r.stops.get()).toMatchObject({ opening: false, stoppable: true });
+    expect(await t.r.stop()).toBeUndefined();
   });
 });
 

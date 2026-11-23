@@ -291,12 +291,11 @@ export interface PreviewToolMesh {
 }
 
 /**
- * The error a feature the person stopped while the design opened carries
- * (ADR-0155): on its timeline chip, in the browser and in the notification
- * history, in the user's words.
+ * The error a feature the person stopped carries, while the design opened
+ * (ADR-0155) or during an update (ADR-0161): on its timeline chip, in the
+ * browser and in the notification history, in the user's words.
  */
-export const STOPPED_MESSAGE =
-  'Stopped: this feature took too long while the design opened. Try again to build it.';
+export const STOPPED_MESSAGE = 'Stopped: this feature took too long. Try again to build it.';
 
 /**
  * What a stopped feature's own dialog says while its values are still the ones

@@ -166,18 +166,29 @@ export function useLongFeature(since: number | undefined, watch: boolean): boole
   return watch && since !== undefined && longSince === since;
 }
 
+/** What Stop says it does, for screen readers and as its tooltip. */
+export function stopLabel(during: StopDuring): string {
+  return during === 'open'
+    ? 'Stop: open the design without this feature for now'
+    : 'Stop: update the model without this feature for now';
+}
+
+/** Whether a Stop is pressed while the design opens or during an update after an edit. */
+export type StopDuring = 'open' | 'update';
+
 /**
- * The notice's Stop (ADR-0155): a quiet text button where Cancel sits after an
- * edit; the filled one once the feature has taken long (its amendment of 2026-11-19).
+ * The notice's Stop (ADR-0155, ADR-0161): a quiet text button in Cancel's style,
+ * in every state (the owner's choice of 2026-11-23: never filled); before Cancel
+ * when both show.
  */
 function StopButton({
   feature,
+  during,
   onStop,
-  long,
 }: {
   feature: string | undefined;
+  during: StopDuring;
   onStop(): void;
-  long: boolean;
 }) {
   const button = useRef<HTMLButtonElement>(null);
   const target = useRef(feature);
@@ -194,12 +205,12 @@ function StopButton({
   return (
     <Button
       ref={button}
-      variant={long ? 'primary' : 'ghost'}
-      data-model-stop={long ? 'long' : 'quiet'}
-      title="Stop: open the design without this feature for now"
-      aria-label="Stop: open the design without this feature for now"
+      variant="ghost"
+      data-model-stop={during}
+      title={stopLabel(during)}
+      aria-label={stopLabel(during)}
       onClick={onStop}
-      className="pointer-events-auto -my-1 ml-auto h-6 px-2 text-sm"
+      className="pointer-events-auto -my-1 h-6 px-2 text-sm"
     >
       Stop
     </Button>
@@ -229,8 +240,8 @@ export function ModelProgress({
   collapsed: boolean;
   /** Returns the document to the shown model's step (ADR-0111); read at render time. */
   cancel?: { can(): boolean; run(): void };
-  /** Stops the running feature while the design opens (ADR-0155). */
-  stop?: { stops: KernelStops; run(): void };
+  /** Stops the running feature while the design opens (ADR-0155) or in a long update (ADR-0161). */
+  stop?: { stops: KernelStops; run(during: StopDuring): void };
 }) {
   const status = useStore(model, (s) => s.status);
   const finished = useRecomputeFinished(model);
@@ -288,9 +299,20 @@ export function ModelProgress({
     ...(wait && { wait }),
   });
   const building = progress?.building === true;
-  const offersStop = mode !== undefined && stop !== undefined && showsStop(mode, stops.stoppable);
-  const long = useLongFeature(progress?.since, offersStop && !building);
+  // The long-feature timer runs while a feature can be stopped, opening or updating.
+  const recomputing = mode === 'preparing' || mode === 'updating';
+  const long = useLongFeature(
+    progress?.since,
+    stop !== undefined && recomputing && stops.stoppable && !building && progress !== undefined,
+  );
+  const offersStop =
+    mode !== undefined &&
+    stop !== undefined &&
+    !building &&
+    showsStop(mode, { stoppable: stops.stoppable, long });
   if (!mode) return null;
+  const during: StopDuring = mode === 'preparing' ? 'open' : 'update';
+  const offersCancel = cancel !== undefined && showsCancel(mode, cancel.can);
 
   const bar =
     progress && showsBar(mode, true)
@@ -312,20 +334,28 @@ export function ModelProgress({
       <div className="flex flex-col leading-tight">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-ink">{progressTitle(mode, wait)}</span>
-          {stop && offersStop && (
-            <StopButton feature={progress?.feature} onStop={stop.run} long={long} />
-          )}
-          {cancel && showsCancel(mode, cancel.can) && (
-            <Button
-              variant="ghost"
-              data-model-cancel
-              title="Cancel: undo the changes since the last model"
-              aria-label="Cancel: undo the changes since the last model"
-              onClick={cancel.run}
-              className="pointer-events-auto -my-1 ml-auto h-6 px-2 text-sm"
-            >
-              Cancel
-            </Button>
+          {(offersStop || offersCancel) && (
+            <span className="ml-auto flex items-center gap-1">
+              {stop && offersStop && (
+                <StopButton
+                  feature={progress?.feature}
+                  during={during}
+                  onStop={() => stop.run(during)}
+                />
+              )}
+              {cancel && offersCancel && (
+                <Button
+                  variant="ghost"
+                  data-model-cancel
+                  title="Cancel: undo the changes since the last model"
+                  aria-label="Cancel: undo the changes since the last model"
+                  onClick={cancel.run}
+                  className="pointer-events-auto -my-1 h-6 px-2 text-sm"
+                >
+                  Cancel
+                </Button>
+              )}
+            </span>
           )}
         </div>
         {bar ? (
@@ -334,7 +364,7 @@ export function ModelProgress({
               value={building ? bar.max : bar.value}
               max={bar.max}
               aria-label="Features computed"
-              className="mt-1 h-1 w-40 accent-accent"
+              className="mt-1 h-1 w-full min-w-40 accent-accent"
             />
             {building ? (
               <span data-progress-building className="mt-0.5 text-xs text-muted">

@@ -1648,9 +1648,24 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **A long feature** (the spec's second test, ADR-0155's amendment of 2026-11-19): sets
   `window.__extrudoLongFeatureMs = 2000` with `page.addInitScript` (it may only lower the 30 s),
   opens the same design and waits for `[data-feature-long]` ("This feature is taking a long
-  time.") and `[data-model-stop="long"]`; `notice.ariaSnapshot()` holds the sentence exactly once
+  time."); Stop stays quiet (its computed background is transparent, since 2026-11-23); `notice.ariaSnapshot()` holds the sentence exactly once
   and no seconds. "Building the model…" (`[data-progress-building]`) lasts too short to catch
   reliably in a browser; the unit tests cover it.
+
+### `e2e/update-stop.spec.ts`
+
+- **Stop during a long update** (ADR-0161): builds its design in the spec from the PCB enclosure
+  benchmark with a parameter `n` (`addParameter`, id `pn`, `unitless`, expression `2`) driving
+  `Rectangular Pattern1` (counts `n`, distances `2 * px / (n - 1)` / `2 * py / (n - 1)`; copy each
+  input and change only `expr`). It opens quickly at n = 2; `setN(page, '12')` (Parameters, the
+  `n` field, Enter, Escape) starts the long update. `window.__extrudoLongFeatureMs = 2000` (the
+  test hook, which may only lower the 30 s) makes the long state come after 2 s. Selectors: the
+  buttons named "Stop: update the model without this feature for now" and "Cancel: undo the changes
+  since the last model"; `notice.getByRole('button')` reads `['Stop', 'Cancel']` in that order;
+  their `class` attributes are equal; `progress` is at least as wide as `[data-feature-long]`.
+  After Stop: the toast "… was stopped, so the model was updated without it. Your change is kept."
+  with "Try again", the chip `data-feature-status="error"` with the stop message in its tooltip,
+  `n` still `12` (read back from Parameters) and Undo enabled. No time is asserted.
 
 ### `e2e/kernel-prewarm.spec.ts`
 

@@ -224,3 +224,20 @@ values different still builds the feature in full; ADR-0161 adds Stop on a long 
 - Try again forgets for good;
 - the fast path reads no inputs.
 
+## Amendment of 2026-11-23: Stop is never filled
+
+**Decision (the owner, 2026-11-23: "quiet everywhere").** The amendment of 2026-11-19 made Stop
+the filled orange button after 30 s in one feature. That is withdrawn: Stop is a quiet text
+button in Cancel's style in every state, at open and in an update (ADR-0161). The only sign of a
+long wait is the sentence "This feature is taking a long time.", which keeps its 30 s rule
+(`LONG_FEATURE_MS`, now the kernel's constant in `recomputer.ts`, re-exported by
+`progressRules.ts`). `[data-model-stop]` now says when the Stop is pressed (`"open"` or
+`"update"`), not whether it is long. The progress bar stretches to the notice's content width
+(`w-full min-w-40`) in every state that shows it, so it follows the notice when the buttons or
+the sentence widen it. One chip message for every Stop: "Stopped: this feature took too long.
+Try again to build it." (`STOPPED_MESSAGE`; "while the design opened" dropped).
+
+**Tests.** `ModelProgress.test.tsx` (the sentence at 30 s, Stop never `bg-accent`, Stop's class
+equal to Cancel's, the bar's classes); `e2e/open-stop.spec.ts`'s second test (a transparent Stop
+next to the sentence).
+

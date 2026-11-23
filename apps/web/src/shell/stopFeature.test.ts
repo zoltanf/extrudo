@@ -63,6 +63,14 @@ describe('stopAndTell', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
+  it('says the edit is kept after a Stop in an update (ADR-0161)', async () => {
+    const notify = vi.fn();
+    expect(await stopAndTell(kernel('f1' as FeatureId), store(), notify, 'update')).toBe('f1');
+    expect(notify.mock.calls[0]?.[1]).toBe(
+      'Box1 was stopped, so the model was updated without it. Your change is kept.',
+    );
+  });
+
   it('says nothing when there was nothing to stop', async () => {
     const notify = vi.fn();
     expect(await stopAndTell(kernel(undefined), store(), notify)).toBeUndefined();

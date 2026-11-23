@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { appNotifications } from '../design-system';
 import { fileMediaType, fileName } from '../features/import';
 import { attachmentBytes, fontBytes, usedFonts } from '../sketch/fonts';
+import { longFeatureMs } from '../viewport/progressRules';
 import { spawnProjectKernel } from './spawnKernel';
 
 /** What a replaced kernel worker says in the notification history (P4-12 H4). */
@@ -36,6 +37,11 @@ export function useRecompute(
       model,
       fonts: { used: usedFonts, bytes: fontBytes },
       files: { bytes: attachmentBytes, mediaType: fileMediaType, fileName },
+      // The notice's long-feature rule (ADR-0161): the recomputer allows an update's
+      // Stop after the same time the notice shows it, test hook included.
+      longFeatureMs: longFeatureMs(
+        typeof window === 'undefined' ? undefined : window.__extrudoLongFeatureMs,
+      ),
       onRecycle: () => {
         appNotifications.getState().push('info', RECYCLED_TEXT, { quiet: true });
       },

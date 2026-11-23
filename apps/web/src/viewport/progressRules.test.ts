@@ -141,16 +141,20 @@ describe("the bar and the feature's seconds (ADR-0105's amendment of 2026-11-19)
 });
 
 describe('Stop while a design opens (ADR-0155)', () => {
-  it('shows only while preparing and only while a feature can be stopped', () => {
-    expect(showsStop('preparing', true)).toBe(true);
-    expect(showsStop('preparing', false)).toBe(false);
-    expect(showsStop('updating', true)).toBe(false);
-    expect(showsStop('waiting', true)).toBe(false);
+  it('shows while preparing as soon as a feature can be stopped', () => {
+    expect(showsStop('preparing', { stoppable: true, long: false })).toBe(true);
+    expect(showsStop('preparing', { stoppable: false, long: false })).toBe(false);
+    expect(showsStop('waiting', { stoppable: true, long: true })).toBe(false);
   });
-  it('never with Cancel: every mode offers at most one of them', () => {
-    for (const mode of ['preparing', 'updating', 'waiting'] as const) {
-      expect(showsStop(mode, true) && showsCancel(mode, () => true)).toBe(false);
-    }
+  it('in an update only once the feature has taken long, beside Cancel (ADR-0161)', () => {
+    expect(showsStop('updating', { stoppable: true, long: false })).toBe(false);
+    expect(showsStop('updating', { stoppable: true, long: true })).toBe(true);
+    expect(showsStop('updating', { stoppable: false, long: true })).toBe(false);
+    // Opening never offers Cancel, so the two meet only in a long update.
+    expect(showsCancel('preparing', () => true)).toBe(false);
+    expect(
+      showsStop('updating', { stoppable: true, long: true }) && showsCancel('updating', () => true),
+    ).toBe(true);
   });
   it('a Try again or a Stop after the first result shows as preparing, at once', () => {
     const base = { status: 'computing' as const, finished: true, elapsed: 0 };

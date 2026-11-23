@@ -1,0 +1,1 @@
+- 2026-11-23 · **Stop during a long update**: when one feature of an update takes longer than 30 s, the notice offers Stop next to Cancel; Stop keeps your change and updates the model without that feature. Stop is never highlighted.

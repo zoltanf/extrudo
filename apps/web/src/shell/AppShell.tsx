@@ -3264,8 +3264,10 @@ function Shell({
               kernel.isStopped && {
                 stop: {
                   stops: kernel.stops,
-                  run: () =>
-                    void stopAndTell(kernel as StopKernel, store, notify).catch(() => undefined),
+                  run: (during) =>
+                    void stopAndTell(kernel as StopKernel, store, notify, during).catch(
+                      () => undefined,
+                    ),
                 },
               })}
           />

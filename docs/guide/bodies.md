@@ -76,14 +76,19 @@ and the view says "Preparing your design…", with the feature being computed an
 timeline ("Rectangular Pattern1 · 5 of 9"); a feature that takes longer than 3 s gets its seconds
 counted ("· 13 s"). They turn solid when the model has been computed.
 
-If one feature takes too long, press **Stop** on that notice (after 30 s on one feature it turns
-orange and the notice says "This feature is taking a long time."): the design opens without that
+If one feature takes too long, press **Stop** on that notice (after 30 s on one feature the notice
+also says "This feature is taking a long time."): the design opens without that
 feature, its chip in the timeline shows ✕, and nothing in the design is changed or saved.
 **Try again** (in the message that appears, or on the feature's right-click menu) builds it,
 however long it takes. Opening the design again also builds it again. To make it lighter,
 double-click its chip: the dialog shows no preview until you change a value, so you can lower a
 count without waiting for the old one. When the notice says "Building the model…", every feature
 is done and the model's surfaces are being prepared for the view.
+
+The same can happen after a change: when one feature of the update takes longer than 30 s, the
+"Updating the model…" notice shows **Stop** next to **Cancel**. **Cancel** undoes your change;
+**Stop** keeps your change and updates the model without that feature, which you can build later
+with **Try again**.
 
 ## Working with a body
 

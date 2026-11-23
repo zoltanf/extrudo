@@ -1357,7 +1357,7 @@ command (replacing its first key).
   quiet **Stop** button in the same place, once the kernel is on a feature (never
   together with Cancel). Stop ends that feature's computation at once and opens the
   design without it: its timeline chip shows ✕ with "Stopped: this feature took too
-  long while the design opened. Try again to build it.", the status bar counts it
+  long. Try again to build it.", the status bar counts it
   as an error, and a toast says "Rectangular Pattern1 was stopped, so the design
   opened without it. Nothing in the design changed." with **Try again**. The
   feature's menu has **Try Again** while it is stopped; it computes the feature
@@ -1367,9 +1367,17 @@ command (replacing its first key).
   and nothing is saved: opening the design again computes the feature again. The
   button has a name for screen readers; when it goes while focused, the focus moves
   to the stopped feature's chip. After 30 s in one feature, counted from that
-  feature's start, Stop becomes the filled accent button and the pill adds "This
-  feature is taking a long time." (read once by screen readers); nothing happens by
-  itself.
+  feature's start, the pill adds "This feature is taking a long time." (read once
+  by screen readers); Stop stays a quiet text button in Cancel's style in every
+  state, never filled (ADR-0155's amendment of 2026-11-23), and nothing happens by
+  itself. The progress bar stretches to the pill's content width in every state.
+- **Stop on a long update (ADR-0161):** once a feature of an update after an edit
+  has run 30 s, the "Updating the model…" pill shows **Stop** before **Cancel**,
+  both quiet, with "This feature is taking a long time.". Stop keeps the edit and
+  updates the model without that feature: its chip shows ✕ ("Stopped: this feature
+  took too long. Try again to build it."), and a toast says "Rectangular Pattern1
+  was stopped, so the model was updated without it. Your change is kept." with
+  **Try again**.
 - **The model's last step:** once the kernel is past its last feature (building the
   meshes), the line under the bar says "Building the model…" with the bar full, in
   the opening and the update notice alike, and no Stop is offered.

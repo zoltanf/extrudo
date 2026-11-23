@@ -19,9 +19,11 @@ export interface StopKernel {
 /** The toast stays a while: its Try again is the way back (the chip menu has it too). */
 export const STOP_TOAST_MS = 12_000;
 
-/** What the toast says after a Stop, in the user's words. */
-export function stoppedText(name: string): string {
-  return `${name} was stopped, so the design opened without it. Nothing in the design changed.`;
+/** What the toast says after a Stop, in the user's words: while opening, or in an update (ADR-0161). */
+export function stoppedText(name: string, during: 'open' | 'update' = 'open'): string {
+  return during === 'open'
+    ? `${name} was stopped, so the design opened without it. Nothing in the design changed.`
+    : `${name} was stopped, so the model was updated without it. Your change is kept.`;
 }
 
 /**
@@ -34,13 +36,14 @@ export async function stopAndTell(
   kernel: StopKernel,
   store: DocumentStore,
   notify: (tone: 'info', text: string, options?: ToastOptions) => void,
+  during: 'open' | 'update' = 'open',
 ): Promise<FeatureId | undefined> {
   const id = await kernel.stop();
   // Nothing recorded, or the stop is gone already (Try Again from the chip's
   // menu during the restart, a roll-back meanwhile): no "was stopped" news.
   if (id === undefined || !kernel.isStopped(id)) return undefined;
   const name = store.getState().doc.features.find((f) => f.id === id)?.name ?? 'The feature';
-  notify('info', stoppedText(name), {
+  notify('info', stoppedText(name, during), {
     lifetime: STOP_TOAST_MS,
     action: {
       label: 'Try again',
