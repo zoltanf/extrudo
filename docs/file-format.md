@@ -2120,7 +2120,9 @@ side swept from sketch line `l8`), `box:B:side:front`,
 writers can create references to origin planes, axes and sketch profiles and
 entities; face, edge and vertex names must come from the kernel's naming
 tables (`packages/kernel/src/naming/`), which is why a tool that needs them
-has to run a kernel.
+has to run a kernel. A reader relates two names that differ by a split piece
+(`#n`) at most 64 nested names deep (`MAX_NAME_DEPTH`); deeper, only an equal
+name matches.
 
 ### 8.1 `fingerprint`
 

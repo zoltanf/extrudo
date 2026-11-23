@@ -47,6 +47,14 @@ export const GeomFingerprintSchema = z.strictObject({
 });
 export type GeomFingerprint = z.infer<typeof GeomFingerprintSchema>;
 
+/**
+ * The most names a persistent name's walks read nested in it (a name in
+ * `(…)` inside another: a round's face names the edge it rounds, which names
+ * faces again). A round on a round's edge nests one more; the import's round
+ * copies and the kernel's name relations go no deeper.
+ */
+export const MAX_NAME_DEPTH = 64;
+
 export const GeomRefSchema = z.strictObject({
   kind: GeomRefKindSchema,
   id: z.string().min(1),

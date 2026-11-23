@@ -2397,3 +2397,15 @@ file sets into a call (`Math.max(...)`, `push(...)`, `String.fromCharCode(...)`,
 cap (a hole's found centres, `MAX_FOUND_CENTRES` = 256) is fine.
 `import-budgets.test.ts` charges a thread of 500,000 faces and checks that its
 longest face decides the charge.
+
+## Amendment, 2026-11-23: round copies to a fixed depth
+
+A mirror's or pattern's repeat of a round names the copies of its edges
+(`copyRounds`); a round on a round repeated already names its face through the
+copy of that round's edge, one nested name per round. That walk
+(`roundCopies`: `copyOf` and `edgeCopy`) now goes at most `MAX_NAME_DEPTH` = 64
+rounds deep, the depth the kernel's name walks read (ADR-0005's amendment of
+this date); a deeper one is not copied and stays left out with the note every
+round that can't be told on the copies gets. `map-more.test.ts` copies a chain
+of 64 and not of 65.
+

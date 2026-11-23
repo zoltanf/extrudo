@@ -1,3 +1,4 @@
+import { MAX_NAME_DEPTH } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import {
   createdName,
@@ -35,6 +36,31 @@ describe('TopoId grammar', () => {
     expect(featuresOfName('extrude:F1:side:(sk1/c3)')).toEqual(['F1']);
     expect(featuresOfName('origin:xy')).toEqual([]);
     expect(featuresOfName('e[broken')).toEqual([]);
+  });
+
+  it('reads and relates names nested up to MAX_NAME_DEPTH deep, and no deeper', () => {
+    // Round k's face names the edge between round k − 1's face and a side, so
+    // a name of round k nests k names; `a` and `b` differ only at the bottom,
+    // where `b` is a piece of `a`.
+    const nested = (k: number, bottom: string) => {
+      let name = bottom;
+      for (let i = 1; i <= k; i++) {
+        name = createdName('fillet', `F${i}`, 'from', edgeName([name, 'extrude:X:side:s']));
+      }
+      return name;
+    };
+    const a = (k: number) => nested(k, 'extrude:F0:cap:end');
+    const b = (k: number) => nested(k, 'extrude:F0:cap:end#2');
+    expect(faceRelation(a(MAX_NAME_DEPTH), b(MAX_NAME_DEPTH))).toBe(1);
+    expect(faceRelation(a(MAX_NAME_DEPTH + 1), b(MAX_NAME_DEPTH + 1))).toBe(0);
+    // An equal name is equal at any depth.
+    expect(nameRelation(a(MAX_NAME_DEPTH + 1), a(MAX_NAME_DEPTH + 1))).toBe(
+      Number.POSITIVE_INFINITY,
+    );
+    expect(featuresOfName(a(MAX_NAME_DEPTH))).toContain('F0');
+    const deeper = featuresOfName(a(MAX_NAME_DEPTH + 1));
+    expect(deeper).toContain('F1');
+    expect(deeper).not.toContain('F0');
   });
 
   it('sorts and dedupes the faces of edges and vertices', () => {
