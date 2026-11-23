@@ -227,7 +227,12 @@ export function Timeline({
   const picked = useStore(selection, (s) => s.chips);
   const pickedGroup = useStore(selection, (s) => s.group);
   const anchor = useRef<FeatureId>(undefined);
-  const order = useMemo(() => doc.features.map((f) => f.id), [doc.features]);
+  // The same order while the features' IDs are (ADR-0159 §3): an edit inside a feature (a
+  // sketch point dragged: one per pointer move) makes a new feature list, and a new order
+  // would give every chip a new `onSelect`.
+  const ids = doc.features.map((f) => f.id).join('\u0000');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `ids` stands for the features' IDs.
+  const order = useMemo(() => doc.features.map((f) => f.id), [ids]);
   const live = useMemo(() => picked.filter((id) => order.includes(id)), [picked, order]);
   const pick = (chips: FeatureId[], group?: GroupId) => {
     selection.getState().pick(chips, group);

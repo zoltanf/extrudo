@@ -83,3 +83,21 @@ untouched.
   stand-in only; the same values in new objects render none; each kind of change gives the
   new drawing; the base is not written to), `Sketches.renders.test.tsx` (the real `Sketches`:
   an edit in one of 30 renders one sketch and one fill).
+
+## Amendment (2026-11-23): the timeline keeps its chip order
+
+**Context.** The timeline's `order` (the features' IDs) was memoised on `doc.features`, which
+is a new array on any edit inside a feature. The chips' `onSelect` depends on it (ADR-0156's
+amendment), so every sketch edit gave every chip a new callback: 480 chip renders for a
+10-move point drag on 30 plates, 1,400 on 100, each with its tooltip and menu triggers.
+
+**Decision.** `order` is memoised on the features' IDs joined into one key: the same array
+while the IDs and their order are the same; a new one when a feature is added, removed or
+moved. An edit inside a feature renders that feature's chip only (its `feature` prop).
+
+**Rules.**
+
+- Props the chips share (`select`, `live`, `order`-derived values) depend on the features' IDs,
+  never on the feature objects.
+- Tested: `Timeline.renders.test.tsx` (ten edits inside one of 30 features render that chip ten
+  times and no other; swapping two features renders every chip).

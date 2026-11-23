@@ -125,6 +125,47 @@ describe('Timeline renders', () => {
     expect(looked.n).toBe(9 * 2);
   });
 
+  it('an edit inside one feature renders that chip only (ADR-0159 §3)', () => {
+    const store = createDocumentStore(thirtySketches());
+    const selection = createTimelineSelectionStore();
+    render(
+      <TooltipProvider>
+        <Timeline
+          store={store}
+          actions={stub<FeatureActions>({ canEdit: () => true })}
+          groups={stub<GroupActions>()}
+          selection={selection}
+        />
+      </TooltipProvider>,
+    );
+    // A sketch's data changed (a dragged point): a new feature list, the same IDs.
+    const edit = (i: number) =>
+      act(() =>
+        store.setState((s) => ({
+          doc: {
+            ...s.doc,
+            features: s.doc.features.map((f, j) =>
+              j === i ? { ...f, inputs: { ...f.inputs } } : f,
+            ),
+          },
+        })),
+      );
+    edit(7);
+    looked.n = 0;
+    for (let k = 0; k < 10; k++) edit(7);
+    expect(looked.n).toBe(10);
+    // A new order (two features swapped) still reaches every chip.
+    looked.n = 0;
+    act(() =>
+      store.setState((s) => {
+        const features = [...s.doc.features];
+        [features[3], features[4]] = [features[4] as Feature, features[3] as Feature];
+        return { doc: { ...s.doc, features } };
+      }),
+    );
+    expect(looked.n).toBe(30);
+  });
+
   it('a click still picks the chip, with the latest selection', () => {
     const store = createDocumentStore(thirtySketches());
     const selection = createTimelineSelectionStore();
