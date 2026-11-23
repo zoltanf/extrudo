@@ -71,3 +71,7 @@ the long update came from an Undo, redoing) top-level steps in one run:
 **Stop** does replace the worker: at open there is little cache to lose, and the alternative
 was waiting for the running call. Cancel after an edit is unchanged, and the two buttons never
 show together.
+
+**Later (2026-11-23):** ADR-0161 adds Stop to a long update once its running feature has taken
+30 s, so from then on Stop and Cancel show together (Stop first, both quiet). Cancel itself is
+unchanged: it still never terminates the worker.

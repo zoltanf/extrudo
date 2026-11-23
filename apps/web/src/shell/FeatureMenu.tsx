@@ -59,7 +59,7 @@ export function FeatureMenuItems({
   const sketch = readSketch(feature) !== undefined;
   const issues = actions.issues(feature.id);
   const guessed = issues.some((i) => i.state === 'guessed' && i.now);
-  // Stopped while the design opened (ADR-0155): Try again builds it.
+  // Stopped while the design opened or in an update (ADR-0155, ADR-0161): Try again builds it.
   const stopped = actions.stopped?.(feature.id) ?? false;
   const edits = editable || sketch || issues.length > 0 || stopped;
   return (

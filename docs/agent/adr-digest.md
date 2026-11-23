@@ -4125,8 +4125,9 @@ during the restart get the recycle's answer (list in the ADR). e2e: `e2e/open-st
 `LONG_FEATURE_TEXT`; nothing happens by itself. (Stop was made filled then; **the amendment of
 2026-11-23 withdrew that: Stop is quiet, in Cancel's style, in every state**; `[data-model-stop]`
 says `"open"` or `"update"`; the bar is `w-full min-w-40`; one chip message `STOPPED_MESSAGE`
-"Stopped: this feature took too long. Try again to build it."; `LONG_FEATURE_MS` is the kernel's
-constant, re-exported by `progressRules.ts`.)
+"Stopped: this feature took too long. Try again to build it." and the own dialog's
+`STOPPED_DRAFT_MESSAGE` "Stopped because it took too long, …", neither naming the opening;
+`LONG_FEATURE_MS` is the kernel's constant, re-exported by `progressRules.ts`.)
 Past the last feature the recomputer reports `building: true` and the line says `BUILDING_TEXT`
 with the bar full, no Stop, in both notices. **Rules:** one timer (`useLongFeature`) and only
 while Stop is offered; the sentence is plain text in the polite region (read once), the seconds

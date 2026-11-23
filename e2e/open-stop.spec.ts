@@ -144,7 +144,7 @@ test('Stop while a design opens skips the running feature; Try again builds it, 
   const edit = page.getByRole('region', { name: `Edit ${PATTERN} dialog` });
   await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 30_000 });
   await expect(edit.getByRole('status', { name: 'Feature status' })).toContainText(
-    'Stopped while the design opened, so there is no preview yet. Change a value to build it.',
+    'Stopped because it took too long, so there is no preview yet. Change a value to build it.',
   );
   await edit.getByRole('textbox', { name: 'Count', exact: true }).first().fill('2');
   await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });

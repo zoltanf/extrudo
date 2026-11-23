@@ -235,7 +235,10 @@ long wait is the sentence "This feature is taking a long time.", which keeps its
 `"update"`), not whether it is long. The progress bar stretches to the notice's content width
 (`w-full min-w-40`) in every state that shows it, so it follows the notice when the buttons or
 the sentence widen it. One chip message for every Stop: "Stopped: this feature took too long.
-Try again to build it." (`STOPPED_MESSAGE`; "while the design opened" dropped).
+Try again to build it." (`STOPPED_MESSAGE`; "while the design opened" dropped). The own
+dialog's line (rule 5) drops it too, since a Stop in an update leaves the same line: "Stopped
+because it took too long, so there is no preview yet. Change a value to build it."
+(`STOPPED_DRAFT_MESSAGE`).
 
 **Tests.** `ModelProgress.test.tsx` (the sentence at 30 s, Stop never `bg-accent`, Stop's class
 equal to Cancel's, the bar's classes); `e2e/open-stop.spec.ts`'s second test (a transparent Stop

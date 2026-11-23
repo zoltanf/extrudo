@@ -1354,15 +1354,15 @@ command (replacing its first key).
   open; it undoes the changes since the model on screen in one go, a toast says
   so, and Redo brings them back. No keyboard shortcut.
 - **Stop while a design opens (ADR-0155):** the "Preparing your design…" pill has a
-  quiet **Stop** button in the same place, once the kernel is on a feature (never
-  together with Cancel). Stop ends that feature's computation at once and opens the
+  quiet **Stop** button in the same place, once the kernel is on a feature (opening
+  never offers Cancel). Stop ends that feature's computation at once and opens the
   design without it: its timeline chip shows ✕ with "Stopped: this feature took too
   long. Try again to build it.", the status bar counts it
   as an error, and a toast says "Rectangular Pattern1 was stopped, so the design
   opened without it. Nothing in the design changed." with **Try again**. The
   feature's menu has **Try Again** while it is stopped; it computes the feature
   with no limit, shown like opening, with Stop again. Edit Feature on a stopped
-  feature shows no preview until a value changes ("Stopped while the design opened,
+  feature shows no preview until a value changes ("Stopped because it took too long,
   so there is no preview yet. Change a value to build it."). Nothing in the design changes
   and nothing is saved: opening the design again computes the feature again. The
   button has a name for screen readers; when it goes while focused, the focus moves
