@@ -1,0 +1,1 @@
+- 2026-11-23 · **Updates**: after a reload has already brought the new version, the web app no longer says "Update ready" (and shows the update message) at every load until Reload is pressed (issue #273).

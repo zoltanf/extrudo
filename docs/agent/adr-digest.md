@@ -1161,7 +1161,13 @@ redirects `/index.html` to `/`; Chrome fails such a navigation with
 `useUpdateNotice` (home and project pages) shows "A new version of Extrudo is
 ready." with Reload, which runs `saveEverything()` (`project/autosave.ts`, every
 live autosaver) before activating and reloading, and refuses when a save
-failed. `scripts/check-licenses.mjs` (in `pnpm lint`) allow-lists the
+failed. **A page that already runs the waiting version** (installing rewrote the
+precached `index.html`, so a plain reload brings it) **lets the worker take over
+quietly** and shows no update: `pageIsOlder` compares the page's entry script with
+the precached `index.html`'s; a page older than an already active worker (another
+tab let it in) still shows the update and Reload only reloads (amendment
+2026-11-23, issue #273). An e2e update must change `index.html`'s entry script
+too (`publishUpdate` in `e2e/pwa.spec.ts`), or the page counts it as its own. `scripts/check-licenses.mjs` (in `pnpm lint`) allow-lists the
 production dependencies' licenses; **a new dependency with a new license needs
 the allow-list and `NOTICE`**. The repo has README, CONTRIBUTING,
 CODE_OF_CONDUCT (contact `conduct@extrudo.org`, forwarded by Cloudflare

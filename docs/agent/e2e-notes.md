@@ -2049,7 +2049,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `biome.json`.
 
 - **Update toast e2e** (`e2e/pwa.spec.ts`, "an update is waiting"): the host
-  swaps `/sw.js` for a copy with another `VERSION`, `registration.update()` makes
+  swaps `/sw.js` for a copy with another `VERSION` **and `/` for an `index.html`
+  whose entry script has `?v=<version>`** (`publishUpdate`; with the same entry
+  the page counts the update as its own and lets it in quietly, issue #273;
+  `entry(page)` reads which build a page runs), `registration.update()` makes
   the browser install it, and it **waits** (the old version stays active:
   `activeVersion` reads the `x-extrudo-version` header the worker stamps on
   `.previous-precache` when it activates); the toast "A new version of Extrudo is
@@ -2057,6 +2060,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   active and the page reloaded; a project rename made just before survives.
   The app menu's strip then has "Reload" before "GitHub" (`[data-update-strip]`,
   `data-update-word` "Update ready"); clicking it activates the new version too.
+  The browser's own `page.reload()` already runs the new build; its worker then
+  takes over without a toast (strip word empty). A second page
+  (`page.context().newPage()`) opened after the update lets it in the same way,
+  and the first page's strip still says "Update ready" (Reload only reloads).
   Unit tests: `platform/updates.test.ts`, `updateNotice.test.ts`,
   `project/autosave.test.ts` (`saveEverything`), `shell/AppMenu.update.test.tsx`.
 
