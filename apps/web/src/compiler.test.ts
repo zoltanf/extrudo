@@ -92,5 +92,5 @@ describe('the React Compiler', () => {
       [...before].filter((k) => !after.has(k)),
       'compiles now, off the list',
     ).toEqual([]);
-  });
+  }, 60_000);
 });

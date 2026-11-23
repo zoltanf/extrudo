@@ -43,6 +43,9 @@ rebuild that value with the closure, so it rendered 2–3× more until fixed).
 - A component or hook that compiles must keep compiling; adding one to
   `compiler-skips.json` is a decision for the pull request's text, not a side effect.
 - A component that comes off the list stays off.
+- The list tracks components, not reasons: a new diagnostic inside a component already on
+  the list passes unseen. The test runs with a 60 s timeout (the scan takes a few seconds,
+  more on a loaded runner).
 
 ## Rejected
 
