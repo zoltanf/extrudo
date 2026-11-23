@@ -129,4 +129,49 @@ describe('Sketches renders', () => {
     expect(renders.sketches).toBe(3);
     expect([...renders.fills.keys()].sort()).toEqual(['sk11', 'sk27', 'sk4']);
   });
+
+  it('a document change in one of 30 sketches renders that sketch only (ADR-0159 §2)', () => {
+    const regions = createStore<RegionsState>()(() => ({ version: 0, fallback: false }));
+    const client = {
+      store: regions,
+      get: () => undefined,
+      want: () => {},
+      keep: () => {},
+      addFont: () => {},
+    } as unknown as RegionsClient;
+    // What the shell makes for a document: every drawing, frame and list a new object.
+    const shell = (datas: readonly SketchData[]): ShownSketchBase => ({
+      items: datas.map((data, i) => ({
+        drawing: {
+          id: `sk${i}`,
+          frame: JSON.parse(JSON.stringify(frame)) as SketchFrame,
+          data,
+          active: false,
+          selectedEntities: [],
+          selectedProfiles: [],
+        },
+        kind: 'closed' as const,
+        job: { key: `sk${i}`, data, version: 0, text: false },
+      })),
+      fontsVersion: 0,
+      activeSketchId: undefined,
+    });
+    const datas = Array.from(
+      { length: 30 },
+      () => Object.freeze({ ...emptySketchData() }) as SketchData,
+    );
+    const tree = (base: ShownSketchBase) => (
+      <ShownSketchesProvider base={base} client={client}>
+        <View />
+      </ShownSketchesProvider>
+    );
+    const view = render(tree(shell(datas)));
+    renders.sketches = 0;
+    renders.fills.clear();
+    // An edit in sketch 9 (a dragged point): new data for it, the same for the others.
+    const edited = datas.map((d, i) => (i === 9 ? (Object.freeze({ ...d }) as SketchData) : d));
+    view.rerender(tree(shell(edited)));
+    expect(renders.sketches).toBe(1);
+    expect([...renders.fills.keys()]).toEqual(['sk9']);
+  });
 });

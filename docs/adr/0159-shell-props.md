@@ -53,3 +53,33 @@ rebuild that value with the closure, so it rendered 2–3× more until fixed).
   `commands`, `doc` and the selection are read by nearly every part.
 - **Matching component names in the compiler's output** (`_c(` in each function) instead of its
   diagnostics: depends on the generated code's shape.
+
+## Amendment (2026-11-23): each sketch keeps its drawing while it draws the same
+
+**Context.** The shell builds every shown sketch's drawing again whenever its `sketchBase`
+memo runs: on every document change, so on every pointer move while a sketch point is
+dragged. The provider memoises its dressed drawings by the base drawing object (ADR-0156's
+amendment), so every sketch's drawing was new and every sketch drew again: 270 sketch
+renders (and as many for each of the three mark layers and the fill) for a 10-move drag on
+30 plates, where one sketch changed.
+
+**Decision.** `ShownSketchesProvider` passes the shell's base through `keepDrawings` before
+adding results: a sketch whose new drawing draws the same as the last one it kept (by sketch
+ID) gets the kept object. Data and the solver's status count by identity (the document's data
+is frozen, and a new object exactly when its sketch changes); every other field by value (the
+frame, the selected entities and profiles, the flags). The same base comes back while nothing
+is replaced; a replaced item is a copy, so the shell's base is never written to; the kept map
+holds the current base's drawings only. The provider's effects are untouched (no new effect,
+same order); the shell's `sketchBase` memo, with its calls into the profile cache, is
+untouched.
+
+**Rules.**
+
+- A field added to `SketchDrawing` that is large or changes identity on purpose must be
+  compared by identity in `drawsTheSame`; anything else is compared by value.
+- `keepDrawings` never writes into the base's items or drawings, and keeps only the drawings
+  it returned.
+- Tested: `shownSketches.test.tsx` (an edit in one of 30 sketches renders that sketch's
+  stand-in only; the same values in new objects render none; each kind of change gives the
+  new drawing; the base is not written to), `Sketches.renders.test.tsx` (the real `Sketches`:
+  an edit in one of 30 renders one sketch and one fill).
