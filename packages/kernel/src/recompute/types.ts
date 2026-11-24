@@ -59,8 +59,16 @@ export interface ImportedFile {
  * - `none`: doesn't look at bodies (a sketch on an origin plane).
  * - `read`: looks, doesn't change them (a sketch on a face).
  * - `write`: changes the body set (extrude, fillet, a boolean).
+ * - `add` (ADR-0024's amendment of 2026-11-25): only adds new bodies and reads none of the
+ *   bodies before it (a New Body extrude of sketch profiles by distances). The engine hands it
+ *   no bodies, leaves them out of its key and appends what it makes. Answer it only for inputs
+ *   that provably read no body: by ID, by name, by reference, by measuring them, by going
+ *   through them or by counting them. A read of the empty body map by ID (`get`, `has`, `size`),
+ *   `names` or `resolve` makes the engine evaluate the feature again as `write`; a read by
+ *   iterating over the bodies is not noticed. Treated as `write` inside an isolated expansion
+ *   and when a body with the feature's own ID prefix exists already.
  */
-export type BodyAccess = 'none' | 'read' | 'write';
+export type BodyAccess = 'none' | 'read' | 'write' | 'add';
 
 /**
  * A feature definition as the kernel sees it: core's data part plus the

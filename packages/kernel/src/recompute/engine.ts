@@ -205,6 +205,8 @@ export class RecomputeEngine {
   readonly #refs = new Map<ShapeHandle, number>();
   /** Version of each body shape the cache holds (see BodyResult.version). */
   readonly #versions = new Map<ShapeHandle, string>();
+  /** `add` keys whose evaluation read a body: those features run as `write` (ADR-0024, 2026-11-25). */
+  readonly #readsBodies = new Set<string>();
   /** Which feature made each body shape, for mesh errors. */
   readonly #makers = new Map<ShapeHandle, FeatureId>();
   /** Naming table of each body shape the cache holds (ADR-0005). */
@@ -839,18 +841,37 @@ export class RecomputeEngine {
       // A feature of an isolated expansion (ADR-0140 §3) sees only the bodies
       // its own expansion made, and its key holds their key, not the design's.
       const scope = script === undefined ? undefined : scopes.get(script);
-      const seen = scope === undefined ? bodies : ownBodies(bodies, script as FeatureId);
       // No font and no file in the key: their bytes never change under their
       // IDs (content-addressed, ADR-0061 §1), and the worker has every one
       // before the recompute or preview that needs it (ADR-0058 §4, ADR-0066 §0).
-      const key = hashOf(
-        feature.type,
-        feature.id,
-        feature.inputs,
-        values,
-        upstream.map((e) => e.key),
-        access === 'none' ? null : (scope ?? bodiesKey),
-      );
+      const keyOf = (bodyPart: string | null) =>
+        hashOf(
+          feature.type,
+          feature.id,
+          feature.inputs,
+          values,
+          upstream.map((e) => e.key),
+          bodyPart,
+        );
+      // A feature that only adds bodies (ADR-0024's amendment of 2026-11-25) sees none and keys
+      // none; not inside an isolated expansion (its merge moves the expansion's bodies), not when
+      // a body with its own ID prefix exists (its IDs would clash), and not once its evaluation
+      // has read a body.
+      const addKey = access === 'add' ? keyOf('add') : undefined;
+      let adds =
+        addKey !== undefined &&
+        scope === undefined &&
+        !this.#readsBodies.has(addKey) &&
+        !hasOwnBodies(bodies, feature.id);
+      const seen = adds
+        ? new NoBodies()
+        : scope === undefined
+          ? bodies
+          : ownBodies(bodies, script as FeatureId);
+      let key =
+        adds && addKey !== undefined
+          ? addKey
+          : keyOf(access === 'none' ? null : (scope ?? bodiesKey));
 
       let entry = this.#entries.get(key);
       if (!entry) {
@@ -889,6 +910,34 @@ export class RecomputeEngine {
           prepared,
         );
         evaluated.push(feature.id);
+        if (seen instanceof NoBodies && seen.read) {
+          // It read a body after all: its `add` answer was wrong for these inputs. Its result
+          // goes, and it runs as `write`, now and whenever these inputs come again.
+          this.#readsBodies.add(key);
+          this.#entries.delete(key);
+          this.#drop(entry);
+          const writeKey = keyOf(bodiesKey);
+          const cached = this.#entries.get(writeKey);
+          if (cached) {
+            entry = cached;
+          } else {
+            entry = this.#evaluate(
+              definition,
+              feature,
+              parsed.data,
+              values,
+              bodies,
+              outputs,
+              writeKey,
+              (id) => byId.get(id)?.name,
+              doc,
+              prepared,
+            );
+            evaluated.push(feature.id);
+          }
+          adds = false;
+          key = entry.key;
+        }
       }
       used.add(key);
       features[feature.id] = ignored.length > 0 ? withIgnored(entry.status, ignored) : entry.status;
@@ -901,10 +950,12 @@ export class RecomputeEngine {
         for (const [piece, source] of entry.output.origins) origins.set(piece, source);
       }
       if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
-      if (access === 'write' && entry.output.bodies) {
-        // An isolated feature's result replaces only the bodies it saw.
-        const after =
-          scope === undefined
+      if ((access === 'write' || access === 'add') && entry.output.bodies) {
+        // An isolated feature's result replaces only the bodies it saw; an `add` result goes
+        // after the bodies before it.
+        const after = adds
+          ? mergeBodies(bodies, new Map(), entry.output.bodies)
+          : scope === undefined
             ? entry.output.bodies
             : mergeBodies(bodies, seen, entry.output.bodies);
         if (channel === 'recompute') {
@@ -920,7 +971,10 @@ export class RecomputeEngine {
           });
         }
         bodies = after;
-        if (scope === undefined) {
+        if (adds) {
+          // Every later feature that reads bodies keys the set with this one in it.
+          bodiesKey = hashOf('add', bodiesKey, key);
+        } else if (scope === undefined) {
           bodiesKey = key;
         } else {
           scopes.set(script as FeatureId, key);
@@ -1200,7 +1254,14 @@ export class RecomputeEngine {
     prepared?: Prepared,
   ): Entry {
     const kernel = this.#kernel;
-    const { warnings, issues, note, names: bodyNames, resolve } = this.#references(feature, bodies);
+    const references = this.#references(feature, bodies);
+    const { warnings, issues, note } = references;
+    let { names: bodyNames, resolve } = references;
+    if (bodies instanceof NoBodies) {
+      // An `add` evaluator has no bodies to name or to resolve a reference in: a try is a read.
+      bodyNames = () => bodies.noticed();
+      resolve = () => bodies.noticed();
+    }
     const describe = (shape: ShapeHandle) => this.#describe(shape);
     const files = this.#files(doc);
     const ctx: EvalContext = {
@@ -1666,6 +1727,36 @@ function ownBodies(
  * The design's bodies after an isolated feature: every body it didn't see, in
  * order, then what it made of those it saw.
  */
+/**
+ * The bodies an `add` evaluator is given (ADR-0024's amendment of 2026-11-25): none. Looking one
+ * up (`get`, `has`, `size`, or through the context's `names` and `resolve`) is noticed and fails
+ * the evaluation, and the engine then evaluates the feature as `write`. Iterating over it (an
+ * evaluator copying the map, or checking which handles are new) gives nothing and is not noticed.
+ */
+class NoBodies extends Map<BodyId, ShapeHandle> {
+  read = false;
+  noticed(): never {
+    this.read = true;
+    throw new KernelError('A feature that only adds bodies looked at a body before it.');
+  }
+  override get(_id: BodyId): ShapeHandle | undefined {
+    return this.noticed();
+  }
+  override has(_id: BodyId): boolean {
+    return this.noticed();
+  }
+  override get size(): number {
+    return this.noticed();
+  }
+}
+
+/** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */
+function hasOwnBodies(bodies: ReadonlyMap<BodyId, ShapeHandle>, feature: FeatureId): boolean {
+  const prefix = `${feature}:`;
+  for (const id of bodies.keys()) if (id.startsWith(prefix)) return true;
+  return false;
+}
+
 function mergeBodies(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
   seen: ReadonlyMap<BodyId, ShapeHandle>,

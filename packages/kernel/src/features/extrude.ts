@@ -90,10 +90,28 @@ interface Side {
  */
 export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
   ...extrudeFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => (addsOnly(inputs) ? 'add' : 'write'),
   evaluate: evaluateExtrude,
   csg: extrudeCsg,
 };
+
+/**
+ * Whether an extrude only adds bodies and reads none before it (`add`, ADR-0024's amendment of
+ * 2026-11-25): a new body (no join, cut or intersect, which find or take the bodies it meets),
+ * no picked bodies (`explicitBodies` looks them up), every side by a distance (`through-all`
+ * measures the bodies in the way, `to-object` resolves an object among them), and every profile
+ * a sketch's profile or text (a face profile is resolved among the bodies). A sketch on a face
+ * keys the bodies itself and reaches the extrude as its upstream key.
+ */
+export function addsOnly(inputs: ExtrudeInputs): boolean {
+  const settings = extrudeSettings(inputs);
+  return (
+    settings.operation === 'new-body' &&
+    settings.bodies.length === 0 &&
+    settings.sides.every((side) => side.extent === 'distance') &&
+    settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity')
+  );
+}
 
 /**
  * An extrude in OpenSCAD (ADR-0088 §7): the picked profiles as 2D nodes
