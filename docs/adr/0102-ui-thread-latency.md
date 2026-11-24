@@ -441,8 +441,9 @@ one-run profiles). Keeping them across mounts would need a place that knows when
 the model for good to dispose them; the view only knows what it shows. The silhouettes, the marks,
 the region preview and the thin-wall flags depend on more than the mesh and stay per mount.
 
-**What is held:** per mesh the page holds, until the mesh object goes, its edge array (which a
-mounted body holds anyway) and one copy of its face colours (as long as its positions array). The
+**What is held:** for every mesh the page holds, shown or not (the bodies hidden while a dialog
+is open among them), until the mesh object goes: its edge array (which a mounted body holds
+anyway), one copy of its face colours (as long as its positions array) and of its face states. The
 `WeakMap`s keep nothing alive.
 
 **Measured** (30 and 100 plates with 30 holes each, production build, Chrome with a GPU,

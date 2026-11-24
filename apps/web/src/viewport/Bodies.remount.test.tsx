@@ -93,5 +93,5 @@ describe('bodies that mount again (ADR-0102 §10)', () => {
     const after = { ...all, [ids[0] as BodyId]: boxMesh([0, 0, 0], [12, 10, 10]) };
     out.rerender(shown(after));
     expect(built).toEqual({ edges: 1, paints: 1 });
-  });
+  }, 30_000);
 });

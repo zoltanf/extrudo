@@ -60,6 +60,13 @@ describe('bodyBuilt (ADR-0102 §10)', () => {
     // The view paints a hover into that geometry and the states array changes in place.
     states[2] = 1;
     paintFaces(first, mesh, states, palette, new Uint8Array(6));
+    // A new geometry for the changed states is painted for them (kept by reference, the states
+    // would compare equal to themselves and the old colours come back).
+    const hovered = new Float32Array(mesh.positions.length);
+    paintAll(hovered, mesh, states, palette, keyOf(palette));
+    expect([...hovered]).toEqual([...painted(mesh, states, palette).colors]);
+    expect([...hovered]).not.toEqual([...painted(mesh, new Uint8Array(6), palette).colors]);
+    // And back: the first geometry's later colours never reached a kept painting.
     states[2] = 0;
     const second = new Float32Array(mesh.positions.length);
     paintAll(second, mesh, states, palette, keyOf(palette));
