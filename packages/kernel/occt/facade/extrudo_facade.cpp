@@ -2632,8 +2632,13 @@ public:
       integrateVolume(*s, volume);
       GProp_GProps area;
       integrateArea(*s, area);
+      // From the faces' geometry, never their triangulation (useTriangulation false): meshing a
+      // shape for display or a sheet view leaves a triangulation on its faces, and a box from it
+      // is larger, so the same shape measured before and after drawing it gave two boxes
+      // (ADR-0001's amendment of 2026-11-25). A face with no surface (a mesh body) still uses its
+      // triangulation, as before. Every BRepBndLib::Add here passes false for the same reason.
       Bnd_Box box;
-      BRepBndLib::Add(*s, box);
+      BRepBndLib::Add(*s, box, false);
       measured_[0] = volume.Mass();
       measured_[1] = area.Mass();
       if (box.IsVoid()) {
@@ -4197,7 +4202,7 @@ public:
       double reach = 0;
       for (const TopoDS_Face& face : faces) {
         Bnd_Box box;
-        BRepBndLib::Add(face, box);
+        BRepBndLib::Add(face, box, false);
         double x0, y0, z0, x1, y1, z1;
         box.Get(x0, y0, z0, x1, y1, z1);
         for (double x : {x0, x1})
@@ -5046,8 +5051,8 @@ public:
 
       // The prism: the profile moved back along d behind the thick piece, swept through it.
       Bnd_Box box;
-      BRepBndLib::Add(shell, box);
-      BRepBndLib::Add(profile, box);
+      BRepBndLib::Add(shell, box, false);
+      BRepBndLib::Add(profile, box, false);
       double x0, y0, z0, x1, y1, z1;
       box.Get(x0, y0, z0, x1, y1, z1);
       const gp_Pnt origin = carried.Plane().Location();
@@ -5548,7 +5553,7 @@ private:
       // How far apart two points may lie and still be one corner: a millionth of the
       // profile's size, never under OCCT's own confusion.
       Bnd_Box box;
-      BRepBndLib::Add(profile, box);
+      BRepBndLib::Add(profile, box, false);
       double x0, y0, z0, x1, y1, z1;
       box.Get(x0, y0, z0, x1, y1, z1);
       const double tolerance = 1e-6 * std::max(1.0, std::sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0) +
@@ -11398,7 +11403,7 @@ private:
         Handle(TopoDS_AlertWithShape) withShape = Handle(TopoDS_AlertWithShape)::DownCast(alert);
         if (withShape.IsNull()) continue;
         Bnd_Box box;
-        BRepBndLib::Add(withShape->GetShape(), box);
+        BRepBndLib::Add(withShape->GetShape(), box, false);
         double x0, y0, z0, x1, y1, z1;
         if (!box.IsVoid()) {
           box.Get(x0, y0, z0, x1, y1, z1);
@@ -11436,7 +11441,7 @@ private:
     std::vector<Bnd_Box> cellBoxes(cells.size());
     std::vector<std::unique_ptr<BRepClass3d_SolidClassifier>> classifiers;
     for (size_t i = 0; i < cells.size(); ++i) {
-      BRepBndLib::Add(cells[i], cellBoxes[i]);
+      BRepBndLib::Add(cells[i], cellBoxes[i], false);
       cellBoxes[i].Enlarge(1e-6);
       classifiers.emplace_back(new BRepClass3d_SolidClassifier(cells[i]));
     }
@@ -11624,7 +11629,7 @@ private:
       }
       double u1 = 0, v1 = 0;
       BRepTools::UVBounds(c.face, c.u0, u1, c.v0, v1);
-      BRepBndLib::Add(c.face, c.box);
+      BRepBndLib::Add(c.face, c.box, false);
       c.box.Enlarge(tolerance * 1.01);
       c.inside.reset(new BRepTopAdaptor_FClass2d(c.face, 1e-7));
       checked.push_back(std::move(c));
@@ -13300,7 +13305,7 @@ private:
           if (type == GeomAbs_Torus) c.torus = surface.Torus();
           double u1 = 0, v1 = 0;
           BRepTools::UVBounds(c.face, c.u0, u1, c.v0, v1);
-          BRepBndLib::Add(c.face, c.box);
+          BRepBndLib::Add(c.face, c.box, false);
           c.box.Enlarge(tolerance * 1.01);
           checked.push_back(std::move(c));
         }
@@ -16299,12 +16304,12 @@ private:
         }
       }
       Bnd_Box boxA;
-      BRepBndLib::Add(a, boxA);
+      BRepBndLib::Add(a, boxA, false);
       int stranded = 0;
       for (size_t k = 0; k < solids.size(); ++k) {
         if (!apart[k]) continue;
         Bnd_Box box;
-        BRepBndLib::Add(solids[k], box);
+        BRepBndLib::Add(solids[k], box, false);
         box.Enlarge(kTouch);
         if (boxA.IsOut(box)) continue;
         BRepExtrema_DistShapeShape measure(a, solids[k], Extrema_ExtFlag_MIN);
