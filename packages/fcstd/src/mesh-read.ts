@@ -48,8 +48,6 @@ export type MeshRefusal =
   | 'index'
   /** A coordinate that isn't a finite number. */
   | 'coordinate'
-  /** A facet that names one point twice. */
-  | 'degenerate'
   /** More points than three a facet: points no facet can use. */
   | 'points';
 
@@ -58,6 +56,8 @@ export interface MeshKernel {
   readonly points: Float32Array;
   /** Three point indices a facet. */
   readonly facets: Uint32Array;
+  /** S13: facets that named one point twice, dropped as the kernel drops them. */
+  readonly dropped?: number;
 }
 
 export type MeshRead =
@@ -114,24 +114,35 @@ export function readMeshKernel(bytes: Uint8Array, maxFacets = MAX_MESH_FACETS): 
   }
   const f = new Uint32Array(facets * 3);
   let at = HEAD + 12 * points;
+  let kept = 0;
   for (let i = 0; i < facets; i++, at += 24) {
     const a = view.getUint32(at, true);
     const b = view.getUint32(at + 4, true);
     const c = view.getUint32(at + 8, true);
     if (a >= points || b >= points || c >= points)
       return { refused: 'index', detail: `facet ${i} names a point past the ${points} there are` };
-    if (a === b || b === c || a === c)
-      return { refused: 'degenerate', detail: `facet ${i} names one point twice` };
     for (let k = 12; k < 24; k += 4) {
       const n = view.getUint32(at + k, true);
       if (n >= facets && n !== OPEN_EDGE)
         return { refused: 'index', detail: `facet ${i} names a neighbour that isn't there` };
     }
-    f[3 * i] = a;
-    f[3 * i + 1] = b;
-    f[3 * i + 2] = c;
+    // S13: a facet that names one point twice is no triangle; the kernel's own mesh import drops
+    // it, so it is dropped here and the closed check judges what is left.
+    if (a === b || b === c || a === c) continue;
+    f[3 * kept] = a;
+    f[3 * kept + 1] = b;
+    f[3 * kept + 2] = c;
+    kept++;
   }
-  return { mesh: { points: p, facets: f } };
+  if (kept === 0) return { empty: true };
+  const dropped = facets - kept;
+  return {
+    mesh: {
+      points: p,
+      facets: kept === facets ? f : f.slice(0, 3 * kept),
+      ...(dropped ? { dropped } : {}),
+    },
+  };
 }
 
 /** What a mesh's triangles are once placed. */
@@ -151,7 +162,12 @@ export interface MeshFacts {
   };
   /** The centre of the enclosed volume (of the box when it encloses none), mm. */
   readonly centre: readonly [number, number, number];
+  /** S13: placed points that aren't finite or lie past `MAX_MESH_COORDINATE` (the caller refuses the mesh). */
+  readonly far: number;
 }
+
+/** S13: the farthest a placed mesh point may lie from the origin along an axis, mm (10 km, S11's limit). */
+export const MAX_MESH_COORDINATE = 1e7;
 
 /**
  * The mesh placed by `chain` (outermost first, the object's own placement
@@ -169,6 +185,7 @@ export function meshFacts(mesh: MeshKernel, chain: readonly FcPlacement[]): Mesh
   const index = new Map<string, number>();
   const remap = new Uint32Array(points.length / 3);
   const positions: number[] = [];
+  let far = 0;
   for (let i = 0; i < points.length / 3; i++) {
     const [x, y, z] = rotate(place.rotation, [
       points[3 * i] as number,
@@ -180,6 +197,7 @@ export function meshFacts(mesh: MeshKernel, chain: readonly FcPlacement[]): Mesh
       Math.fround(y + place.position[1]),
       Math.fround(z + place.position[2]),
     ];
+    if (!v.every((c) => Math.abs(c) <= MAX_MESH_COORDINATE)) far++;
     const key = `${v[0]},${v[1]},${v[2]}`;
     let n = index.get(key);
     if (n === undefined) {
@@ -271,5 +289,6 @@ export function meshFacts(mesh: MeshKernel, chain: readonly FcPlacement[]): Mesh
       volume !== 0
         ? [moment[0] / volume, moment[1] / volume, moment[2] / volume]
         : [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2],
+    far,
   };
 }

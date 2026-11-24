@@ -77,7 +77,7 @@ first, with the cadmpeg converter it ships with, and imports the STEP: you get t
 colours, names or history. The design keeps only the STEP, so it opens in the browser too. The
 details are in the [desktop app's notes](https://github.com/zoltanf/extrudo/blob/main/docs/desktop.md#other-cad-files).
 FreeCAD `.FCStd` files don't go through the converter: Extrudo reads them itself, in the
-browser too, with the shapes' names and colours (see [files](./files.md)).
+browser too, with their timelines, names and colours (see [FreeCAD files](./freecad.md)).
 
 **Updates.** The app looks for a new release a few seconds after it starts, then every six
 hours. What happens next depends on how you installed it:

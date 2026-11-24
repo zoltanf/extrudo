@@ -511,13 +511,16 @@ interface GuiFacts {
  * `u32`s, shininess and transparency as `f32` (versions 2 and 3 alike for
  * these fields). `undefined` when the entry is too short or makes no sense.
  */
-function firstMaterial(
-  bytes: Uint8Array,
-): { colour: [number, number, number]; transparency: number; count: number } | undefined {
+function firstMaterial({
+  bytes,
+  size,
+}: SideEntry):
+  | { colour: [number, number, number]; transparency: number; count: number }
+  | undefined {
   if (bytes.length < 4 + 24) return undefined;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = view.getUint32(0, true);
-  if (count === 0 || count * 24 > bytes.length) return undefined;
+  if (count === 0 || count * 24 > size) return undefined;
   const diffuse = view.getUint32(8, true);
   const transparency = view.getFloat32(24, true);
   if (!Number.isFinite(transparency) || transparency < 0 || transparency > 1) return undefined;
@@ -525,13 +528,14 @@ function firstMaterial(
 }
 
 /** The first colour of a `DiffuseColor` list (binary entry): `u32 n`, then `n` packed RGBA `u32`s. */
-function firstColour(
-  bytes: Uint8Array,
-): { colour: [number, number, number]; count: number } | undefined {
+function firstColour({
+  bytes,
+  size,
+}: SideEntry): { colour: [number, number, number]; count: number } | undefined {
   if (bytes.length < 8) return undefined;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = view.getUint32(0, true);
-  if (count === 0 || count * 4 + 4 > bytes.length) return undefined;
+  if (count === 0 || count * 4 + 4 > size) return undefined;
   return { colour: unpack(view.getUint32(4, true)), count };
 }
 
@@ -541,17 +545,33 @@ const unpack = (packed: number): [number, number, number] => [
   ((packed >>> 8) & 255) / 255,
 ];
 
-/** Reads a binary side entry of `GuiDocument.xml`, `undefined` with a problem when it can't. */
+/** The head of a binary side entry and its whole size. */
+interface SideEntry {
+  readonly bytes: Uint8Array;
+  readonly size: number;
+}
+
+/** The most of a side entry read: the first material is 28 bytes (S13: never the whole entry). */
+const SIDE_HEAD = 32;
+
+/**
+ * Reads the head of a binary side entry of `GuiDocument.xml` (only the first colour is used,
+ * so the rest is never inflated), `undefined` with a problem when it can't.
+ */
 function sideEntry(
   entries: FcEntries,
   name: string,
   owner: string,
   ctx: Context,
-): Uint8Array | undefined {
+): SideEntry | undefined {
   try {
-    const bytes = entries.get(name);
-    if (!bytes) ctx.problems.push(`${owner}: its colour entry ${name} is missing.`);
-    return bytes;
+    const bytes = entries.head(name, SIDE_HEAD);
+    const size = entries.size(name);
+    if (!bytes || size === undefined) {
+      ctx.problems.push(`${owner}: its colour entry ${name} is missing.`);
+      return undefined;
+    }
+    return { bytes, size };
   } catch (error) {
     if (!(error instanceof FcstdFormatError)) throw error;
     ctx.problems.push(`${owner}: its colour entry was left out: ${error.message}`);
@@ -782,8 +802,27 @@ export function storedShapeText(
     );
     return undefined;
   }
+  // S13: the format line from the entry's first bytes, before the whole entry is inflated.
   let bytes: Uint8Array | undefined;
   try {
+    const first = doc.entries.head(entry, 128);
+    if (!first) {
+      doc.problems.push(`${what}: its stored shape ${short(entry)} is missing from the file.`);
+      return undefined;
+    }
+    if (first.length === 0) {
+      doc.problems.push(`${what}: its stored shape is empty.`);
+      return undefined;
+    }
+    const head = new TextDecoder('latin1').decode(first);
+    if (entry.endsWith('.bin') || head.includes('Open CASCADE Topology')) {
+      doc.problems.push(binaryFormProblem(what));
+      return undefined;
+    }
+    if (!BREP_TEXT.test(head)) {
+      doc.problems.push(`${what}: its stored shape is not B-rep text.`);
+      return undefined;
+    }
     bytes = doc.entries.get(entry);
   } catch (error) {
     if (!(error instanceof FcstdFormatError)) throw error;
@@ -792,19 +831,6 @@ export function storedShapeText(
   }
   if (!bytes) {
     doc.problems.push(`${what}: its stored shape ${short(entry)} is missing from the file.`);
-    return undefined;
-  }
-  if (bytes.length === 0) {
-    doc.problems.push(`${what}: its stored shape is empty.`);
-    return undefined;
-  }
-  const head = new TextDecoder('latin1').decode(bytes.subarray(0, 128));
-  if (entry.endsWith('.bin') || head.includes('Open CASCADE Topology')) {
-    doc.problems.push(binaryFormProblem(what));
-    return undefined;
-  }
-  if (!BREP_TEXT.test(head)) {
-    doc.problems.push(`${what}: its stored shape is not B-rep text.`);
     return undefined;
   }
   return new TextDecoder('latin1').decode(bytes);

@@ -28,8 +28,12 @@ export interface XmlElement {
 export const MAX_DEPTH = 256;
 /** The most attributes one element may have (FreeCAD's sketch constraints have about 20). */
 export const MAX_ATTRIBUTES = 256;
-/** The most elements one document may have (the library's largest has 55,138). */
-export const MAX_NODES = 4_000_000;
+/**
+ * The most elements one document may have (the library's largest has 55,138). S13: measured
+ * (`heap.test.ts`), 990,000 elements raise the import's peak memory by 0.7 GB and 2.9 million by
+ * 1.6 GB, so the cap is a million, 18 times the library's largest; it was 4 million.
+ */
+export const MAX_NODES = 1_000_000;
 
 interface Building {
   name: string;
@@ -57,6 +61,22 @@ const endsName = (c: number) =>
  * each reference is found with one `indexOf` and the pieces joined once.
  */
 function decodeEntities(raw: string, where: string): string {
+  return inert(references(raw, where));
+}
+
+// biome-ignore lint/suspicious/noControlCharactersInRegex: finding them is the point
+const NOT_XML = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: replacing them is the point
+const NOT_XML_ALL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g;
+
+/**
+ * S13: the characters XML 1.0 doesn't allow (C0 controls but tab, newline and carriage return;
+ * U+FFFE, U+FFFF), written literally or as a reference, read as U+FFFD: inert, and never a
+ * separator a key built from names could be confused by.
+ */
+const inert = (text: string) => (NOT_XML.test(text) ? text.replace(NOT_XML_ALL, '\ufffd') : text);
+
+function references(raw: string, where: string): string {
   let amp = raw.indexOf('&');
   if (amp < 0) return raw;
   const parts: string[] = [];
@@ -100,7 +120,7 @@ const normaliseAttribute = (raw: string) =>
  * (`what` names the document) for anything that is not well-formed XML or
  * that breaks a limit.
  */
-export function parseXml(text: string, what = 'the XML'): XmlElement {
+export function parseXml(text: string, what = 'the XML', maxNodes = MAX_NODES): XmlElement {
   const n = text.length;
   const stack: Building[] = [];
   let root: Building | undefined;
@@ -209,7 +229,7 @@ export function parseXml(text: string, what = 'the XML'): XmlElement {
       if (j < n && !isSpace(after) && after !== 0x3e && after !== 0x2f)
         throw bad(`no space after the attribute ${key.slice(0, 40)}`);
     }
-    if (++nodes > MAX_NODES) throw bad(`more than ${MAX_NODES} elements`);
+    if (++nodes > maxNodes) throw bad(`more than ${maxNodes} elements`);
     const element: Building = { name, attrs, children: [], text: '' };
     const parent = stack[stack.length - 1];
     if (parent) parent.children.push(element);

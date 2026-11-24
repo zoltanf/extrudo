@@ -90,6 +90,10 @@ export function workerImportKernel(
       const c = connection ?? start();
       return Promise.race([importReferences(c.api, items), died]);
     },
+    heap: () => {
+      const c = connection ?? start();
+      return Promise.race([c.api.heap(), died]);
+    },
     restart: async () => {
       connection?.terminate();
       start();

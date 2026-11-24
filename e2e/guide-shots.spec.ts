@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
+import { paramFile } from '../packages/fcstd/src/parameter-parts';
 import { chip } from './benchmark-helpers';
 import {
   clicker,
@@ -381,6 +382,46 @@ test('the Export drawing dialog', async ({ page }) => {
   await expect(dialog.locator('[data-sheet-export-summary]')).toHaveText(/1 page/);
   await page.waitForTimeout(500);
   const file = out('drawings', 'export');
+  await ensureDir(file);
+  await writeFile(file, await indexed(page, await dialog.screenshot()));
+});
+
+// The FreeCAD files page (P6-25 S13): our own fixture plate (`paramFile('sheet_plate')`, made
+// with FreeCAD from our own script), imported through the home screen's Import… card.
+async function importPlate(page: Page) {
+  await page.goto('./');
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
+  ]);
+  await chooser.setFiles({
+    name: 'Plate.FCStd',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from(paramFile('sheet_plate')),
+  });
+  await expect(page).toHaveURL(/#\/p\/[^/]+$/, { timeout: 60_000 });
+  await kernelReady(page);
+}
+
+test('a FreeCAD file imported: the notices, and the body with its timeline', async ({ page }) => {
+  await importPlate(page);
+  const notice = page.getByText(/^Imported from the FreeCAD file:/);
+  await expect(notice).toBeVisible();
+  const chips = page.getByRole('list', { name: 'Features' }).locator('[data-timeline-item="chip"]');
+  await expect(chips).toHaveCount(6, { timeout: 60_000 });
+  await page.waitForTimeout(1500);
+  const shot = out('freecad', 'imported');
+  await ensureDir(shot);
+  await save(page, shot);
+});
+
+test('a FreeCAD file imported: its spreadsheet as parameters', async ({ page }) => {
+  await importPlate(page);
+  await pickTool(page, 'Parameters');
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await expect(dialog).toBeVisible();
+  await page.waitForTimeout(800);
+  const file = out('freecad', 'parameters');
   await ensureDir(file);
   await writeFile(file, await indexed(page, await dialog.screenshot()));
 });

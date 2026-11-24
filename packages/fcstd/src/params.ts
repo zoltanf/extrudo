@@ -39,13 +39,23 @@ import {
   isFcToken,
   parseFcExpression,
 } from './fc-expr';
+import { append } from './lists';
 import type { FcCell, FcDocument, FcObject, FcProperty } from './model';
-import { cleanName } from './names';
+import { cleanName, clip, MAX_NAME_LENGTH } from './names';
+import { MAX_SKETCH_CONSTRAINTS } from './sketch-decode';
 
 /** The most user parameters one import adds (measured: `parameter-limits.test.ts`). */
 export const MAX_IMPORT_PARAMETERS = 1_000;
 /** The most cells read from one sheet. */
 export const MAX_SHEET_CELLS = 10_000;
+/**
+ * S13: the most cells and variable-set properties read from one file, all sheets and sets
+ * together (each sheet's own `MAX_SHEET_CELLS` stays): every one read is a source the
+ * parameters' passes visit, so many sheets of 10,000 cells would multiply.
+ */
+export const MAX_IMPORT_CELLS = 20_000;
+/** S13: the longest cell content tried as a plain number; a longer one goes to the expression reader, whose 4,096 characters bound it. */
+export const MAX_CELL_NUMBER_LENGTH = 400;
 /** The most expressions read from one object (a feature keeps at most `MAX_FEATURE_EXPRESSIONS` of them). */
 export const MAX_OBJECT_EXPRESSIONS = 256;
 /** The most expressions read from one file. */
@@ -263,7 +273,14 @@ export class Names {
       name = found;
     }
     this.taken.add(name);
-    if (name !== wanted) this.changes.push({ from: wanted, to: name, what, why: why ?? 'invalid' });
+    if (name !== wanted)
+      this.changes.push({
+        // The file's own name, shown in a notice: plain text, bounded (S13).
+        from: clip(wanted, MAX_NAME_LENGTH),
+        to: name,
+        what,
+        why: why ?? 'invalid',
+      });
     return name;
   }
   /** Frees a name a source took and then didn't use (it stayed out). */
@@ -345,12 +362,38 @@ const CONSTRAINT_PATH = (n: FcNode | undefined): { index?: number; name?: string
   return undefined;
 };
 
-/** A sketch's raw constraint records: type, name, value, driving. */
-export function constraintRecords(
-  o: FcObject,
-): { type: number; name: string; value: number; driving: boolean }[] {
+type ConstraintRecord = { type: number; name: string; value: number; driving: boolean };
+const recordsOf = new WeakMap<FcObject, ConstraintRecord[]>();
+const byNameOf = new WeakMap<FcObject, Map<string, number>>();
+
+/** S13: the index of a sketch's first constraint named `name` (-1 for none), from an index made once. */
+export function constraintNamed(o: FcObject, name: string): number {
+  let index = byNameOf.get(o);
+  if (!index) {
+    index = new Map();
+    for (const [i, r] of constraintRecords(o).entries())
+      if (!index.has(r.name)) index.set(r.name, i);
+    byNameOf.set(o, index);
+  }
+  return index.get(name) ?? -1;
+}
+
+/**
+ * A sketch's raw constraint records: type, name, value, driving. S13: made once per object (it
+ * is asked once per expression and per path an expression reads), and none for a sketch of
+ * more than the sketch reader's `MAX_SKETCH_CONSTRAINTS`, which the reader refuses too.
+ */
+export function constraintRecords(o: FcObject): ConstraintRecord[] {
+  const known = recordsOf.get(o);
+  if (known) return known;
+  const made = readConstraintRecords(o);
+  recordsOf.set(o, made);
+  return made;
+}
+
+function readConstraintRecords(o: FcObject): ConstraintRecord[] {
   const v = o.properties.Constraints?.value;
-  if (v?.kind !== 'constraints') return [];
+  if (v?.kind !== 'constraints' || v.records.length > MAX_SKETCH_CONSTRAINTS) return [];
   return v.records.map((r) => ({
     type: Number(r.attrs.Type),
     name: r.attrs.Name ?? '',
@@ -404,7 +447,20 @@ export function prepareParameters(
   const bySheet = new Map<FcObject, { cells: Map<string, Source>; aliases: Map<string, Source> }>();
   const byVariable = new Map<string, Source>();
   const leftOut: ParameterLeftOut[] = [];
+  // Cells and variables read from the whole file (`MAX_IMPORT_CELLS`).
+  let read = 0;
+  const pastFile = (o: FcObject) => {
+    if (++read <= MAX_IMPORT_CELLS) return false;
+    leftOut.push({
+      object: o.name,
+      at: '',
+      reason: 'limit',
+      detail: `cells and variables past the first ${MAX_IMPORT_CELLS} of the file aren't read`,
+    });
+    return true;
+  };
   for (const o of doc.objects) {
+    if (read > MAX_IMPORT_CELLS) break;
     if (o.type === 'Spreadsheet::Sheet') {
       const v = o.properties.cells?.value;
       const cells = new Map<string, Source>();
@@ -422,6 +478,7 @@ export function prepareParameters(
           });
           break;
         }
+        if (pastFile(o)) break;
         const address = cellAddress(cell.address);
         if (!address || cells.has(address)) continue;
         const s: Source = {
@@ -443,6 +500,7 @@ export function prepareParameters(
     } else if (o.type === 'App::VarSet') {
       for (const p of Object.values(o.properties)) {
         if (p.group === undefined) continue;
+        if (pastFile(o)) break;
         const s: Source = {
           key: pairKey(o.name, p.name),
           object: o,
@@ -556,7 +614,13 @@ export function prepareParameters(
       s.out = { reason: 'text', detail: 'it holds text' };
       continue;
     }
-    if (/^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?\s*$/.test(content)) {
+    // S13: a pattern with one way to match each character (`\d+(?:\.\d*)?`, not `\d+\.?\d*`,
+    // which backtracks quadratically on a long run of digits), on a content of at most
+    // `MAX_CELL_NUMBER_LENGTH` characters.
+    if (
+      content.length <= MAX_CELL_NUMBER_LENGTH &&
+      /^\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?\s*$/.test(content)
+    ) {
       const v = Number(content);
       if (Number.isFinite(v)) {
         s.value = v;
@@ -583,7 +647,7 @@ export function prepareParameters(
       else if (n.kind === 'unary') stack.push(n.arg);
       else if (n.kind === 'binary' || n.kind === 'compare') stack.push(n.left, n.right);
       else if (n.kind === 'conditional') stack.push(n.test, n.yes, n.no);
-      else if (n.kind === 'call') stack.push(...n.args);
+      else if (n.kind === 'call') append(stack, n.args);
       else if (n.kind === 'member') stack.push(n.of);
     }
     return out;
@@ -1024,7 +1088,7 @@ export function modelRead(
       !q.quoted &&
       q.index === undefined
     ) {
-      at = records.findIndex((r) => r.name === q.name);
+      at = constraintNamed(object, q.name);
       if (at < 0) at = undefined;
     }
     if (at === undefined || at < 0 || at >= records.length) return undefined;
@@ -1059,7 +1123,7 @@ function classify(o: FcObject, path: string, text: string): Entry {
     const records = constraintRecords(o);
     const at =
       CONSTRAINT_PATH(p)?.index ??
-      (names.length === 2 ? records.findIndex((r) => r.name === names[1]) : -1);
+      (names.length === 2 ? constraintNamed(o, names[1] as string) : -1);
     if (at !== undefined && at >= 0 && at < records.length)
       return { ...withNode, target: 'dimension', index: at };
     return { ...withNode, target: 'other' };
@@ -1150,6 +1214,8 @@ const PART_INPUTS: ReadonlySet<string> = new Set([
   'Part::Common',
   'Part::MultiFuse',
   'Part::MultiCommon',
+  // S13: an extrusion's lengths are its extrude's distances.
+  'Part::Extrusion',
 ]);
 /** A placement's position member, as an expression's path names it. */
 const PLACEMENT_MEMBER = /^Placement\.Base\.[xyz]$/;
@@ -1247,18 +1313,18 @@ function topological(
   const out: Source[] = [];
   for (const start of list) {
     if (done.has(start)) continue;
-    // An explicit stack: (source, next read to visit).
-    const stack: [Source, number][] = [[start, 0]];
+    // An explicit stack: (source, next read to visit, its reads in the list, filtered once).
+    const inside = (s: Source) => (reads.get(s) ?? []).filter((x) => inList.has(x));
+    const stack: [Source, number, readonly Source[]][] = [[start, 0, inside(start)]];
     const onStack = new Set<Source>([start]);
     while (stack.length > 0) {
-      const top = stack[stack.length - 1] as [Source, number];
-      const [s, i] = top;
-      const r = (reads.get(s) ?? []).filter((x) => inList.has(x));
+      const top = stack[stack.length - 1] as [Source, number, readonly Source[]];
+      const [s, i, r] = top;
       if (i < r.length) {
         top[1]++;
         const n = r[i] as Source;
         if (!done.has(n) && !onStack.has(n)) {
-          stack.push([n, 0]);
+          stack.push([n, 0, inside(n)]);
           onStack.add(n);
         }
         continue;

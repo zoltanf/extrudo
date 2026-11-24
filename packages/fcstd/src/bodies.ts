@@ -697,6 +697,9 @@ const SCAN_LINES = 8;
  * linear in its size. (`interiorPoint` in `@extrudo/sketch` tries every height,
  * the square of the vertices, which a ring of large circles makes seconds.)
  */
+/** Where in a band between two of a loop's heights a scan line may go, as a share of the band. */
+const BAND_HEIGHTS = [0.5, 0.381966, 0.618034, 0.25, 0.75];
+
 function insidePoint(outer: readonly Pt[], holes: readonly (readonly Pt[])[]): Pt | undefined {
   const ys = [...new Set(outer.map((p) => p[1]))].sort((m, n) => m - n);
   const holeYs = new Set(holes.flatMap((h) => h.map((p) => p[1])));
@@ -707,8 +710,10 @@ function insidePoint(outer: readonly Pt[], holes: readonly (readonly Pt[])[]): P
     const lo = ys[at - 1];
     const hi = ys[at];
     if (lo === undefined || hi === undefined || hi - lo <= 1e-9) continue;
-    const y = (lo + hi) / 2;
-    if (holeYs.has(y)) continue;
+    // S13: the band's middle, or another height in it where a hole has a vertex there (a
+    // rectangle with a circle at its mid-height has one band only).
+    const y = BAND_HEIGHTS.map((f) => lo + f * (hi - lo)).find((h) => !holeYs.has(h));
+    if (y === undefined) continue;
     const outerX = crossingsAt(outer, y);
     if (outerX.length < 2 || outerX.length % 2 !== 0) continue;
     const blocked = holes.flatMap((h) => {
@@ -1081,10 +1086,11 @@ export async function importBodies(
     /** The try being made found the face its sketch stays on (`sketchExtras`). */
     let triedOnFace = false;
     /**
-     * A try of a feature with a new sketch (S12a): a loose chain's sketch stays on the face it is
-     * attached to where that holds, and a try that doesn't hold there is made again on the fixed
-     * plane its stored placement gives (`holdAll` skips that try when no face was found). Anything
-     * else is the one try. `target`: which of the feature's targets the tries are for.
+     * A try of a feature with a new sketch (S12a for loose chains, S13 for bodies too): the
+     * sketch stays on the face it is attached to where that holds, and a try that doesn't hold
+     * there is made again on the fixed plane its stored placement gives (`holdAll` skips that try
+     * when no face was found). Anything else is the one try. `target`: which of the feature's
+     * targets the tries are for.
      */
     const withFace = (
       sketch: string,
@@ -1092,7 +1098,7 @@ export async function importBodies(
       target = 0,
     ): (() => Promise<Added>)[] => {
       const tries =
-        !looseChain || sketches.has(sketch) || budget.restarts !== restartsAtHold
+        sketches.has(sketch) || budget.restarts !== restartsAtHold
           ? [make(false)]
           : [make(true), make(false)];
       if (tries[1]) fixedPlaneTries.add(tries[1]);

@@ -40,7 +40,13 @@ export {
   profileRefs,
   saneRebuild,
 } from './bodies';
-export { type BudgetOptions, type CallOutcome, KernelBudget } from './budget';
+export {
+  type BudgetOptions,
+  type CallOutcome,
+  isKernelRefusal,
+  KERNEL_REFUSALS,
+  KernelBudget,
+} from './budget';
 export {
   combined,
   type Drift,
@@ -113,12 +119,13 @@ export {
   type LinkImport,
   type LinkReason,
   MAX_ARRAY_ELEMENTS,
+  MAX_COPIED_BODIES,
   MAX_LINK_COPIES,
   readPlacementList,
 } from './links';
 export { type LooseChain, looseChains, MAX_LOOSE_CHAINS } from './loose-chains';
 export { MAX_MESH_FACETS, type MeshFacts, meshFacts, readMeshKernel } from './mesh-read';
-export { MAX_IMPORT_MESHES, type MeshImport } from './meshes';
+export { MAX_IMPORT_MESH_FACETS, MAX_IMPORT_MESHES, type MeshImport } from './meshes';
 export {
   binaryFormProblem,
   brepHasSolid,

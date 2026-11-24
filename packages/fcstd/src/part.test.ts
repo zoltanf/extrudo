@@ -335,9 +335,11 @@ describe('Part trees with the file’s own shapes below a live boolean', () => {
     await measuresHold(r, 'stored_leaf');
   });
 
-  it('extrusion_leaf: a Part extrusion as the base', { timeout: T }, async () => {
+  it('extrusion_leaf: a Part extrusion of a sketch as the base, an extrude (S13)', {
+    timeout: T,
+  }, async () => {
     const r = await runPart('extrusion_leaf');
-    expect(r.outcomes).toEqual({ Extrude: 'leaf:type', Cylinder: 'feature', Cut: 'feature' });
+    expect(r.outcomes).toEqual({ Extrude: 'feature', Cylinder: 'feature', Cut: 'feature' });
     await measuresHold(r, 'extrusion_leaf');
   });
 

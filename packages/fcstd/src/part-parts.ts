@@ -69,14 +69,28 @@ export interface PartFileOptions {
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
+/** A set of fixture documents in `part-fixtures.ts`'s form (S13's `final-fixtures.ts` too). */
+export interface PartFixtureSource {
+  readonly cases: Readonly<Record<string, PartFixtureCase>>;
+  readonly breps: () => readonly string[];
+  readonly expand: (xml: string) => string;
+}
+
+const S11: PartFixtureSource = { cases: PART_CASES, breps: partBreps, expand: expandPartXml };
+
 /** One fixture document as `.FCStd` bytes, as FreeCAD 1.1 saves it. */
-export function partFile(name: string, options: PartFileOptions = {}): Uint8Array {
-  const c = partCase(name);
-  const texts = partBreps();
+export function partFile(
+  name: string,
+  options: PartFileOptions = {},
+  source: PartFixtureSource = S11,
+): Uint8Array {
+  const c = source.cases[name];
+  if (!c) throw new Error(`no fixture document ${name}`);
+  const texts = source.breps();
   const entries: Record<string, string | Uint8Array> = {};
   const objects: RawPartObject[] = [];
   const raw = (o: PartFixtureObject) => {
-    const xml = expandPartXml(o.xml);
+    const xml = source.expand(o.xml);
     const edited = options.edit ? options.edit(o.object, xml) : xml;
     if (edited === undefined) return;
     if (o.stored !== undefined) {

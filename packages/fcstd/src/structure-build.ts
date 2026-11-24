@@ -13,6 +13,7 @@ import { saneRebuild } from './bodies';
 import type { CallOutcome, KernelBudget } from './budget';
 import type { RebuildResult, ShapeMeasure } from './import-kernel';
 import { clip } from './names';
+import { forgetRemovedPlanes } from './sketch-place';
 
 /** Why an attempt didn't hold: the budget's outcomes, a failed feature, a check that doesn't hold. */
 export type BuildStop = 'kernel' | 'time' | 'import-time' | 'restarts' | 'failed' | 'check';
@@ -148,6 +149,8 @@ export class StructureBuild {
     } finally {
       if (!committed) {
         state.cancelTransaction();
+        // An offset plane a cancelled attempt's sketch made went with it.
+        forgetRemovedPlanes(this.#design);
         // The bodies the cancelled rebuild saw are gone again, and the moved ones are back.
         this.#ids = ids;
         for (const [id, m] of kept) {

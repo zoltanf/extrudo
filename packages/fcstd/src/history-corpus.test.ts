@@ -161,6 +161,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
     let mostFeatures = 0;
     let importsS3 = 0;
     let importsS5 = 0;
+    const bodySketchPlanes: Record<string, number> = {};
     let otherSame = 0;
     let otherDiffer = 0;
     const lines: string[] = [];
@@ -686,6 +687,8 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
       const members = new Set(report.compounds.flatMap((c) => c.members));
       for (const b of report.bodies.filter((x) => !x.loose && !members.has(x.object))) {
         bump(bodies, b.outcome);
+        // S13: where the bodies' sketches came in (a face they stay on, an origin plane, a fixed plane).
+        for (const k of b.sketches) bump(bodySketchPlanes, `${k.plane ?? 'none'}`);
         s7.secondAttempts += b.secondAttempts;
         s9.upToTries += b.upToTries;
         for (const m of b.mapped) {
@@ -848,6 +851,7 @@ describe.skipIf(!root)('the history import over a library (FCSTD_SAMPLES)', () =
     const max = (xs: number[]) => xs.reduce((a, b) => Math.max(a, b), 0);
     const min = (xs: number[]) => xs.reduce((a, b) => Math.min(a, b), Number.POSITIVE_INFINITY);
     const summary = {
+      bodySketchPlanes,
       files: files.length,
       census,
       byKind,

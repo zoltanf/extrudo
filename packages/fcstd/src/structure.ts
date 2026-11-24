@@ -37,18 +37,20 @@ import {
   copyLink,
   type LinkImport,
   type LinkReason,
+  MAX_COPIED_BODIES,
   MAX_LINK_COPIES,
   MAX_PART_MEMBERS,
   planLink,
+  scaledOnTheWay,
 } from './links';
 import { type MeshFacts, type MeshKernel, meshFacts } from './mesh-read';
 import { importMeshes, type MeshImport } from './meshes';
 import { type FcDocument, type FcObject, type FcPlacement, storedShapeEntry } from './model';
-import { cleanName } from './names';
+import { cleanName, clip } from './names';
 import type { TreeImport } from './part-import';
 import { MAX_OPERAND_BODIES } from './part-import';
 import { type ImportedShape, type LeftOutShape, saneMeasure } from './shapes';
-import { containerChain } from './sketch-place';
+import { compose, containerChain } from './sketch-place';
 import type { Stopped, StructureBuild } from './structure-build';
 
 /** The most stored-shape text the links' checks keep decoded at once (each entry decoded once while it fits). */
@@ -64,6 +66,8 @@ export interface StructureOptions {
   /** `MAX_PART_MEMBERS` and the bodies one copy may take (S11's `MAX_OPERAND_BODIES`), for tests. */
   readonly maxPartMembers?: number;
   readonly maxCopySources?: number;
+  /** `MAX_COPIED_BODIES`, for tests. */
+  readonly maxCopiedBodies?: number;
   readonly onStep?: () => void;
 }
 
@@ -165,6 +169,7 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
         withoutSolid: 'members' in plan ? plan.withoutSolid : 0,
         nested: 'members' in plan ? plan.nested : 0,
         ...rest,
+        ...(rest.detail !== undefined ? { detail: clip(rest.detail) } : {}),
       });
     // Refused from the file alone: it came in through the shapes import already.
     if ('reason' in plan) {
@@ -280,7 +285,8 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
       const n = (unsettled.get(p.name) ?? 1) - 1;
       unsettled.set(p.name, n);
       if (n === 0) {
-        queue.push(...(waiting.get(p.name) ?? []));
+        // A loop, not a spread: the list can be as long as the file's links (S13).
+        for (const w of waiting.get(p.name) ?? []) queue.push(w);
         waiting.delete(p.name);
       }
     }
@@ -292,6 +298,8 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
       moves: [],
       bodies: [],
       ...rest,
+      // A detail may quote the file (S13): plain text, bounded.
+      ...(rest.detail !== undefined ? { detail: clip(rest.detail) } : {}),
     };
     if (entry.outcome === 'left-out') scaled.push(entry);
     if (entry.outcome === 'today') fallback.add(s.object.name);
@@ -301,7 +309,12 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
   let planned = 0;
   const maxPartMembers = options.maxPartMembers ?? MAX_PART_MEMBERS;
   let partMembers = 0;
+  // S13: measures shared by every copy that turns a stored shape or a part the same way.
+  const turned = new Map<string, ShapeMeasure>();
+  const partMemo = new Map<string, ShapeMeasure>();
   const maxSources = options.maxCopySources ?? MAX_OPERAND_BODIES;
+  const maxCopiedBodies = options.maxCopiedBodies ?? MAX_COPIED_BODIES;
+  let copiedBodies = 0;
   for (let at = 0; at < queue.length; at++) {
     const s = queue[at] as FinalShape;
     await linkTurn(s);
@@ -310,6 +323,10 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
   // What is left waits on itself: a part that holds a link back to it.
   for (const s of linkShapes)
     if (!settled.has(s.object.name)) {
+      if (leftOutScaled(s)) {
+        settle(s);
+        continue;
+      }
       record(s, {
         outcome: 'today',
         reason: 'cycle',
@@ -319,7 +336,19 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
     }
   return { meshes, compounds: compoundOut, links, fallback, scaled, members: memberWalks };
 
+  /**
+   * A scaled link is left out from the file alone, whatever else holds (S13): the shapes import
+   * never converted it, so it can't come in as before, and must be in the report.
+   */
+  function leftOutScaled(s: FinalShape): boolean {
+    const why = scaledOnTheWay(doc, s.object);
+    if (why === undefined) return false;
+    record(s, { outcome: 'left-out', reason: 'scaled', detail: why });
+    return true;
+  }
+
   async function linkTurn(s: FinalShape): Promise<void> {
+    if (leftOutScaled(s)) return;
     const gone = budgetGone(budget);
     if (gone) return record(s, { outcome: 'today', reason: 'kernel', detail: gone });
     // The import's copies counted before this plan is expanded: past them it comes in as before.
@@ -344,6 +373,16 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
       : bodies.has(target.name)
         ? undefined
         : target;
+    // S13: the bodies all copies make together, one count for the import (instances × sources).
+    const making = plan.instances.length * sources.length;
+    if (copiedBodies + making > maxCopiedBodies)
+      return record(s, {
+        outcome: 'today',
+        target: target.name,
+        reason: 'limit',
+        detail: `${making} bodies to copy; the import's copies make at most ${maxCopiedBodies}`,
+        ...array,
+      });
     // One move copies every source body: as many as a Part tree's operand may bring (S11).
     if (sources.length > maxSources)
       return record(s, {
@@ -362,7 +401,6 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
         ...array,
       });
     const frame = containerChain(doc, target)?.chain;
-    const outer = frame?.length ?? 0;
     const copied = await copyLink(
       plan,
       sources,
@@ -370,8 +408,7 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
         design,
         build,
         frameOf: () => frame,
-        expected: (t, chain) =>
-          isPart ? partExpected(members, outer, chain, target.name) : expectedOf(t, chain),
+        expected: (t, chain) => (isPart ? partExpected(s, target, chain) : expectedOf(t, chain)),
       },
       isPart,
     );
@@ -384,6 +421,7 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
         ...array,
       });
     bodies.set(s.object.name, copied.bodies);
+    copiedBodies += copied.bodies.length;
     ctx.held.release([s.object.name]);
     record(s, {
       outcome: 'copy',
@@ -394,6 +432,30 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
       ...(plan.array ? { array: { elements: plan.array.elements, expanded: true } } : {}),
       ...(isPart ? { part: true as const } : {}),
     });
+  }
+
+  /**
+   * S13: what a stored shape measures turned by a rotation, once per object and rotation. A
+   * placement's translation moves a measure (its box and centre) and changes nothing else, so
+   * every copy and every part member with the same turn shares one kernel measure.
+   */
+  async function turnedOf(
+    o: FcObject,
+    rotation: FcPlacement['rotation'],
+  ): Promise<ShapeMeasure | Stopped> {
+    const key = `${o.name}\u0000${rotation.join(' ')}`;
+    const known = turned.get(key);
+    if (known) return known;
+    const gone = budgetGone(budget);
+    if (gone) return { stop: budget.broken ? 'restarts' : 'import-time', detail: gone };
+    const text = textOf(o);
+    if (text === undefined) return { stop: 'check', detail: "its stored shape can't be read" };
+    const turn: FcPlacement = { position: [0, 0, 0], rotation };
+    const m = await budget.call(() => budget.kernel.measureStoredShape(text, [turn]), saneMeasure);
+    if (m.kind !== 'done')
+      return { stop: m.kind, ...('detail' in m && m.detail ? { detail: m.detail } : {}) };
+    turned.set(key, m.value);
+    return m.value;
   }
 
   /** What an object's stored shape (or mesh) measures, placed by `chain`. */
@@ -408,69 +470,136 @@ export async function placeStructure(ctx: StructureContext): Promise<StructureRe
       const own = placement(o);
       return placedMesh(mesh, flatten(own ? [...chain, own] : chain));
     }
-    const text = textOf(o);
-    if (text === undefined) return { stop: 'check', detail: "its stored shape can't be read" };
-    const m = await budget.call(() => budget.kernel.measureStoredShape(text, chain), saneMeasure);
-    if (m.kind !== 'done')
-      return { stop: m.kind, ...('detail' in m && m.detail ? { detail: m.detail } : {}) };
-    return m.value;
+    const p = flatten(chain);
+    const m = await turnedOf(o, p.rotation);
+    return 'stop' in m ? m : shifted(m, p.position);
   }
 
   /**
    * A part's final shapes together, each placed by the link's chain and its own inside the part;
-   * a link inside it to a further part stands for that part's shapes. Expanded first with a work
-   * list (never recursion on the file's depth) and no kernel call: a part already on the way from
-   * this link is a cycle, and every shape visited counts toward the import's `MAX_PART_MEMBERS`
-   * (a part reached along two ways is visited twice: two wheels of one kind on one car). Only
-   * then is each shape measured.
+   * a link inside it to a further part stands for that part's shapes. Walked with a stack (never
+   * recursion on the file's depth): a part already on the way from this link is a cycle. S13: a
+   * part's shapes together, turned by a rotation, are measured once (`partTurned`) and moved for
+   * every further use, so a part reached along many ways (the wheels of a car, the car linked
+   * again) is walked once per turn, and `MAX_PART_MEMBERS` counts the members of each distinct
+   * part and turn walked, not every way down to them.
    */
   async function partExpected(
-    members: readonly FinalShape[],
-    outer: number,
+    link: FinalShape,
+    target: FcObject,
     chain: readonly FcPlacement[],
-    root: string,
   ): Promise<ShapeMeasure | (Stopped & { reason?: LinkReason })> {
-    const leaves: { o: FcObject; chain: readonly FcPlacement[] }[] = [];
-    const work: {
-      members: readonly FinalShape[];
-      outer: number;
-      chain: readonly FcPlacement[];
-      path: ReadonlySet<string>;
-    }[] = [{ members, outer, chain, path: new Set([root]) }];
-    while (work.length > 0) {
-      const w = work.pop() as (typeof work)[number];
-      for (const f of w.members) {
-        if (++partMembers > maxPartMembers)
+    const p = flatten(chain);
+    // The link being copied counts in the key only where the part holds it.
+    const keyOf = (part: FcObject, without: FinalShape, rotation: FcPlacement['rotation']) =>
+      partKey(
+        part,
+        (inPart.get(part.name) ?? []).includes(without) ? without : undefined,
+        rotation,
+      );
+    type Frame = {
+      readonly key: string;
+      readonly members: readonly FinalShape[];
+      readonly outer: number;
+      readonly rotation: FcPlacement['rotation'];
+      readonly path: ReadonlySet<string>;
+      readonly parts: ShapeMeasure[];
+      at: number;
+      shift?: FcPlacement['position'];
+    };
+    const frame = (
+      part: FcObject,
+      without: FinalShape,
+      rotation: FcPlacement['rotation'],
+      path: ReadonlySet<string>,
+    ): Frame | (Stopped & { reason: LinkReason }) => {
+      const all = inPart.get(part.name) ?? [];
+      const members = all.filter((f) => f !== without);
+      // The members of each distinct part and turn are counted once, when first walked.
+      partMembers += members.length;
+      if (partMembers > maxPartMembers)
+        return {
+          stop: 'check',
+          reason: 'limit',
+          detail: `its parts hold more than ${maxPartMembers} shapes`,
+        };
+      return {
+        key: keyOf(part, without, rotation),
+        members,
+        outer: containerChain(doc, part)?.chain.length ?? 0,
+        rotation,
+        path,
+        parts: [],
+        at: 0,
+      };
+    };
+    const known = partMemo.get(keyOf(target, link, p.rotation));
+    if (known) return shifted(known, p.position);
+    const first = frame(target, link, p.rotation, new Set([target.name]));
+    if ('stop' in first) return first;
+    const stack: Frame[] = [first];
+    let done: ShapeMeasure | undefined;
+    for (;;) {
+      const top = stack[stack.length - 1] as Frame;
+      if (done) {
+        top.parts.push(shifted(done, top.shift ?? [0, 0, 0]));
+        done = undefined;
+      }
+      if (top.at >= top.members.length) {
+        const whole = combined(top.parts);
+        partMemo.set(top.key, whole);
+        stack.pop();
+        if (stack.length === 0) return shifted(whole, p.position);
+        done = whole;
+        continue;
+      }
+      const f = top.members[top.at++] as FinalShape;
+      // Where the member sits in the part, turned by the part's own turn.
+      const q = compose(
+        { position: [0, 0, 0], rotation: top.rotation },
+        flatten(f.chain.slice(top.outer)),
+      );
+      if (f.kind === 'link' && f.source.type === 'App::Part') {
+        if (top.path.has(f.source.name))
           return {
             stop: 'check',
-            reason: 'limit',
-            detail: `its parts hold more than ${maxPartMembers} shapes, counted along every way`,
+            reason: 'cycle',
+            detail: 'a part that holds a link back to itself',
           };
-        const placed = [...w.chain, ...f.chain.slice(w.outer)];
-        if (f.kind === 'link' && f.source.type === 'App::Part') {
-          if (w.path.has(f.source.name))
-            return {
-              stop: 'check',
-              reason: 'cycle',
-              detail: 'a part that holds a link back to itself',
-            };
-          work.push({
-            members: (inPart.get(f.source.name) ?? []).filter((x) => x !== f),
-            outer: containerChain(doc, f.source)?.chain.length ?? 0,
-            chain: placed,
-            path: new Set([...w.path, f.source.name]),
-          });
-        } else leaves.push({ o: f.source, chain: placed });
+        const memo = partMemo.get(keyOf(f.source, f, q.rotation));
+        if (memo) {
+          top.parts.push(shifted(memo, q.position));
+          continue;
+        }
+        const next = frame(f.source, f, q.rotation, new Set([...top.path, f.source.name]));
+        if ('stop' in next) return next;
+        top.shift = q.position;
+        stack.push(next);
+      } else {
+        // A stored shape or a mesh (which has no stored shape: its facts are placed), as any copy's.
+        const m = await expectedOf(f.source, [q]);
+        if ('stop' in m) return m;
+        top.parts.push(m);
       }
     }
-    const ms: ShapeMeasure[] = [];
-    for (const leaf of leaves) {
-      const m = await expectedOf(leaf.o, leaf.chain);
-      if ('stop' in m) return m;
-      ms.push(m);
-    }
-    return combined(ms);
   }
+}
+
+/** The key of a part's shapes turned by `rotation`, less the link inside it that is being copied. */
+const partKey = (
+  part: FcObject,
+  without: FinalShape | undefined,
+  rotation: FcPlacement['rotation'],
+) => `${part.name}\u0000${without?.object.name ?? ''}\u0000${rotation.join(' ')}`;
+
+/** A measure moved by `by`: its box and centre (solids, volume and area don't change). */
+function shifted(m: ShapeMeasure, by: FcPlacement['position']): ShapeMeasure {
+  const add = (v: readonly number[]): [number, number, number] => [
+    (v[0] as number) + by[0],
+    (v[1] as number) + by[1],
+    (v[2] as number) + by[2],
+  ];
+  return { ...m, box: { min: add(m.box.min), max: add(m.box.max) }, centre: add(m.centre) };
 }
 
 /** A mesh's facts in its own frame, once per mesh object; a placement then moves the nodes it uses. */

@@ -27,6 +27,7 @@ export function nodeImportKernel(): ImportKernel & {
       service.describeBodies(bodies as BodyId[], { points: [...near.points], radius: near.radius }),
     references: (items: Parameters<ImportKernel['references']>[0]) =>
       importReferences(service, items),
+    heap: () => service.heap(),
     restart: async () => {
       kernel.restarts++;
       service = start();

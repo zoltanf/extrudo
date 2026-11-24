@@ -390,6 +390,10 @@ export async function importShapes(
     },
     release: (objects) => {
       for (const o of objects) unsettled.delete(o);
+      // S13: bytes no shape needs any more are dropped, not held to the import's end.
+      const needed = new Set(now.map((c) => c.sha256));
+      for (const c of later) if (unsettled.has(c.shape.object.name)) needed.add(c.sha256);
+      for (const c of later) if (!needed.has(c.sha256)) kept.delete(c.sha256);
     },
     add: (objects) => {
       for (const o of unsettled) unsettled.delete(o);

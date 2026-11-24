@@ -22,6 +22,11 @@ SKIP = {'AttacherEngine', 'AttacherType', 'AttachmentOffset', 'AttachmentSupport
         'MapPathParameter', 'MapReversed', 'Label2', 'ShapeMaterial', 'History', 'Visibility',
         'columnWidths', 'rowHeights', 'AddSubShape', 'SuppressedShape', 'PreviewShape',
         'ExposeInternalGeometry', 'FullyConstrained', 'Exports', 'MakeInternals', 'InternalShape'}
+# `--keep-attachment` (S13's final-fixtures.ts): a sketch's attachment stays, for the importer's
+# sketch-on-a-face rule.
+if '--keep-attachment' in sys.argv[3:]:
+    SKIP -= {'AttacherEngine', 'AttacherType', 'AttachmentOffset', 'AttachmentSupport', 'MapMode',
+             'MapPathParameter', 'MapReversed'}
 TOKENS = [
     ('§a', '<Property name="'),
     ('§b', '</Property>'),

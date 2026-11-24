@@ -56,7 +56,8 @@ must fill exactly and whose CRC-32 must match.
 Refused outright, with a plain message: a ZIP64 archive (an end-of-directory
 locator, a `0xFFFF`/`0xFFFFFFFF` field, or a ZIP64 extra field), an encrypted
 entry (flag bit 0 or 6), an archive over several disks, two entries sharing a
-local header, an entry whose local header disagrees with the central
+local header, two entries whose bytes overlap (S13: one deflate stream can't
+feed several entries), an entry whose local header disagrees with the central
 directory, a stored entry whose sizes differ, a declared size past the ratio.
 Left out with a problem: a name that isn't plain (absolute, a drive letter, a
 backslash, a control character, a `.` or `..` part), a second entry of the
@@ -68,9 +69,12 @@ Both XML documents are UTF-8 (refused when they aren't) and use attributes
 for nearly everything. `xml.ts` reads elements, attributes and text; the five
 predefined entities and numeric character references. Comments and
 processing instructions are skipped, CDATA is text. A `<!DOCTYPE` (and so any
-entity definition) or any other entity is refused. Limits: 256 levels of
-nesting, 256 attributes per element, 4,000,000 elements per document (the
-library: 9 levels, 17 attributes, 55,138 elements). The reader builds a tree
+entity definition) or any other entity is refused, and so is `&#0;`. The
+characters XML 1.0 doesn't allow (C0 controls but tab, newline and carriage
+return; U+FFFE, U+FFFF), written literally or as a reference, read as U+FFFD
+(S13). Limits: 256 levels of nesting, 256 attributes per element, 1,000,000
+elements per document (S13; it was 4,000,000: a million elements take about
+0.7 GB to read; the library: 9 levels, 17 attributes, 55,138 elements). The reader builds a tree
 in one forward pass: the library's largest `Document.xml` (6.3 MB, 55,000
 elements) parses in about 80 ms into about 27 MB.
 
@@ -215,7 +219,9 @@ Per object (`FcObject.gui`, `undefined` without a GUI document):
   material (1.0+: binary, `u32` count, then per material four packed RGBA
   `u32`s, ambient, diffuse, specular, emissive, then `f32` shininess and
   transparency; diffuse and transparency are used), else `DiffuseColor`'s only
-  entry, else `ShapeColor`, else `ShapeMaterial`'s diffuse colour.
+  entry, else `ShapeColor`, else `ShapeMaterial`'s diffuse colour. Only the
+  first 32 bytes of a binary list are inflated (S13); its count is checked
+  against the entry's declared size.
 - **Transparency** 0–1: the `Transparency` percent, or the appearance's own
   value when the colour came from it.
 
@@ -664,6 +670,15 @@ link. Nothing in the file orders them but the links.
   of one compound. FreeCAD hides the operands in `GuiDocument.xml`; an operand
   may feed several objects.
 - **`Part::Compound`** lists `Links`: a compound of their shapes, no boolean.
+- **`Part::Extrusion`** (S13) names `Base` (a sketch, a Draft or Python object, or a face or
+  wire of another shape as a sub-link) and extrudes it: `DirMode` (an enumeration: `Custom` 0,
+  `Edge` 1, `Normal` 2: along the sketch's normal), `Dir` and `DirLink` for the other two,
+  `LengthFwd` and `LengthRev` (`App::PropertyDistance`), `Symmetric` (the whole `LengthFwd`
+  centred on the profile; `LengthRev` ignored), `Reversed`, `Solid` (faces made of closed
+  profiles, `FaceMakerClass` choosing how holes are found), `TaperAngle` and `TaperAngleRev`,
+  and its own `Placement`. Some files store none of `DirMode`, `Symmetric` or the tapers (31 of
+  the 65 extrusions in the library we measured); the importer rebuilds only an extrusion of a
+  sketch with `DirMode` Normal, `Solid` on and no taper.
 - **`Part::Fillet` and `Part::Chamfer`** name `Base` and list their edges in
   `Edges` (`Part::PropertyFilletEdges`), not in the XML: `<FilletEdges
   file="Edges"/>` names an archive entry of its own (`Edges`, `Edges1` …).
@@ -750,7 +765,9 @@ So an entry is exactly 296 + 12 *p* + 24 *f* bytes (the 8-point, 12-facet box:
 680). FreeCAD also reads the same layout big-endian (the magic and version
 byte-swapped) and, with no magic at all, an older layout of its own; neither
 is written by FreeCAD 0.14 or later, the library has neither, and the reader
-refuses both. More points than three a facet can't all be used and are refused too. **The points
+refuses both. More points than three a facet can't all be used and are refused too. A
+facet that names one point twice is no triangle: the reader drops it (S13), as the kernel's
+own mesh import does, and the closed check judges the rest. **The points
 are in the object's own frame**: FreeCAD shows the
 mesh at its `Placement`, inside its containers.
 

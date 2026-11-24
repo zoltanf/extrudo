@@ -339,7 +339,7 @@ export async function saveFcstdImport(
 }
 
 /** Why a shape was left out, in the app's words. */
-const LEFT_OUT: Record<LeftOutReason, string> = {
+export const LEFT_OUT: Record<LeftOutReason, string> = {
   mesh: "a link to a mesh: the mesh didn't come in, or its copy didn't hold",
   'not-closed': "a mesh whose surface isn't closed",
   limit: 'past what one import brings in',
@@ -358,7 +358,7 @@ const LEFT_OUT: Record<LeftOutReason, string> = {
 };
 
 /** Why a link came in as the file's own shape, not as a copy (S12b), after "because". */
-const LINK_REASON: Record<LinkReason, string> = {
+export const LINK_REASON: Record<LinkReason, string> = {
   target: "what it links to didn't come into the design",
   array: "its array's elements can't be read",
   limit: 'it is past what one import copies',
@@ -371,7 +371,7 @@ const LINK_REASON: Record<LinkReason, string> = {
 };
 
 /** Why a body's history stopped, in the app's words (after "because"). */
-const HISTORY_STOP: Record<HistoryStop, string> = {
+export const HISTORY_STOP: Record<HistoryStop, string> = {
   type: "it has a feature Extrudo doesn't rebuild from FreeCAD files yet",
   suppressed: 'it has a suppressed feature',
   profile: 'a feature is made from a face or a part of a sketch',
@@ -405,7 +405,7 @@ const HISTORY_STOP: Record<HistoryStop, string> = {
 };
 
 /** Why a Part tree (S11) came in as the file's shape, or built on its shapes, in the app's words (after "because"). */
-const TREE_REASON: Record<TreeReason, string> = {
+export const TREE_REASON: Record<TreeReason, string> = {
   ...HISTORY_STOP,
   type: "part of it is a shape Extrudo doesn't rebuild from FreeCAD files yet",
   partial: 'it is only part of a cylinder, sphere or torus',

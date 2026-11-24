@@ -201,6 +201,7 @@ export function unzipFcstd(bytes: Uint8Array): FcEntries {
   const names: string[] = [];
   const problems: string[] = [];
   const locals = new Set<number>();
+  const spans: [number, number, string][] = [];
   const decoder = new TextDecoder('utf-8');
   let declaredTotal = 0;
   let p = directory;
@@ -271,8 +272,17 @@ export function unzipFcstd(bytes: Uint8Array): FcEntries {
     if (decoder.decode(bytes.subarray(local + 30, local + 30 + localNameLength)) !== name)
       throw new FcstdFormatError(`Bad ZIP: ${name} does not match its local header.`);
     entries.set(name, { method, start, compressed, size, crc });
+    spans.push([local, start + compressed, name]);
     names.push(name);
   }
+  // S13: no two entries' bytes overlap, so one deflate stream can't feed several entries (each
+  // counted against the ratio on its own, they would unpack many times what the file holds).
+  spans.sort((a, b) => a[0] - b[0]);
+  for (let k = 1; k < spans.length; k++)
+    if ((spans[k] as (typeof spans)[number])[0] < (spans[k - 1] as (typeof spans)[number])[1])
+      throw new FcstdFormatError(
+        `Bad ZIP: ${(spans[k] as (typeof spans)[number])[2]} overlaps another entry.`,
+      );
   const inflated = new Map<string, Uint8Array>();
   return {
     names,

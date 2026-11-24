@@ -18,8 +18,9 @@ spec's selectors into `docs/agent/e2e-notes.md`).
 
 Phases 0, 1, 2, 3 and 5 are complete. Phase 4 is complete apart from **P4-12's
 remaining backlog** (the open items in `docs/03-roadmap.md`). Phase 6 is
-complete apart from P6-04 (i18n, **deferred**: English only for now) and
-**P6-25** (FreeCAD file import with history; ADR-0144, in slices). **P6-24**, drawings
+complete apart from P6-04 (i18n, **deferred**: English only for now). **P6-25**, FreeCAD
+file import with history (ADR-0144, thirteen slices; guide page `docs/guide/freecad.md`), is
+done. **P6-24**, drawings
 (2D sheets with views, dimensions, notes, parts lists and PDF/SVG export; ADR-0143, plan in
 `docs/plans/drawings-2026-11-10.md`), is done, and so is P6-08, the desktop MCP server and
 its skill (ADR-0087). Phase 7 (IK) is last, lowest priority. The
