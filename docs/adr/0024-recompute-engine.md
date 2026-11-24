@@ -205,10 +205,11 @@ way — its shape, its tessellation, a face's name, its face order — gets the 
 
 **Not changed.** The kernel still evaluates and meshes the later features, and the worker still
 transfers their meshes (no protocol change: the web worker, the desktop app, the agent's host
-and the app-render job see the same messages). Previews don't compare: while a feature is edited
-the view shows only the bodies before it (`dialogBodies`), so the later bodies mount again when
-the dialog closes, whatever their mesh objects; only what the page keeps by mesh outside the view
-(bounds, the pick index) is kept then.
+and the app-render job see the same messages). Previews don't compare: a preview's bodies that the draft
+leaves alone already come back as the model's objects (by version, `#held`), and while an
+existing feature is edited the view shows only the bodies before it (`dialogBodies`), so the
+later bodies mount again when the dialog closes, whatever their mesh objects; only what the page
+keeps by mesh outside the view (bounds, the pick index) is kept then.
 
 **Rejected.** Taking a new-body feature's key out of the body-set chain (it would also save the
 kernel's time) changes how the engine caches whole body maps: large. Hashing meshes in the worker

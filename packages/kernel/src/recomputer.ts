@@ -1681,7 +1681,8 @@ export class Recomputer {
    * the feature that made it, which takes in every body-writing feature before it: an edit of the
    * first of many plates sends every later plate again, each the same as before. Handing out the
    * held object keeps everything the page keeps by mesh (the view's bodies, bounds, pick index).
-   * Previews don't: the view shows only the bodies before the draft while it is edited.
+   * Previews don't: bodies a draft leaves alone already come back by version (`#held`), and
+   * while an existing feature is edited the view shows only the bodies before it.
    */
   #kept(id: BodyId, mesh: BodyMesh): BodyMesh {
     const held = this.#meshes.get(id)?.mesh;
