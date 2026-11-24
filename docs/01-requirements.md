@@ -184,6 +184,7 @@ for the phase's release, **S** = should, **C** = could.
 | FR-IO-08 | OpenSCAD `.scad` import as a mesh body (through openscad-wasm). | C | 5 |
 | FR-IO-09 | OpenSCAD `.scad` export: the design as OpenSCAD code (CSG, parameters as Customizer variables), with polyhedra where OpenSCAD can't follow. | C | 6 |
 | FR-IO-10 | Mesh to Solid: a mesh body (STL, 3MF, OBJ, OpenSCAD) becomes a B-rep solid, faceted (planar faces) or prismatic (planes, cylinders and more recognised within a tolerance), so it can be filleted, shelled, sketched on and exported to STEP. | S | 4 |
+| FR-IO-11 | FreeCAD `.FCStd` import as a new design: PartDesign bodies and Part workbench trees with their history, sketches, spreadsheet and variable-set parameters with their expressions, parts as components, links as copies, compounds and closed meshes; each rebuilt step checked against the shape the file stores, the stored shape used where it doesn't hold (ADR-0144). | S | 6 |
 
 ### 5.9 Programmatic design (FR-PRG), later phases
 

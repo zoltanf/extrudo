@@ -5317,35 +5317,51 @@ used by another object, a member twice, a compound in itself, a link member, mem
 the reason. Report: `FcstdImportReport.meshes`, `links`, `compounds`, `components`; `linkArrays` only the arrays not
 expanded. `fcstdNotices`: a compound counts once and a copy with what it copies.
 
-ADR-0140 (issue #75; accepted 2026-11-13, the owner: Copied mode as piloted) added
-**Insert Design, Copied**: core `insert-design.ts` (`insertDesignFeature`, `insertDesignProblem`,
-`embedDesign`, `insertDesignPayload`, the `insertDesign` command, `prefixIds`,
-`insertedFeatures`), the `design` input kind and `EmbeddedDesign`/`EmbeddedFeature`/
-`EmbeddedInputSchema` in `schema.ts`, kernel `features/insert-design.ts`, the engine's
-`Expansion.isolated` (`ownBodies`, `mergeBodies`, `scopes` in `#run`), app
-`components/insertDesign.ts` and the tool `insertDesign` (Solid › Assemble, agent-denied). Rules: **the copy is JSON in the feature** (the source's name, `units`, parameters and
-features before its marker, no `component` keys); nothing geometric is stored. **One insert = one
-feature + one new component** (named after the file, `copyComponentName` on a clash), one undo
-step, every ID from the caller; copied `BodyMeta` goes to the host's `bodies` under
-`<insert>.<feature>:<n>` in that component. **IDs**: the expansion's features are
-`<insert>.<id>`, and references (ref inputs, projections, fingerprint `adj`) are rewritten **token
-by token** with `prefixIds` (`timeline.ts`'s separators), never by substring. **Parameters**: the
-copy is evaluated alone (`evaluateParameters` over the copy, its own `units`) and every `expr`
-input and sketch dimension reaches the expansion as a literal (`20 mm`, `5 deg`) **without
-`paramName`**: the host's table never gets a name of the copy, the copy never reads the host's.
-**Isolation**: an isolated expansion's features see only bodies starting `<insert>.`, their
-result replaces only those (`mergeBodies`), their cache key uses the scope's own body key; keep
-this, or a copied join/cut reaches the host's bodies. **Not insertable**: a source with an
-unsuppressed Script, plugin feature or insert before its marker (no expansion inside an
-expansion), or nothing there; the schema keeps nested `design` inputs out. **Files**: the copy's
-file inputs and `attachment:<id>` fonts name the **host's** attachments (bytes written before the
-command; same SHA = the host's ID; an ID the host gives other bytes is renamed in the copy);
-`schema.ts`'s `featuresWithEmbedded` checks them and `usedAttachments`/`removeAttachment` see the
-copy's texts. **A future format bump must migrate features inside `design` inputs too.** The
-emitter skips an insert like a file feature. Linked mode (§7) adds a `link` input and Update
-replaces `design`; **a linked file that is gone keeps the last copy as the truth** (geometry
-unchanged, a warning, a notice with Relink… / Break link; owner 2026-11-10); the `.f3d`
-import is unchanged (§8).
+**ADR-0144, S13 (the second hostile-file pass, the guide):** new `mutate.ts`/`mutate.test.ts`
+(seeded hostile files from every slice's fixtures: the reader on every mutant, the whole import on
+a tenth, consecutive seeds so every base is imported, every fifth twice for the same design and
+report; each a design that passes `loadDocument`, whose expressions parse, whose files are exactly
+its attachments, that rebuilds with no failed feature, whose current kernel holds no shape after
+`dispose`, or a `FcstdFormatError`; `FCSTD_MUTATE_STEPS`, `FCSTD_MUTATE_SEED`), `lists.ts`,
+`hostile-s13.test.ts`, `kernel-refusals.test.ts`, `heap.test.ts` (`BENCH_HEAP`), and in the app
+`fcstd-notice-reports.ts` and `fcstd-guide.test.ts`: the guide page `docs/guide/freecad.md` quotes
+every notice sentence whole (`**"…"**`, the file's text in italics), and the test fails when a
+notice `fcstdNotices` makes isn't made of those quotes, when a quote matches no notice, when a
+reason word or a limit is missing, or when `fcstdNotices` gains an `out.push` the reports don't
+reach: **a new notice needs a report that reaches it and its quote on the page**. Rules: **a
+kernel's own refusal is an answer** (`KernelBudget`: an error named in `KERNEL_REFUSALS`, the
+`KernelError` family; every class extending `KernelError` at any depth must be in it or in
+`KERNEL_FAILURES`, a test) and costs no restart; **its words decide nothing** (they can quote
+the file): only the kernel's heap top (`ImportKernel.heap`) past `IMPORT_HEAP_RECYCLE_BYTES`
+(1 GiB, equal to the project kernel's `HEAP_RECYCLE_BYTES`) replaces it; refused calls get at most
+`MAX_REFUSED_SHARE` (a quarter) of the import's time, each counted past `REFUSAL_ALLOWANCE_MS`
+(1 s), then every call is `import-time`. **A list whose length the opened file sets
+is never spread into a call** (`append`/`prepend` in `lists.ts`). **Every name and detail that
+leaves the importer goes through `cleanName` or `clip`** (`plainText`: bidirectional controls,
+marks, zero widths, U+180E, U+FEFF, U+FFF9–U+FFFB and tag characters removed, C0/C1 controls and
+line separators as spaces, lone surrogates as U+FFFD); an attachment's `fileName` has no path
+separator and no leading dot or space; the XML reader reads the characters XML forbids as U+FFFD;
+`MAX_NODES` is 1,000,000. **Never inflate a whole entry to read its head** (`entries.head`);
+archive entries may not overlap; `importFcstd` checks `MAX_FCSTD_BYTES` itself. Parameters: no
+regular expression that can backtrack on file text; `MAX_IMPORT_CELLS` (20,000) over all sheets
+and sets; constraint records made and indexed by name once per sketch. Structure: links to parts
+are measured once per (part, turn) (`partMemo`, `turned`), a mesh member from its facts
+(`expectedOf`), so `MAX_PART_MEMBERS` counts distinct parts and turns; `MAX_COPIED_BODIES`
+(20,000); **a scaled link is left out from the file alone before anything else** (`leftOutScaled`,
+and the shapes import never converts it); a compound has no early refusal and S5's tolerance (both
+measured and dropped). Meshes: a facet that names a point twice is dropped; a placed point past
+`MAX_MESH_COORDINATE` (10 km) leaves the mesh out. Round two: a `Part::Extrusion` of a sketch with
+`DirMode` Normal, `Solid` on and no taper (`extrusionPlan`) is a tree node `extrude` (the sketch
+by `addSketch`, one Extrude, checked as every node; lengths bound, `Part::Extrusion` in
+`PART_INPUTS`); anything else stays a stored leaf, and an extrusion at the top is a tree only
+where it is rebuilt, planned after every other tree (`MAX_IMPORT_TREE_NODES` goes first to what
+came in before), and a node counts against `MAX_TREE_FEATURES` as its leaf did
+(`MAX_TREE_EXTRUSIONS` 1,000 bounds the rest); it is built in its unit's frame (its sketch by its
+own placement, `addSketch` `local`, when in the extrusion's containers; else, or placed, a leaf).
+A cancelled node or structure attempt calls `forgetRemovedPlanes`. A body's sketch
+attached to a face is tried on that face first, as a loose chain's (`withFace` no longer limited
+to chains). A profile's inside point tries several heights in a scan band (`BAND_HEIGHTS`). The
+amendment's **Known limits** is the list of what the import doesn't do.
 
 ADR-0154 (2026-11-19): **profiles of sketches that aren't open are found in a worker.** `sketch/regionsWorker.ts` (module worker, not the kernel's) runs `regionsJob.ts` (`detectProfilesWork`, which never remembers, `flattenRegions`, `profileFill`) one sketch at a time and answers with `FlatRegions` and the fill's arrays **as transfers**; nothing is kept between jobs but fonts and the text shaper's layout cache. `sketch/regionsClient.ts` (one per shell): `want(jobs)` in timeline order, newly shown first, `prefer(featureId)` on hover, a job no longer wanted dropped (worker restarted after 250 ms), an answer to another job ignored, `PROFILES_DEADLINE_MS` (10 s) → terminate, new worker with the fonts, entry `stopped`; three deaths → idle slices on the UI thread within `MAX_FILL_WORK`/`MAX_DESIGN_FILL_WORK`; entries by **the exact `SketchData` object** (and fonts' version when `hasText`); **`want` must never bump the store's `version`** (only results do), or the shell's memo asks again forever. **No `Profile` of a closed sketch on the UI thread:** `SketchDrawing` has `regions` (flat, closed sketches only; `regionAt` must keep `profileAt`'s answers, box test rows exact, sideways by a margin), `fill` (the worker's), `unshaded`; **the open sketch's regions never go into a drawing** (`SketchFill` and the viewport look them up by data: `sketchProfiles`, `sketchRegions`), and the shell's effects capture only `jobs`/`granted`, because callbacks of old renders keep those renders' values alive; `pick.ts` and `regionOutlines` read the flat arrays. **One budget:** `MAX_REGION_BYTES` (256 MB; flat regions `regionsBytes`, fills `FILL_BYTES_PER_VERTEX` 16 a vertex) shared by `regionVerdicts` (open sketch first, then timeline order; shaded / pickable / none; `held` = what the open sketch was granted when opened, so the others never switch during a drag); the shell's `keep` lets go of what isn't granted and asks again when it fits. **The open sketch stays synchronous** (`pinOpenSketch` names it while it is open, profiles shown or not, `openSketchProfiles` finds it; its result stays outside the budget, found once per version of its data whatever its size, and goes to the budget only when it closes or is replaced: call `closeOpenSketch` only when no sketch is open), and so do Export Sketch (one lookup per version of the data while the dialog is open: `sketchProfilesFound`), templates, the assistant's tools and the emitter; **a caller that runs per render or per pointer move must not ask for profiles it doesn't use** (`ProfileReadout` asks only for a selected profile); **feature dialogs' handles keep only region centres** (`regionCentroid`, `inkCentroids`). **Everything the UI thread keeps of detection** (the app's caches and the package's `remembered`) goes through `KeptResults`: one budget, `MAX_KEPT_PROFILE_BYTES` 64 MB and 256 results, least recently used first, counted by `keptBytes` (must stay an upper bound); never add a detection cache outside it; `KeptResults.set` keeps nothing larger than the whole budget and then lets go of nothing else. Region IDs and texts cross as a string table (`toWire`/`fromWire`) and count at 2 bytes a character (`regionsBytes`, `flatBytesOf`); fills count 68 bytes a region; **the shell passes every shown sketch with an entry to `keep`, whatever its state** (`closedSketchShows`' `keep`): a shown sketch's entry is never spare, the client keeps at most 64 spare results and takes what it accepted since the last `want` off later allowances; `fromWire` refuses a string place outside the table (the entry fails); on the UI thread a sketch asked again doesn't count its own earlier fill against `MAX_DESIGN_FILL_WORK`; the shell makes its client in an effect. Fonts reach the worker (`uiFontBytes`, `addFont`) before the jobs; the worker starts with the client. Status bar: `FindingProfiles` ("· Finding profiles 12 of 30…", only after 400 ms) and `UnshadedSketches` ("· 3 sketches not shaded, 1 can't be picked"). The viewport's `data-sketch-fills` ("shaded=3 unshaded=1 waiting=2") is for e2e. Test hooks may only lower or slow: `__extrudoRegionBudget`, `__extrudoProfilesDeadline`, `__extrudoProfilesDelay`, `__extrudoNoProfilesWorker`.
 

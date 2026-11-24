@@ -142,6 +142,19 @@ describe('meshes', () => {
     expect(r.report.leftOut).toEqual([]);
   });
 
+  it('S13: a mesh a placement takes past 10 km is left out with the reason; one just inside comes in', async () => {
+    const moved = (x: number) =>
+      run('meshes', {
+        edit: (o, xml) => (o === 'Mesh' ? xml.replace(/Px="[^"]*"/, `Px="${x}"`) : xml),
+      });
+    const far = await moved(2e7);
+    const out = far.report.leftOut.find((l) => l.object === 'Mesh');
+    expect(out).toMatchObject({ reason: 'unreadable' });
+    expect(out?.detail).toMatch(/more than 10 km from the origin once placed/);
+    const near = await moved(9.9e6);
+    expect(near.report.meshes.find((m) => m.object === 'Mesh')?.outcome).toBe('in');
+  });
+
   it('mesh_in_part: the mesh lands where its moved and turned part shows it', async () => {
     const r = await run('mesh_in_part');
     const mesh = r.report.meshes[0];
@@ -306,7 +319,8 @@ describe('part containers as components', () => {
     const names = r.report.components.made.map((c) => c.name);
     expect(names[0]).toBe('Part001');
     expect(names[1]).toBe('x'.repeat(90));
-    expect(names[2]).toBe('A B C');
+    // A tab is white space; a character XML forbids reads as U+FFFD (S13), never as a separator.
+    expect(names[2]).toBe('A B\uFFFDC');
   });
 });
 
@@ -419,6 +433,25 @@ describe('links as copies', () => {
       { object: 'Link', name: 'Link', reason: 'scaled', detail: 'Link scales what it shows' },
     ]);
     expect(bodies(r.design, r.measures.ids)).toEqual(['Box']);
+  });
+
+  it('S13: link_scaled with the kernel failed before the links: still left out, scaled', async () => {
+    // Every kernel call fails and none may restart: the budget is broken long before the links.
+    const failing = {
+      ...kernel,
+      storedShapeToStep: () => Promise.reject(new Error('the geometry kernel stopped')),
+      measureStoredShape: () => Promise.reject(new Error('the geometry kernel stopped')),
+      rebuild: () => Promise.reject(new Error('the geometry kernel stopped')),
+    };
+    const r = await importFcstd(structureFile('link_scaled'), 'X', {
+      kernel: failing,
+      solver: new SketchSolver(planegcs),
+      maxRestarts: 0,
+    });
+    expect(r.report.links[0]).toMatchObject({ outcome: 'left-out', reason: 'scaled' });
+    expect(r.report.leftOut.map((l) => [l.object, l.reason])).toContainEqual(['Link', 'scaled']);
+    // Every final shape is in the shapes or the left-out list.
+    expect(r.report.shapes.length + r.report.leftOut.length).toBe(r.report.finalShapes);
   });
 
   it('a link whose target didn’t come in comes in as today', async () => {

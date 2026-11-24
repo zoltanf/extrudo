@@ -31,6 +31,8 @@ These pages are the written guide:
   what turns into a mesh.
 - [Drawings](./drawings.md): sheets of views, dimensions, notes and a parts list made from the
   model, exported as PDF or SVG.
+- [FreeCAD files](./freecad.md): opening a FreeCAD design, what comes in with its timeline, how
+  Extrudo checks it and what the notices after an import mean.
 - [Files, versions and where your work lives](./files.md): autosave, `.extrudo` files, imports,
   version history, linked folders, offline use and the examples.
 - [The desktop app](./desktop.md): installing it and what it adds.

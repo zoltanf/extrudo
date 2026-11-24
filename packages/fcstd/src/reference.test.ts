@@ -5,6 +5,8 @@
  * a pattern's or mirror's reference; each feature is rebuilt and checked
  * against the shape the file stores for it.
  */
+
+import { updateFeatureInputs } from '@extrudo/core';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { decodeFeature } from './features';
@@ -323,12 +325,34 @@ describe('sketches on tilted planes', () => {
     expect(tilted?.constraints.mapped).toBe(tilted?.constraints.total);
   });
 
-  it('pocket_on_tilted_face: the sketch on the tilted face sits on a plane through three points of its frame', async () => {
+  it('pocket_on_tilted_face: S13, the sketch stays on the tilted face it is attached to, and follows it', async () => {
     const r = await runRef('pocket_on_tilted_face');
     expect(r.body?.stop).toBeUndefined();
     expect(r.body?.mapped.map((m) => m.object)).toEqual(['Pad', 'Tilted', 'Pocket']);
-    expect(r.body?.sketches.find((s) => s.sketch === 'FaceSketch')?.plane).toBe('points');
-    expect(r.features).toContain('planeThroughPoints FaceSketch plane');
+    expect(r.body?.sketches.find((s) => s.sketch === 'FaceSketch')?.plane).toBe('face');
+    expect(r.features).not.toContain('planeThroughPoints FaceSketch plane');
+    // The sketch's plane is a face of the body (a persistent reference), not a fixed plane.
+    const sketch = r.design.doc.features.find((f) => f.name === 'FaceSketch');
+    if (!sketch) throw new Error('no FaceSketch');
+    const plane = (sketch.inputs as { plane?: { refs?: { kind: string }[] } }).plane?.refs?.[0];
+    expect(plane?.kind).toBe('face');
+    // A longer tilted pad moves the face, and the pocket's sketch with it: it still rebuilds.
+    const tilted = r.design.doc.features.find((f) => f.name === 'Tilted');
+    if (!tilted) throw new Error('no Tilted');
+    r.design.state.dispatch(
+      updateFeatureInputs({
+        id: tilted.id,
+        inputs: {
+          distance: {
+            kind: 'expr',
+            expr: `${parseFloat((tilted.inputs as unknown as { distance: { expr: string } }).distance.expr) + 2} mm`,
+            unit: 'length',
+          },
+        },
+      }),
+    );
+    const after = await nodeImportKernel().rebuild(r.design.toJSON(), r.files);
+    expect(after.failed).toEqual([]);
   });
 
   it("a tilted sketch moved in its plane: the profile lands elsewhere and the pad doesn't hold", async () => {

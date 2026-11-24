@@ -51,9 +51,9 @@ These are in the Home tab's **Import** group.
 - **Import Design** opens an `.extrudo` file as a new design. The home screen's **Import…**
   card does the same, and takes `.f3d`, FreeCAD `.FCStd` and the model files below too: a model
   file becomes a new design with the Import Model dialog open. A FreeCAD file becomes a new
-  design of its finished shapes, one body each with the file's names, colours and hidden
-  shapes, without history for now; a notice says what came across and what didn't (meshes
-  don't yet). A design downloaded from a GitHub issue is
+  design with its bodies' timelines, sketches and parameters where Extrudo can rebuild them,
+  and the file's own shapes where it can't. [FreeCAD files](./freecad.md) says what comes in
+  and what the notices mean. A design downloaded from a GitHub issue is
   often an `.extrudo.gz`: import it as it is, no need to unpack it first.
 - **Import Model** brings in a STEP file, an STL, 3MF or OBJ mesh, or an OpenSCAD `.scad`
   file, as bodies in the current design. A STEP file keeps its exact surfaces. A mesh becomes a

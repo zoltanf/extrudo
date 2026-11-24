@@ -3396,3 +3396,478 @@ out. e2e (`import-fcstd.spec.ts`): `part_basic`'s part as a component holding it
   them); members in other containers; links as members.
 - A mesh refused for a facet that names a point twice (the kernel would drop it); mesh colours.
 - The time a file of many shapes costs, now with the compounds' members as shapes of their own.
+
+## Amendment (S13, 2026-11-23): the second hostile-file pass, what the earlier slices left, the guide
+
+The last slice. A pass over the whole importer as it stands, from the file's bytes to what the app
+shows; a seeded mutation test; the limits the earlier slices left open; the user guide's page
+(`docs/guide/freecad.md`). With it P6-25 is done. No facade change, no schema change, nothing in
+`packages/core`.
+
+### The work list
+
+Every line of S3 to S12b that named S13 or a known limit, and its answer here.
+
+| From | What | Answer |
+|---|---|---|
+| S3 | A text the kernel refuses restarts the kernel, so more than three lose the rest | **Done**: a refusal is an answer (below) |
+| S5 | The design so far is sent for every feature: cost grows with features × design size | **Measured**, not changed (below) |
+| S6 | A mirror-image twin only a face-by-face comparison tells apart | Not done: no library case; it needs the kernel to describe every face of both shapes (a describe call per feature) |
+| S8 | The STEP round trip's drift decides whether a stored shape can be a step (one library shape, 1.5e-5) | Not done (part 2, item 3) |
+| S9 | A body's vertex as a reference | Not done: needs `describe` to describe vertices (a kernel change) |
+| S10 | MultiTransform steps' inputs bound through their `sources`; configuration tables | Not done: no library expression reads them; a configuration table maps onto ADR-0059 and is a feature of its own |
+| S11 | A unit whose nodes fail one by one costs up to four passes | **Measured** (below) |
+| S11 | The time a tree costs on large imported shapes; chamfers whose edges a rebuilt boolean doesn't share | Measured with the library run (below); the chamfers not done (part 2, item 8) |
+| S12a | A foreign base S11 could build; tips another object uses that no tree walks; sketches of bodies on faces | Sketches on faces **done**; the rest a finding (part 2, items 6 and 7) |
+| S12b | `MAX_PART_MEMBERS` one count for the import | **Done**: per distinct part and turn |
+| S12b | A compound refused only after its members were walked | Measured, and **not done**: no compound gains (below) |
+| S12b | `doc.problems.length` reset with no test | `markProblems`, a guard no path reaches today (below) |
+| S12b | A mesh refused for a facet that names a point twice | **Done**: dropped |
+| S12b | Scaled links, `VisibilityList`, per-element scales, mesh colours, members in other containers, links as members | Not done (part 2, item 9): no library file has them |
+| S12b | The time a file of many shapes costs | Measured (the library table) |
+
+### The inventory
+
+Every loop, recursion, allocation, map key, kernel call and string the file drives, by module, with
+its bound and the test that shows it. Rows marked (S13) changed in this slice; "none" is a bound
+no test exercises by name.
+
+| Module | What the file controls | Bound | Test |
+|---|---|---|---|
+| archive | Entry count, EOCD scan, declared sizes, inflated-entry cache | `MAX_ENTRIES` 20,000 before the walk; `MAX_ENTRY_BYTES` 128 MiB; `MAX_TOTAL_BYTES` 512 MiB | hostile.test.ts: 'refuses an archive with too many entries' (sizes: none) |
+| archive | Deflate ratio; inflate output size and CRC | `MAX_RATIO` 500 (+4096 B); output exactly the declared size | hostile.test.ts: 'refuses a ratio bomb before inflating it'; 'refuses an entry that unpacks to more than it declares' |
+| archive | ZIP64, encryption, multi-disk, odd methods; entry names and duplicates (Map keys) | refused or left out with a problem; bad names (`..`, `/`, `\`, drive, C0) left out | hostile.test.ts: 'refuses ZIP64 and encrypted entries'; 'leaves out a name that climbs out of its folder, and a second entry of one name' |
+| archive | Overlapping entries (one deflate stream feeding several) | (S13) refused | hostile-s13.test.ts: 'refuses an archive whose entries overlap' |
+| xml | Nesting | `MAX_DEPTH` 256 | hostile.test.ts: 'refuses 10^5 levels of nesting' |
+| xml | Attributes per element, elements per document | (S13) `MAX_ATTRIBUTES` 256; `MAX_NODES` 1,000,000 (was 4,000,000; 990k elements measured +0.7 GB); `parseXml(text, what, maxNodes)` | hostile-s13.test.ts: 'refuses an element with more attributes than MAX_ATTRIBUTES'; heap.test.ts: 'a Document.xml of 990,000 elements' |
+| xml | Entities, long values, DOCTYPE, UTF-8 | five predefined entities, reference ≤ 12 characters; linear scan; DOCTYPE and `<!` refused; fatal UTF-8 | hostile.test.ts: 'refuses an entity bomb, and any entity but the five predefined'; 'reads a 10 MB attribute in bounded time' |
+| xml | Characters XML forbids (C0 but tab/LF/CR, U+FFFE/FFFF) | (S13) read as U+FFFD, literal or referenced | hostile-s13.test.ts: 'reads control characters XML forbids, literal or referenced, as U+FFFD' |
+| xml | Attribute keys (object keys), duplicates | null-prototype object; duplicate attribute refused | hostile.test.ts: 'reads a property type named like an object member as no unit' (duplicates: none) |
+| model | Stored B-rep text | `MAX_STORED_BREP_BYTES` 32 MiB from the archive size; (S13) format line from `head(entry, 128)` before inflating | history-hardening.test.ts: 'are left out by the archive’s size, never inflated or decoded'; hostile-s13.test.ts: 'knows a stored shape that is not B-rep text from its first bytes' |
+| model | Colour side entries (DiffuseColor, ShapeAppearance) | (S13) `head(entry, 32)`; count checked against the declared size | hostile-s13.test.ts: 'reads only the head of a colour entry' |
+| model | Float lists; numbers read from properties | `MAX_FLOAT_LIST` 100,000 from the archive size; `finite()` leaves out NaN and ±Infinity with a problem | hostile.test.ts: 'leaves out a property whose number is NaN or 1e999, with a problem' (float lists: none) |
+| names | Names, labels and details that leave the importer | (S13) `MAX_NAME_LENGTH` 120, `MAX_DETAIL_LENGTH` 300 code points; `plainText` drops bidi, zero-width and C1 characters, mends lone surrogates | hostile-s13.test.ts: 'drops bidirectional controls and zero widths'; shapes.test.ts: 'cleans a label: control characters, white space, length, fallback' |
+| final-shapes | Link chain, container chain, solid scan | `MAX_LINK_HOPS` 32; container depth 64; seen sets; scan once per entry, 32 MiB cap | structure-hostile.test.ts: 'a link to itself, a cycle, 33 hops'; hostile.test.ts: 'ends the final-shape walk on links to nothing and on cycles' |
+| mesh-read | Facets and points | `MAX_MESH_FACETS` 500,000; exact length checked before any allocation; points ≤ 3 per facet | mesh-read.test.ts: 'counts of 2³²−1 in a 300-byte entry: refused before anything is allocated' |
+| mesh-read | Facets naming one point twice | (S13) dropped, as the kernel drops them (`dropped`) | mesh-read.test.ts: 'S13: a facet naming one point three times, or twice, is dropped' |
+| mesh-read | Placed coordinates | (S13) `MAX_MESH_COORDINATE` 1e7 (`far`); meshes.ts leaves such a mesh out as unreadable | hostile-s13.test.ts: 'refuses a mesh a placement takes past 10 km' |
+| meshes | Meshes and facets per import | `MAX_IMPORT_MESHES` 512; `MAX_IMPORT_MESH_FACETS` 2,000,000, from the header before reading | structure-bounds.test.ts: 'meshes: one read an entry, the import’s facets counted together' (mesh count: none) |
+| meshes | STL size and design room; kernel failure while meshing | `MAX_ATTACHMENT_BYTES` 25 MB, `MAX_ATTACHMENTS_BYTES` 100 MB; the first kernel failure ends the meshes | structure-bounds.test.ts: 'a mesh that would pass the design’s limit beside the links’ held STEP'; 'one mesh the kernel fails on ends the meshes: one restart, not one each' |
+| sketch-decode | Curves and constraints per sketch | `MAX_SKETCH_GEOMETRY` 10,000, `MAX_SKETCH_CONSTRAINTS` 20,000 | sketch-hostile.test.ts: 'refuses a sketch over the geometry limit'; 'constraints, in bounded time' |
+| sketch-decode | B-spline poles and knots; indices; external links | `MAX_BSPLINE_POLES` 1,000, knots ≤ poles + 7; indices \|v\| ≤ 2^31; external links ≤ 10,000 | sketch-hostile.test.ts: 'refuses a B-spline over the pole limit'; 'leaves out constraints naming geometry out of range or past the axes' (links: none) |
+| sketch-map | Constraints vetted | `MAX_CANDIDATES` 1000, the rest left over the limit | sketch-hostile.test.ts: 'constraints, the rest over the limit' |
+| sketch-map | Vet and trial solves (planegcs, outside the kernel budget); container chain of a sketch (sketch-place) | `MAX_VET_ROUNDS` 64 then ≤ 1000 removals; `TRIAL_BUDGET` 256, `MAX_TRIALS` 24; container depth 64 | none |
+| fc-expr | Expression text, tokens, nesting | `MAX_EXPRESSION_LENGTH` 4,096; `MAX_EXPRESSION_TOKENS` 1,024; `MAX_EXPRESSION_DEPTH` 64 | fc-expr.test.ts: 'refuses past each limit, cleanly' |
+| fc-emit | Emitted expression text | `MAX_EMITTED_LENGTH` 16,384 (core refuses above 10,000) | none |
+| params | Plain-number cell regex | (S13) `\d+(?:\.\d*)?` cannot backtrack; `MAX_CELL_NUMBER_LENGTH` 400 | hostile-s13.test.ts: 'reads a cell of 200,000 digits and a letter in bounded time' |
+| params | Cells and variables read | (S13) `MAX_SHEET_CELLS` 10,000 a sheet, `MAX_IMPORT_CELLS` 20,000 a file | hostile-s13.test.ts: 'reads at most MAX_IMPORT_CELLS cells over all the sheets of a file' |
+| params | Expressions read, parameters added, names, lookups by file names | `MAX_OBJECT_EXPRESSIONS` 256, `MAX_IMPORT_EXPRESSIONS` 10,000; `MAX_IMPORT_PARAMETERS` 1,000; `MAX_PARAMETER_NAME` 64; `MAX_RENAME_TRIES` 1,000; Maps and `Object.hasOwn` | parameter-hostile.test.ts: 'more expressions on one object than it reads'; 'a name with no free number left'; 'JavaScript’s own names as variables and constraints' |
+| params | Rename `from`, group and comment text | (S13) `from` clipped to `MAX_NAME_LENGTH`; `MAX_GROUP_LENGTH` 40, `MAX_COMMENT_LENGTH` 300 | parameter-hostile.test.ts: 'a name past its length is cut; a group past its length is cut' |
+| params | Settling chains of cells | ≤ names + 1 rounds, each of ≤ 1,000 parameters | parameter-hostile.test.ts: 'a chain of cells past the depth limit' |
+| params | Dependency order (`topological`) | (S13) a node's reads are filtered once, so linear in the edges | none |
+| params | Constraint records of a sketch | (S13) cached per object; none past `MAX_SKETCH_CONSTRAINTS` | hostile-s13.test.ts: 'makes a sketch’s constraint records once, and none past the sketch limit' |
+| bind | Rule rounds per feature | `MAX_BIND_ROUNDS` 64; no cap across the import | none |
+| bodies | Feature chain of a body, one body per feature, features walked | seen set; `MAX_BODY_FEATURES` 500 a body, `MAX_FILE_FEATURES` 2,000 a file | history-hardening.test.ts: 'does not map a feature a second body reaches'; chain-import.test.ts: 'more features than a chain may have: as today' |
+| bodies | Profile sketch curves and regions | `MAX_PROFILE_CURVES` 500, `MAX_PROFILE_REGIONS` 1,000 | history-hardening.test.ts: 'drawn curves before its regions' |
+| bodies | Stored-shape steps and their text | `MAX_BODY_STEPS` 8; `MAX_STEP_TEXT_BYTES` 256 MiB an import | step-hostile.test.ts: 'the step text cap ends the body as the step cap does' |
+| bodies | Kernel rebuild reply | `MAX_REBUILD_BODIES` 100,000; `MAX_BODY_ID_LENGTH` 200; Map and `Object.hasOwn` | history-hardening.test.ts: 'takes only `<feature of the document>:<n>`, short, with measures under own keys' |
+| bodies | Tries per feature; expressions kept per feature | `MAX_UP_TO_TRIES` 4; `MAX_PROJECTION_REPEATS` 3; `MAX_FEATURE_EXPRESSIONS` 64 | reference-hostile.test.ts: 'an up-to feature is tried at most'; history-hardening.test.ts: 'keeps at most 64 and says how many were dropped' |
+| features | Lengths, offsets and sizes | `MAX_FEATURE_LENGTH` 1e7 mm | dressup-hostile.test.ts: 'refuses a radius of %s' |
+| features | Pattern instances, originals, steps, hole centres, self-listing MultiTransform | `MAX_TRANSFORM_INSTANCES` 500 with `HOLE_CENTRE_WEIGHT` 2; `MAX_ORIGINALS` 100; `MAX_TRANSFORM_STEPS` 16; `MAX_HOLE_CENTRES` 200 | pattern-hostile.test.ts: 'a pattern of more instances than the cap is a clean stop before the kernel'; 'a MultiTransform that lists itself, 10,000 steps, or one step twice' |
+| dressups | Sub-elements, edges taken, chamfer sets | `MAX_DRESSUP_ELEMENTS` 1,000 before the loop; `MAX_DRESSUP_EDGES` 1,000; `CHAMFER_MAX_SETS` (core) | dressup-hostile.test.ts: 'refuses 100,000 sub-elements before looking at one' (edges, chamfer sets: none) |
+| match | Kernel descriptions and reference names | `MAX_DESCRIBED_EDGES`/`FACES` 20,000, `MAX_ADJACENT` 20,000 (over is a limit, no restart); `MAX_REFERENCE_ID_LENGTH` 4,000; `MAX_NAME_DEPTH` 32; `MAX_FINGERPRINT_ADJ` 64 | dressup-hostile.test.ts: 'a body past the cap is a limit, not a kernel failure: no restart'; dressup-limits.test.ts: 'a well-formed reference longer than the cap stops with `reference`' |
+| transforms | External links and datums | `MAX_EXTERNAL_PER_SKETCH` 64, `MAX_EXTERNAL_PER_FILE` 1,000; `MAX_DATUMS` 200 | reference-hostile.test.ts: 'past the datums an import may bring in'; 'past the external links an import projects' |
+| attach | Supports read | `MAX_SUPPORTS` 16 | loose-chains.test.ts: 'a long support list costs its first item' |
+| part-tree | Operand tree of a Part feature | `MAX_TREE_NODES` 500 a tree, `MAX_IMPORT_TREE_NODES` 2,000 an import, `MAX_MULTI_OPERANDS` 64; iterative | part-hostile.test.ts: 'a chain of 10,000 cuts'; 'nodes per import' |
+| part-tree | Compound `Links` list; Part fillet edge list | list: no cap of its own (XML `MAX_NODES` only), (S13) appended by a loop; edges: `MAX_PART_DRESSUP_EDGES` 1,000 | hostile-s13.test.ts: 'reads a compound of 300,000 links as one operand'; part-hostile.test.ts: 'an index past the base’s edges' |
+| part-import | Passes, features and operand bodies per unit | `MAX_TREE_PASSES` 4; `MAX_TREE_FEATURES` 4,000, given back when a pass is cancelled; `MAX_OPERAND_BODIES` 256 | part-hostile.test.ts: 'a unit that needs more passes than the cap comes in as today'; part-review.test.ts: 'a leaf of more bodies than an operand may have' |
+| loose-chains | Chain walk | `MAX_BODY_FEATURES` 500, `MAX_FILE_FEATURES` 2,000; visits `PLAN_VISITS_PER_FEATURE` 4 × file cap | loose-chains.test.ts: 'refuses a chain of 10,000 at the cap, without recursion' |
+| loose-chains | Originals of patterns; chains planned | `MAX_ORIGINALS` 100; `MAX_ORIGINAL_STEPS` 500 a list; `MAX_ORIGINAL_LINKS` 20,000 a file; `MAX_LOOSE_CHAINS` 256 | loose-chains.test.ts: '256 rows of 501 patterns of two originals cost the budgets, not their product'; 'refuses the chains past the import’s cap' |
+| structure | Decoded stored text kept | `MAX_TEXT_CACHE` 64 MiB, FIFO | structure-once.test.ts: 'an array of three onto a box: its stored shape decoded once for the three checks' |
+| structure | Link wait list and link order | (S13) every list the file sets appended by a loop (`lists.ts`), here and in part-import, transforms, params, components, compounds, links; one turn per link | structure-bounds.test.ts: '2,000 parts each linking the next are settled in linear time' |
+| structure | Part measures, members walked under links, turned measures | (S13) `partMemo` per (part, turn); `MAX_PART_MEMBERS` 10,000 per distinct part and turn; one kernel call per (object, rotation) | structure-bounds.test.ts: 'S13: each distinct part and turn counts once toward the import’s shapes'; 'S13: a hundred links to one part measure its shapes once, not once a link' |
+| structure | Link copies and array elements | `MAX_LINK_COPIES` 2,000 an import, counted before expanding; `MAX_ARRAY_ELEMENTS` 1,000 | structure-bounds.test.ts: 'the copies are one count for the import, MAX_LINK_COPIES by default' |
+| structure | Bodies copied by links; details of refusals | (S13) `MAX_COPIED_BODIES` 20,000 an import; `MAX_OPERAND_BODIES` 256 an instance; details clipped to `MAX_DETAIL_LENGTH` | structure-bounds.test.ts: 'S13: the bodies all copies make are one count for the import' (clipping: none) |
+| links | Placement and scale lists | length checked against `ElementCount` before the loop; ≤ `MAX_ARRAY_ELEMENTS` | structure-hostile.test.ts: 'an ElementCount of 2³¹−1 with a short list' |
+| links | Scale of a link and of the links on its way; scaled links | (S13) `ownScale` memo per link; hops ≤ `MAX_LINK_HOPS`; scaled links never converted (`scaledOnTheWay` before the shapes import) | structure-bounds.test.ts: 'a link onto a scaled link is scaled, past an array on the way' (no conversion: none) |
+| compounds | Members walked through nested compounds | `MAX_COMPOUND_OBJECTS` 1,000 a compound; refused at the first outside consumer | structure-hostile.test.ts: 'nested 10,000 deep: planned iteratively, refused at the cap' |
+| compounds | Moves per distinct placement; one check | members ≤ `MAX_COMPOUND_OBJECTS`; (S13) bodies appended by a loop | structure-cases.test.ts: 'a compound whose members don’t add up to its stored shape comes in as today, leaving nothing behind' |
+| components | Components made; name cut | `MAX_IMPORT_COMPONENTS` 1,000; (S13) name cut at 90 code units, outside surrogate pairs | structure-hostile.test.ts: '10,000 parts: the first 1,000 are components, the rest stay loose, quickly'; hostile-s13.test.ts: 'cuts a component name within the schema’s length, never inside a surrogate pair' |
+| shapes | Kernel reply sanity | `MAX_SOLIDS_PER_SHAPE` 10,000; `MAX_ELEMENT_COUNT` 1e8 | shapes.test.ts: 'refuses a reply whose numbers or types make no sense, as a kernel failure' (`MAX_ELEMENT_COUNT`: none) |
+| shapes | STEP and design bytes; deferred shapes' bytes | `MAX_ATTACHMENT_BYTES` 25 MB a file, `MAX_ATTACHMENTS_BYTES` 100 MB a design; (S13) `DeferredShapes.release` drops bytes no shape needs | shapes.test.ts: 'keeps each attachment under 25 MB and the design under 100 MB' (release: none) |
+| budget | Every kernel call | budget: 60 s a call / 10 min / 3 restarts | shapes.test.ts: 'gives up after three restarts and leaves the rest out'; 'stops at the whole import budget' |
+| budget | Kernel refusals (`KERNEL_REFUSALS`, `KERNEL_FAILURES`) | (S13) no restart, not counted against the 3, unless out of memory or the heap top past `IMPORT_HEAP_RECYCLE_BYTES` 1 GiB; together at most `MAX_REFUSED_SHARE` 0.25 of the import's time | kernel-refusals.test.ts: 'brings in the five good shapes of ten when five are refused'; 'replaces a kernel whose refusal says memory ran out'; 'gives slow refusals a quarter of the import' |
+| budget | Design serialised per rebuild | no count cap; feature caps × tries, then the budget above | none |
+| import | File size; problems noted by a cancelled walk | (S13) `MAX_FCSTD_BYTES` 100 MiB enforced in `importFcstd`; `markProblems` truncates `doc.problems` back | hostile-s13.test.ts: 'refuses a file over MAX_FCSTD_BYTES before reading it, whoever calls it'; 'takes back what a cancelled walk noted about the file' |
+| import | Seeded mutants of every fixture, reader and full import | (S13) a result or a clean refusal, bounded, the same twice | mutate.test.ts: 'the whole import on' |
+| app worker | The whole import | `FCSTD_IMPORT_TIMEOUT_MS` 11 min, then the worker is terminated | fcstdImport.test.ts: "rejects with the worker's error, a crash or the time budget, and terminates it" |
+| app worker | File size at the app; error text shown | `MAX_FCSTD_BYTES` 100 MiB on `file.size` before reading; `clip` 300 on the error | actions.test.ts: 'refuses a file over 100 MB before reading it' (error clip: none) |
+
+**The gaps and what was done with each:**
+
+- **Bounded only by the clock, now by a count:** a cell's plain-number pattern backtracked
+  quadratically on a long run of digits (`\d+\.?\d*`; 40,000 digits took 6 s, and a cell has no
+  length cap) and now has one way to match each character; a sketch's constraint records were
+  made again for every expression and path that read them, with no cap, and are made once per
+  object and none past `MAX_SKETCH_CONSTRAINTS`; the parameters' order filtered a cell's reads on
+  every visit (the square of its reads) and filters them once; cells and variables are at most
+  `MAX_IMPORT_CELLS` (20,000) a file over all sheets and sets (each sheet's 10,000 stays); the
+  links' copies make at most `MAX_COPIED_BODIES` (20,000) bodies an import (2,000 copies of 256
+  bodies each were allowed, past the kernel's 100,000 bodies a rebuild, which reads as nonsense
+  and restarts a sound kernel); whether a link scales is judged once per link (`ownScale`), not by
+  rescanning an array's lists for every link that reaches it.
+- **Work before the refusal:** a colour list of `GuiDocument.xml` was inflated whole (up to
+  128 MB) to read its first 8 to 28 bytes; a stored shape's entry was inflated whole before its
+  format line was read; a scaled link was converted to STEP and then left out from the file
+  alone, its bytes held while the meshes were judged. Each now reads the entry's head, or is left
+  out before the shapes import converts it.
+- **Memory:** the XML reader's 4,000,000 elements cost about 2.2 GB; it reads 1,000,000 (below).
+  Bytes the deferred shapes no longer need are dropped when they are released, not held to the
+  end.
+- **Lists:** a list whose length the opened file sets is never spread into a call
+  (`push(...list)`, `Math.max(...list)` and the like): such lists are appended by a loop
+  (`lists.ts`), whether or not a cap bounds them today.
+- **Keys:** every lookup by a file-given name was already a `Map`, a null-prototype object or
+  `Object.hasOwn` (`__proto__`, `constructor`, `hasOwnProperty` as object, property and entry
+  names are tested). Keys joined with U+0000 could meet, since the XML reader kept a literal
+  U+0000 in a name; the characters XML 1.0 forbids (C0 controls but tab, newline and carriage
+  return, U+FFFE, U+FFFF), literal or referenced, now read as U+FFFD. No entry name is ever a path:
+  entries are a `Map` in memory.
+- **The archive:** entry count, ratio, CRC, ZIP64, encryption, `../` names and repeated names were
+  refused or left out and tested; now two entries whose bytes overlap are refused too (one deflate
+  stream fed several entries, each judged against the ratio on its own), and `importFcstd`
+  enforces its 100 MB itself rather than trusting the caller.
+- **Numbers:** every number read goes through `finite` or an integer check; a placement's
+  quaternion is normalised and a zero rotation is no rotation (S9). New: a mesh point a placement
+  takes past 10 km, or to infinity, leaves the mesh out (`MAX_MESH_COORDINATE`). `Number()` reads
+  `0x10` as 16 and refuses `1,5`; both are what FreeCAD's own writer never writes, and the checks
+  against the stored shapes judge what they make.
+- **Strings that leave the importer:** names went through `cleanName` (C0 controls, 120
+  characters) and details through `clip` (300). Both now go through `plainText`: the
+  bidirectional embeddings, overrides and isolates (U+202A to U+202E, U+2066 to U+2069), U+061C,
+  the marks U+200E and U+200F, zero-width characters and U+FEFF are **removed**, C1 controls and
+  line and paragraph separators become spaces, and a lone surrogate becomes U+FFFD; so are U+180E,
+  the interlinear annotation characters U+FFF9 to U+FFFB and the tag characters U+E0000 to
+  U+E007F. Removed, not shown escaped: a name is the author's label and these characters have no
+  glyph. Letters keep their own direction: a right-to-left name still reads right to left, and
+  can move the digits and punctuation beside it as any such text does. A renamed parameter's old name, the one raw file text a
+  notice showed, is clipped by the same rule, and so are the links' and compounds' details. A
+  component name is cut at 90 UTF-16 units outside a surrogate pair. The app renders every notice
+  as text (the only `dangerouslySetInnerHTML` is the icon set's, by internal names); no file text
+  becomes an ID (an attachment is stored by its SHA-256), a CSS value or a URL. An attachment's
+  `fileName` is the cleaned label by the export's rule (`stepFileName`, `modelFileName`): no
+  `< > : " / \ | ? *`, no control character, no leading dot or space (tested on `../`, `\`,
+  drive and hidden names).
+- **Entry points:** the home screen's Import card, Home › Import and Import Model all reach
+  `importFcstdFile`: the app's 100 MB check, the import's worker, its 11-minute stop and the kernel
+  budgets. The app has no drop of files onto it. The desktop app opens `.extrudo` files and reaches
+  FreeCAD files only through the same pickers. The CLI reads no FreeCAD file, and the MCP server
+  has no tool that takes a file's bytes; neither was added.
+
+**Not changed, with the reason:** `MAX_EMITTED_LENGTH` (16,384) stays above core's 10,000
+(text between is refused by core as `limit`, tested since S11); `MAX_BIND_ROUNDS` (64 a feature)
+has no count across the import, the feature caps and the time bound it; a kernel's refusals have
+no count of their own: each is one call under 60 s, and the import's 10 minutes end them.
+
+### Peak memory at the caps
+
+Measured as the growth of the process's peak resident memory (`heap.test.ts`, `BENCH_HEAP`, each
+case alone in a process of its own, the file already read from disk):
+
+| Case | Peak growth |
+|---|---|
+| A 101 MB file of three stored shapes at the 32 MB limit (fake kernel) | +99 MB: one copy as text, nothing held twice |
+| A `Document.xml` of 990,000 elements (4.6 MB zipped) | +705 MB (2.9 million elements: +1.6 GB) |
+| 512 meshes of 3,888 facets, the facets cap, with the kernel in the same process | +933 MB, the kernel's own included |
+
+`MAX_NODES` went from 4,000,000 to **1,000,000**, 18 times the library's largest document: a
+million elements cost about 0.7 GB, where 4 million would have cost about 2.2 GB in a worker. The
+mesh case's growth is mostly the kernel's: in the app it is the import kernel's own worker.
+
+### The mutation test
+
+`mutate.ts` makes hostile files from our own fixture documents of every slice (S3's shapes, the
+body and sheet fixtures, S7's patterns, S8's steps, S9's references, S10's parameters, S11's trees,
+S12a's chains, S12b's structure documents; 150 in all) by seed: one to three of byte flips, drops, repeats and
+cuts of `Document.xml`, `GuiDocument.xml` and binary entries; properties and objects swapped,
+removed and repeated; numbers replaced by NaN, infinities, `-0`, `1e308`, denormals, 2³¹, 2⁵³ + 1,
+hex and locale forms; links pointed at other objects, themselves, nothing; container lists
+re-nested; names made `__proto__`, 10,000 characters, bidirectional, control characters; entries
+removed, copied under path-like names; and now and then the finished archive's bytes flipped.
+`mutate.test.ts` reads every mutant twice (the same result, under 5 s each) and imports every
+tenth with the kernel in Node, a fresh one each: it must end as a design that `loadDocument`
+accepts, whose expressions parse and whose parameters evaluate, whose files are exactly its
+attachments, whose report never has one shape both in and out, that rebuilds in a fresh kernel,
+and whose kernel holds no shape once its rebuild cache is emptied (`dispose`); or as a clean
+`FcstdFormatError`. The normal run is 240 reader mutants and 24 imports (about 20 s);
+`FCSTD_MUTATE_STEPS` and `FCSTD_MUTATE_SEED` set a long run.
+
+**The long run** (Ubuntu machine, shared; seeds 1, 37, 100003 and 200011, 5,000 steps each,
+consecutive seeds so each seed's 500 imports cover all 150 bases): **20,000 reader mutants**
+(14,815 read, 5,185 refused cleanly, the slowest 156 ms) and **2,000 whole imports** (1,486
+designs, 514 refused cleanly, 8 kernel restarts in all, every design rebuilt with no failed
+feature, no shape left held on the current kernel, the slowest 49 s; 303 imported twice, each
+the same design and report), in 79 minutes. **It found nothing**: no throw past the entry
+point, no hang, no unsound design, no second run that differed. (A first long run of the same
+size imported only 15 of the bases, the import share stepping its seeds by 10; that is fixed.)
+The gaps above were found by reading the code; each has its own regression test
+(`hostile-s13.test.ts`, `kernel-refusals.test.ts`, `structure-bounds.test.ts`,
+`structure-cases.test.ts`, `mesh-read.test.ts`).
+
+### The open limits
+
+- **S3: a refusal is an answer.** `KernelBudget.call` tells a refusal from a failure by the
+  error's name: `KernelError` and every class that extends it (`KERNEL_REFUSALS`; a test reads the
+  kernel's sources and keeps the list equal), which Comlink carries across the worker by name. Such
+  an error comes from the facade's caught OCCT exception or from our own checks, so the kernel is
+  sound: no restart, not counted against `MAX_RESTARTS`, counted as `report.refusals`, and the
+  shape is left out as before (`kernel`, "the geometry kernel couldn't read it"). A
+  `KernelCrashError`, a dead worker's plain error, a timeout or a reply that makes no sense still
+  restarts it. Test: ten shapes of which five are text the kernel refuses past its format line:
+  the other five come in, no restart (before: three restarts, and the last two good shapes out).
+  A refusal's words decide nothing (the kernel quotes the file in some messages, so a file could
+  word one as it likes): after any refusal the budget reads the kernel's heap
+  (`ImportKernel.heap`, inside the import's time) and replaces the kernel when its top has passed
+  `IMPORT_HEAP_RECYCLE_BYTES` (1 GiB, the project kernel's own threshold for a fresh worker,
+  ADR-0067 §H4; the heap only grows, and a failed allocation inside OCCT comes back as a refusal
+  with a grown heap); a kernel that can't report its heap is kept. Refused calls together may
+  take at most `MAX_REFUSED_SHARE` (a quarter) of the import's time, each counted only for the
+  time past `REFUSAL_ALLOWANCE_MS` (a second: the kernel refuses unreadable text in milliseconds,
+  so only a refusal that kept it working counts); past the share every later call is left out
+  with the import's time ("the geometry kernel refused shapes for too long"). The share is tested
+  when a call starts, so one call may pass it by its own time, at most a shape's 60 s. Every class
+  that extends `KernelError`, at any depth in `packages/kernel/src`, must be in `KERNEL_REFUSALS`
+  or `KERNEL_FAILURES` (a test). Tests with fake kernels and an injected clock.
+- **S5: features × design size.** Measured on S11's chain of fuses (`part-hostile.test.ts`,
+  `BENCH=1`, the design's structured clone timed as the worker gets it): 100 fuses 3.9 s, 5.9 MB of
+  designs sent, the largest 58 KB, 0.17 s copying; 300 fuses 12.6 s, 52.6 MB, 175 KB, 1.4 s; 450
+  fuses 27.6 s, 118 MB, 262 KB, 3.0 s. Copying grows with the square of the features and the
+  kernel's own work a little faster than linearly. What bounds it: `MAX_FILE_FEATURES` (2,000) and
+  `MAX_IMPORT_TREE_NODES` (2,000) and the import's 10 minutes; at 2,000 features the designs sent
+  would be about 1.2 GB in all, about 30 s of copying. Sending only what changed is a change to the
+  kernel's import interface, not small: not done.
+- **S11: passes.** A chain of 240 fuses whose four lowest store another shape: 21.4 s and 2,387
+  kernel calls (a clean 300 took 1,502 calls), so about two passes; each pass costs what one clean
+  build does, at most four, at the tree cap (500 objects) about 13 s a pass.
+- **S12b: links to parts.** A part's shapes together are measured once for each rotation they are
+  seen at (`partMemo`) and moved for every further use (a translation moves a measure's box and
+  centre and changes nothing else), and a stored shape once per rotation (`turned`). So
+  `MAX_PART_MEMBERS` counts the members of each distinct part and turn walked. Tests: 101 links to
+  one part make as many kernel measures as two; the car of S12b's test needs 6 members where every
+  way down counted 12. A memo is never stale: stored shapes don't change, and a memoised part has
+  no cycle through it (one would have stopped its own walk).
+- **S12b: a compound refused before its walk.** Measured, and not kept. A compound's members'
+  stored shapes, placed where it shows them, can prove before the walk that the full check fails
+  only when they are further off than the loosest check a member passes, and the library's slow
+  file is not such a case: its members' stored shapes together differ from the compound's own by
+  8.6e-6 in volume, inside what the walk could change and outside S5's 1e-6. No library compound
+  gains, every compound would pay one kernel measure a member, and at its margins such a test can
+  refuse what the full check accepts (a member's check is relative to the larger volume, members'
+  volumes may have either sign, a member's box is checked in its own frame), so the slice doesn't
+  have it. S12b's reading of that file was wrong: no member of that compound comes in through STEP
+  (they are Part trees whose tops hold at 1e-6), and the compound's own stored shape is not its
+  members'. The full check refuses it, rightly, and the file's time is unchanged (below).
+- **S12b: `doc.problems`.** The reset is now `markProblems(doc)`, with a unit test of its own.
+  **No path reaches it today**: every reader the walk calls takes back its own problems when it
+  fails, so no library or fixture file has a line it would take back, and removing the call fails
+  no import test. It stays as a guard for a later reader.
+- **S12b: a facet that names a point twice** is dropped in the reader (`MeshKernel.dropped`), as
+  the kernel's own mesh import drops it, and the closed check judges the rest; a mesh of only such
+  facets is `empty`. Chosen over refusing: the kernel would build the same mesh from what is left,
+  and the closed check already refuses one that a dropped facet leaves open.
+
+### What the earlier slices left (part of P6-25's backlog)
+
+1. **The census** (the library's stops, numbers only). Bodies from the file's shape: 6 (2 fillets
+   our OCCT refuses, 2 bodies that are one base feature and nothing else, 1 hole that changes
+   another FreeCAD body, 1 pocket after a step that differs by 1.5e-5). Steps in the middle of
+   bodies: 5 (3 by type, 1 MultiTransform, 1 pad that differs). Tree leaves: 30 (17 extrusions, 8
+   Python objects, 1 plain shape, 1 mirror, 1 sweep: types Extrudo doesn't rebuild; 2 that
+   differ). Trees as today: 14 (S11's reasons). Chains: 1 as today (S12a's fillet). References not
+   found: 2 (pockets). Expressions not kept: 103 on targets Extrudo has no input for, 7 whose
+   target didn't come in, 5 on inputs Extrudo doesn't take as expressions, 1 that names `H`
+   (FreeCAD's unit symbol) as a variable. Shapes left out: 68 open meshes, 13 empty meshes, 4
+   empty bodies, 3 failed checks. **None is a small gap of ours** (a property form not read, a
+   case of a mapped feature not handled): each is a missing Extrudo feature, the file's own state,
+   or a check doing its job. Not changed.
+2. **Open meshes (68).** All 70 non-empty meshes of that file hold each triangle exactly twice,
+   once in each winding, the 68 left out among them. FreeCAD's `solid` flag is set for all 85, the
+   13 empty ones included, so it says nothing. **FreeCAD's own volume** for every one of the 70 is
+   under a thousandth of what keeping one triangle of each pair would enclose (for 20 of them under
+   a millionth): FreeCAD doesn't measure them as closed solids either, and the repair would make a
+   shape FreeCAD doesn't show. They stay out (68).
+3. **STEP drift as a tolerance:** not done. The library's one compound refused by the check has no
+   member that came in through STEP (item above), and a compound of STEP members that doesn't
+   hold comes in as its own shape through STEP with the same history (none), so a looser check
+   would buy nothing. For a step in a body (the pocket that differs by 1.5e-5), widening a
+   feature's volume check would also have to widen its area and centre, and the centre's 1e-7 of
+   the diagonal is what tells S6's mirror twins apart: not safe without a face-by-face comparison.
+4. **The ellipsoid** is in our own S11 fixture (`other_primitives`), not the library (which has
+   none). It is left out by S3's check: the STEP read back has the same volume and a box 0.035 mm
+   larger than the stored shape's (the ellipsoid is a sphere under a non-uniform scale, a B-spline
+   surface). Whether that is the writer or the box of a re-read B-spline needs the kernel: not
+   found here.
+5. **The link whose copy the kernel refuses** (the kernel's move makes a body it reads as no sound
+   solid) and **the chain fillet whose stored centre isn't a sound solid's** (S12a) are as S12b
+   and S12a describe them; both are the kernel's reading of the file's own shapes. Not changed.
+6. **Sketches of bodies on faces: done.** S12a's rule now holds for bodies too: a sketch FreeCAD
+   attaches to a flat face of its own body is first tried on that face (found on the rebuilt
+   body as any reference is) and kept there when the feature holds; else on the fixed plane its
+   stored placement gives, as before. The library: 17 body sketches are attached to faces, 16 now
+   stay on them, 1 falls back to its fixed plane (its face isn't found); all 25 bodies still hold
+   with their history; references found go from 131 to 147 (the 16 faces) and not found from 2
+   to 3 (that one face). Tests: `pocket_on_tilted_face`'s sketch is on its face, its plane input
+   a face reference, and the design rebuilds after the face below moves.
+7. **Chains: a finding.** The library's loose features used by an object outside their own chain
+   (11 by this importer's own index; S12a counted 12): 6 by Python objects that come in as stored
+   leaves of trees (their own stored shapes; the chain under them changes nothing), 3 by
+   compounds that are no final shape, 1 by a Draft object, 1 by a pocket of another chain (and a
+   sketch). None is used by something this importer builds from its operands, so none comes in
+   another way. The chain on a base S11 could build (one of S12a's four foreign bases is a cut):
+   the bodies and chains are walked before the trees, so a tree under a chain would need that
+   order changed for one unit; not done.
+8. **Chamfers on rebuilt booleans** (4 trees, `reference`) and the mirror twin: not done; the first
+   needs edges matched across a boolean that FreeCAD's and Extrudo's kernels split differently.
+9. **Scaled links, `VisibilityList`, per-element scales, mesh colours**: not done; no library file
+   has any, and a scaled copy needs a Scale feature pivoting at the link's origin, which only a
+   FreeCAD-made fixture (`link_scaled`) could check. No builder was added.
+10. **Time: measured.** Per kernel call, each file alone with a kernel of its own: the median file
+   spends 93 % of its import in the kernel (rebuilds 57 %, stored-shape measures 22 %), the three
+   slowest 100 %, 100 % and 99 % (rebuilds 33 to 92 %, STEP conversions 8 to 52 %). The importer's
+   own work is at most 7 %. Meshing the import's rebuilds coarsely (they are never shown) was
+   tried: the slowest file took 108 s instead of 68 s, so it was not kept. Nothing cheap is left
+   on the importer's side.
+
+### Round two (part of the slice): extrusions, expressions, pictures
+
+- **Part extrusions (done).** Of the library's 65 `Part::Extrusion` objects, 2 extrude a sketch;
+  the others extrude Draft and Python objects (28), plain shapes (29), mirrors (3), a loft (1)
+  and other extrusions (2). Of the 17 that are tree leaves, none extrudes a sketch (5 Draft
+  objects, 3 mirrors, 9 plain shapes). Settings over all 65: `DirMode` Normal 18, Custom 16,
+  absent 31; `Solid` on 31; `Symmetric` 1; `Reversed` 1; no taper; 4 lengths read expressions
+  (all on Draft-based extrusions). Now an extrusion of a sketch with `DirMode` Normal, `Solid` on
+  and no taper (`extrusionPlan`) is a tree node of its own (`extrude`): the sketch as S4 brings
+  one and one Extrude (one way, both ways or symmetric, `Reversed` and a mirrored sketch flipping
+  it), checked against the extrusion's stored shape as every node is, its lengths bound through
+  the binder (`Part::Extrusion` joins the Part objects whose properties are inputs). An extrusion
+  at the top is a tree only where it is rebuilt, so one that isn't stays a plain shape. As every
+  node, it is built in its unit's frame: its sketch by its own placement when it is in the same
+  containers as the extrusion (`addSketch`'s `local`), and the unit's containers move the whole
+  once (S11's `Place` move); a sketch in other containers, or an extrusion with a placement of its
+  own, is a stored leaf (`placement`). Lengths are decided in the plan: symmetric is `LengthFwd`
+  in all (written with `symmetricMeasure: 'whole'`), so a symmetric one with no `LengthFwd` has no
+  length; `LengthFwd` 0 with a `LengthRev` is one side turned round; both lengths make a
+  two-sided extrude.
+  Tests (`extrusion.test.ts`): S11's `extrusion_leaf` comes in whole and live; symmetric,
+  reversed, two-sided and longer variants of it are refused by the check; tapered, custom
+  direction, no solid, not a sketch and an out-of-range length are leaves from the file alone;
+  an expression on `LengthFwd` is kept; at the top. **The library doesn't move**: neither of its
+  two sketch extrusions is a tree node (one is used by a Python object, the other is in a file
+  that stores no `DirMode`). The trees stay 9 / 10 / 14. **A fix on the way:** a profile's inside
+  point (S5's `insidePoint`) found none in a rectangle whose hole has a vertex at the rectangle's
+  mid-height (its one scan band's middle); it now tries other heights in the band.
+  **The FreeCAD-made cases** (`final-fixtures.ts`, FreeCAD 1.1.4, our own
+  `scripts/make-final-fixtures.py`; `final-cases.test.ts`, each body measured against FreeCAD's
+  record): forward, both ways, symmetric, reversed, a moved and tilted sketch, inside a moved and
+  turned part (with its `Place` move), with a bound length (live), and under a cut (live) all come
+  in with their history and measure as FreeCAD's; tapered, along a custom direction and of a
+  `Part::Plane` are refused from the file alone with their reasons and come in as the plain shape
+  they were; `body_on_face`'s pocket sketch stays on the pad's top face and follows it when the
+  pad gets longer. The fixture converter keeps a sketch's attachment for this set
+  (`--keep-attachment`; S11's set drops it).
+- **Expressions not kept (a finding).** The 103 whose target Extrudo has no input for: 72 sizes of
+  Arch Python objects (`OverallHeight`, `OverallWidth` 36 each), 13 other properties of Python
+  objects, 4 extrusion lengths (Draft-based, so stored leaves), 3 extrusion bases, 4 sketch
+  attachment offsets in their plane, 2 TechDraw scales, 1 placement member of a Draft object, 1
+  configuration binding, 1 loft's sections, 1 part's shape type. None targets an input of a
+  feature this importer maps; 52 stay kept.
+- **The tree caps:** the trees that came in before this slice keep their room. An extrusion at
+  the top is planned after every other tree and stays a plain shape when it doesn't fit
+  `MAX_IMPORT_TREE_NODES`; an extrusion node counts against `MAX_TREE_FEATURES` as the one feature
+  its stored leaf did, and `MAX_TREE_EXTRUSIONS` (1,000) bounds what they add beyond it (at most
+  two each). Tests: a top-level extrusion ahead of a cut, at either cap: the cut keeps its history.
+- **Planes of a cancelled node:** a tree node or a structure attempt that is cancelled forgets
+  the planes its sketch made (`forgetRemovedPlanes`), as a body's feature does, so a later sketch
+  at that offset makes its plane again. Test: an extrusion under a cut that doesn't hold at an
+  offset, then one that does at the same offset: the second comes in with its history.
+- **Pictures:** the guide page has two, recorded by `e2e/guide-shots.spec.ts` from S10's own
+  `sheet_plate` fixture: the imported plate with its notices and timeline, and its spreadsheet as
+  parameters.
+
+### The library (60 files, `history-corpus.test.ts`, `chain-corpus.test.ts`, `corpus-shapes.test.ts`)
+
+| | Before S13 | After S13 |
+|---|---|---|
+| Bodies with their history / from the file's shape / empty | 25 / 6 / 4 | 25 / 6 / 4 |
+| References found (none) | 131 (2) | 147 (3): 16 body sketches on their faces |
+| Parameters; expressions kept | 50; 52 | 50; 52 |
+| Part trees: history / leaves / as today | 9 / 10 / 14 | 9 / 10 / 14 |
+| Loose chains: whole / with steps / as today | 8 / 5 / 1 | 8 / 5 / 1 |
+| Final shapes | 383 | 383 |
+| Meshes: in / not closed / empty | 4 / 68 / 13 | 4 / 68 / 13 |
+| Components: from parts / from compounds | 17 / 2 | 17 / 2 |
+| Links: copies / as before | 12 / 1 | 12 / 1 |
+| Compounds at the top: members / shared / check | 2 / 2 / 1 | 2 / 2 / 1 |
+| Final shapes S12b doesn't touch, compared with S3's import | 216 same, 0 differ | 216 same, 0 differ |
+| `import` features: final shapes S3 / now | 291 / 230 | 291 / 230 |
+| Kernel restarts; refusals | 0 | 0; 0 |
+| Time a file, the whole library run (shared machine) | median 0.26 s, slowest 74 s | median 0.27 s, slowest 75 s (with round two) |
+| The slowest file alone, after a warm-up | 74.7 s | 73.9 s (67.7 s with round two) |
+
+**One standing number moved, up:** references found, 131 to 147, for the 16 body sketches that
+now stay on their faces (and not found 2 to 3, the one whose face isn't found; that sketch comes
+in on its fixed plane as before). Everything else is a bound, a refusal made earlier or cheaper,
+or a case no library file has: no refused shape, no scaled link, no assembly of links to one
+part, no degenerate mesh facet, no forbidden XML character, no name with a direction control,
+no sketch extrusion in a tree. The slowest file is the
+compound of S12b's last paragraph: its members are walked and checked and it comes in as before,
+because its own stored shape is not its members' (above), which only the walk can show.
+
+### The report and the app
+
+`FcstdImportReport.refusals` (new) counts the kernel's refusals. No sentence the app shows changed: a refused
+shape is left out as "the geometry kernel couldn't read it", as before; a mesh a placement takes
+past 10 km is "its shape can't be read from the file". The guide page quotes every sentence and
+reason `fcstdNotices` can show, each sentence as a whole quote with the file's text in italics,
+and states the limits. `fcstd-guide.test.ts` drives `fcstdNotices` through reports that reach
+every branch (`fcstd-notice-reports.ts`) and fails when a notice isn't made of the page's quoted
+sentences, when the page quotes a sentence no notice reads so, when any one quote can go and
+every notice still matches (each quote is removed in turn), when a reason or a limit is missing,
+or when the notices gain a sentence the reports don't reach. An italic part of a quote matches
+only what the reports put there (their names, numbers and the reason words), never a sentence
+after it. The reasons are checked by table: every reason word is on the page, and a notice's
+reason may only be one of them; the reports reach a few of them. Refused calls past their
+share of the import's time are left out as "the import ran out of time", as any call after the
+import's time. No e2e change: the app's behaviour is the same.
+
+### Known limits
+
+What the FreeCAD import doesn't do, as P6-25 leaves it:
+
+- **Not read:** assemblies and their joints; TechDraw and other drawings; links to other files;
+  FreeCAD's binary shape form; scaled links and array scales (left out); a link array's
+  `VisibilityList` (every element shown); mesh colours; per-face colours (a body takes the first);
+  FreeCAD 1.0's element maps (never needed).
+- **Not rebuilt, so the file's own shape for that step:** sweeps, lofts, helixes, pipes,
+  thickness, drafts and every PartDesign feature but Pad, Pocket, Revolution, Groove, Fillet,
+  Chamfer, the patterns, Mirrored, MultiTransform and Hole; tapered, custom-direction and
+  some up-to extrudes; Part extrusions of anything but a sketch along its normal, Python objects,
+  mirrors and offsets; partial primitives,
+  cones, ellipsoids, prisms and wedges; Draft, BIM, FEM and CAM objects beyond their solids; a
+  boolean whose result Extrudo's kernel splits differently (a common of several solids, a cut that
+  removes nothing).
+- **Checks that refuse what may be right:** a feature after a stored-shape step whose STEP drift
+  passes 1e-6 (one in the library); a compound whose own stored shape is not its members' (one);
+  a mirror-image twin is told apart only by the centre of mass.
+- **Links and parts:** a turned copy follows FreeCAD exactly only at the imported sizes (S11's
+  pivot); components carry no transform and don't nest; a part's visibility isn't read.
+- **Sketches:** a sketch on a face stays on it only where the face is found; external geometry
+  that is a vertex, a spline or an ellipse stays out.
+- **Coplanar faces:** a sketch on one of two coplanar faces stays on the face the file names,
+  found by its geometry; where both give the same plane at import the check can't tell them
+  apart, so after an edit the sketch may follow the other one.
+- **Expressions:** only what Extrudo's language can compute to the file's number stays live;
+  configuration tables and MultiTransform step inputs come in as numbers.
+- **Cost:** each feature sends the design so far to the kernel (quadratic copying, bounded by the
+  feature caps and 10 minutes); a unit of Part trees may be built up to four times.
+- **Entry points:** the app's three import commands only; not the CLI, not the MCP server.

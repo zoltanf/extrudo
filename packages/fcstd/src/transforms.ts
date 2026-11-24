@@ -46,6 +46,7 @@ import {
 } from './features';
 import { rotate } from './final-shapes';
 import type { ElementEdge, ElementFace, ShapeElements, SubShapeAt } from './import-kernel';
+import { append } from './lists';
 import {
   cellFor,
   checkReference,
@@ -966,7 +967,7 @@ export class TransformMapper {
       const features: string[] = [];
       if (this.constructions > before) {
         const ids = this.#c.design.doc.features.map((f) => f.id as string);
-        features.push(...ids.slice(ids.length - (this.constructions - before)));
+        append(features, ids.slice(ids.length - (this.constructions - before)));
       }
       const d: DatumMade = {
         ref,

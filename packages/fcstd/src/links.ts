@@ -22,6 +22,7 @@ import {
   placement,
 } from './final-shapes';
 import type { ShapeMeasure } from './import-kernel';
+import { append } from './lists';
 import type { FcDocument, FcObject, FcPlacement } from './model';
 import { cleanName } from './names';
 import { moveFor } from './part-import';
@@ -32,12 +33,19 @@ import type { Stopped, StructureBuild } from './structure-build';
 /** The most elements one array expands to (arrays of arrays multiply). */
 export const MAX_ARRAY_ELEMENTS = 1_000;
 /**
- * The most final shapes the checks of links to parts visit in one import, a link to a further
- * part inside a part expanded into that part's shapes: each is one stored shape measured by the
- * kernel, and a part reached along two ways is visited twice, so a diamond of parts n deep would
- * be 2ⁿ. 10,000 is five times the import's copies.
+ * The most members the checks of links to parts walk in one import. S13: a part's shapes
+ * together are measured once for each turn they are seen at and moved for every further use,
+ * so each distinct part and turn counts its members once, however many links reach it (the
+ * wheels of a car, the car linked again, a diamond of parts n deep). Each member is at most one
+ * stored shape the kernel measures. 10,000 is five times the import's copies.
  */
 export const MAX_PART_MEMBERS = 10_000;
+/**
+ * S13: the most bodies the links' copies make in one import, all links together (each copy
+ * may take S11's 256 bodies, so `MAX_LINK_COPIES` alone would allow 512,000; the kernel's
+ * rebuild answers for at most 100,000 bodies a design).
+ */
+export const MAX_COPIED_BODIES = 20_000;
 /** The most copies the links of one import make. */
 export const MAX_LINK_COPIES = 2_000;
 /** The farthest a placement may move anything, mm (10 km, S11's limit). */
@@ -166,6 +174,40 @@ export function scaleListScales(bytes: Uint8Array | undefined): string | undefin
   return undefined;
 }
 
+const ownScales = new WeakMap<FcDocument, Map<string, string | null>>();
+
+/**
+ * Whether one link scales what it shows: its own scale, its scale list, its link elements. S13:
+ * once per link and document, so many links onto one large array scan its lists once.
+ */
+function ownScale(doc: FcDocument, at: FcObject): string | undefined {
+  let known = ownScales.get(doc);
+  if (!known) {
+    known = new Map();
+    ownScales.set(doc, known);
+  }
+  const was = known.get(at.name);
+  if (was !== undefined) return was ?? undefined;
+  let found: string | undefined;
+  if (scales(at)) found = `${at.name} scales what it shows`;
+  else {
+    const list = scaleListScales(listEntry(doc, at, 'ScaleList'));
+    if (list) found = `${at.name}: ${list}`;
+    else {
+      const elements = at.properties.ElementList?.value;
+      for (const name of elements?.kind === 'linkList' ? elements.objects : []) {
+        const e = doc.byName.get(name);
+        if (e && scales(e)) {
+          found = `${e.name} scales what it shows`;
+          break;
+        }
+      }
+    }
+  }
+  known.set(at.name, found ?? null);
+  return found;
+}
+
 /**
  * Whether anything on the way from `o` to what it shows scales it: a link's own scale, an
  * array's scale list, an array's link elements. Judged before anything else about the link
@@ -177,14 +219,8 @@ export function scaledOnTheWay(doc: FcDocument, o: FcObject): string | undefined
   let at: FcObject | undefined = o;
   for (let hop = 0; at && isLink(at) && hop <= MAX_LINK_HOPS && !seen.has(at.name); hop++) {
     seen.add(at.name);
-    if (scales(at)) return `${at.name} scales what it shows`;
-    const list = scaleListScales(listEntry(doc, at, 'ScaleList'));
-    if (list) return `${at.name}: ${list}`;
-    const elements = at.properties.ElementList?.value;
-    for (const name of elements?.kind === 'linkList' ? elements.objects : []) {
-      const e = doc.byName.get(name);
-      if (e && scales(e)) return `${e.name} scales what it shows`;
-    }
+    const own = ownScale(doc, at);
+    if (own) return own;
     const { target } = linkTarget(at);
     at = target === undefined ? undefined : doc.byName.get(target);
   }
@@ -406,7 +442,7 @@ export async function copyLink(
           expected[i] as ShapeMeasure,
         );
         if (wrong) return plan.instances.length > 1 ? `element ${i + 1}: ${wrong}` : wrong;
-        all.push(...copies);
+        append(all, copies);
       }
       if (!keepSourceNames) setBodies(design, all, plan.link, label);
       // Copy `n` of each move is a copy of source `n`, as a move numbers its copies.

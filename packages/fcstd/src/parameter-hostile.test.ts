@@ -6,11 +6,13 @@
  * refuse or never write. Each import is the small `sheet_plate` part (or
  * `model_refs`) with one thing changed.
  */
+
 import { type ExtrudoDocument, evaluateParameters } from '@extrudo/core';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MAX_EXPRESSION_LENGTH } from './fc-expr';
 import { type FcstdImportOptions, type FcstdImportResult, importFcstd } from './import';
+import { clip, MAX_NAME_LENGTH } from './names';
 import { nodeImportKernel } from './node-kernel-test-support';
 import { type ParamPartOptions, paramFile, type RawObject, sheetObject } from './parameter-parts';
 import {
@@ -156,7 +158,8 @@ describe('S10 limits, each a clean outcome', () => {
     expect(p?.name).toBe(long.slice(0, MAX_PARAMETER_NAME));
     expect(p?.group).toBe(label.slice(0, MAX_GROUP_LENGTH));
     expect(r.report.parameters.renames).toContainEqual({
-      from: long,
+      // The file's name as a notice shows it: plain text, cut (S13).
+      from: clip(long, MAX_NAME_LENGTH),
       to: p?.name,
       what: 'alias',
       why: 'long',

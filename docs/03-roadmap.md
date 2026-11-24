@@ -1755,7 +1755,7 @@ end to end, faster than in established desktop CAD.
     the desktop agent tools and their skill text; the Drawings guide page, a clip for every
     tile of the Drawing tab and the Spool holder example (ADR-0143's three S6 amendments).
 
-- [ ] **P6-25 FreeCAD file import, with history** (owner, 2026-11-11; ADR-0144). Extrudo
+- [x] **P6-25 FreeCAD file import, with history** (owner, 2026-11-11; ADR-0144; done 2026-11-23). Extrudo
   opens `.FCStd` files itself, in the browser and the desktop app: sketches with their
   constraints, the feature history where the features map, parameters, and the file's own
   stored shape (as a STEP attachment) wherever a step can't be rebuilt. Every rebuilt
@@ -1796,7 +1796,9 @@ end to end, faster than in established desktop CAD.
       each checked against its stored shape (2026-11-19; ADR-0144's S12a amendment).
     - [x] S12b Part containers as components, links as copies, compounds at the top as their members,
       meshes as mesh bodies, each checked (2026-11-20; ADR-0144's S12b amendment).
-  - [ ] S13 User guide page; a second hostile-file pass.
+  - [x] S13 User guide page (`docs/guide/freecad.md`); a second hostile-file pass over the whole
+    importer, a seeded mutation test, the open limits of S3 to S12b (2026-11-23; ADR-0144's S13
+    amendment, whose Known limits say what the import doesn't do).
 
 - [x] **P6-26 Insert Design, Copied** (issue #75; ADR-0140; accepted 2026-11-13). Solid ›
   Assemble › Insert Design picks another `.extrudo` file; its design comes in as one `insertDesign` feature whose bodies make one component named after the file, with no

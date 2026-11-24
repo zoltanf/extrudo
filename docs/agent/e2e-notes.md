@@ -1174,6 +1174,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 
 ### `e2e/import-fcstd.spec.ts`
 
+- **S13** (ADR-0144) changed no sentence the spec matches and added no case: the app behaves as
+  before. The guide page `docs/guide/freecad.md` quotes every notice sentence and
+  `fcstd-guide.test.ts` checks the notices against it: a spec that matches a changed sentence
+  needs the page's quote (and a report in `fcstd-notice-reports.ts` if it is a new one) too.
 - **Parts and links** (S12b, ADR-0144): `structureFile('part_basic')` and `structureFile('links_basic')`
   from `packages/fcstd/src/structure-parts.ts` (our own FreeCAD 1.1.4 documents) as `Bracket.FCStd` and
   `Links.FCStd`. The component sentence is appended to the first notice ("… Grouped into components as

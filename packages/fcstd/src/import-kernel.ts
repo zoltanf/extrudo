@@ -99,6 +99,11 @@ export interface SubShapeAt {
 
 export interface ImportKernel {
   /**
+   * S13: the kernel's heap (the top of its malloc heap, bytes), read after a refusal; a kernel
+   * without it is never replaced for its size.
+   */
+  heap?(): Promise<{ readonly top: number }>;
+  /**
    * Reads B-rep text, places it by `chain` (outermost first, as
    * `FinalShape.chain` gives it), writes STEP and reads that back, in one
    * call. Throws when the text is refused or the kernel fails.

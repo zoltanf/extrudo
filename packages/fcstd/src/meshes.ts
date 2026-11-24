@@ -203,6 +203,15 @@ export async function importMeshes(
       facetsIn += facetCount;
       const own = placementOf(shape.object);
       const facts = meshFacts(read.mesh, own ? [...shape.chain, own] : shape.chain);
+      // S13: a placement that takes a point past 10 km (or to infinity) is no shape the kernel can measure.
+      if (facts.far > 0) {
+        leave(
+          'unreadable',
+          `${facts.far} point${facts.far === 1 ? ' lies' : 's lie'} more than 10 km from the origin once placed`,
+          facetCount,
+        );
+        continue;
+      }
       if (facts.openEdges > 0) {
         leave(
           'not-closed',

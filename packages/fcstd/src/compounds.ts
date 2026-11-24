@@ -15,6 +15,7 @@ import type { KernelBudget } from './budget';
 import { combined, HISTORY_BOX_TOLERANCE, HISTORY_VOLUME_TOLERANCE } from './check';
 import { consumersOf, type FinalShape, invert, placement, storedSolid } from './final-shapes';
 import type { ImportKernel, ShapeMeasure } from './import-kernel';
+import { append } from './lists';
 import { type FcDocument, type FcObject, type FcPlacement, storedShapeEntry } from './model';
 import { cleanName } from './names';
 import { moveFor } from './part-import';
@@ -289,7 +290,7 @@ export async function placeCompound(
     if (isIdentity(extra)) continue;
     const key = JSON.stringify(extra);
     const g = groups.get(key) ?? { place: extra, bodies: [] };
-    g.bodies.push(...(bodiesOf.get(m.object.name) ?? []));
+    append(g.bodies, bodiesOf.get(m.object.name) ?? []);
     groups.set(key, g);
   }
   // Pivots: a free move turns about the box centre of the bodies it moves.

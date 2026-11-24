@@ -11,6 +11,7 @@
  */
 import type { Design } from '@extrudo/api';
 import { COMPONENT_NAME_MAX, type ComponentId, setFeatureComponent } from '@extrudo/core';
+import { append } from './lists';
 import type { FcDocument, FcObject } from './model';
 import { cleanName } from './names';
 import { parentsOf } from './sketch-place';
@@ -75,7 +76,7 @@ export function componentGroups(
       const part = partsAround(doc, f.object)?.[0];
       if (!part) continue;
       const g = parts.get(part.name) ?? { object: part, bodies: [] };
-      g.bodies.push(...bodies);
+      append(g.bodies, bodies);
       parts.set(part.name, g);
     }
   }
@@ -103,10 +104,10 @@ export function partsAround(doc: FcDocument, o: FcObject): FcObject[] | undefine
  * empty one.
  */
 export function uniqueComponentName(label: string, taken: Set<string>): string {
-  const base = label
-    .trim()
-    .slice(0, COMPONENT_NAME_MAX - 10)
-    .trim();
+  // Cut in UTF-16 units (the schema's count), never inside a surrogate pair (S13).
+  let cut = label.trim().slice(0, COMPONENT_NAME_MAX - 10);
+  if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1);
+  const base = cut.trim();
   const at = (n: number) => (base ? (n === 1 ? base : `${base} (${n})`) : `Component${n}`);
   let n = 1;
   while (taken.has(at(n).toLowerCase())) n++;

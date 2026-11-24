@@ -456,6 +456,7 @@ describe('importFcstdFile (ADR-0144 decision 9)', () => {
             problems: [],
             linkArrays: [],
             restarts: 0,
+            refusals: 0,
             bodies: [],
             parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
             trees: [],

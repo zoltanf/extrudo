@@ -23,11 +23,12 @@
  * user's transaction first copies it (`move` with `copy`, nothing moved), and
  * the user consumes the original.
  */
-import type { Design } from '@extrudo/api';
+import type { Design, SketchHandle } from '@extrudo/api';
 import {
   type AttachmentId,
   combineInputs,
   evaluateParameters,
+  extrudeInputs,
   type FeatureId,
   importInputs,
   moveInputs,
@@ -38,12 +39,14 @@ import {
   primitiveInputs,
   updateFeatureInputs,
 } from '@extrudo/core';
+import type { SketchSolver } from '@extrudo/sketch';
 import { MAX_ATTACHMENTS_BYTES } from '@extrudo/storage';
 import { type Binder, within } from './bind';
 import {
   type BodyHistory,
   bodyChain,
   type HistoryStop,
+  profileRefs,
   type SaneRebuild,
   saneRebuild,
   storedText,
@@ -54,9 +57,11 @@ import { addDressUp, type ReferenceTally } from './dressups';
 import type { DecodedDressUp } from './features';
 import { invert, rotate } from './final-shapes';
 import type { RebuildResult, ShapeMeasure } from './import-kernel';
+import { append, prepend } from './lists';
 import type { FcDocument, FcObject, FcPlacement } from './model';
 import { cleanName, clip } from './names';
 import {
+  type ExtrusionPlan,
   effectiveOperands,
   isIdentity,
   type LeafReason,
@@ -69,6 +74,7 @@ import {
 } from './part-tree';
 import { addStepAttachment, attachmentBytes, convertStored } from './shapes';
 import { compose, containerChain, forgetRemovedPlanes } from './sketch-place';
+import { addSketch } from './sketches';
 
 /** The most passes one unit of trees is built in (a pass learns at least one node that doesn't hold). */
 export const MAX_TREE_PASSES = 4;
@@ -168,6 +174,8 @@ export interface TreeWalkOptions {
   readonly maxFeatures?: number;
   readonly maxOperandBodies?: number;
   readonly onStep?: () => void;
+  /** The sketch solver, for an extrusion's sketch (S13). */
+  readonly solver?: SketchSolver;
 }
 
 const literal = (v: number) => `${Number(v.toPrecision(15)) || 0}`;
@@ -669,6 +677,8 @@ export async function importTrees(
       const bases = bodiesOf(n.operands[0] ?? '').length;
       const behavior = n.object.properties.Behavior?.value;
       const steps = behavior?.kind === 'enum' && behavior.index === 1 ? 1 : n.operands.length - 1;
+      // An extrusion counts as the stored leaf it was before S13 (its own cap bounds the rest).
+      if (kind === 'extrude') return 1;
       if (kind === 'cut') return copies + bases + moved;
       if (kind === 'intersect') return copies + steps * bases + moved;
       return copies + 1 + moved;
@@ -1090,6 +1100,69 @@ export async function importTrees(
               bound,
             };
           }
+          case 'extrude': {
+            // S13: the sketch as S4 brings one (on the plane its placement gives) and one extrude.
+            const e = n.extrusion as ExtrusionPlan;
+            // Built in the unit's frame, as every node (S11): the sketch by its own placement, in
+            // the same containers as the extrusion; the unit's containers move it once.
+            if (chain.length > 0 || !isIdentity(placement))
+              return { stop: 'placement', detail: 'it is placed or in a container of its own' };
+            const sketchObject = doc.byName.get(e.sketch) as FcObject;
+            const mine = containerChain(doc, o)?.chain;
+            const its = containerChain(doc, sketchObject)?.chain;
+            if (!mine || !its || mine.length !== its.length || !sameChain(mine, its))
+              return { stop: 'placement', detail: 'its sketch is in other containers than it' };
+            const sketch = addSketch(design, doc, sketchObject, {
+              local: true,
+              name: cleanName(sketchObject.label, sketchObject.name),
+              ...(options.solver ? { solver: options.solver } : {}),
+            });
+            if (!sketch.imported)
+              return { stop: 'sketch', detail: `its sketch was not imported: ${sketch.reason}` };
+            features.push(sketch.id);
+            const profiles = profileRefs(design.feature(sketch.id) as SketchHandle, true);
+            if (typeof profiles === 'string') return { stop: 'sketch', detail: profiles };
+            if (profiles.length === 0)
+              return { stop: 'sketch', detail: 'its sketch has no closed profile' };
+            // Only backwards (`LengthFwd` 0): one side, turned round.
+            const backOnly = !e.symmetric && e.forward <= 1e-6;
+            const flip = (e.reversed !== (sketch.outcome.mirrored === true)) !== backOnly;
+            const added = design.add(
+              'extrude',
+              extrudeInputs(profiles, {
+                ...(e.symmetric
+                  ? {
+                      direction: 'symmetric' as const,
+                      distance: mm(e.forward),
+                      // Written out: the whole length, whatever a later default may be.
+                      symmetricMeasure: 'whole' as const,
+                    }
+                  : backOnly
+                    ? { distance: mm(e.reverse) }
+                    : e.reverse > 0
+                      ? {
+                          direction: 'two-sides' as const,
+                          distance: mm(e.forward),
+                          distance2: mm(e.reverse),
+                        }
+                      : { distance: mm(e.forward) }),
+                ...(flip ? { flip: true } : {}),
+                operation: 'new-body',
+              }),
+              { name: label },
+            );
+            features.push(added.id);
+            const bound = bindPart(
+              o,
+              added.id,
+              backOnly
+                ? { distance: 'LengthRev' }
+                : e.symmetric || e.reverse === 0
+                  ? { distance: 'LengthFwd' }
+                  : { distance: 'LengthFwd', distance2: 'LengthRev' },
+            );
+            return { features, keeps: [], copies, moves: 0, placed: 'inputs', bound };
+          }
           case 'cut':
           case 'join':
           case 'intersect': {
@@ -1121,7 +1194,7 @@ export async function importTrees(
                     { name: name(k) },
                   ).id,
               );
-              features.unshift(...ids);
+              prepend(features, ids);
               made = [...base];
             } else {
               // A common of several shapes is the common of each with the next, in order; a
@@ -1147,7 +1220,7 @@ export async function importTrees(
                 });
                 acc = [...acc];
               }
-              features.unshift(...steps);
+              prepend(features, steps);
               made = [...base];
             }
             let moves = 0;
@@ -1164,7 +1237,7 @@ export async function importTrees(
               });
               features.push(m.id);
               moves++;
-              if (!turned(placement)) bound.push(...bindPart(o, m.id, TRANSLATION));
+              if (!turned(placement)) append(bound, bindPart(o, m.id, TRANSLATION));
               else
                 bindPart(o, m.id, {}, 'its own placement turns it, so a member of it is no input');
             } else if (n.kind === 'join' && apart)
@@ -1497,7 +1570,8 @@ export async function importTrees(
         design.state.commitTransaction();
         committed = true;
         known = [...r.ids];
-        featuresAdded += fresh.size;
+        // An extrusion counts as the one feature its stored leaf did (S13, `MAX_TREE_EXTRUSIONS`).
+        featuresAdded += o.type === 'Part::Extrusion' ? 1 : fresh.size;
         for (const f of fresh) unitFeatures.add(f);
         const counted = (measures as ShapeMeasure[]).every((m) => m.faces !== undefined)
           ? (measures as ShapeMeasure[]).reduce((t, m) => t + (m.faces as number), 0)
@@ -1517,6 +1591,8 @@ export async function importTrees(
         if (!committed) {
           options.binder?.discard();
           design.state.cancelTransaction();
+          // An offset plane the node's sketch made went with it (S13: an extrusion node).
+          forgetRemovedPlanes(design);
         }
       }
     }
@@ -1524,3 +1600,14 @@ export async function importTrees(
 }
 
 export type { PlannedTree };
+
+/** S13: whether two container chains place alike (each placement equal to rounding). */
+function sameChain(a: readonly FcPlacement[], b: readonly FcPlacement[]): boolean {
+  const near = (x: readonly number[], y: readonly number[]) =>
+    x.every((v, i) => Math.abs(v - (y[i] as number)) <= 1e-9);
+  return a.every(
+    (p, i) =>
+      near(p.position, (b[i] as FcPlacement).position) &&
+      near(p.rotation, (b[i] as FcPlacement).rotation),
+  );
+}

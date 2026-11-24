@@ -457,7 +457,7 @@ describe('the import with a kernel', () => {
 });
 
 describe.skipIf(!process.env.BENCH)('a long chain, measured (BENCH=1)', () => {
-  for (const n of [12, 100, 300])
+  for (const n of [12, 100, 300, 450])
     it(`${n} fuses of the same box`, { timeout: 1_200_000 }, async () => {
       const objects: RawPartObject[] = [];
       const entries: Record<string, string> = {};
@@ -480,10 +480,20 @@ describe.skipIf(!process.env.BENCH)('a long chain, measured (BENCH=1)', () => {
         base = name;
       }
       let calls = 0;
+      // S13 (S4's known limit): what each rebuild is sent, the design so far, and its copy's time.
+      let sent = 0;
+      let largest = 0;
+      let copyMs = 0;
       const counting = {
         ...kernel,
         rebuild: (...a: Parameters<typeof kernel.rebuild>) => {
           calls++;
+          const t = performance.now();
+          // The worker gets a structured clone of the design; this is its size and cost.
+          const size = JSON.stringify(structuredClone(a[0])).length;
+          copyMs += performance.now() - t;
+          sent += size;
+          largest = Math.max(largest, size);
           return kernel.rebuild(...a);
         },
         measureStoredShape: (...a: Parameters<typeof kernel.measureStoredShape>) => {
@@ -498,8 +508,56 @@ describe.skipIf(!process.env.BENCH)('a long chain, measured (BENCH=1)', () => {
       });
       const ms = Date.now() - t0;
       process.stderr.write(
-        `S11TIME chain of ${n} fuses: ${ms} ms, ${calls} kernel calls, ${r.trees[`F${n}`]}\n`,
+        `S11TIME chain of ${n} fuses: ${ms} ms, ${calls} kernel calls, ${r.trees[`F${n}`]}; designs sent ${(sent / 1e6).toFixed(1)} MB, the largest ${(largest / 1e3).toFixed(0)} KB, copying them ${copyMs.toFixed(0)} ms\n`,
       );
       expect(r.trees[`F${n}`]).toBe('history');
     });
 });
+
+describe.skipIf(!process.env.BENCH)(
+  'a unit whose nodes fail one by one, measured (BENCH=1)',
+  () => {
+    // S13 (S11's open limit): the four lowest fuses store another shape, so each pass learns one of
+    // them and builds the unit again; the fourth pass is the last (`MAX_TREE_PASSES`).
+    for (const n of [100, 240])
+      it(`${n} fuses, the four lowest wrong`, { timeout: 1_200_000 }, async () => {
+        const objects: RawPartObject[] = [];
+        const entries: Record<string, string> = {};
+        for (let i = 0; i <= n; i++) {
+          objects.push(box(`B${i}`));
+          entries[`B${i}.Shape.brp`] = BOX();
+        }
+        let base = 'B0';
+        for (let i = 1; i <= n; i++) {
+          const name = `F${i}`;
+          objects.push(
+            object(
+              name,
+              'Part::Fuse',
+              [link('Base', base), link('Tool', `B${i}`), placed(), shape(name)],
+              i < n,
+            ),
+          );
+          entries[`${name}.Shape.brp`] = i <= 4 ? partBrep('box_cyl_cut', 'Cylinder') : BOX();
+          base = name;
+        }
+        let calls = 0;
+        const counting = {
+          ...kernel,
+          rebuild: (...a: Parameters<typeof kernel.rebuild>) => {
+            calls++;
+            return kernel.rebuild(...a);
+          },
+          measureStoredShape: (...a: Parameters<typeof kernel.measureStoredShape>) => {
+            calls++;
+            return kernel.measureStoredShape(...a);
+          },
+        };
+        const t0 = Date.now();
+        const r = await run(rawFile(objects, entries), { kernel: counting as never });
+        process.stderr.write(
+          `S11PASSES ${n} fuses, four lowest wrong: ${Date.now() - t0} ms, ${calls} kernel calls, ${r.trees[`F${n}`]}\n`,
+        );
+      });
+  },
+);

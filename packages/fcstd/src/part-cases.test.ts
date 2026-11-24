@@ -360,16 +360,17 @@ const EXPECTED: Readonly<Record<string, Expected>> = {
     ],
     bodies: ['Cut', 'Cut001'],
   },
+  // S13: the sketch extruded along its normal is an extrude, checked as every node is.
   extrusion_leaf: {
     trees: {
-      Cut: 'leaves',
+      Cut: 'history',
     },
     outcomes: {
-      Extrude: 'leaf:type',
+      Extrude: 'feature',
       Cylinder: 'feature',
       Cut: 'feature',
     },
-    features: ['import Import Extrude', 'cylinder Cylinder', 'combine Cut'],
+    features: ['sketch Sketch', 'extrude Extrude', 'cylinder Cylinder', 'combine Cut'],
     bodies: ['Cut'],
   },
   body_operand: {

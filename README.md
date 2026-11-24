@@ -98,7 +98,10 @@ bodies you can still cut, join, move and split; pictures on a plane to trace
 over. OpenSCAD files (`.scad`), compiled in the browser,
 whose customizer variables can follow your design's parameters. `.f3d` designs open
 as editable designs: parameters, sketches, extrudes, holes, fillets, patterns and
-more, with the file's own body where a feature can't be rebuilt.
+more, with the file's own body where a feature can't be rebuilt. FreeCAD `.FCStd`
+files open the same way: bodies with their timelines, Part workbench trees,
+spreadsheet parameters, parts as components and links as copies, each step checked
+against the shape the file stores ([guide](docs/guide/freecad.md)).
 
 **Construction geometry.** Offset, angled, mid and three-point planes, tangent
 planes, axes through points, cylinders or edges, and points.

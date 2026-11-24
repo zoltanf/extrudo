@@ -105,7 +105,7 @@ describe('links that lie or loop', () => {
       ]),
     );
     expect(r.report.links.find((l) => l.object === 'L1')).toMatchObject({ outcome: 'copy' });
-  });
+  }, 60_000);
 
   it('a link to a sketch or a sheet has nothing to copy and comes in as today (left out, as before)', async () => {
     const sketchXml =

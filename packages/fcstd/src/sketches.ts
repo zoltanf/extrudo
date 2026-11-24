@@ -40,8 +40,20 @@ import {
   NO_PLANE,
   type PlaneKind,
   placeSketch,
+  type SketchFrameOf,
   sketchFrame,
 } from './sketch-place';
+
+/** A sketch's frame by its own placement alone (S13's `local`). */
+function localFrame(object: FcObject): SketchFrameOf {
+  const v = object.properties.Placement?.value;
+  return {
+    global: v?.kind === 'placement' ? v.value : { position: [0, 0, 0], rotation: [0, 0, 0, 1] },
+    containers: 0,
+    moved: false,
+  };
+}
+
 import type { ExternalCause } from './transforms';
 
 /** A constraint whose value FreeCAD computes from an expression (for S10). */
@@ -133,6 +145,11 @@ export interface AddSketchOptions {
   readonly solver?: SketchSolver;
   /** The Extrudo sketch's name; the object's label by default. */
   readonly name?: string;
+  /**
+   * S13: placed by its own placement alone, in the frame of the containers around it (a Part
+   * tree is built in its top's containers' frame and moved by them once).
+   */
+  readonly local?: boolean;
   /** The sketch already decoded (`decodeSketch(object)`), so an importer decodes each sketch once. */
   readonly decoded?: DecodedSketch;
   /** Sketch axes to draw as fixed construction lines even when no constraint names them (S5: a revolve's axis). */
@@ -269,7 +286,7 @@ export function addSketch(
   const problems = [...decoded.problems];
   const names = decoded.constraints.map((c) => c?.name);
   const types = decoded.constraints.map((c) => c?.type);
-  const frame = sketchFrame(doc, object);
+  const frame = options.local ? localFrame(object) : sketchFrame(doc, object);
   const base = { containers: frame.containers, movedContainer: frame.moved, problems };
   const refuse = (reason: string, all: LeftOut) => ({
     imported: false as const,

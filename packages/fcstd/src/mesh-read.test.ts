@@ -169,13 +169,20 @@ describe('an entry that lies (hostile files)', () => {
     });
   });
 
-  it('a facet naming one point three times, or twice', () => {
-    expect(read(bms(TETRA_POINTS, [...TETRA_FACETS.slice(0, 9), 1, 1, 1]))).toMatchObject({
-      refused: 'degenerate',
-    });
-    expect(read(bms(TETRA_POINTS, [...TETRA_FACETS.slice(0, 9), 1, 2, 1]))).toMatchObject({
-      refused: 'degenerate',
-    });
+  it('S13: a facet naming one point three times, or twice, is dropped as the kernel drops it', () => {
+    const three = read(bms(TETRA_POINTS, [...TETRA_FACETS.slice(0, 9), 1, 1, 1]));
+    expect(three).toMatchObject({ mesh: { dropped: 1 } });
+    const twice = read(bms(TETRA_POINTS, [...TETRA_FACETS.slice(0, 9), 1, 2, 1]));
+    expect('mesh' in twice && [...twice.mesh.facets]).toEqual(TETRA_FACETS.slice(0, 9));
+    // The closed check then judges what is left: three faces of a tetrahedron are open.
+    if (!('mesh' in twice)) throw new Error('no mesh');
+    expect(meshFacts(twice.mesh, []).openEdges).toBeGreaterThan(0);
+    // The whole tetrahedron and one such facet: closed.
+    const whole = read(bms(TETRA_POINTS, [...TETRA_FACETS, 0, 0, 3]));
+    if (!('mesh' in whole)) throw new Error('no mesh');
+    expect(meshFacts(whole.mesh, []).openEdges).toBe(0);
+    // Only such facets: nothing to import.
+    expect(read(bms(TETRA_POINTS.slice(0, 9), [1, 1, 2]))).toEqual({ empty: true });
   });
 
   it('a million facets: refused by the cap from the header alone', () => {

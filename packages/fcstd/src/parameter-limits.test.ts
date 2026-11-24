@@ -47,8 +47,8 @@ describe.skipIf(!process.env.BENCH)('S10 caps, measured', () => {
     600_000,
   );
 
-  it('a sheet of a million cells', async () => {
-    const cells = Array.from({ length: 1_000_000 }, (_, i): [string, string] => [`A${i + 1}`, '1']);
+  it('a sheet of 900,000 cells (the XML reader reads a million elements)', async () => {
+    const cells = Array.from({ length: 900_000 }, (_, i): [string, string] => [`A${i + 1}`, '1']);
     const file = paramFile('sheet_plate', { extra: [sheetObject('Big', 'Big', cells)] });
     const planegcs = await loadPlanegcs();
     const t = performance.now();
@@ -57,7 +57,7 @@ describe.skipIf(!process.env.BENCH)('S10 caps, measured', () => {
       solver: new SketchSolver(planegcs),
     });
     console.log(
-      `a million cells (${Math.round(file.length / 1024)} KB zipped): import ${Math.round(performance.now() - t)} ms, ${r.report.parameters.leftOut
+      `900,000 cells (${Math.round(file.length / 1024)} KB zipped): import ${Math.round(performance.now() - t)} ms, ${r.report.parameters.leftOut
         .filter((x) => x.object === 'Big')
         .map((x) => x.detail)
         .join('; ')}`,

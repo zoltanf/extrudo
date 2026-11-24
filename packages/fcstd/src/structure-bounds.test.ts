@@ -515,14 +515,84 @@ describe('a part reached twice, and the bounds of a walk through parts', () => {
     });
   });
 
-  it('the shapes the checks visit are one count for the import', async () => {
-    // The fixture's own link, WL and WR visit two shapes each; Car2 would visit six more.
-    const r = await run('link_to_part', { extra: car() }, { maxPartMembers: 7 });
+  it('S13: each distinct part and turn counts once toward the import’s shapes, however often it is reached', async () => {
+    // The fixture's own link (turned a quarter) walks the wheel part's 2 shapes; WL walks them
+    // unturned and WR reuses that; Car2 walks the car's 2 links and reuses the unturned wheel.
+    // 6 in all (every way down counted, it would be 2 + 2 + 2 + 2 + 4 = 12).
+    const all = await run('link_to_part', { extra: car() }, { maxPartMembers: 6 });
+    for (const o of ['WL', 'WR', 'Car2'])
+      expect(all.report.links.find((l) => l.object === o)?.outcome).toBe('copy');
+    // One fewer and the car, the only part not walked yet, is past it.
+    const r = await run('link_to_part', { extra: car() }, { maxPartMembers: 5 });
     for (const o of ['WL', 'WR'])
       expect(r.report.links.find((l) => l.object === o)?.outcome).toBe('copy');
     expect(r.report.links.find((l) => l.object === 'Car2')).toMatchObject({
       outcome: 'today',
       reason: 'limit',
+    });
+  });
+
+  it('S13: a hundred links to one part measure its shapes once, not once a link', async () => {
+    const measuresWith = async (links: number) => {
+      let measures = 0;
+      const counted = {
+        ...kernel,
+        measureStoredShape: (...a: Parameters<typeof kernel.measureStoredShape>) => {
+          measures++;
+          return kernel.measureStoredShape(...a);
+        },
+      };
+      const extra = Array.from({ length: links }, (_, i) =>
+        linkObject(`W${i}`, 'Part', { placement: at(100 + 30 * i) }),
+      );
+      // The fixture's link, turned a quarter, walks the part once; the unturned links once.
+      const r = await run('link_to_part', { extra }, { kernel: counted, maxPartMembers: 4 });
+      expect(r.report.links.filter((l) => l.outcome === 'copy')).toHaveLength(links + 1);
+      return { measures, r };
+    };
+    const one = await measuresWith(1);
+    const { measures, r } = await measuresWith(100);
+    expect(measures).toBe(one.measures);
+    const m = await measured(r);
+    close(boxOfLink(m, r, 'W99'), [100 + 30 * 99, 0, 0, 120 + 30 * 99, 20, 20]);
+  }, 120_000);
+
+  it('S13: the bodies all copies make are one count for the import (MAX_COPIED_BODIES)', async () => {
+    // Each link to the part copies its two bodies; a count of 7 takes three links, not a fourth.
+    const extra = Array.from({ length: 5 }, (_, i) =>
+      linkObject(`W${i}`, 'Part', { placement: at(100 + 30 * i) }),
+    );
+    const r = await run('link_to_part', { extra }, { maxCopiedBodies: 7 });
+    const outcomes = r.report.links.map((l) => [l.outcome, l.reason ?? '']);
+    expect(outcomes.filter(([o]) => o === 'copy')).toHaveLength(3);
+    expect(r.report.links.at(-1)).toMatchObject({ outcome: 'today', reason: 'limit' });
+    expect(r.report.links.at(-1)?.detail).toMatch(/at most 7/);
+  });
+
+  it('S13: a link to a part that holds a mesh copies the mesh body and the box, checked', async () => {
+    const r = await run('mesh_in_part', {
+      extra: [linkObject('PartLink', 'Part', { placement: at(0, 200) })],
+    });
+    expect(r.report.meshes[0]?.outcome).toBe('in');
+    const l = r.report.links.find((x) => x.object === 'PartLink');
+    expect(l).toMatchObject({ outcome: 'copy', part: true });
+    // The mesh body's copy and the box's: the check measured the mesh from its facts.
+    expect(l?.bodies).toHaveLength(2);
+    expect(r.report.shapes.map((x) => x.object)).not.toContain('PartLink');
+  });
+
+  it('S13: a link to a part holding a link to a mesh copies the mesh', async () => {
+    const r = await run('mesh_in_part', {
+      extra: [
+        partObject('Holder', ['MeshLink']),
+        linkObject('MeshLink', 'Mesh', { placement: at(0, 300) }),
+        linkObject('HolderLink', 'Holder', { placement: at(0, 400) }),
+      ],
+    });
+    expect(r.report.links.find((x) => x.object === 'MeshLink')).toMatchObject({ outcome: 'copy' });
+    expect(r.report.links.find((x) => x.object === 'HolderLink')).toMatchObject({
+      outcome: 'copy',
+      part: true,
     });
   });
 

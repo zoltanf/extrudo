@@ -13,6 +13,7 @@
  */
 import { MAX_FEATURE_LENGTH } from './features';
 import { type FinalShape, linkedObjects } from './final-shapes';
+import { append } from './lists';
 import type { FcDocument, FcObject, FcPlacement } from './model';
 import { cleanName } from './names';
 import { MAX_PART_DRESSUP_EDGES, type PartDressUpEdge, readPartDressUpEdges } from './part-read';
@@ -21,6 +22,13 @@ import { MAX_PART_DRESSUP_EDGES, type PartDressUpEdge, readPartDressUpEdges } fr
 export const MAX_TREE_NODES = 500;
 /** The most nodes the trees of one import may have in all. */
 export const MAX_IMPORT_TREE_NODES = 2_000;
+/**
+ * S13: the most `Part::Extrusion` nodes an import rebuilds (each a sketch, maybe a plane and an
+ * extrude); past it one is a stored leaf, as before. Against `MAX_TREE_FEATURES` an extrusion
+ * node counts as the one feature its stored leaf did, so the trees that came in before this
+ * slice keep their room; this cap bounds what extrusions add beyond it (at most two each).
+ */
+export const MAX_TREE_EXTRUSIONS = 1_000;
 /** The most shapes one MultiFuse or MultiCommon may list. */
 export const MAX_MULTI_OPERANDS = 64;
 
@@ -35,6 +43,8 @@ export type PartNodeKind =
   | 'intersect'
   | 'fillet'
   | 'chamfer'
+  /** S13: a `Part::Extrusion` of a sketch along its normal: the sketch and one extrude. */
+  | 'extrude'
   /** A compound standing for its members (a cut's tool, a fuse's member): nothing of its own. */
   | 'compound'
   /** A PartDesign body: the body the walk brought in (S5 to S10). */
@@ -75,6 +85,71 @@ export interface PlannedNode {
   leaf?: { readonly reason: LeafReason; readonly detail: string };
   /** A fillet's or chamfer's edges, read from its list. */
   readonly edges?: readonly PartDressUpEdge[];
+  /** An extrusion's (S13): its sketch and what it reads, checked by `extrusionPlan`. */
+  readonly extrusion?: ExtrusionPlan;
+}
+
+/** S13: a `Part::Extrusion` Extrudo rebuilds: of a sketch, along its normal, solid, untapered. */
+export interface ExtrusionPlan {
+  readonly sketch: string;
+  readonly forward: number;
+  readonly reverse: number;
+  readonly symmetric: boolean;
+  readonly reversed: boolean;
+}
+
+const MAX_EXTRUSION = 1e7;
+
+/**
+ * S13: what a `Part::Extrusion` extrudes, or why it is a stored leaf: only a sketch
+ * (`Sketcher::SketchObject`), along its normal (`DirMode` Normal), made solid, with no taper,
+ * by finite lengths within 10 km of which one is more than 1e-6 mm. Anything else (a Draft
+ * shape, a face or wire of another shape, a custom or edge direction, a shell, a taper) is a
+ * stored leaf, as before.
+ */
+export function extrusionPlan(
+  doc: FcDocument,
+  o: FcObject,
+): ExtrusionPlan | { readonly reason: LeafReason; readonly detail: string } {
+  const base = link(o, 'Base');
+  const sketch = typeof base === 'string' ? doc.byName.get(base) : undefined;
+  if (!sketch || sketch.type !== 'Sketcher::SketchObject')
+    return {
+      reason: 'type',
+      detail: `it extrudes ${sketch ? `a ${sketch.type}` : 'nothing'}, not a sketch`,
+    };
+  const dir = o.properties.DirMode?.value;
+  if (dir?.kind !== 'enum' || dir.index !== 2)
+    return { reason: 'type', detail: "it doesn't extrude along its sketch's normal" };
+  const flag = (name: string) => {
+    const v = o.properties[name]?.value;
+    return v?.kind === 'bool' ? v.value : undefined;
+  };
+  if (flag('Solid') !== true) return { reason: 'type', detail: 'it makes no solid' };
+  for (const name of ['TaperAngle', 'TaperAngleRev']) {
+    const v = num(o, name);
+    if (o.unreadable?.includes(name) || (v !== undefined && !close(v, 0)))
+      return { reason: 'type', detail: 'it is tapered' };
+  }
+  const lengths: number[] = [];
+  for (const name of ['LengthFwd', 'LengthRev']) {
+    const v = num(o, name) ?? 0;
+    if (o.unreadable?.includes(name) || !(Math.abs(v) <= MAX_EXTRUSION) || v < 0)
+      return { reason: 'value', detail: `its ${name} can't be used` };
+    lengths.push(v);
+  }
+  const [forward, reverse] = lengths as [number, number];
+  const symmetric = flag('Symmetric') === true;
+  // FreeCAD's symmetric extrusion is `LengthFwd` in all, centred, `LengthRev` unread.
+  if (symmetric ? forward <= 1e-6 : forward + reverse <= 1e-6)
+    return { reason: 'value', detail: 'it has no length' };
+  return {
+    sketch: sketch.name,
+    forward,
+    reverse: symmetric ? 0 : reverse,
+    symmetric,
+    reversed: flag('Reversed') === true,
+  };
 }
 
 /** One tree: its top and its nodes in an order where every operand comes before what uses it. */
@@ -108,6 +183,12 @@ const TOPS = new Set([
 
 /** Whether a final shape starts a tree. */
 export const isTreeTop = (s: FinalShape) => s.kind === 'shape' && TOPS.has(s.object.type);
+
+/** S13: an extrusion at the top is a tree only where Extrudo rebuilds it; else a plain shape, as before. */
+const isExtrusionTop = (doc: FcDocument, s: FinalShape) =>
+  s.kind === 'shape' &&
+  s.object.type === 'Part::Extrusion' &&
+  !('reason' in extrusionPlan(doc, s.object));
 
 const NOT_A_SHAPE = ['Sketcher::', 'Spreadsheet::', 'App::', 'TechDraw::', 'Fem::'];
 
@@ -279,6 +360,13 @@ export function classify(
         edges,
       };
     }
+    case 'Part::Extrusion': {
+      const e = extrusionPlan(doc, o);
+      if ('reason' in e) return leaf(e.reason, e.detail);
+      const p = placementProblem(o);
+      if (p) return leaf('placement', p);
+      return { object: o, kind: 'extrude', operands: [], extrusion: e };
+    }
     case 'Part::Compound': {
       const v = o.properties.Links?.value;
       const members = v ? linkedObjects(v) : [];
@@ -324,6 +412,8 @@ export function partTrees(
   limits: {
     maxTreeNodes?: number;
     maxImportNodes?: number;
+    /** `MAX_TREE_EXTRUSIONS`, for tests. */
+    maxExtrusions?: number;
     /** Which objects are PartDesign features in no body (S12a); without it they are stored leaves. */
     isLoose?: (o: FcObject) => boolean;
   } = {},
@@ -331,7 +421,17 @@ export function partTrees(
   const maxTree = limits.maxTreeNodes ?? MAX_TREE_NODES;
   const maxImport = limits.maxImportNodes ?? MAX_IMPORT_TREE_NODES;
   const nodes = new Map<string, PlannedNode>();
-  const tops = shapes.filter(isTreeTop);
+  // S13: the trees that came in before this slice first, in document order; an extrusion at the
+  // top (a tree only since S13) takes only what is left of the import's objects, and one that
+  // doesn't fit stays a plain shape, as before.
+  const tops = [
+    ...shapes.filter((s) => isTreeTop(s)),
+    ...shapes.filter((s) => isExtrusionTop(doc, s)),
+  ];
+  const extrusionTops = new Set(shapes.filter((s) => isExtrusionTop(doc, s)));
+  const maxExtrusions = limits.maxExtrusions ?? MAX_TREE_EXTRUSIONS;
+  let extrusions = 0;
+  const counted = new Set<string>();
   const trees: PlannedTree[] = [];
   let total = 0;
 
@@ -381,6 +481,12 @@ export function partTrees(
           break;
         }
         checkOperands(n);
+        // S13: past the import's extrusions, one is the stored leaf it was before.
+        if (n.kind === 'extrude' && !counted.has(n.object.name)) {
+          counted.add(n.object.name);
+          if (++extrusions > maxExtrusions)
+            toLeaf(n, 'limit', `the file has more than ${maxExtrusions} extrusions to rebuild`);
+        }
       }
       const ops = walked(n);
       if (frame.next < ops.length) {
@@ -399,6 +505,7 @@ export function partTrees(
       order.push(frame.name);
       stack.pop();
     }
+    if (over && extrusionTops.has(top)) continue;
     if (over) {
       trees.push({
         top,
@@ -460,7 +567,7 @@ export function effectiveOperands(
     if (seen.has(op)) continue;
     seen.add(op);
     const m = plan.nodes.get(op);
-    if (m?.kind === 'compound' && isBuilt(op)) stack.push(...[...m.operands].reverse());
+    if (m?.kind === 'compound' && isBuilt(op)) append(stack, [...m.operands].reverse());
     else out.push(op);
   }
   return out;

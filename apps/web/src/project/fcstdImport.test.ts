@@ -43,6 +43,7 @@ const report: FcstdImportReport = {
   problems: [],
   linkArrays: [],
   restarts: 0,
+  refusals: 0,
   bodies: [],
   parameters: { parameters: [], leftOut: [], expressions: [], renames: [], rounds: 0 },
   trees: [],

@@ -24,12 +24,13 @@ import {
 import { KernelBudget } from './budget';
 import { type ComponentsReport, componentGroups, makeComponents } from './components';
 import { type CompoundImport, type CompoundPlan, planCompounds } from './compounds';
+import { FcstdFormatError } from './errors';
 import { type FinalShape, finalShapes, linkArrayProblem } from './final-shapes';
 import type { ImportKernel } from './import-kernel';
-import type { LinkImport } from './links';
+import { type LinkImport, scaledOnTheWay } from './links';
 import { type LooseChain, looseChains, loosePlanner } from './loose-chains';
 import type { MeshImport } from './meshes';
-import { type FcObject, readFcstd, storedShapeEntry } from './model';
+import { type FcDocument, type FcObject, readFcstd, storedShapeEntry } from './model';
 import { cleanName } from './names';
 import { type ParametersReport, parametersReport } from './parameters-report';
 import { prepareParameters } from './params';
@@ -53,6 +54,8 @@ export interface FcstdImportOptions {
   readonly id?: string;
   readonly appVersion?: string;
   readonly shapeTimeoutMs?: number;
+  /** S13's `IMPORT_HEAP_RECYCLE_BYTES`, for tests. */
+  readonly heapRecycleBytes?: number;
   readonly importTimeoutMs?: number;
   readonly maxRestarts?: number;
   /** Vets the sketches' constraints (planegcs, which the caller loads); without one no constraint is imported. */
@@ -94,6 +97,8 @@ export interface FcstdImportOptions {
   readonly maxArrayElements?: number;
   readonly maxLinkCopies?: number;
   readonly maxCompoundObjects?: number;
+  /** S13's `MAX_COPIED_BODIES`, for tests. */
+  readonly maxCopiedBodies?: number;
   /** S12b's `MAX_PART_MEMBERS`, for tests (the bodies one copy takes follow `maxOperandBodies`). */
   readonly maxPartMembers?: number;
   readonly maxComponents?: number;
@@ -124,6 +129,8 @@ export interface FcstdImportReport {
   readonly linkArrays: readonly string[];
   /** How many times the import's kernel was replaced after a failure. */
   readonly restarts: number;
+  /** How many calls the kernel refused as an answer about its input (S13), which cost no restart. */
+  readonly refusals: number;
   /** Each PartDesign body, in document order: what came in with its history and where it stopped. */
   readonly bodies: readonly BodyImport[];
   /** The file's parameters and expressions (S10): what came in, and every expression's outcome. */
@@ -157,6 +164,11 @@ export async function importFcstd(
   name: string,
   options: FcstdImportOptions,
 ): Promise<FcstdImportResult> {
+  // S13: the package keeps its own limit, whoever calls it (the app checks the same number first).
+  if (bytes.length > MAX_FCSTD_BYTES)
+    throw new FcstdFormatError(
+      `This FCStd file is too large to import (${Math.round(bytes.length / (1024 * 1024))} MB; the most is ${MAX_FCSTD_BYTES / (1024 * 1024)} MB).`,
+    );
   const doc = readFcstd(bytes);
   const shapes = finalShapes(doc);
   const design = Design.create({
@@ -245,6 +257,7 @@ export async function importFcstd(
   };
   const treeOptions = (ids: string[], room?: number, quiet = false) => ({
     budget,
+    ...(options.solver ? { solver: options.solver } : {}),
     binder,
     files: stepFiles,
     ...(room !== undefined
@@ -314,9 +327,11 @@ export async function importFcstd(
     }
   // Everything that came in before this slice is converted here, before any new attempt (S12b):
   // the links and the compounds that may come in another way are converted but not added yet.
+  // S13: a scaled link is left out from the file alone (below), so it is never converted.
   const rest = shapes.filter(
     (s) =>
       s.kind !== 'mesh' &&
+      !(s.kind === 'link' && scaledOnTheWay(doc, s.object) !== undefined) &&
       !(
         (s.kind === 'body' || s.kind === 'shape' || s.kind === 'chain-tip') &&
         complete.has(s.object.name)
@@ -415,6 +430,9 @@ export async function importFcstd(
         : {}),
       ...(options.maxLinkCopies !== undefined ? { maxLinkCopies: options.maxLinkCopies } : {}),
       ...(options.maxPartMembers !== undefined ? { maxPartMembers: options.maxPartMembers } : {}),
+      ...(options.maxCopiedBodies !== undefined
+        ? { maxCopiedBodies: options.maxCopiedBodies }
+        : {}),
       ...(options.maxOperandBodies !== undefined
         ? { maxCopySources: options.maxOperandBodies }
         : {}),
@@ -426,7 +444,7 @@ export async function importFcstd(
       mark: () => {
         const binderBack = binder.mark();
         // What the members' walk notes about the file goes with it if it is cancelled.
-        const problems = doc.problems.length;
+        const problemsBack = markProblems(doc);
         const walkBack = markWalkShared(shared);
         const stepKeys = new Set(stepFiles.keys());
         const buildKeys = new Set(build.files.keys());
@@ -434,7 +452,7 @@ export async function importFcstd(
         return () => {
           binderBack();
           walkBack();
-          doc.problems.length = problems;
+          problemsBack();
           // The planes the members' sketches made went with them.
           forgetRemovedPlanes(design);
           for (const id of [...stepFiles.keys()]) if (!stepKeys.has(id)) stepFiles.delete(id);
@@ -569,6 +587,7 @@ export async function importFcstd(
       problems: doc.problems.filter((p) => !arrayLines.has(p)),
       linkArrays,
       restarts: budget.restarts,
+      refusals: budget.refusals,
       bodies: [...bodies, ...members.flatMap((m) => m.histories)],
       parameters: parametersReport(prepared, binder, design.doc),
       trees: [
@@ -582,5 +601,18 @@ export async function importFcstd(
       compounds: structure.compounds,
       components,
     },
+  };
+}
+
+/**
+ * What a cancelled walk noted about the file goes with it (S12b, a compound whose members don't
+ * hold): returns what takes `doc.problems` back to its length now. S13: today every reader the
+ * walk calls takes back its own problems where it fails; this keeps a later one from leaving a
+ * line about members that never came in.
+ */
+export function markProblems(doc: FcDocument): () => void {
+  const length = doc.problems.length;
+  return () => {
+    doc.problems.length = Math.min(doc.problems.length, length);
   };
 }
