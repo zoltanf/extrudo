@@ -1,5 +1,5 @@
-// A shape's measured box doesn't depend on whether it has been meshed (ADR-0001's amendment of
-// 2026-11-25): the facade bounds faces from their geometry, never from the triangulation that
+// A shape's measured box doesn't depend on whether it has been meshed (ADR-0035's amendment of
+// 2026-11-24): the facade bounds faces from their geometry, never from the triangulation that
 // meshing for display or for a sheet view leaves on them. So a "through all" extrude over bodies
 // the view has drawn reaches as far as over the same bodies never drawn.
 import {
