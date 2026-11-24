@@ -1,0 +1,1 @@
+- 2026-11-24 · **Quicker undo and edits in large designs**: after an undo or an edit made outside a feature dialog, the view redraws only the bodies that changed, not every body after the edited feature; in a design of 100 parts an undo no longer holds up the page, and the page pauses about a third less when a feature edit finishes.

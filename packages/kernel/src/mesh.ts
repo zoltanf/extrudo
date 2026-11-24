@@ -99,3 +99,62 @@ export function meshBuffers(mesh: BodyMesh): ArrayBuffer[] {
     mesh.vertices,
   ].map((array) => array.buffer as ArrayBuffer);
 }
+
+/**
+ * Whether two meshes are the same in every field, so that one can stand for the other
+ * (ADR-0024's amendment of 2026-11-24): typed arrays bit for bit (`-0` and `0`, two NaNs with
+ * other bits, differ), string arrays element by element, anything else by `Object.is`. A field
+ * one has and the other hasn't, or an object of a kind this doesn't know, makes them different,
+ * so a field added to `BodyMesh` later can only make two meshes "different".
+ */
+export function sameMesh(a: BodyMesh, b: BodyMesh): boolean {
+  if (a === b) return true;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const key of keys) {
+    if (!Object.hasOwn(b, key)) return false;
+    if (
+      !sameField(
+        (a as unknown as Record<string, unknown>)[key],
+        (b as unknown as Record<string, unknown>)[key],
+      )
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function sameField(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b)) {
+    if (a.constructor !== b.constructor || a.byteLength !== b.byteLength) return false;
+    return sameBytes(a, b);
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    // By index, not `every`: that skips a hole, and a hole is not a string.
+    for (let i = 0; i < a.length; i++) {
+      if (typeof a[i] !== 'string' || a[i] !== b[i]) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Two views' bytes, compared four at a time where both start on a multiple of four. */
+function sameBytes(a: ArrayBufferView, b: ArrayBufferView): boolean {
+  const n = a.byteLength;
+  let i = 0;
+  if (a.byteOffset % 4 === 0 && b.byteOffset % 4 === 0) {
+    const words = n >> 2;
+    const x = new Uint32Array(a.buffer, a.byteOffset, words);
+    const y = new Uint32Array(b.buffer, b.byteOffset, words);
+    for (let w = 0; w < words; w++) if (x[w] !== y[w]) return false;
+    i = words << 2;
+  }
+  const x = new Uint8Array(a.buffer, a.byteOffset, n);
+  const y = new Uint8Array(b.buffer, b.byteOffset, n);
+  for (; i < n; i++) if (x[i] !== y[i]) return false;
+  return true;
+}

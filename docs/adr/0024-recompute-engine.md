@@ -182,3 +182,68 @@ such features: three restarts, then "failed", four kernels).
   list in the document (a file-format change), and importing the features
   that trapped the import's own check suppressed (the check's kernel would
   have to report them; a proposal in the hardening report).
+
+## Amendment 2026-11-24: unchanged bodies keep their mesh objects
+
+A body's `version` changes with the key of the entry that made it (item 9), and a key takes in
+the body set before the feature (every body-writing feature before it). So an edit of an early
+feature changes the version of every later body, even when the later features make the same
+shapes again: in a design of plates side by side (each a sketch and an extrude), an edit of the
+first plate's extrude evaluates every later extrude again and sends every body's mesh (measured
+in Node: 30 plates, 30 meshes, 6.6 MB, 1.41 s in the kernel; 100 plates, 100 meshes, 21.9 MB,
+4.65 s; the last plate's edit: one mesh, 58 and 80 ms). The `Recomputer` held none of those
+versions, so the model store got a new mesh object for every body, and the view rebuilt every
+body (edges, face colours, bounds, uploads) and the page its per-mesh caches.
+
+**Decision.** When the kernel sends a mesh for the model, the `Recomputer` compares it with the
+mesh it holds for that body ID (`sameMesh`, `mesh.ts`) and, when they are the same in every field,
+hands out the held object (under the new version). `sameMesh` compares typed arrays bit for bit
+(`-0` and `0`, or two NaNs with other bits, differ; the array kind must match), the face, edge and
+vertex names element by element, and the rest by `Object.is`; a field one mesh has and the other
+hasn't, or an object of a kind it doesn't know, makes them different. A body that changed in any
+way — its shape, its tessellation, a face's name, its face order — gets the new object.
+
+**Not changed.** The kernel still evaluates and meshes the later features, and the worker still
+transfers their meshes (no protocol change: the web worker, the desktop app, the agent's host
+and the app-render job see the same messages). Previews don't compare: a preview's bodies that the draft
+leaves alone already come back as the model's objects (by version, `#held`), and while an
+existing feature is edited the view shows only the bodies before it (`dialogBodies`), so the
+later bodies mount again when the dialog closes, whatever their mesh objects; only what the page
+keeps by mesh outside the view (bounds, the pick index) is kept then.
+
+**Rejected.** Taking a new-body feature's key out of the body-set chain (it would also save the
+kernel's time) changes how the engine caches whole body maps: large. Hashing meshes in the worker
+(saves the transfer and the page's comparison) is a hash, not an equality, and changes the worker
+protocol.
+
+**Measured** (30 and 100 plates with 30 holes each, production build, Chrome with a GPU,
+1280 × 800, quiet machine; main → this). Blocked time (tasks of 50 ms or more from the action
+until 1.5 s after it), median of 4 runs (lowest–highest): undo on 100 plates 64 (63–65) → 0 ms;
+commit of an edit in a feature dialog on 100 plates 189 (186–192) → 122 (120–125) ms. On 30
+plates both were at or under the 50 ms line already (undo 0 → 0, commit 50 → 51). Clicks, box
+selects, opening a sketch, drags and opening the design stay within their runs' spread.
+`Body` renders: undo 100 → 1 (100 plates), 30 → 1 (30 plates); commit 200 → 101 and 60 → 31 (the
+later bodies mount again after the dialog). In a CPU profile (unminified, one run) of the
+100-plate commit, `edgeSegments` and `paintFaces` take 68 → 32 ms; the comparison (`sameBytes`)
+takes 8 ms.
+
+**Rules.**
+
+- The model's meshes from the kernel go through `#kept`: a held mesh is handed out again only
+  when `sameMesh` says it is the same in every field.
+- `sameMesh` compares every field of `BodyMesh`; a new field is compared by it (typed array,
+  string array, or a value) or makes meshes different. Never compare positions alone.
+- Nothing writes into a mesh's arrays (ADR-0102 §9): a kept mesh is the same data for good.
+- Tested: `mesh-same.test.ts` (copies and offset views the same; `-0`, NaN bits, every field
+  changed or gone, another array kind, an unknown field: different);
+  `recomputer-keep.test.ts` against OCCT: an edit of the first of six plates makes the kernel
+  send six meshes and only the first a new object; a seeded run of up to 40 edits, each of ten kinds at least once
+  (a distance, suppress, a reorder, the marker, a rename, a body's colour and visibility, a hole
+  through a body, a combine that removes a body, undo, redo) where after each a body keeps its
+  object exactly when its mesh is the same as before, and every mesh equals a full rebuild's; a
+  dialog's commit keeps the later plates' objects; and against a stand-in kernel that sends every
+  body again under a new version, 60 steps of one-field changes (a bit of each array, `-0`, a
+  face, edge or vertex name, names gone, the mesh flag) where exactly the changed bodies get new
+  objects. Taken out, the reuse fails all four; comparing numbers by value fails the `-0` cases;
+  leaving the names out of the comparison fails the stand-in run; keeping every held mesh fails
+  all four.
