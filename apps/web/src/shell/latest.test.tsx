@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, renderHook } from '@testing-library/react';
-import { StrictMode, useLayoutEffect, useState } from 'react';
+import { StrictMode, useEffect, useLayoutEffect, useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { useLatest } from './latest';
+import { type Later, useLater, useLaterValue, useLatest } from './latest';
 
 afterEach(cleanup);
 
@@ -37,5 +37,43 @@ describe('useLatest', () => {
     act(() => (globalThis as { bump?: () => void }).bump?.());
     act(() => (globalThis as { bump?: () => void }).bump?.());
     expect(seen).toEqual([0, 1, 2]);
+  });
+
+  it('useLater: one box for good, set after each render before every effect (ADR-0159 §6)', () => {
+    const seen: { layout: number; passive: number; render: number }[] = [];
+    let box: Later<number> | undefined;
+    function Child({ later }: { later: Later<number> }) {
+      const render = later.get();
+      useLayoutEffect(() => {
+        seen.push({ layout: later.get(), passive: -1, render });
+      });
+      useEffect(() => {
+        const last = seen[seen.length - 1];
+        if (last) last.passive = later.get();
+      });
+      return null;
+    }
+    function Parent() {
+      const [n, setN] = useState(1);
+      (globalThis as { bump?: () => void }).bump = () => setN((x) => x + 1);
+      const later = useLater(0);
+      box ??= later;
+      expect(later).toBe(box);
+      useLaterValue(later, n * 10);
+      return <Child later={later} />;
+    }
+    render(
+      <StrictMode>
+        <Parent />
+      </StrictMode>,
+    );
+    act(() => (globalThis as { bump?: () => void }).bump?.());
+    const last = seen[seen.length - 1];
+    // Effects of the commit see this render's value; a child's render doesn't (an earlier
+    // commit's, or what the compiler memoised): never read a `Later` during a render.
+    expect(last?.layout).toBe(20);
+    expect(last?.passive).toBe(20);
+    expect(last?.render).not.toBe(20);
+    expect(box?.get()).toBe(20);
   });
 });

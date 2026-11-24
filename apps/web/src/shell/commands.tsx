@@ -78,6 +78,11 @@ export interface AppCommand extends Searchable {
 
 export interface CommandContext {
   mode: EditMode;
+  /**
+   * The keys a command has: the live lookup (`useKeysFor`), so a key rebound in Settings ›
+   * Keyboard reaches the lists built from it (ADR-0159 §6). Defaults to the module's.
+   */
+  keysFor?: (id: string) => readonly string[];
   /** Starts a tool (a sketch tool restarts if it's running; the toolbar toggles instead). */
   runTool(id: ToolId): void;
   notify(tone: 'info' | 'error', text: string): void;
@@ -228,7 +233,7 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
     group,
     keywords: `${group} ${TOOL_KEYWORDS[id] ?? ''} ${tool.hint}`,
     icon: <ToolIcon name={tool.icon} category={tool.category} size={16} />,
-    keys: keysFor(id),
+    keys: (ctx.keysFor ?? keysFor)(id),
     ...(unavailable && { unavailable }),
     run: unavailable ? () => ctx.notify('info', reason) : () => ctx.runTool(id),
   };
@@ -280,13 +285,17 @@ function fileCommand(
     keywords: `${group} ${FILE_KEYWORDS[id]} ${tool.hint}`,
     icon: <ToolIcon name={tool.icon} category={tool.category} size={16} />,
     // On macOS the native menu's accelerators run Open… and Save As…: no second binding.
-    keys: ctx.desktop?.nativeMenu && (id === 'openFile' || id === 'saveAs') ? [] : keysFor(id),
+    keys:
+      ctx.desktop?.nativeMenu && (id === 'openFile' || id === 'saveAs')
+        ? []
+        : (ctx.keysFor ?? keysFor)(id),
     run: () => action(),
   };
 }
 
 /** The commands offered in this context, in the order an empty search lists them. */
 export function buildCommands(ctx: CommandContext): AppCommand[] {
+  const keysOf = ctx.keysFor ?? keysFor;
   const out: AppCommand[] = [];
   const seen = new Set<string>();
   const add = (command: AppCommand) => {
@@ -300,7 +309,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     group: string,
     run: () => void,
     extra: Partial<AppCommand> = {},
-  ) => add({ id, label, group, keys: keysFor(id), run, keywords: group, ...extra });
+  ) => add({ id, label, group, keys: keysOf(id), run, keywords: group, ...extra });
 
   for (const tab of visibleTabs(ctx.mode)) {
     for (const group of tab.groups) {
@@ -499,7 +508,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     const { desktop } = ctx;
     // On macOS the native menu's Quit (Cmd+Q) already runs it.
     plain('quit', 'Quit', 'Home › Design', desktop.quit, {
-      keys: desktop.nativeMenu ? [] : keysFor('quit'),
+      keys: desktop.nativeMenu ? [] : keysOf('quit'),
       icon: icon(Power),
       keywords: 'Home file quit exit close extrudo desktop',
     });

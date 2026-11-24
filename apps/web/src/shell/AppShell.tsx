@@ -44,6 +44,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useInsertionEffect,
   useMemo,
   useRef,
   useState,
@@ -60,8 +61,7 @@ import {
   createSketchAnnotateInput,
 } from '../annotations/tool';
 import { createAnnotationsUi } from '../annotations/ui';
-import { keysFor } from '../commands/keymap';
-import { useKeymap } from '../commands/keymapStore';
+import { useKeymap, useKeysFor } from '../commands/keymapStore';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { followComponentSession } from '../components/active';
@@ -294,10 +294,10 @@ import {
 } from './commands';
 import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
-import { createFeatureActions } from './featureActions';
+import { canEditFeature, createFeatureActions, hasFeatureDialog } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { sketchesWithHover } from './hoverDrawings';
-import { useLatest } from './latest';
+import { useLater, useLaterValue, useLatest } from './latest';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { MODES, perMode } from './modes';
 import { createViewActions } from './namedViews';
@@ -485,6 +485,19 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
+// The chunks `Shell` loads on demand. At module level: the React Compiler can't compile a
+// function with an `import()` in it (ADR-0159 §6); each is still called where it was.
+const loadDrawingTools = () =>
+  Promise.all([
+    import('../sketch/tools/host'),
+    import('../sketch/tools/SketchOverlay'),
+    import('../sketch/tools/ConstraintGlyphs'),
+    import('../sketch/tools/DimensionLabels'),
+    import('../sketch/tools/SelectionOverlay'),
+  ]);
+const loadSolver = () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver());
+const loadStandardViews = () => import('../sheets/standardViews');
+
 function Shell({
   store,
   session,
@@ -529,8 +542,11 @@ function Shell({
     setRecordKey(id);
     setSettingsOpen('keyboard');
   };
-  // The person's keys: the command lists below are built again when they change.
-  const keymap = useKeymap(platform.preferences);
+  // The person's keys: `useKeymap` loads the stored overrides and follows later changes; the
+  // live lookup reads them, so a key rebound in Settings › Keyboard reaches the commands, the
+  // shortcuts and the menus without a reload (ADR-0159 §6).
+  useKeymap(platform.preferences);
+  const keysOf = useKeysFor();
   const installedPlugins = useStore(plugins, (s) => s.installed);
   // The custom features of the enabled plugins (ADR-0077 §6): a second, dynamic registry of
   // dialogs beside `dialogs`, and the plugin files the design carries (a stored feature's
@@ -562,7 +578,7 @@ function Shell({
   );
   // A plugin command (ADR-0077 §5) runs in the kernel worker on the model selection; what it
   // made goes in at the marker as one undo step. A ref, so the command list stays stable.
-  const runPluginRef = useRef<(command: PluginCommand) => void>(() => {});
+  const runPluginLater = useLater<(command: PluginCommand) => void>(() => {});
   const pluginEntries = useMemo(
     () =>
       kernel?.runPluginCommand
@@ -571,10 +587,10 @@ function Shell({
             label: command.label,
             group: command.group,
             ...(command.hint !== undefined && { hint: command.hint }),
-            run: () => runPluginRef.current(command),
+            run: () => runPluginLater.get()(command),
           }))
         : [],
-    [installedPlugins, kernel],
+    [installedPlugins, kernel, runPluginLater],
   );
   // "Update to <version>" (slice 3): the installed file replaces the design's older copy.
   const updatePlugin = useCallback(
@@ -617,19 +633,23 @@ function Shell({
     () => ({ files: platform.files, projects: platform.projects }),
     [platform],
   );
+  /** The File menu's Import, which is the Insert tab's tile (P4-06). */
+  const startImportLater = useLater<(picked?: File) => void>(() => {});
+  /** The File menu's Export Design as Script (P5-05). */
+  const exportScriptLater = useLater<() => void>(() => {});
   // The Home tab's file commands (ADR-0079): the model's export too (P2-12), versions
   // (P2-14), an import (P4-06), the script export (P5-05) and plugins (P6-03).
   const fileActions = useMemo(
     () => ({
       ...file,
       exportModel: () => setModelExport({}),
-      importModel: () => startImportRef.current(),
-      exportScript: () => exportScriptRef.current(),
+      importModel: () => startImportLater.get()(),
+      exportScript: () => exportScriptLater.get()(),
       saveVersion: () => setVersionsOpen(true),
       versionHistory: () => setVersionsOpen(true),
       plugins: () => setSettingsOpen('plugins'),
     }),
-    [file],
+    [file, startImportLater, exportScriptLater],
   );
   // Text needs its font before it has curves or ink (P4-03): a font that arrives
   // late brings the sketch drawing and its profiles back with it.
@@ -701,7 +721,7 @@ function Shell({
   // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
   const annotationsUi = useMemo(() => createAnnotationsUi(), []);
   // The open sketch for the browser rows and Look At, which run outside a render.
-  const openSketchRef = useRef<OpenSketch | undefined>(undefined);
+  const openSketchLater = useLater<OpenSketch | undefined>(undefined);
   useEffect(() => {
     if (!annotating) annotationsUi.getState().setDraft(undefined);
   }, [annotating, annotationsUi]);
@@ -714,9 +734,9 @@ function Shell({
         viewport,
         ui: annotationsUi,
         notify: (message) => notify('error', message),
-        openSketch: () => openSketchRef.current,
+        openSketch: () => openSketchLater.get(),
       }),
-    [store, session, model, viewport, annotationsUi, notify],
+    [store, session, model, viewport, annotationsUi, notify, openSketchLater],
   );
   // A deleted or undone annotation leaves the selection.
   useEffect(
@@ -773,13 +793,7 @@ function Shell({
   useEffect(() => {
     let h: ToolHost | undefined;
     let cancelled = false;
-    Promise.all([
-      import('../sketch/tools/host'),
-      import('../sketch/tools/SketchOverlay'),
-      import('../sketch/tools/ConstraintGlyphs'),
-      import('../sketch/tools/DimensionLabels'),
-      import('../sketch/tools/SelectionOverlay'),
-    ]).then(
+    loadDrawingTools().then(
       ([
         { createToolHost },
         { SketchOverlay },
@@ -792,7 +806,7 @@ function Shell({
           store,
           session,
           viewport,
-          loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+          loadSolver,
           // The shown construction axes and points before the sketch (ADR-0093
           // slice 2), read at every pick from the current state.
           constructionDatums: () =>
@@ -831,13 +845,9 @@ function Shell({
   }, [host, model, store]);
 
   // `run` changes every render; commands reach the latest one through a ref.
-  const runRef = useRef<(tool: ToolId) => void>(() => {});
+  const runLater = useLater<(tool: ToolId) => void>(() => {});
   const startTutorialRef = useRef<() => void>(() => {});
   const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
-  /** The File menu's Import, which is the Insert tab's tile (P4-06). */
-  const startImportRef = useRef<(picked?: File) => void>(() => {});
-  /** The File menu's Export Design as Script (P5-05). */
-  const exportScriptRef = useRef<() => void>(() => {});
   /** A body menu's Convert to Solid… (P4-13): selection and `run` live later in the component. */
   const convertToSolidRef = useRef<(id: BodyId) => void>(() => {});
   /** Canvas's tool, which picks its picture before its dialog opens. */
@@ -858,8 +868,8 @@ function Shell({
   useEffect(() => {
     if (!dialog) return;
     const picked = takeModelImport(doc.id);
-    if (picked) startImportRef.current(picked);
-  }, [dialog, doc.id]);
+    if (picked) startImportLater.get()(picked);
+  }, [dialog, doc.id, startImportLater]);
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
@@ -880,7 +890,7 @@ function Shell({
     [recomputed, pendingBodies, bodyList, doc],
   );
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
-  const bodyListRef = useRef(bodyList);
+  const bodyListLater = useLater(bodyList);
   // Measure and inspect (P2-13): the kernel measures the selected topology, for the status
   // bar's size readout and the Measure panel; sketch entities, axes and planes are measured
   // here (P3-17). Outside Measure the status bar's question waits for a still selection.
@@ -953,6 +963,13 @@ function Shell({
     meshes: bodies,
     active: printing,
   });
+  /** Opens the Section Analysis panel on the section as it is (the browser's row). */
+  const openSection = () => {
+    if (mode !== 'model') return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    session.getState().setTool(SECTION_TOOL);
+  };
   const sectionPlane = (index: number) => {
     const plane = section.rows[index]?.state.plane;
     return plane
@@ -983,17 +1000,17 @@ function Shell({
           onRemove: section.removeAll,
         }
       : undefined;
-  bodyListRef.current = browserBodies;
+  useLaterValue(bodyListLater, browserBodies);
   const bodyActions = useMemo(
     () => ({
-      ...createBodyActions({ store, session }, () => bodyListRef.current, notify),
+      ...createBodyActions({ store, session }, () => bodyListLater.get(), notify),
       // A body's menu exports it (P2-12).
       exportBodies: (ids: readonly BodyId[]) => setModelExport({ bodies: ids }),
       // A body's menu opens Mesh to Solid with the body picked (P4-13, ADR-0097 §5);
       // the selection and `run` are defined later, so the menu reaches them through a ref.
       convertToSolid: (id: BodyId) => convertToSolidRef.current(id),
     }),
-    [store, session, notify],
+    [store, session, notify, bodyListLater],
   );
   // Delete with only faces of solid bodies selected makes a Remove Faces
   // feature in one step (P4-13, ADR-0099 §7); the pick rule takes a whole
@@ -1017,18 +1034,20 @@ function Shell({
     [doc.views, viewActions],
   );
   const componentList = useMemo(() => componentRows(doc, bodyList).rows, [doc, bodyList]);
-  const componentListRef = useRef(componentList);
-  componentListRef.current = componentList;
+  const componentListLater = useLater(componentList);
+  useLaterValue(componentListLater, componentList);
   const componentActions = useMemo(
     () =>
       createComponentActions(
         { store, session },
         (id) =>
-          componentListRef.current.find((r) => r.component.id === id)?.bodies.map((b) => b.id) ??
-          [],
+          componentListLater
+            .get()
+            .find((r) => r.component.id === id)
+            ?.bodies.map((b) => b.id) ?? [],
         notify,
       ),
-    [store, session, notify],
+    [store, session, notify, componentListLater],
   );
   // Joints (P6-05, ADR-0081 §4): the Joint dialog, the browser's rows and the view's axes.
   const componentOfBody = useMemo(() => {
@@ -1100,13 +1119,14 @@ function Shell({
             session,
             dialog,
             members: (id) =>
-              componentListRef.current
+              componentListLater
+                .get()
                 .find((r) => r.component.id === id)
                 ?.bodies.map((b) => b.id) ?? [],
             notify,
           })
         : undefined,
-    [store, session, dialog, notify],
+    [store, session, dialog, notify, componentListLater],
   );
   const selectedAnnotations = useMemo(
     () => new Set(selection.filter((item) => item.kind === 'annotation').map((item) => item.id)),
@@ -1265,7 +1285,8 @@ function Shell({
     tools.add('render');
     return tools;
   }, [dialogs, canSlicer]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
+  // The dialogs' commands: kept while the dialogs, the plugin features and the keys stay, and
+  // running the latest `run` (ADR-0159 §6).
   const dialogCommands = useMemo(
     () =>
       [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap((spec) => {
@@ -1278,12 +1299,12 @@ function Shell({
             group: c.group,
             keywords: `${c.group} ${c.hint}`,
             icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
-            keys: keysFor(c.id),
-            run: () => runRef.current(c.id as ToolId),
+            keys: keysOf(c.id),
+            run: () => runLater.get()(c.id as ToolId),
           },
         ];
       }),
-    [dialogs, pluginFeatures, keymap],
+    [dialogs, pluginFeatures, keysOf, runLater],
   );
   // A dialog stops a nav tool, like any command.
   useEffect(() => {
@@ -1379,14 +1400,14 @@ function Shell({
       return next;
     });
   // S opens the search at the pointer: the last place it was seen over the page.
-  const pointer = useRef<{ x: number; y: number }>(undefined);
+  const pointer = useLater<{ x: number; y: number } | undefined>(undefined);
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
-      pointer.current = { x: event.clientX, y: event.clientY };
+      pointer.set({ x: event.clientX, y: event.clientY });
     };
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
-  }, []);
+  }, [pointer]);
   // Replacing the whole document is one undo step of its own (ADR-0036, and a
   // linked folder's "Load from disk", P4-09), so whatever holds a transaction
   // open ends first. The linked folder's toast button is clicked from the
@@ -1476,11 +1497,11 @@ function Shell({
   }, [platform.desktop, viewport, session]);
   // Two frames before a capture, so the menu that was just closed (or the dialog and its
   // overlay on a retake) are gone from the window capture.
-  const openBugReport = useCallback(async () => {
+  const openBugReport = async () => {
     await twoFrames();
     const screenshot = await capture();
     setBugReport({ open: true, screenshot });
-  }, [capture]);
+  };
   const retakeBugReport = async () => {
     setBugReport((s) => ({ ...s, open: false }));
     await openBugReport();
@@ -1583,16 +1604,19 @@ function Shell({
     }
   }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session]);
   // What the update notice offers (ADR-0161): the key's undo below reads it.
-  const updateNotice = useRef<UpdateNotice>(undefined);
-  const tellUpdateNotice = useCallback((notice: UpdateNotice) => {
-    updateNotice.current = notice;
-  }, []);
+  const updateNotice = useLater<UpdateNotice>(undefined);
+  const tellUpdateNotice = useCallback(
+    (notice: UpdateNotice) => {
+      updateNotice.set(notice);
+    },
+    [updateNotice],
+  );
   // Ctrl+Z and the top bar's Undo (ADR-0161): Cancel while the notice offers it and Cancel
   // would only undo, nothing while a pressed Cancel waits, else the plain undo. The command
   // list's Undo (search, marking menu, the agent) stays the plain one.
   const undoKey = useCallback(() => {
     const route = undoRoute({
-      notice: updateNotice.current,
+      notice: updateNotice.get(),
       cancelUndoes: kernel?.revertToShownUndoes?.() ?? false,
       editing:
         Boolean(dialogOpen || jointOpen) ||
@@ -1601,7 +1625,7 @@ function Shell({
     });
     if (route === 'cancel') cancelUpdate();
     else if (route === 'undo') undo();
-  }, [kernel, dialogOpen, jointOpen, store, session, cancelUpdate, undo]);
+  }, [kernel, dialogOpen, jointOpen, store, session, cancelUpdate, undo, updateNotice]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -1609,219 +1633,172 @@ function Shell({
   }, [dialog, jointDialog, store]);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
-  const commandBuilder = useMemo(
-    () => (m: EditMode, listing: boolean) =>
-      buildCommands({
-        mode: m,
-        runTool: (tool) => {
-          if (isRepeatable(tool)) setLastTool(tool);
-          // A key or a search result starts a sketch tool; only the toolbar toggles it off.
-          // The drawing import picks its file before it has a panel (P4-06), so it
-          // goes through `run` like the toolbar's tile does.
-          if (tool !== IMPORT_DRAWING_TOOL && isSketchTool(tool) && host) host.start(tool);
-          else runRef.current(tool);
-        },
-        notify,
-        undo,
-        redo,
-        ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
-        ...(!listing &&
-          m === 'sheet' &&
-          sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
-        // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
-        ...(!listing &&
-          m === 'model' &&
-          !dialogOpen &&
-          (selectedBodyIds.length > 0 || facesRemovable || selectedNotes.length > 0) && {
-            remove: removeModelSelection,
-          }),
-        ...(m === 'sketch' &&
-          (listing || host) && {
-            construction:
-              !listing && host
-                ? { on: construction ?? false, toggle: () => host.toggleConstruction() }
-                : { on: false, toggle: () => {} },
-          }),
-        ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
-        ...(m === 'model' &&
-          !dialogOpen &&
-          selection.length > 0 && {
-            lookAtSelection: () => {
-              const modelState = stores.model?.getState();
-              const shown: LookSketch[] = [];
-              for (const feature of stores.store.getState().doc.features) {
-                const sketch = readSketch(feature);
-                const frame =
-                  sketch &&
-                  sketchFrame(
-                    feature.id,
-                    sketch.plane,
-                    modelState?.sketches,
-                    modelState?.construction,
-                  );
-                if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
-              }
-              const selected = stores.session.getState().selection;
-              const notes = new Set(
-                selected.filter((i) => i.kind === 'annotation').map((i) => i.id as string),
-              );
-              const points =
-                notes.size === 0
-                  ? []
-                  : placedNow(
-                      stores.store.getState().doc,
-                      {
-                        annotations: modelState?.annotations ?? {},
-                        sketches: modelState?.sketches ?? {},
-                      },
-                      openSketchRef.current,
-                    )
-                      .filter((p) => notes.has(p.annotation.id))
-                      .map((p) => p.at);
-              const target = selectionLookTarget(
-                selected,
-                (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
-                shown,
-                points,
-              );
-              if (!target) return;
-              viewport.getState().lookAtBox(target, target.direction);
-            },
-          }),
-        viewport,
-        browser: { collapsed: browser.collapsed, toggle: browser.toggle },
-        file: fileActions,
-        // Named views (ADR-0008's amendment): save opens the nav bar's prompt.
-        views: {
-          list: doc.views.map((v) => ({ id: v.id, name: v.name })),
-          save: () => namedViewSaveStore.getState().show(),
-          restore: (id: ViewId) => viewActions.restore(id),
-        },
-        sheets: {
-          list: (doc.sheets ?? []).map((sh) => ({ id: sh.id, name: sh.name })),
-          open: (id) => void openSheet(stores, id as SheetId),
-          newSheets: () => setNewSheetsOpen(true),
-          openSheets: () => void openSheets(stores),
-          fit: () => sheetControl.current?.fit(),
-          step: (delta) => stepSheet(stores, delta),
-        },
-        theme: { choice, set: setChoice },
-        settings: { open: () => setSettingsOpen(true) },
-        ...(listing
-          ? { repeat: { id: MODES[m].repeatSample } }
-          : lastTool && { repeat: { id: lastTool } }),
-        markingMenu: {
-          radial: markingStyle.radial,
-          toggle: markingStyle.toggle,
-          customize: () => setSettingsOpen('marking'),
-        },
-        ready,
-        dialogCommands,
-        plugins: pluginEntries,
-        ...(toasts?.history && {
-          notifications: { open: () => toasts.history?.getState().setOpen(true) },
-        }),
-        tutorial: { start: () => startTutorialRef.current() },
-        about: () => setAboutOpen(true),
-        reportBug: () => void openBugReport(),
-        docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
-        macro: { recording: recording !== undefined },
-        componentCount: doc.components?.length ?? 0,
-        pose: poseCommand,
-        ...(m === 'model' && {
-          joints: {
-            checkClearance: () => openJointCheckRef.current(),
-            ...(!(doc.joints ?? []).some((j) => j.type !== 'rigid' && !j.suppressed) && {
-              unavailable: 'Make a revolute or slider joint first.',
-            }),
-          },
-        }),
-        ...(m === 'model' && {
-          components: {
-            ...(selectedComponent !== undefined &&
-              selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
-            active: activeComponent !== undefined,
-            isolated: isolatedComponent !== undefined,
-            activate: () => {
-              if (selectedComponent === undefined) {
-                notify('info', 'Select the bodies of one component first.');
-                return;
-              }
-              session.getState().activateComponent(selectedComponent);
-            },
-            deactivate: () => session.getState().activateComponent(undefined),
-            isolate: () => {
-              if (selectedComponent === undefined) {
-                notify('info', 'Select the bodies of one component first.');
-                return;
-              }
-              session.getState().isolateComponent(selectedComponent);
-            },
-            exitIsolation: () => session.getState().isolateComponent(undefined),
-          },
-        }),
-        ...(desktop &&
-          platform.menus && {
-            desktop: {
-              nativeMenu: desktop.nativeMenu,
-              quit: () => void quitApp(),
-              ...(platform.updates?.check && {
-                checkForUpdates: () => platform.updates?.check?.(),
-              }),
-              clearRecent: () => void desktop.clearRecent(),
-            },
-          }),
-      }),
-    [
-      desktop,
-      quitApp,
-      host,
+  const commandBuilder = (m: EditMode, listing: boolean) =>
+    buildCommands({
+      mode: m,
+      keysFor: keysOf,
+      runTool: (tool) => {
+        if (isRepeatable(tool)) setLastTool(tool);
+        // A key or a search result starts a sketch tool; only the toolbar toggles it off.
+        // The drawing import picks its file before it has a panel (P4-06), so it
+        // goes through `run` like the toolbar's tile does.
+        if (tool !== IMPORT_DRAWING_TOOL && isSketchTool(tool) && host) host.start(tool);
+        else runLater.get()(tool);
+      },
       notify,
-      recording,
       undo,
       redo,
+      ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
+      ...(!listing &&
+        m === 'sheet' &&
+        sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
+      // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
+      ...(!listing &&
+        m === 'model' &&
+        !dialogOpen &&
+        (selectedBodyIds.length > 0 || facesRemovable || selectedNotes.length > 0) && {
+          remove: removeModelSelection,
+        }),
+      ...(m === 'sketch' &&
+        (listing || host) && {
+          construction:
+            !listing && host
+              ? { on: construction ?? false, toggle: () => host.toggleConstruction() }
+              : { on: false, toggle: () => {} },
+        }),
+      ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
+      ...(m === 'model' &&
+        !dialogOpen &&
+        selection.length > 0 && {
+          lookAtSelection: () => {
+            const modelState = stores.model?.getState();
+            const shown: LookSketch[] = [];
+            for (const feature of stores.store.getState().doc.features) {
+              const sketch = readSketch(feature);
+              const frame =
+                sketch &&
+                sketchFrame(
+                  feature.id,
+                  sketch.plane,
+                  modelState?.sketches,
+                  modelState?.construction,
+                );
+              if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
+            }
+            const selected = stores.session.getState().selection;
+            const notes = new Set(
+              selected.filter((i) => i.kind === 'annotation').map((i) => i.id as string),
+            );
+            const points =
+              notes.size === 0
+                ? []
+                : placedNow(
+                    stores.store.getState().doc,
+                    {
+                      annotations: modelState?.annotations ?? {},
+                      sketches: modelState?.sketches ?? {},
+                    },
+                    openSketchLater.get(),
+                  )
+                    .filter((p) => notes.has(p.annotation.id))
+                    .map((p) => p.at);
+            const target = selectionLookTarget(
+              selected,
+              (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
+              shown,
+              points,
+            );
+            if (!target) return;
+            viewport.getState().lookAtBox(target, target.direction);
+          },
+        }),
+      viewport,
+      browser: { collapsed: browser.collapsed, toggle: browser.toggle },
+      file: fileActions,
+      // Named views (ADR-0008's amendment): save opens the nav bar's prompt.
+      views: {
+        list: doc.views.map((v) => ({ id: v.id, name: v.name })),
+        save: () => namedViewSaveStore.getState().show(),
+        restore: (id: ViewId) => viewActions.restore(id),
+      },
+      sheets: {
+        list: (doc.sheets ?? []).map((sh) => ({ id: sh.id, name: sh.name })),
+        open: (id) => void openSheet(stores, id as SheetId),
+        newSheets: () => setNewSheetsOpen(true),
+        openSheets: () => void openSheets(stores),
+        fit: () => sheetControl.current?.fit(),
+        step: (delta) => stepSheet(stores, delta),
+      },
+      theme: { choice, set: setChoice },
+      settings: { open: () => setSettingsOpen(true) },
+      ...(listing
+        ? { repeat: { id: MODES[m].repeatSample } }
+        : lastTool && { repeat: { id: lastTool } }),
+      markingMenu: {
+        radial: markingStyle.radial,
+        toggle: markingStyle.toggle,
+        customize: () => setSettingsOpen('marking'),
+      },
       ready,
       dialogCommands,
-      pluginEntries,
-      drawing,
-      remove,
-      dialogOpen,
-      selectedBodyIds,
-      facesRemovable,
-      selectedNotes,
-      removeModelSelection,
-      sheetTargets,
-      removeSheetSelection,
-      selectedComponent,
-      selectedComponentName,
-      activeComponent,
-      isolatedComponent,
-      session,
-      selection,
-      viewActions,
-      doc.views,
-      doc.sheets,
-      construction,
-      stores,
-      viewport,
-      browser.collapsed,
-      browser.toggle,
-      fileActions,
-      choice,
-      setChoice,
-      toasts?.history,
-      lastTool,
-      markingStyle.radial,
-      markingStyle.toggle,
-      platform,
-      openBugReport,
-      doc.components?.length,
-      doc.joints,
-      poseCommand,
-    ],
-  );
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
-  const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode, keymap]);
+      plugins: pluginEntries,
+      // `history`, not `toasts`: that object is new with every toast, and the commands would be.
+      ...(history && { notifications: { open: () => history.getState().setOpen(true) } }),
+      tutorial: { start: () => startTutorialRef.current() },
+      about: () => setAboutOpen(true),
+      reportBug: () => void openBugReport(),
+      docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
+      macro: { recording: recording !== undefined },
+      componentCount: doc.components?.length ?? 0,
+      pose: poseCommand,
+      ...(m === 'model' && {
+        joints: {
+          checkClearance: () => openJointCheckRef.current(),
+          ...(!(doc.joints ?? []).some((j) => j.type !== 'rigid' && !j.suppressed) && {
+            unavailable: 'Make a revolute or slider joint first.',
+          }),
+        },
+      }),
+      ...(m === 'model' && {
+        components: {
+          ...(selectedComponent !== undefined &&
+            selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
+          active: activeComponent !== undefined,
+          isolated: isolatedComponent !== undefined,
+          activate: () => {
+            if (selectedComponent === undefined) {
+              notify('info', 'Select the bodies of one component first.');
+              return;
+            }
+            session.getState().activateComponent(selectedComponent);
+          },
+          deactivate: () => session.getState().activateComponent(undefined),
+          isolate: () => {
+            if (selectedComponent === undefined) {
+              notify('info', 'Select the bodies of one component first.');
+              return;
+            }
+            session.getState().isolateComponent(selectedComponent);
+          },
+          exitIsolation: () => session.getState().isolateComponent(undefined),
+        },
+      }),
+      ...(desktop &&
+        platform.menus && {
+          desktop: {
+            nativeMenu: desktop.nativeMenu,
+            quit: () => void quitApp(),
+            ...(platform.updates?.check && {
+              checkForUpdates: () => platform.updates?.check?.(),
+            }),
+            clearRecent: () => void desktop.clearRecent(),
+          },
+        }),
+    });
+  // Kept by hand: left to the compiler, a plain `commandBuilder(mode, false)` is called on every
+  // render, and with it everything built from the commands (ADR-0159 §6).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the compiler memoises `commandBuilder`.
+  const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
   // The desktop MCP server's tools act on this design (P6-08, ADR-0087 §5): its host is
   // registered while the shell is mounted, desktop only.
   useAgentHost({
@@ -1837,23 +1814,18 @@ function Shell({
       await autosave.flush();
     },
     toolHost: host,
-    openSketch: () => openSketchRef.current,
+    openSketch: () => openSketchLater.get(),
     sheetFields,
   });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
-  const markingCommands = useMemo(
-    () =>
-      // Built only while Settings is open: its Marking menu section lists them.
-      settingsOpen !== false
-        ? perMode((m) => relabelRepeat(commandBuilder(m, true)))
-        : perMode(() => []),
-    [settingsOpen, commandBuilder, keymap],
-  );
-  const searchAtPointer = useMemo(
-    () => () =>
-      setSearch(pointer.current ? { from: 'pointer', at: pointer.current } : { from: 'centre' }),
-    [],
-  );
+  const markingCommands =
+    // Built only while Settings is open: its Marking menu section lists them.
+    settingsOpen !== false
+      ? perMode((m) => relabelRepeat(commandBuilder(m, true)))
+      : perMode(() => []);
+  const searchAtPointer = () => {
+    const at = pointer.get();
+    setSearch(at ? { from: 'pointer', at } : { from: 'centre' });
+  };
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
@@ -1905,143 +1877,106 @@ function Shell({
     };
   }, [platform.menus, commands, fileActions, quitApp]);
 
-  const shortcuts = useMemo(
-    () => [
-      // An open feature dialog: Esc cancels it (a field whose text doesn't evaluate reverts
-      // that first and keeps the key), Enter presses OK (fields press it after committing).
-      ...(dialogOpen && dialog
-        ? [
-            {
-              keys: 'Escape',
-              inFields: true,
-              run: () => dialog.cancel(),
+  const shortcuts = [
+    // An open feature dialog: Esc cancels it (a field whose text doesn't evaluate reverts
+    // that first and keeps the key), Enter presses OK (fields press it after committing).
+    ...(dialogOpen && dialog
+      ? [
+          {
+            keys: 'Escape',
+            inFields: true,
+            run: () => dialog.cancel(),
+          },
+          { keys: 'Enter', run: () => dialog.ok() },
+        ]
+      : []),
+    // The Joint dialog (P6-05) the same way.
+    ...(jointOpen && jointDialog
+      ? [
+          { keys: 'Escape', inFields: true, run: () => jointDialog.cancel() },
+          { keys: 'Enter', run: () => void jointDialog.ok() },
+        ]
+      : []),
+    ...commandShortcuts(commands, { undo: undoKey }),
+    ...keysOf('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
+    ...keysOf('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
+    ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
+    ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
+    ...(drawing && host
+      ? [
+          { keys: 'Escape', run: () => host.escape() },
+          { keys: 'Enter', run: () => host.enter() },
+        ]
+      : []),
+    ...(measuring ||
+    annotating ||
+    sectioning ||
+    printing ||
+    overhanging ||
+    thickening ||
+    customizing
+      ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
+      : []),
+    // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
+    // the selection (P2-03).
+    ...(mode === 'model' && !picking
+      ? [
+          {
+            keys: 'Escape',
+            run: () => {
+              if (viewport.getState().tool) viewport.getState().setTool(undefined);
+              else session.getState().clearSelection();
             },
-            { keys: 'Enter', run: () => dialog.ok() },
-          ]
-        : []),
-      // The Joint dialog (P6-05) the same way.
-      ...(jointOpen && jointDialog
-        ? [
-            { keys: 'Escape', inFields: true, run: () => jointDialog.cancel() },
-            { keys: 'Enter', run: () => void jointDialog.ok() },
-          ]
-        : []),
-      ...commandShortcuts(commands, { undo: undoKey }),
-      ...keysFor('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
-      ...keysFor('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
-      ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
-      ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
-      ...(drawing && host
-        ? [
-            { keys: 'Escape', run: () => host.escape() },
-            { keys: 'Enter', run: () => host.enter() },
-          ]
-        : []),
-      ...(measuring ||
-      annotating ||
-      sectioning ||
-      printing ||
-      overhanging ||
-      thickening ||
-      customizing
-        ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
-        : []),
-      // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
-      // the selection (P2-03).
-      ...(mode === 'model' && !picking
-        ? [
-            {
-              keys: 'Escape',
-              run: () => {
-                if (viewport.getState().tool) viewport.getState().setTool(undefined);
-                else session.getState().clearSelection();
-              },
+          },
+        ]
+      : []),
+    // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
+    ...(mode === 'sheet' && sheetTargets.some(movable)
+      ? (
+          [
+            ['ArrowLeft', -1, 0],
+            ['ArrowRight', 1, 0],
+            ['ArrowUp', 0, -1],
+            ['ArrowDown', 0, 1],
+          ] as const
+        ).flatMap(([key, x, y]) =>
+          [1, 10].map((step) => ({
+            keys: step === 1 ? key : `Shift+${key}`,
+            run: () =>
+              sheetChange(() =>
+                moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
+              ),
+          })),
+        )
+      : []),
+    // In the drawing, Esc ends a view tool, stops Pan or Zoom, or else clears the
+    // selection; it never leaves the mode (plan §3.2).
+    ...(mode === 'sheet'
+      ? [
+          {
+            keys: 'Escape',
+            run: () => {
+              if (sheetToolRunning) session.getState().setTool(undefined);
+              else if (viewport.getState().tool) viewport.getState().setTool(undefined);
+              else session.getState().clearSelection();
             },
-          ]
-        : []),
-      // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
-      ...(mode === 'sheet' && sheetTargets.some(movable)
-        ? (
-            [
-              ['ArrowLeft', -1, 0],
-              ['ArrowRight', 1, 0],
-              ['ArrowUp', 0, -1],
-              ['ArrowDown', 0, 1],
-            ] as const
-          ).flatMap(([key, x, y]) =>
-            [1, 10].map((step) => ({
-              keys: step === 1 ? key : `Shift+${key}`,
-              run: () =>
-                sheetChange(() =>
-                  moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
-                ),
-            })),
-          )
-        : []),
-      // In the drawing, Esc ends a view tool, stops Pan or Zoom, or else clears the
-      // selection; it never leaves the mode (plan §3.2).
-      ...(mode === 'sheet'
-        ? [
-            {
-              keys: 'Escape',
-              run: () => {
-                if (sheetToolRunning) session.getState().setTool(undefined);
-                else if (viewport.getState().tool) viewport.getState().setTool(undefined);
-                else session.getState().clearSelection();
-              },
+          },
+        ]
+      : []),
+    // Esc puts dragged geometry back, or else clears the selection (P1-09).
+    ...(mode === 'sketch' && !drawing
+      ? [
+          {
+            keys: 'Escape',
+            run: () => {
+              if (!host?.cancelMove()) session.getState().clearSelection();
             },
-          ]
-        : []),
-      // Esc puts dragged geometry back, or else clears the selection (P1-09).
-      ...(mode === 'sketch' && !drawing
-        ? [
-            {
-              keys: 'Escape',
-              run: () => {
-                if (!host?.cancelMove()) session.getState().clearSelection();
-              },
-            },
-          ]
-        : []),
-    ],
-    [
-      commands,
-      undoKey,
-      searchAtPointer,
-      session,
-      stores,
-      picking,
-      projecting,
-      measuring,
-      annotating,
-      sectioning,
-      printing,
-      overhanging,
-      thickening,
-      customizing,
-      sheetToolRunning,
-      mode,
-      drawing,
-      host,
-      viewport,
-      dialogOpen,
-      dialog,
-      jointOpen,
-      jointDialog,
-      sheetTargets,
-      sheetChange,
-      store,
-    ],
-  );
+          },
+        ]
+      : []),
+  ];
   const chordPrefix = useShortcuts(shortcuts);
 
-  /** Opens the Section Analysis panel on the section as it is (the browser's row). */
-  const openSection = () => {
-    if (mode !== 'model') return;
-    if (picking) cancelCreateSketch(stores);
-    dialog?.cancel();
-    session.getState().setTool(SECTION_TOOL);
-  };
   /** Opens the Overhang Analysis panel on the analysis as it is (the browser's row). */
   const openOverhang = () => {
     if (mode !== 'model') return;
@@ -2075,7 +2010,9 @@ function Shell({
     jointCheck.controller.open(joint);
     if (run) void jointCheck.controller.start();
   };
-  openJointCheckRef.current = openJointCheck;
+  useInsertionEffect(() => {
+    openJointCheckRef.current = openJointCheck;
+  });
   /** Opens the Wall Thickness panel on the check as it is (the browser's row). */
   const openThickness = () => {
     if (mode !== 'model') return;
@@ -2083,6 +2020,91 @@ function Shell({
     dialog?.cancel();
     session.getState().setTool(THICKNESS_TOOL);
   };
+  /** Puts the sketch being redefined on `plane`: one undo step; a refusal keeps the pick going. */
+  const redefineTo = (id: FeatureId, plane: GeomRef) => {
+    try {
+      store.getState().dispatch(redefineSketchPlane({ id, plane }));
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+      return;
+    }
+    cancelCreateSketch(stores);
+    setRedefining(undefined);
+  };
+  /**
+   * Starts a sketch on a picked or selected face (P2-09) once the kernel has
+   * given its persistent reference: a flat face only. With `fallback`, a
+   * face that can't take a sketch leaves Create Sketch waiting for a plane.
+   */
+  const sketchOnFace = async (item: SelectionItem, fallback = false) => {
+    const face = readTopology(item);
+    if (face?.kind !== 'face') return;
+    const target = redefining;
+    const ref: GeomRef | undefined = await kernel?.reference(
+      face.body,
+      'face',
+      face.index,
+      target !== undefined && redefineBase !== undefined,
+    );
+    if (ref?.fingerprint?.type === 'plane') {
+      if (target) redefineTo(target, ref);
+      else createSketchOn(stores, ref);
+      return;
+    }
+    notify(
+      'error',
+      ref
+        ? 'A sketch needs a flat face or a plane: that face is curved.'
+        : "Can't sketch on that face yet: the model is still computing.",
+    );
+    if (fallback) startCreateSketch(stores);
+  };
+  const sketchOnFaceRef = useRef(sketchOnFace);
+  useInsertionEffect(() => {
+    sketchOnFaceRef.current = sketchOnFace;
+  });
+  // An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05).
+  const pickPlane = (plane: string) => {
+    const ref: GeomRef = { kind: 'plane', id: plane };
+    if (redefining) redefineTo(redefining, ref);
+    else createSketchOn(stores, ref);
+  };
+  const pickPlaneRef = useRef(pickPlane);
+  useInsertionEffect(() => {
+    pickPlaneRef.current = pickPlane;
+  });
+  const startRedefine = (id: FeatureId) => {
+    dialog?.cancel();
+    if (session.getState().activeTool !== CREATE_SKETCH) startCreateSketch(stores);
+    setRedefining(id);
+  };
+  const startRedefineLater = useLater(startRedefine);
+  useLaterValue(startRedefineLater, startRedefine);
+  // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
+  const featureActions = useMemo(
+    () =>
+      createFeatureActions(stores, notify, {
+        exportSketch: (id) =>
+          setExportRequest({
+            sketch: id,
+            selected: profileIdsIn(session.getState().selection, id),
+          }),
+        editFeature: (id) => {
+          if (picking) cancelCreateSketch(stores);
+          return dialog?.edit(id) ?? false;
+        },
+        hasDialog: (type) => hasFeatureDialog(dialogs, type),
+        fixFeature: (id, issues) => {
+          if (picking) cancelCreateSketch(stores);
+          return dialog?.edit(id, { fix: issues }) ?? false;
+        },
+        redefinePlane: (id) => startRedefineLater.get()(id),
+        isStopped: (id) => kernel?.isStopped?.(id) ?? false,
+        retryStopped: (id) => void kernel?.retry?.(id),
+      }),
+    [stores, notify, session, dialog, dialogs, picking, kernel, startRedefineLater],
+  );
   const run = (tool: ToolId) => {
     // Any other command ends the Joint dialog (P6-05), as it ends a feature dialog.
     if (tool !== 'joint') jointDialog?.cancel();
@@ -2236,7 +2258,7 @@ function Shell({
       }
       dialog?.cancel();
       if (tool === 'canvas') startCanvasRef.current();
-      else startImportRef.current();
+      else startImportLater.get()();
       return;
     }
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
@@ -2354,8 +2376,8 @@ function Shell({
   // P4-06: Import picks a model file, stores its bytes with the design and opens
   // the dialog, which previews what the file holds (ADR-0066 §0, §2). An `.f3d`
   // opens as a new design instead (ADR-0083 §4).
-  exportScriptRef.current = () => setScriptExportOpen(true);
-  startImportRef.current = (picked) => {
+  useLaterValue(exportScriptLater, () => setScriptExportOpen(true));
+  useLaterValue(startImportLater, (picked) => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
     if (
@@ -2380,21 +2402,25 @@ function Shell({
     }).then((pending) => {
       if (pending) dialog?.start(IMPORT_TYPE);
     });
-  };
+  });
   // P4-06: Canvas picks an image, stores its bytes with the design and opens
   // its dialog, which previews the picture on its plane (ADR-0066 §5).
-  startCanvasRef.current = () => {
-    void pickCanvasFile({
-      files: platform.files,
-      projects: platform.projects,
-      store,
-      notify,
-    }).then((pending) => {
-      if (pending) dialog?.start(CANVAS_TYPE);
-    });
-  };
-  runRef.current = run;
-  startTutorialRef.current = startTutorial;
+  useInsertionEffect(() => {
+    startCanvasRef.current = () => {
+      void pickCanvasFile({
+        files: platform.files,
+        projects: platform.projects,
+        store,
+        notify,
+      }).then((pending) => {
+        if (pending) dialog?.start(CANVAS_TYPE);
+      });
+    };
+  });
+  useLaterValue(runLater, run);
+  useInsertionEffect(() => {
+    startTutorialRef.current = startTutorial;
+  });
   // What the toolbar and the app bar are handed: functions that stay the same and call the
   // latest (ADR-0159 §4); a new `run` on every render of the shell rendered every tile.
   const runLatest = useLatest(run);
@@ -2409,7 +2435,7 @@ function Shell({
   });
   // P6-03: a plugin command (ADR-0077 §5). An open dialog or panel ends first, so the
   // features land at the marker as the timeline shows it.
-  runPluginRef.current = (command) => {
+  useLaterValue(runPluginLater, (command: PluginCommand) => {
     if (mode !== 'model' || !kernel?.runPluginCommand) return;
     if (picking) cancelCreateSketch(stores);
     dialog?.cancel();
@@ -2422,7 +2448,7 @@ function Shell({
       session,
       selection: selected,
     }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
-  };
+  });
   // The browser's own right-click menu stays out of the app while a project is open.
   useEffect(() => {
     window.addEventListener('contextmenu', keepNativeMenuOut);
@@ -2450,87 +2476,6 @@ function Shell({
       session.getState().setTool(undefined);
   };
 
-  /**
-   * Starts a sketch on a picked or selected face (P2-09) once the kernel has
-   * given its persistent reference: a flat face only. With `fallback`, a
-   * face that can't take a sketch leaves Create Sketch waiting for a plane.
-   */
-  const sketchOnFace = async (item: SelectionItem, fallback = false) => {
-    const face = readTopology(item);
-    if (face?.kind !== 'face') return;
-    const target = redefining;
-    const ref: GeomRef | undefined = await kernel?.reference(
-      face.body,
-      'face',
-      face.index,
-      target !== undefined && redefineBase !== undefined,
-    );
-    if (ref?.fingerprint?.type === 'plane') {
-      if (target) redefineTo(target, ref);
-      else createSketchOn(stores, ref);
-      return;
-    }
-    notify(
-      'error',
-      ref
-        ? 'A sketch needs a flat face or a plane: that face is curved.'
-        : "Can't sketch on that face yet: the model is still computing.",
-    );
-    if (fallback) startCreateSketch(stores);
-  };
-  const sketchOnFaceRef = useRef(sketchOnFace);
-  sketchOnFaceRef.current = sketchOnFace;
-  /** Puts the sketch being redefined on `plane`: one undo step; a refusal keeps the pick going. */
-  const redefineTo = (id: FeatureId, plane: GeomRef) => {
-    try {
-      store.getState().dispatch(redefineSketchPlane({ id, plane }));
-    } catch (error) {
-      if (!(error instanceof CommandError)) throw error;
-      notify('error', error.message);
-      return;
-    }
-    cancelCreateSketch(stores);
-    setRedefining(undefined);
-  };
-  // An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05).
-  const pickPlane = (plane: string) => {
-    const ref: GeomRef = { kind: 'plane', id: plane };
-    if (redefining) redefineTo(redefining, ref);
-    else createSketchOn(stores, ref);
-  };
-  const pickPlaneRef = useRef(pickPlane);
-  pickPlaneRef.current = pickPlane;
-  const startRedefine = (id: FeatureId) => {
-    dialog?.cancel();
-    if (session.getState().activeTool !== CREATE_SKETCH) startCreateSketch(stores);
-    setRedefining(id);
-  };
-  const startRedefineRef = useRef(startRedefine);
-  startRedefineRef.current = startRedefine;
-  // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
-  const featureActions = useMemo(
-    () =>
-      createFeatureActions(stores, notify, {
-        exportSketch: (id) =>
-          setExportRequest({
-            sketch: id,
-            selected: profileIdsIn(session.getState().selection, id),
-          }),
-        editFeature: (id) => {
-          if (picking) cancelCreateSketch(stores);
-          return dialog?.edit(id) ?? false;
-        },
-        hasDialog: (type) => dialogs.get(type) !== undefined || type === 'plugin',
-        fixFeature: (id, issues) => {
-          if (picking) cancelCreateSketch(stores);
-          return dialog?.edit(id, { fix: issues }) ?? false;
-        },
-        redefinePlane: (id) => startRedefineRef.current(id),
-        isStopped: (id) => kernel?.isStopped?.(id) ?? false,
-        retryStopped: (id) => void kernel?.retry?.(id),
-      }),
-    [stores, notify, session, dialog, dialogs, picking, kernel],
-  );
   // The timeline's groups (P4-09, ADR-0065 §2) and the picked chips it shares with the
   // marking menu. Both are session state: nothing here is saved or undoable.
   const groups = useMemo(() => createGroupActions(store, notify), [store, notify]);
@@ -2551,7 +2496,9 @@ function Shell({
   }, [doc, viewport]);
   // A recompute's first new error goes into the notification history (P3-13).
   const featureActionsRef = useRef(featureActions);
-  featureActionsRef.current = featureActions;
+  useInsertionEffect(() => {
+    featureActionsRef.current = featureActions;
+  });
   useEffect(
     () =>
       watchRecomputeErrors({
@@ -2575,10 +2522,17 @@ function Shell({
           const { features, timelineMarker } = store.getState().doc;
           const index = features.findIndex((f) => f.id === id);
           const feature = features[index];
-          return !!feature && featureActionsRef.current.canEdit(feature, index, timelineMarker);
+          // Asked while the notification history renders: from `dialogs`, not from the
+          // actions a ref holds (ADR-0159 §6).
+          return (
+            !!feature &&
+            canEditFeature(feature, index, timelineMarker, (type) =>
+              hasFeatureDialog(dialogs, type),
+            )
+          );
         },
       }),
-    [store, model, notify],
+    [store, model, notify, dialogs],
   );
 
   // Every active, unsuppressed, shown sketch on a known plane is drawn (the open one even if
@@ -2884,7 +2838,7 @@ function Shell({
         : undefined,
     [mode, activeSketchId, sketchPlane],
   );
-  openSketchRef.current = openSketch;
+  useLaterValue(openSketchLater, openSketch);
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
     () =>
@@ -2923,8 +2877,8 @@ function Shell({
     mode === 'model' && !picking && !dialogOpen && !jointOpen,
   );
   // While Annotate runs, a click drafts a note where it lands (ADR-0126 §6).
-  const bodiesRef = useRef(bodies);
-  bodiesRef.current = bodies;
+  const bodiesLater = useLater(bodies);
+  useLaterValue(bodiesLater, bodies);
   const annotateSelect = useMemo(
     () =>
       annotating && sessionSelect
@@ -2932,7 +2886,7 @@ function Shell({
             store,
             ui: annotationsUi,
             base: sessionSelect,
-            bodies: () => bodiesRef.current,
+            bodies: () => bodiesLater.get(),
             resolve: kernel?.resolveAnnotation
               ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
               : undefined,
@@ -2942,7 +2896,7 @@ function Shell({
             notify: (message) => notify('error', message),
           })
         : undefined,
-    [annotating, sessionSelect, store, session, annotationsUi, kernel, notify],
+    [annotating, sessionSelect, store, session, annotationsUi, kernel, notify, bodiesLater],
   );
   // Dragging a note's anchor dot onto other geometry (ADR-0126 S4): the tool's picks.
   const reanchor = useMemo(
@@ -2950,13 +2904,13 @@ function Shell({
       createReanchor({
         store,
         viewport,
-        bodies: () => bodiesRef.current,
+        bodies: () => bodiesLater.get(),
         resolve: kernel?.resolveAnnotation
           ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
           : undefined,
-        openSketch: () => openSketchRef.current,
+        openSketch: () => openSketchLater.get(),
       }),
-    [store, viewport, kernel],
+    [store, viewport, kernel, bodiesLater, openSketchLater],
   );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
@@ -2977,10 +2931,12 @@ function Shell({
   // A body menu's Convert to Solid… selects the body the way a browser row's click
   // does, then runs the tool the way a tile click does (P4-13, ADR-0097 §5): the
   // dialog pre-selects from the session's selection.
-  convertToSolidRef.current = (id) => {
-    modelSelect?.onClick({ kind: 'body', id }, false);
-    runRef.current('meshToSolid');
-  };
+  useInsertionEffect(() => {
+    convertToSolidRef.current = (id) => {
+      modelSelect?.onClick({ kind: 'body', id }, false);
+      runLater.get()('meshToSolid');
+    };
+  });
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
@@ -3755,7 +3711,7 @@ function Shell({
           bodies={newSheetBodies}
           {...(sheetViewsKernel && {
             plan: (start, request) =>
-              import('../sheets/standardViews').then((m) =>
+              loadStandardViews().then((m) =>
                 m.planSheetStart(
                   sheetViewsKernel,
                   store.getState().doc,

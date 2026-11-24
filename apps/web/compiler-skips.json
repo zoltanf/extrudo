@@ -28,7 +28,7 @@
   "sheets/SheetWorkspace.tsx": ["SheetWorkspace"],
   "sheets/sheetParts.ts": ["useSheetParts"],
   "sheets/useProjectedView.ts": ["useProjectedView"],
-  "shell/AppShell.tsx": ["DialogViewport", "Shell"],
+  "shell/AppShell.tsx": ["DialogViewport"],
   "shell/BrowserPanel.tsx": ["CustomColor"],
   "shell/Timeline.tsx": [
     "GroupChip",

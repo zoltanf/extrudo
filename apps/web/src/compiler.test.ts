@@ -8,14 +8,109 @@
 // starts compiling comes off the list. After a deliberate change, rewrite the list with
 // `EXTRUDO_UPDATE_COMPILER_SKIPS=1 pnpm vitest run apps/web/src/compiler.test.ts`, then
 // `pnpm format`.
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transformSync } from 'oxc-transform-react';
+import { parseAst } from 'vite';
 import { describe, expect, it } from 'vitest';
 
 const SRC = dirname(fileURLToPath(import.meta.url));
 const LIST = join(SRC, '../compiler-skips.json');
+
+/** TypeScript nodes that wrap an expression: the expression is visited, the type not. */
+const TYPE_WRAPPERS = new Set([
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSTypeAssertion',
+  'TSInstantiationExpression',
+]);
+
+/** Components that must compile, whatever the list says (ADR-0159 §6). */
+const MUST_COMPILE = ['shell/AppShell.tsx › Shell'];
+
+// biome-ignore lint/suspicious/noExplicitAny: an ESTree node, walked generically.
+type Node = any;
+
+/** The names a pattern binds (`a`, `{ a, b: c }`, `[a, ...b]`, `a = 1`). */
+function bound(pattern: Node, out: string[] = []): string[] {
+  if (!pattern) return out;
+  if (pattern.type === 'Identifier') out.push(pattern.name);
+  else if (pattern.type === 'ObjectPattern')
+    for (const p of pattern.properties) bound(p.type === 'RestElement' ? p.argument : p.value, out);
+  else if (pattern.type === 'ArrayPattern') for (const p of pattern.elements) bound(p, out);
+  else if (pattern.type === 'AssignmentPattern') bound(pattern.left, out);
+  else if (pattern.type === 'RestElement') bound(pattern.argument, out);
+  return out;
+}
+
+/**
+ * Closures in a component that use a name the component declares further down. The React
+ * Compiler builds such a value inside the closure's memo scope, so it is made again whenever
+ * anything the closure reads changes (ADR-0159 §6). A name a nested function binds itself (a
+ * parameter, its own declaration) shadows the component's; property names and keys don't count.
+ */
+function forwardReferences(file: string, component: string): string[] {
+  const lang = file.endsWith('.tsx') ? 'tsx' : 'ts';
+  const ast = parseAst(readFileSync(file, 'utf8'), { lang }) as Node;
+  const fn = ast.body.find(
+    (s: Node) => s.type === 'FunctionDeclaration' && s.id?.name === component,
+  );
+  if (!fn) throw new Error(`${component} isn't in ${file}`);
+  const statements: Node[] = fn.body.body;
+  const declaredAt = new Map<string, number>();
+  statements.forEach((s, i) => {
+    if (s.type === 'VariableDeclaration')
+      for (const d of s.declarations) for (const n of bound(d.id)) declaredAt.set(n, i);
+    if (s.type === 'FunctionDeclaration') declaredAt.set(s.id.name, i);
+  });
+  const own = (f: Node) => {
+    const names = new Set<string>(f.params.flatMap((p: Node) => bound(p)));
+    for (const s of f.body?.type === 'BlockStatement' ? f.body.body : []) {
+      if (s.type === 'VariableDeclaration')
+        for (const d of s.declarations) for (const n of bound(d.id)) names.add(n);
+      if (s.type === 'FunctionDeclaration' && s.id) names.add(s.id.name);
+    }
+    return names;
+  };
+  const found = new Set<string>();
+  const visit = (node: Node, at: number, parent: Node, key: string, shadow: Set<string>) => {
+    if (!node || typeof node.type !== 'string') return;
+    // A type wrapper around an expression (`x as T`, `x!`, `x satisfies T`, `<T>x`): its
+    // expression counts; any other TypeScript node is a type and names nothing at run time.
+    if (TYPE_WRAPPERS.has(node.type)) {
+      visit(node.expression, at, node, 'expression', shadow);
+      return;
+    }
+    if (node.type.startsWith('TS')) return;
+    let inner = shadow;
+    if (/Function/.test(node.type)) inner = new Set([...shadow, ...own(node)]);
+    const isKey =
+      (parent?.type === 'MemberExpression' && key === 'property' && !parent.computed) ||
+      (parent?.type === 'Property' && key === 'key' && !parent.computed);
+    // A JSX element's name (`<Later />`, `<Later.Item>`'s object) is a use of that name.
+    const element =
+      node.type === 'JSXIdentifier' &&
+      ((/^JSX(Opening|Closing)Element$/.test(parent?.type ?? '') && key === 'name') ||
+        (parent?.type === 'JSXMemberExpression' && key === 'object'));
+    if ((node.type === 'Identifier' || element) && !isKey && !inner.has(node.name)) {
+      const later = declaredAt.get(node.name);
+      if (later !== undefined && later > at) found.add(node.name);
+    }
+    for (const [k, v] of Object.entries(node)) {
+      if (k === 'typeAnnotation' || k === 'returnType' || k === 'typeArguments') continue;
+      if (k === 'typeParameters') continue;
+      if (Array.isArray(v)) for (const c of v) visit(c, at, node, k, inner);
+      else if (v && typeof v === 'object') visit(v, at, node, k, inner);
+    }
+  };
+  statements.forEach((s, i) => {
+    visit(s, i, undefined, '', new Set());
+  });
+  return [...found].sort();
+}
 
 /** The files the build compiles: the app's sources, not tests, type files or workers. */
 function sources(dir: string): string[] {
@@ -65,6 +160,60 @@ function skipped(path: string): string[] {
   return [...names].sort();
 }
 
+/**
+ * The top-level values a compiled component builds on every render: declared from an
+ * allocation (array, object, function, `new`, a call other than a hook's; also in a branch of
+ * `?:`, `&&`, `||` or `??`) rather than from a temporary the compiler assigns inside a memo
+ * guard (`if ($[n] !== …)`).
+ */
+function unguardedValues(file: string, component: string): string[] {
+  const { code } = transformSync(file, readFileSync(file, 'utf8'), {
+    lang: 'tsx',
+    reactCompiler: { target: '19' },
+  });
+  const ast = parseAst(code, { lang: 'js' }) as Node;
+  const fn = ast.body.find(
+    (s: Node) => s.type === 'FunctionDeclaration' && s.id?.name === component,
+  );
+  if (!fn) throw new Error(`${component} is not a function declaration in the compiled ${file}`);
+  const guarded = new Set<string>();
+  const walk = (node: Node, inGuard: boolean) => {
+    if (!node || typeof node.type !== 'string') return;
+    let inside = inGuard;
+    if (node.type === 'IfStatement' && /\$\[\d+\]/.test(code.slice(node.test.start, node.test.end)))
+      inside = true;
+    if (inside && node.type === 'AssignmentExpression' && node.left.type === 'Identifier')
+      guarded.add(node.left.name);
+    for (const [k, v] of Object.entries(node)) {
+      if (k === 'start' || k === 'end') continue;
+      if (Array.isArray(v)) for (const c of v) walk(c, inside);
+      else if (v && typeof v === 'object') walk(v, inside);
+    }
+  };
+  for (const s of fn.body.body) walk(s, false);
+  // No guard at all: the compiler's output changed shape, and every value would look unguarded.
+  if (guarded.size === 0) throw new Error(`no memo guard found in the compiled ${component}`);
+  const allocates = (init: Node): boolean => {
+    if (init.type === 'ConditionalExpression')
+      return allocates(init.consequent) || allocates(init.alternate);
+    if (init.type === 'LogicalExpression') return allocates(init.left) || allocates(init.right);
+    if (init.type === 'CallExpression') return !/^(use[A-Z]|_c$)/.test(init.callee?.name ?? '');
+    return /^(ArrayExpression|ObjectExpression|ArrowFunctionExpression|FunctionExpression|NewExpression)$/.test(
+      init.type,
+    );
+  };
+  const out: string[] = [];
+  for (const s of fn.body.body) {
+    if (s.type !== 'VariableDeclaration') continue;
+    for (const d of s.declarations) {
+      const init = d.init;
+      if (!init || d.id.type !== 'Identifier') continue;
+      if (allocates(init) && !guarded.has(d.id.name)) out.push(d.id.name);
+    }
+  }
+  return out;
+}
+
 describe('the React Compiler', () => {
   it('skips no component or hook that is not on the list', () => {
     const now: Record<string, string[]> = {};
@@ -93,4 +242,82 @@ describe('the React Compiler', () => {
       'compiles now, off the list',
     ).toEqual([]);
   }, 60_000);
+
+  it('compiles the components that must compile', () => {
+    const skips = (key: string) => {
+      const [file, name] = key.split(' › ') as [string, string];
+      return skipped(join(SRC, file)).includes(name);
+    };
+    expect(MUST_COMPILE.filter(skips), 'must compile').toEqual([]);
+  }, 60_000);
+
+  it('Shell builds no value on a render that leaves its inputs alone (ADR-0159 §6)', () => {
+    // In the compiled `Shell`, every top-level value that allocates (an array, an object, a
+    // function, a call other than a hook's) must come from a memo guard. One built on every
+    // render reaches the toolbar, the shortcuts' listeners and the desktop menu as new.
+    // `kernelBusy` is a boolean (`useKernelWaits(…).some(…)`): compared by value.
+    const primitives = new Set(['kernelBusy']);
+    expect(
+      unguardedValues(join(SRC, 'shell/AppShell.tsx'), 'Shell').filter((n) => !primitives.has(n)),
+    ).toEqual([]);
+  }, 60_000);
+
+  it('Shell uses no name in a closure before it declares it (ADR-0159 §6)', () => {
+    expect(forwardReferences(join(SRC, 'shell/AppShell.tsx'), 'Shell')).toEqual([]);
+  });
+
+  it('the forward-reference check sees a closure using a later name, and only that', () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'forward-ref-')), 'probe.tsx');
+    writeFileSync(
+      file,
+      `function Shell({ a }: { a: number }) {
+        const run = (tool: string) => go(tool) + later.size;
+        const pose = { run() { return 1; }, call: (run: number) => run };
+        const x = pose?.run;
+        const later = new Set([a]);
+        const go = (t: string) => t.length;
+        return run(String(x));
+      }`,
+    );
+    expect(forwardReferences(file, 'Shell')).toEqual(['go', 'later']);
+  });
+
+  it('the forward-reference check sees names inside type wrappers and JSX element names', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'forward-ref-'));
+    const tsx = join(dir, 'probe.tsx');
+    writeFileSync(
+      tsx,
+      `function Shell() {
+        const a = () => (asCast as number) + nonNull! + (satisfied satisfies number);
+        const b = () => <Later.Item><Shown /></Later.Item>;
+        const t: Later = 1 as unknown as Later;
+        const typed = (x: OnlyType): OnlyType => x as OnlyType;
+        const asCast = 1;
+        const nonNull = 2;
+        const satisfied = 3;
+        const Later = { Item: () => null };
+        const Shown = () => null;
+        const OnlyType = 4;
+        return [a, b, t, typed];
+      }`,
+    );
+    expect(forwardReferences(tsx, 'Shell')).toEqual([
+      'Later',
+      'Shown',
+      'asCast',
+      'nonNull',
+      'satisfied',
+    ]);
+    // An angle-bracket assertion needs a .ts file.
+    const ts = join(dir, 'probe.ts');
+    writeFileSync(
+      ts,
+      `function Shell() {
+        const a = () => <number>casted;
+        const casted = 1;
+        return a;
+      }`,
+    );
+    expect(forwardReferences(ts, 'Shell')).toEqual(['casted']);
+  });
 });

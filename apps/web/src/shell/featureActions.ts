@@ -154,8 +154,7 @@ export function createFeatureActions(
       return dialogs.editFeature?.(id) ?? false;
     },
     canEdit: (f, index, marker) =>
-      isEditableSketch(f, index, marker) ||
-      (readSketch(f) === undefined && (dialogs.hasDialog?.(f.type) ?? false)),
+      canEditFeature(f, index, marker, (type) => dialogs.hasDialog?.(type) ?? false),
     rename(id, name) {
       const current = feature(id);
       if (!current) return false;
@@ -244,6 +243,28 @@ export function createFeatureActions(
     },
     redefinePlane,
   };
+}
+
+/**
+ * Whether a feature opens for editing: a sketch before the marker, or another feature whose
+ * type has a dialog. The feature actions' `canEdit`, as a pure function, so the shell's
+ * recompute-error notice can ask it during a render without the actions object (ADR-0159 §6).
+ */
+export function canEditFeature(
+  feature: Feature,
+  index: number,
+  marker: number,
+  hasDialog: (type: string) => boolean,
+): boolean {
+  return (
+    isEditableSketch(feature, index, marker) ||
+    (readSketch(feature) === undefined && hasDialog(feature.type))
+  );
+}
+
+/** Whether a feature type opens a dialog: a type the registry knows, or a plugin feature. */
+export function hasFeatureDialog(dialogs: { get(type: string): unknown }, type: string): boolean {
+  return dialogs.get(type) !== undefined || type === 'plugin';
 }
 
 /** Whether a feature can be opened for editing from the timeline or the browser. */

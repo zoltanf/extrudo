@@ -9,11 +9,12 @@ import {
   readSketch,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
+import { featureDialogs } from '../features/registry';
 import { memoryPreferences } from '../platform';
 import { createSheet, openSheet } from '../sheets/mode';
 import { createSketchOn, finishSketch } from '../sketch/mode';
 import { createViewportStore } from '../viewport/store';
-import { createFeatureActions } from './featureActions';
+import { canEditFeature, createFeatureActions, hasFeatureDialog } from './featureActions';
 
 function setup() {
   const stores = {
@@ -234,5 +235,59 @@ describe('feature actions', () => {
     const actions = createFeatureActions(t, () => {}, { exportSketch: (id) => opened.push(id) });
     actions.exportSketch(t.b);
     expect(opened).toEqual([t.b]);
+  });
+
+  it('canEditFeature: a sketch before the marker, or a feature whose type has a dialog (ADR-0159 §6)', () => {
+    const t = setup();
+    const feature = (id: string, type: string) =>
+      ({ id: id as FeatureId, type, name: id, suppressed: false, inputs: {} }) as never;
+    const sketch = t.feature(t.a) as never;
+    // Each case: the feature, its index, and the answer for the markers 0, 3 and 6.
+    const registries: [string, { get(type: string): unknown }, [never, number, string][]][] = [
+      [
+        'the app registry',
+        featureDialogs(),
+        [
+          [sketch, 0, 'no yes yes'],
+          [sketch, 5, 'no no yes'],
+          [feature('e', 'extrude'), 1, 'yes yes yes'],
+          [feature('f', 'fillet'), 2, 'yes yes yes'],
+          [feature('p', 'plugin'), 3, 'yes yes yes'],
+          [feature('x', 'no-such-type'), 4, 'no no no'],
+        ],
+      ],
+      [
+        'an empty registry',
+        { get: () => undefined },
+        [
+          [sketch, 0, 'no yes yes'],
+          [feature('e', 'extrude'), 1, 'no no no'],
+          [feature('p', 'plugin'), 3, 'yes yes yes'],
+        ],
+      ],
+      [
+        'a registry of fillets only',
+        { get: (type: string) => (type === 'fillet' ? {} : undefined) },
+        [
+          [feature('e', 'extrude'), 1, 'no no no'],
+          [feature('f', 'fillet'), 2, 'yes yes yes'],
+          [feature('x', 'no-such-type'), 4, 'no no no'],
+        ],
+      ],
+    ];
+    for (const [name, dialogs, cases] of registries) {
+      for (const [f, index, answers] of cases) {
+        const got = [0, 3, 6]
+          .map((marker) =>
+            canEditFeature(f, index, marker, (type) => hasFeatureDialog(dialogs, type))
+              ? 'yes'
+              : 'no',
+          )
+          .join(' ');
+        expect(`${name}: ${(f as { type: string }).type}@${index} ${got}`).toBe(
+          `${name}: ${(f as { type: string }).type}@${index} ${answers}`,
+        );
+      }
+    }
   });
 });
