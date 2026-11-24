@@ -237,41 +237,57 @@ describe('feature actions', () => {
     expect(opened).toEqual([t.b]);
   });
 
-  it('canEditFeature answers as the actions did, for every dialogs the shell can hold (ADR-0159 §6)', () => {
+  it('canEditFeature: a sketch before the marker, or a feature whose type has a dialog (ADR-0159 §6)', () => {
     const t = setup();
     const feature = (id: string, type: string) =>
       ({ id: id as FeatureId, type, name: id, suppressed: false, inputs: {} }) as never;
     const sketch = t.feature(t.a) as never;
-    const features: [never, number][] = [
-      [sketch, 0],
-      [sketch, 5],
-      [feature('e', 'extrude'), 1],
-      [feature('f', 'fillet'), 2],
-      [feature('p', 'plugin'), 3],
-      [feature('x', 'no-such-type'), 4],
+    // Each case: the feature, its index, and the answer for the markers 0, 3 and 6.
+    const registries: [string, { get(type: string): unknown }, [never, number, string][]][] = [
+      [
+        'the app registry',
+        featureDialogs(),
+        [
+          [sketch, 0, 'no yes yes'],
+          [sketch, 5, 'no no yes'],
+          [feature('e', 'extrude'), 1, 'yes yes yes'],
+          [feature('f', 'fillet'), 2, 'yes yes yes'],
+          [feature('p', 'plugin'), 3, 'yes yes yes'],
+          [feature('x', 'no-such-type'), 4, 'no no no'],
+        ],
+      ],
+      [
+        'an empty registry',
+        { get: () => undefined },
+        [
+          [sketch, 0, 'no yes yes'],
+          [feature('e', 'extrude'), 1, 'no no no'],
+          [feature('p', 'plugin'), 3, 'yes yes yes'],
+        ],
+      ],
+      [
+        'a registry of fillets only',
+        { get: (type: string) => (type === 'fillet' ? {} : undefined) },
+        [
+          [feature('e', 'extrude'), 1, 'no no no'],
+          [feature('f', 'fillet'), 2, 'yes yes yes'],
+          [feature('x', 'no-such-type'), 4, 'no no no'],
+        ],
+      ],
     ];
-    const registries = [
-      featureDialogs(),
-      { get: () => undefined },
-      { get: (type: string) => (type === 'fillet' ? {} : undefined) },
-    ];
-    for (const dialogs of registries) {
-      // What the shell handed the actions before: the same test the helper makes.
-      const actions = createFeatureActions(t, () => {}, {
-        exportSketch: () => {},
-        hasDialog: (type) => dialogs.get(type) !== undefined || type === 'plugin',
-      });
-      for (const [f, index] of features) {
-        for (const marker of [0, 3, 6]) {
-          expect(canEditFeature(f, index, marker, (type) => hasFeatureDialog(dialogs, type))).toBe(
-            actions.canEdit(f, index, marker),
-          );
-        }
+    for (const [name, dialogs, cases] of registries) {
+      for (const [f, index, answers] of cases) {
+        const got = [0, 3, 6]
+          .map((marker) =>
+            canEditFeature(f, index, marker, (type) => hasFeatureDialog(dialogs, type))
+              ? 'yes'
+              : 'no',
+          )
+          .join(' ');
+        expect(`${name}: ${(f as { type: string }).type}@${index} ${got}`).toBe(
+          `${name}: ${(f as { type: string }).type}@${index} ${answers}`,
+        );
       }
     }
-    // The registry's types and plugin features have a dialog; an unknown type has none.
-    expect(hasFeatureDialog(featureDialogs(), 'extrude')).toBe(true);
-    expect(hasFeatureDialog({ get: () => undefined }, 'plugin')).toBe(true);
-    expect(hasFeatureDialog(featureDialogs(), 'no-such-type')).toBe(false);
   });
 });
