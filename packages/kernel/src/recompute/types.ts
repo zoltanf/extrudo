@@ -59,7 +59,7 @@ export interface ImportedFile {
  * - `none`: doesn't look at bodies (a sketch on an origin plane).
  * - `read`: looks, doesn't change them (a sketch on a face).
  * - `write`: changes the body set (extrude, fillet, a boolean).
- * - `add` (ADR-0024's amendment of 2026-11-25): only adds new bodies and reads none of the
+ * - `add` (ADR-0024's amendment on `add` access): only adds new bodies and reads none of the
  *   bodies before it (a New Body extrude of sketch profiles by distances). The engine hands it
  *   no bodies, leaves them out of its key and appends what it makes. Answer it only for inputs
  *   that provably read no body: by ID, by name, by reference, by measuring them, by going

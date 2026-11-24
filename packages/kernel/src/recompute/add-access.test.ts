@@ -1,4 +1,4 @@
-// `add` body access (ADR-0024's amendment of 2026-11-25): a feature that only adds bodies sees
+// `add` body access (ADR-0024's amendment on `add` access): a feature that only adds bodies sees
 // none and keys none. The proof: seeded random edits of several designs, and after every step the
 // engine that kept its cache (and the meshes it sent, like the Recomputer) gives exactly what an
 // engine with a cleared cache gives for the same document: statuses and errors, origins, reports,
@@ -474,7 +474,7 @@ const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[]][] = [
   ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId], ['ex1', 'ex2']],
 ];
 
-describe('add access: the cached engine gives what a cleared one gives (ADR-0024, 2026-11-25)', () => {
+describe('add access: the cached engine gives what a cleared one gives (ADR-0024, `add` access)', () => {
   it.each(DESIGNS)(
     '%s, 40 seeded edits',
     { timeout: 900_000 },

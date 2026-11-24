@@ -96,8 +96,8 @@ export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
 };
 
 /**
- * Whether an extrude only adds bodies and reads none before it (`add`, ADR-0024's amendment of
- * 2026-11-25): a new body (no join, cut or intersect, which find or take the bodies it meets),
+ * Whether an extrude only adds bodies and reads none before it (`add`, ADR-0024's amendment on
+ * `add` access): a new body (no join, cut or intersect, which find or take the bodies it meets),
  * no picked bodies (`explicitBodies` looks them up), every side by a distance (`through-all`
  * measures the bodies in the way, `to-object` resolves an object among them), and every profile
  * a sketch's profile or text (a face profile is resolved among the bodies). A sketch on a face

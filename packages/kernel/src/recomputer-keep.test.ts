@@ -194,8 +194,8 @@ describe('unchanged bodies keep their mesh objects (ADR-0024, 2026-11-24)', () =
   it('an edit of the first of six separate plates: the kernel sends one mesh', {
     timeout: 60_000,
   }, async () => {
-    // A New Body extrude of a sketch's profile only adds a body (ADR-0024's amendment of
-    // 2026-11-25): the later plates keep their versions and aren't sent again.
+    // A New Body extrude of a sketch's profile only adds a body (ADR-0024's amendment on
+    // `add` access): the later plates keep their versions and aren't sent again.
     const kernel = realKernel();
     const { document, model } = start(plates(6), kernel.api);
     await settled(model, () => kernel.sent.recomputes, 1);

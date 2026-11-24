@@ -205,7 +205,7 @@ export class RecomputeEngine {
   readonly #refs = new Map<ShapeHandle, number>();
   /** Version of each body shape the cache holds (see BodyResult.version). */
   readonly #versions = new Map<ShapeHandle, string>();
-  /** `add` keys whose evaluation read a body: those features run as `write` (ADR-0024, 2026-11-25). */
+  /** `add` keys whose evaluation read a body: those features run as `write` (ADR-0024, `add` access). */
   readonly #readsBodies = new Set<string>();
   /** Which feature made each body shape, for mesh errors. */
   readonly #makers = new Map<ShapeHandle, FeatureId>();
@@ -853,7 +853,7 @@ export class RecomputeEngine {
           upstream.map((e) => e.key),
           bodyPart,
         );
-      // A feature that only adds bodies (ADR-0024's amendment of 2026-11-25) sees none and keys
+      // A feature that only adds bodies (ADR-0024's amendment on `add` access) sees none and keys
       // none; not inside an isolated expansion (its merge moves the expansion's bodies), not when
       // a body with its own ID prefix exists (its IDs would clash), and not once its evaluation
       // has read a body.
@@ -1728,7 +1728,7 @@ function ownBodies(
  * order, then what it made of those it saw.
  */
 /**
- * The bodies an `add` evaluator is given (ADR-0024's amendment of 2026-11-25): none. Looking one
+ * The bodies an `add` evaluator is given (ADR-0024's amendment on `add` access): none. Looking one
  * up (`get`, `has`, `size`, or through the context's `names` and `resolve`) is noticed and fails
  * the evaluation, and the engine then evaluates the feature as `write`. Iterating over it (an
  * evaluator copying the map, or checking which handles are new) gives nothing and is not noticed.
