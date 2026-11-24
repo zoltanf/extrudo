@@ -105,7 +105,7 @@ function plates(n: number, gap = 80): ExtrudoDocument {
   ).flat();
   return {
     ...createDocument({ name: `plates ${n}` }),
-    parameters: [{ id: 'p-t', name: 't', expression: '4 mm' }],
+    parameters: [{ id: 'p-t', name: 't', expression: '4 mm', unit: 'length' }],
     features,
     timelineMarker: features.length,
   } as ExtrudoDocument;
@@ -377,7 +377,7 @@ function edit(
       if (!doc.parameters?.length) {
         return {
           ...doc,
-          parameters: [{ id: 'p-t', name: 't', expression: '4 mm' }],
+          parameters: [{ id: 'p-t', name: 't', expression: '4 mm', unit: 'length' }],
         } as ExtrudoDocument;
       }
       return {
@@ -396,6 +396,8 @@ interface Run {
   problems: string[];
   /** Feature evaluations of the cached engine, and of the cleared one. */
   evaluated: [number, number];
+  /** The features in error before any edit (a design meant to compute has none). */
+  initialErrors: string[];
   kinds: Set<Kind>;
 }
 
@@ -407,14 +409,21 @@ async function differential(
   options: {
     registry?: () => FeatureRegistry<KernelFeatureDefinition>;
     engine?: typeof RecomputeEngine;
-    stopped?: FeatureId[];
+    stopped?: readonly FeatureId[];
   } = {},
 ): Promise<Run> {
   const Make = options.engine ?? RecomputeEngine;
   const registry = options.registry ?? kernelFeatures;
   const cached = new Make(kernel, registry(), { strictLeaks: true });
   const cleared = new Make(kernel, registry(), { strictLeaks: true });
-  const run: Run = { steps: 0, compared: 0, problems: [], evaluated: [0, 0], kinds: new Set() };
+  const run: Run = {
+    steps: 0,
+    compared: 0,
+    problems: [],
+    evaluated: [0, 0],
+    kinds: new Set(),
+    initialErrors: [],
+  };
   const rand = random(seed);
   const history: ExtrudoDocument[] = [doc];
   const deleted: Feature[] = [];
@@ -433,6 +442,11 @@ async function differential(
       const mine = await a.run(current);
       cleared.clear();
       const fresh = await client(cleared, options.stopped).run(current);
+      if (step === 0) {
+        run.initialErrors = Object.entries(mine.result.features)
+          .filter(([, status]) => status.status === 'error')
+          .map(([id]) => id);
+      }
       run.evaluated[0] += mine.result.stats.evaluated.length;
       run.evaluated[1] += fresh.result.stats.evaluated.length;
       for (const d of differences(mine, fresh)) run.problems.push(`step ${step}: ${d}`);
@@ -448,26 +462,32 @@ async function differential(
 
 // ------------------------------------------------------------------------------- the proof
 
-const DESIGNS: [string, () => ExtrudoDocument, FeatureId[]?][] = [
-  ['plates with a parameter', () => plates(5)],
-  ['overlapping plates and a cut through them', platesCut],
-  ['b2 storage box', () => fixture(b2)],
-  ['b3 phone stand', () => fixture(b3)],
-  ['b4 box with lid', () => fixture(b4)],
-  ['the hinge (components)', () => fixture(hinge)],
-  ['plates and an inserted design (an isolated expansion)', withInsert],
-  ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId]],
+/** A design, how to make it, the features stopped in it, and the ones in error before any edit. */
+const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[]][] = [
+  ['plates with a parameter', () => plates(5), [], []],
+  ['overlapping plates and a cut through them', platesCut, [], []],
+  ['b2 storage box', () => fixture(b2), [], []],
+  ['b3 phone stand', () => fixture(b3), [], []],
+  ['b4 box with lid', () => fixture(b4), [], []],
+  ['the hinge (components)', () => fixture(hinge), [], []],
+  ['plates and an inserted design (an isolated expansion)', withInsert, [], []],
+  ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId], ['ex1', 'ex2']],
 ];
 
 describe('add access: the cached engine gives what a cleared one gives (ADR-0024, 2026-11-25)', () => {
-  it.each(DESIGNS)('%s, 40 seeded edits', { timeout: 900_000 }, async (_name, make, stopped) => {
-    const run = await differential(make(), 40, 2511, { ...(stopped && { stopped }) });
-    expect(run.problems).toEqual([]);
-    // Every kind of edit happened (those the design has something for), and the cache saved work.
-    expect(run.kinds.size).toBeGreaterThanOrEqual(KINDS.length - 1);
-    expect(run.compared).toBeGreaterThan(35);
-    expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
-  });
+  it.each(DESIGNS)(
+    '%s, 40 seeded edits',
+    { timeout: 900_000 },
+    async (_n, make, stopped, errors) => {
+      const run = await differential(make(), 40, 2511, { stopped });
+      expect(run.initialErrors.sort()).toEqual(errors);
+      expect(run.problems).toEqual([]);
+      // Every kind of edit happened (those the design has something for), and the cache saved work.
+      expect(run.kinds.size).toBeGreaterThanOrEqual(KINDS.length - 1);
+      expect(run.compared).toBeGreaterThan(35);
+      expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
+    },
+  );
 });
 
 // ------------------------------------------------------------------------------- negative controls
