@@ -129,7 +129,8 @@ calls the latest `fn`, taken in an insertion effect. The shell hands the toolbar
 existing refs (`runRef` and the others, written during render) are unchanged, so the order in
 which those refs get their value is unchanged; the new ones follow the owner's choice for refs
 (insertion effects: every layout and passive effect of the commit, and every event after it,
-sees this render's function).
+sees this render's function). (Superseded 2026-11-24 by the amendment "`Shell` compiles": no ref
+is written during `Shell`'s render any more.)
 
 **Rules.**
 
@@ -219,7 +220,9 @@ after an effect read it). So every render of it handed new values to everything 
    `useLater`, set by `useLaterValue` in an insertion effect); a ref can't go there, since the
    compiler can't tell the function won't read it at once. The update notice the Ctrl+Z route
    reads (handed to the shortcuts' builder) is a `Later` too, set where the notice tells it, as
-   its ref was.
+   its ref was. So are `run` and the plugin command's run (read by the dialogs' commands and the
+   plugin entries) and the pointer the search opens at (set in its `pointermove` handler): a
+   closure that reads a ref leaves the value around it unmemoised (item 7).
 3. The recompute error's Edit asks `canEditFeature` with `hasFeatureDialog(dialogs, type)`
    (`shell/featureActions.ts`, pure) instead of the feature actions through a ref: the
    notification history asks it while it renders, and a ref given its value in an effect would
@@ -232,14 +235,36 @@ after an effect read it). So every render of it handed new values to everything 
    `pickPlane` and `startRedefine` (above `run`), `openSection` (above the section's row), the
    import and script-export boxes (above the file actions). The moved blocks hold memos and
    insertion-effect writes only: no layout or passive effect changed place.
-5. Dependency lists are complete (the boxes, the update notice). Memos the compiler can't keep,
-   or whose lists it and Biome's `useExhaustiveDependencies` read differently (Biome calls a
-   state setter needless, the compiler counts it), are left to the compiler: the command lists
-   (`dialogCommands`, `commandBuilder`, `markingCommands`), `shortcuts`, `searchAtPointer` and
-   `openBugReport`. `featureActions` keeps its manual memo: with the declarations in order, the
-   compiler keeps it.
+5. Dependency lists are complete (the boxes, the update notice). Memos whose lists the compiler
+   and Biome's `useExhaustiveDependencies` read differently (Biome calls a state setter
+   needless, the compiler counts it) are left to the compiler: `commandBuilder`,
+   `markingCommands`, `shortcuts`, `searchAtPointer`, `openBugReport`; the compiler keeps each of
+   them (item 7). Two stay hand-written: `dialogCommands` (left to the compiler, the
+   expression is built on every render) and `commands` (a plain `commandBuilder(mode, false)` is
+   called on every render, and the compiler then keeps nothing built from it; a lint
+   suppression says the compiler memoises `commandBuilder`). `featureActions` keeps its manual
+   memo too: with the declarations in order, the compiler keeps it.
 6. `compiler.test.ts` lists `Shell` as a component that must compile and checks it for names used
-   in a closure before their declaration (`forwardReferences`, on Vite's `parseAst`).
+   in a closure before their declaration (`forwardReferences`, on Vite's `parseAst`: it visits
+   the expression inside `as`, `!`, `satisfies` and `<T>x`, and JSX element names, and skips
+   types only), and that the compiled `Shell` builds no value on every render
+   (`unguardedValues`: every top-level value that allocates comes from a memo guard).
+7. **What `Shell` hands down keeps its identity as on main.** Checked in the compiled output
+   (`oxc-transform-react`, target 19): every value main memoised by hand, and handed to a child,
+   an effect's list, `useShortcuts` or the desktop menu, comes from a memo guard, except
+   `pickingSketchPoints` and `kernelBusy`, which are booleans (compared by value). An
+   independent read found three that weren't, the first time `Shell` compiled: `dialogCommands`
+   (its run read `runRef`), `searchAtPointer` (it read the pointer ref) and with them
+   `shortcuts`, so the shortcuts' window listeners were removed and added again, and the
+   desktop menu updated, on every render of `Shell`; `pluginEntries` (its run read
+   `runPluginRef`) was found the same way. The `unguardedValues` test catches such a value; it
+   can't see a guarded value whose input is new on every render because a skipped hook makes it
+   (`useSection` and the other analysis hooks), so those stay out of what fans out.
+8. **The keys are read live.** `Shell` and the command builder take a command's keys from
+   `useKeysFor()` (handed to `buildCommands` as `keysFor`), not the module's `keysFor`: under the
+   compiler a plain `keysFor(id)` in render is memoised on the ID and misses a key rebound in
+   Settings › Keyboard. `useKeymap` still loads the stored overrides.
+
 
 **Who reads the 16 refs, and when** (checked one by one; none reads during a render):
 
@@ -251,9 +276,9 @@ after an effect read it). So every render of it handed new values to everything 
 | `exportScriptRef` (`exportScriptLater`) | the file command, `run` | command run |
 | `startImportRef` (`startImportLater`) | the file command, `run`, the model-import effect | command run; a passive effect (after the insertion effects) |
 | `startCanvasRef` | `run` | command run |
-| `runRef` | dialog commands, `runTool`, Convert to Solid | command run, menus |
+| `runRef` (`runLater`) | dialog commands, `runTool`, Convert to Solid | command run, menus |
 | `startTutorialRef` | the tutorial command | command run |
-| `runPluginRef` | plugin menu items | command run |
+| `runPluginRef` (`runPluginLater`) | plugin menu items | command run |
 | `sketchOnFaceRef` | the plane picker's face pick | the view's pointer click |
 | `pickPlaneRef` | the plane picker's plane pick | the view's click, the origin's click |
 | `startRedefineRef` (`startRedefineLater`) | feature actions' Redefine Plane / Fix | feature menu |
@@ -262,8 +287,13 @@ after an effect read it). So every render of it handed new values to everything 
 | `bodiesRef` (`bodiesLater`) | annotating a model point, re-anchoring | the view's click, annotation drag end |
 | `convertToSolidRef` | the body menu's Convert to Solid | menu |
 
-Nothing in the app uses transitions or deferred values, and no Suspense boundary sits above
-`Shell`: its renders are synchronous, so no event runs between a render and its commit.
+Nothing in the app uses transitions or deferred values, so `Shell`'s renders are synchronous and
+no event runs between a render and its commit. No Suspense boundary sits above `Shell` on the
+project page; on the debug dialog route (`#/debug/dialog`, `App.tsx`) one wraps the lazy
+`DialogDebug`, which renders `AppShell`. It only waits for that chunk, before `Shell` mounts:
+nothing below `Shell` can suspend into it (its lazy children have boundaries of their own and it
+calls no `use()`). A child that suspended without its own boundary would let React discard a
+render of `Shell` and its insertion effects with it.
 
 **Rules.**
 
@@ -272,7 +302,14 @@ Nothing in the app uses transitions or deferred values, and no Suspense boundary
 - A value a render hands to a function called in the render, for the function to read later,
   goes in a `Later` box; a `Later` (or a ref) is never read during a render, the shell's or a
   child's: a child's render would see the last commit's value.
-- `sketchBase` stays a manual `useMemo` (it pins and closes the profile cache's open sketch); the
-  compiler keeps it, guarded on the same inputs (`status` narrowed to `status?.entities`, the only
-  part it reads; `pinOpenSketch` and `closeOpenSketch` are idempotent).
+- `sketchBase` stays a manual `useMemo` (it pins and closes the profile cache's open sketch). The
+  compiler keeps the items behind a guard on the same inputs (`status` narrowed to
+  `status?.entities`, the only part it reads), with `pinOpenSketch` inside it, but moves the
+  `closeOpenSketch()` after the loop out of the memo: it runs on every render while no shown
+  sketch is open, not only when the inputs change. Both are idempotent (`pinOpenSketch` returns
+  for the same data; `closeOpenSketch` does nothing when nothing is pinned, and nothing pins
+  while no sketch is open).
+- What `Shell` hands down comes from a memo guard (`unguardedValues`); a closure reading a ref,
+  or a plain call of a builder, can leave a value unmemoised: check the compiled output.
+- A command's keys come from `useKeysFor()` in `Shell`, never the module's `keysFor` in render.
 - Effect order: blocks moved for item 4 must not carry a layout or passive effect past another.
