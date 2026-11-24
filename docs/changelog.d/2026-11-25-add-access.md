@@ -1,0 +1,1 @@
+- 2026-11-25 · **Quicker edits in designs with many separate parts**: changing an early part no longer rebuilds every part made after it when those parts don't depend on it; in a design of 100 separate plates, finishing an edit of the first plate takes about a quarter of a second instead of four and a half seconds.

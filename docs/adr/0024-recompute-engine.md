@@ -247,3 +247,126 @@ takes 8 ms.
   objects. Taken out, the reuse fails all four; comparing numbers by value fails the `-0` cases;
   leaving the names out of the comparison fails the stand-in run; keeping every held mesh fails
   all four.
+
+## Amendment 2026-11-24: `add` access, for features that only add bodies
+
+A feature's key takes in the body set before it (`bodiesKey`) unless it reads no body (`none`),
+so every body feature is chained to every earlier one: an edit of the first of 100 separate plates
+(each a sketch and a New Body extrude) evaluated all 100 extrudes again and sent all 100 meshes,
+4.65 s in the kernel (measured in Node), against 80 ms for the last plate. Yet a New Body extrude of
+a sketch's profiles by distances reads no body before it.
+
+**Decision.** `BodyAccess` gains `add`: the feature only adds bodies and reads none before it.
+
+- The engine (`#run`, `engine.ts`) hands an `add` evaluator no bodies (`NoBodies`, an empty map),
+  keys it with `'add'` in place of `bodiesKey`, appends its bodies after the ones before it
+  (`mergeBodies(bodies, ∅, output)`) and moves the chain on: `bodiesKey = hash('add', bodiesKey,
+  key)`, so every later feature that reads bodies still keys the whole set. The output an `add`
+  entry holds is its own new bodies only; nothing reads an output's `bodies` but the engine itself
+  (features read upstream outputs' `data`, `shapes` and `previewTools`; joints, annotations and
+  sheets read the walk's body map).
+- It is treated as `write` inside an isolated expansion (an inserted design, whose merge moves the
+  expansion's bodies) and when a body with the feature's own ID prefix (`<feature>:`) exists
+  already (its new IDs would replace that body in place under `write`, and be appended under
+  `add`).
+- **Fail closed.** A look-up in the empty map (`get`, `has`, `size`), or the context's `names` or
+  `resolve`, marks the evaluation as having read a body and fails it; the engine drops that
+  result, remembers the key (`#readsBodies`) and evaluates the feature as `write`, now and whenever
+  the same inputs come again. A read by iterating over the map (copying it, or collecting its
+  handles) gives nothing and is not noticed: the extrude's own copies (`newBodies`,
+  `splitSolids`) iterate, so the predicate and the differential test below are the guard for a
+  read by iteration ("through all" over every body, the touching bodies of a join).
+- **The extrude answers `add`** (`addsOnly`, `features/extrude.ts`) when its operation is New Body,
+  no bodies are picked, every side's extent is a distance, and every profile is a sketch's
+  profile or text. Everything else is `write` as before: join, cut and intersect, picked bodies,
+  "through all", "to object", face profiles.
+
+**What the extrude reads under that predicate** (audited on this branch; file:line):
+
+- `extrudeSettings(ctx.inputs)` (`features/extrude.ts:242`) and the expression values
+  (`distanceOf` :567, `taperOf` :577, the symmetric half :292): inputs and values, in the key.
+- `baseOf` (:247 → `sources.ts` `partsOf` :67): `profilePart` (:86) and `textParts` (:113) read the
+  sketch's output (`ctx.output`: its key is upstream); `facePart` (:152, resolves among the bodies)
+  is never reached.
+- `centroidOf` (:249 → `sources.ts:201`): `describe` of the profile's own face.
+- `explicitBodies` (:250 → `operation.ts:91`): returns at once for no picked bodies.
+- `resolveSides` (:251): with distances only, values; `throughAll`, `objectPlane` and
+  `objectSide` (the readers of bodies) are never reached.
+- `sweep` (:252) and the trim of a side (:255, `to-object` only): the profile's face and values.
+- `operate` → `newBodies` (`operation.ts:333`): `new Map(ctx.bodies)` (iterates the empty map),
+  `kernel.solids` and `measure` of the tool's own solids (:347), IDs from `ctx.bodyId` (:341,
+  :356).
+- `splitSolids` (`bodies.ts:38`): `new Set(ctx.bodies.values())` (iterates), fresh IDs from
+  `ctx.bodyId` (:47) checked against the output's own IDs.
+- The engine around it: `#references` (its `names` and `resolve` replaced, see fail closed),
+  `#checkNames` (iterates the bodies before), `#checkSound` and the leak count (the output's fresh
+  handles only, the same set as under `write`).
+- No global state: no `measure` of a body before it, no names of other bodies, no files or fonts
+  but through the sketch's output.
+
+**Never answer `add` for** a feature that joins, cuts, intersects, patterns, splits, moves,
+scales or removes bodies; finds bodies it touches or goes through; resolves a face, edge, vertex or
+body reference among the bodies; is placed on a body's face; or names its bodies from earlier ones.
+A sketch on a face is fine as an upstream feature: its key holds the bodies and reaches the
+extrude through `upstream`.
+
+**What changes.** Body IDs, names, order, results, errors and files are the same (the proof
+below). Versions get a new meaning in memory only: an `add` body's version no longer changes when
+an unrelated earlier feature changes, so the kernel doesn't evaluate it again or send its mesh.
+Everything that reads versions compares one body's version with what it drew from it (the
+`Recomputer`'s held meshes, a sheet view's staleness in `viewRunner.ts`/`viewLines.ts`, the
+engine's sheet-view cache): a version still names one shape, so none of them assumed that an
+earlier edit changes every later version.
+
+**Measured.** Kernel time and meshes sent for an edit (a distance set to 6 mm) of the first, a
+middle and the last plate, incremental with `have`, one run each in Node, main → this:
+
+| Design | Edit | Evaluated | Meshes sent | ms |
+|---|---|--:|--:|--:|
+| 30 plates | first | 30 → 1 | 30 → 1 | 1,398 → 83 |
+| | middle | 16 → 1 | 16 → 1 | 753 → 67 |
+| | last | 1 → 1 | 1 → 1 | 67 → 84 |
+| 100 plates | first | 100 → 1 | 100 → 1 | 4,616 → 86 |
+| | middle | 51 → 1 | 51 → 1 | 2,401 → 84 |
+| | last | 1 → 1 | 1 → 1 | 83 → 77 |
+| 20 overlapping plates and a slot cut | first | 21 → 2 | 25 → 10 | 387 → 228 |
+| | middle | 12 → 2 | 21 → 11 | 318 → 227 |
+| | last | 2 → 2 | 11 → 11 | 234 → 228 |
+| 20 plates, each with a fillet | first | 40 → 21 | 20 → 20 | 3,724 → 3,007 |
+| | middle | 22 → 12 | 11 → 11 | 2,115 → 1,681 |
+| | last | 2 → 2 | 1 → 1 | 206 → 201 |
+
+The cut reads every plate, so it runs again and sends the pieces it makes; a fillet keys the body
+set, so every later fillet and its body still run (`view` access, later, is for those). In the
+app (30 and 100 plates with 30 holes each, production build, Chrome with a GPU, 1280 × 800, quiet
+machine, median of 4 runs), committing an edit of the first plate's extrude in its dialog takes
+1,376 → 192 ms (30 plates) and 4,468 → 265 ms (100 plates) until the model is ready, and undoing it
+321 → 320 ms and 1,808 → 330 ms. The page's blocked time (tasks of 50 ms or more) stays within its
+runs' spread for all seven measured actions; components rendered on the commit 7,067 → 3,886 and
+21,244 → 10,116, on the 100-plate undo 5,972 → 641.
+
+**The proof** (`recompute/add-access.test.ts`, real OCCT, `strictLeaks`, no clock): eight designs
+(plates with a parameter; overlapping plates and a cut through them; the b2, b3 and b4
+benchmarks; the hinge with its components; plates with an inserted design, an isolated expansion
+with New Body extrudes; plates with a failed and a stopped feature), 40 seeded edits each, every
+step an edit, every kind at least once where the design has something for it (a length scaled,
+suppress or unsuppress, the marker, an extrude's operation and direction, a profile switched to
+another region, a reorder, a delete, an insert, undo to an earlier state, a parameter). After
+every step the engine that kept its cache, holding the meshes it was sent like the `Recomputer`,
+gives what a cleared engine gives for the same document: statuses and errors, origins, reports,
+body IDs and order, every mesh array bit for bit and every name; a mesh left out under `have`
+must be one it holds. Each design starts with no errors but the ones it is built with. **Not
+among the edits: "through all"**: its length comes from `measure`'s box, which uses a face's
+triangulation when it has one (ADR-0035), so it depends on whether the bodies were drawn, flat
+or curved; the test found six differences on flat plates with the extrude always `write` (main's
+behaviour) as with `add`, and none with `add` on a build whose boxes ignore triangulations
+(held back: it changes boxes measured after drawing). Negative controls in the same file make the comparison fail: an engine
+whose chain isn't moved on after an `add` (made from `engine.ts`'s own source with that line taken
+out, in a temporary file, so the engine has no switch for it), and the extrude answering `add`
+for a join (a join finds the bodies it touches by iterating, which the fall-back doesn't notice).
+Counters: an edit of the first of six separate plates evaluates one feature and sends one mesh; a
+join, "through all" or a picked body still runs what it reaches; an `add` evaluator that looks a
+body up runs again as `write` with the same result, and straight away as `write` the next time.
+Taken out: `add` (the extrude always `write`) fails the first counter; the fall-back fails the
+last. `recomputer-keep.test.ts`'s six-mesh case now edits grooved plates (a cut reads every
+plate), and a new case shows one mesh for separate plates.
