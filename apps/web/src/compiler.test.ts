@@ -138,6 +138,54 @@ function skipped(path: string): string[] {
   return [...names].sort();
 }
 
+/**
+ * The top-level values a compiled component builds on every render: declared from an
+ * allocation (array, object, function, `new`, a call other than a hook's) rather than from a
+ * temporary the compiler assigns inside a memo guard (`if ($[n] !== …)`).
+ */
+function unguardedValues(file: string, component: string): string[] {
+  const { code } = transformSync(file, readFileSync(file, 'utf8'), {
+    lang: 'tsx',
+    reactCompiler: { target: '19' },
+  });
+  const ast = parseAst(code, { lang: 'js' }) as Node;
+  const fn = ast.body.find(
+    (s: Node) => s.type === 'FunctionDeclaration' && s.id?.name === component,
+  );
+  const guarded = new Set<string>();
+  const walk = (node: Node, inGuard: boolean) => {
+    if (!node || typeof node.type !== 'string') return;
+    let inside = inGuard;
+    if (node.type === 'IfStatement' && /\$\[\d+\]/.test(code.slice(node.test.start, node.test.end)))
+      inside = true;
+    if (inside && node.type === 'AssignmentExpression' && node.left.type === 'Identifier')
+      guarded.add(node.left.name);
+    for (const [k, v] of Object.entries(node)) {
+      if (k === 'start' || k === 'end') continue;
+      if (Array.isArray(v)) for (const c of v) walk(c, inside);
+      else if (v && typeof v === 'object') walk(v, inside);
+    }
+  };
+  for (const s of fn.body.body) walk(s, false);
+  const out: string[] = [];
+  for (const s of fn.body.body) {
+    if (s.type !== 'VariableDeclaration') continue;
+    for (const d of s.declarations) {
+      const init = d.init;
+      if (!init || d.id.type !== 'Identifier') continue;
+      const hook =
+        init.type === 'CallExpression' && /^(use[A-Z]|_c$)/.test(init.callee?.name ?? '');
+      const allocates =
+        /^(ArrayExpression|ObjectExpression|ArrowFunctionExpression|FunctionExpression|NewExpression)$/.test(
+          init.type,
+        ) ||
+        (init.type === 'CallExpression' && !hook);
+      if (allocates && !guarded.has(d.id.name)) out.push(d.id.name);
+    }
+  }
+  return out;
+}
+
 describe('the React Compiler', () => {
   it('skips no component or hook that is not on the list', () => {
     const now: Record<string, string[]> = {};
@@ -173,6 +221,17 @@ describe('the React Compiler', () => {
       return skipped(join(SRC, file)).includes(name);
     };
     expect(MUST_COMPILE.filter(skips), 'must compile').toEqual([]);
+  }, 60_000);
+
+  it('Shell builds no value on a render that leaves its inputs alone (ADR-0159 §6)', () => {
+    // In the compiled `Shell`, every top-level value that allocates (an array, an object, a
+    // function, a call other than a hook's) must come from a memo guard. One built on every
+    // render reaches the toolbar, the shortcuts' listeners and the desktop menu as new.
+    // `kernelBusy` is a boolean (`useKernelWaits(…).some(…)`): compared by value.
+    const primitives = new Set(['kernelBusy']);
+    expect(
+      unguardedValues(join(SRC, 'shell/AppShell.tsx'), 'Shell').filter((n) => !primitives.has(n)),
+    ).toEqual([]);
   }, 60_000);
 
   it('Shell uses no name in a closure before it declares it (ADR-0159 §6)', () => {
