@@ -1008,7 +1008,7 @@ function faceIn(mesh: BodyMesh, nodes: Float64Array, face: number, r: Rect, mode
   return mode === 'window';
 }
 
-// Box culling (ADR-0026's amendment "a box culls what it can't meet") --------------
+// Box culling (ADR-0026's amendment "a box culls what it cannot meet") --------------
 
 /**
  * World boxes of a mesh, min xyz then max xyz: all its nodes, each face's (the nodes its

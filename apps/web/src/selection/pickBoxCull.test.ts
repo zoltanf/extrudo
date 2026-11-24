@@ -1,5 +1,5 @@
 /**
- * Box culling (ADR-0026's amendment "a box culls what it can't meet"): `pickBox` rejects a body,
+ * Box culling (ADR-0026's amendment "a box culls what it cannot meet"): `pickBox` rejects a body,
  * a face or a body's edges whose world box shows wholly outside the box on screen, and selects
  * exactly what the exact test alone selects. Work is counted through proxies around the meshes;
  * no clock.
@@ -89,7 +89,7 @@ const KINDS = Object.keys(DEFAULT_FILTER) as (keyof SelectionFilter)[];
 const only = (...kinds: (keyof SelectionFilter)[]): SelectionFilter =>
   Object.fromEntries(KINDS.map((k) => [k, kinds.includes(k)])) as never;
 
-describe('box culling (ADR-0026, "a box culls what it can't meet")', () => {
+describe('box culling (ADR-0026, "a box culls what it cannot meet")', () => {
   it('selects exactly what the exact test selects', () => {
     const rand = random(1125);
     const int = (lo: number, hi: number) => lo + Math.floor(rand() * (hi - lo + 1));
