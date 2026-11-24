@@ -110,6 +110,7 @@ import { GRID_RADIUS, Grid, THUMBNAIL_HIDDEN, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
 import { Joints } from './Joints';
 import type { JointDrawing } from './jointGeometry';
+import { meshSize } from './meshBounds';
 import { type NamedViewEntries, NavBar } from './NavBar';
 import { NoWebgl } from './NoWebgl';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
@@ -337,7 +338,8 @@ const NO_CALIBRATION: readonly (readonly number[])[] = [];
 /**
  * The drawn bodies for tests (`data-bodies`): name, face count and the
  * bounding box's size in mm to 0.1 mm, "Body1:7:60,40,15 Body2:3:10,10,5";
- * hidden bodies are left out, unnamed ones show their ID.
+ * hidden bodies are left out, unnamed ones show their ID. Each mesh's size is worked out once
+ * (`meshSize`).
  */
 export function bodiesSummary(
   bodies: Readonly<Record<BodyId, BodyMesh>>,
@@ -345,19 +347,10 @@ export function bodiesSummary(
 ): string | undefined {
   const drawn = (Object.entries(bodies) as [BodyId, BodyMesh][])
     .filter(([id]) => meta[id]?.visible ?? true)
-    .map(([id, mesh]) => {
-      const p = mesh.positions;
-      const lo = [Infinity, Infinity, Infinity];
-      const hi = [-Infinity, -Infinity, -Infinity];
-      for (let i = 0; i < p.length; i++) {
-        const k = i % 3;
-        const v = p[i] ?? 0;
-        if (v < (lo[k] ?? 0)) lo[k] = v;
-        if (v > (hi[k] ?? 0)) hi[k] = v;
-      }
-      const size = [0, 1, 2].map((k) => Math.round(((hi[k] ?? 0) - (lo[k] ?? 0)) * 10) / 10 + 0);
-      return `${meta[id]?.name ?? id}:${mesh.faceRanges.length / 2}:${size.join(',')}`;
-    });
+    .map(
+      ([id, mesh]) =>
+        `${meta[id]?.name ?? id}:${mesh.faceRanges.length / 2}:${meshSize(mesh.positions)}`,
+    );
   return drawn.length > 0 ? drawn.join(' ') : undefined;
 }
 

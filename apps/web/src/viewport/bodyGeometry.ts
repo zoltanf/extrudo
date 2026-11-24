@@ -6,13 +6,17 @@
 import type { Vec3 } from '@extrudo/core';
 import { type BodyMesh, EDGE_SEAM } from '@extrudo/kernel';
 import { Box3, Sphere } from 'three';
+import { meshBox } from './meshBounds';
 import type { Bounds } from './store';
 
-/** The bounding sphere and box of the visible bodies, or `undefined` if there are none. */
+/**
+ * The bounding sphere and box of the visible bodies, or `undefined` if there are none. Each
+ * mesh's box is worked out once (`meshBox`).
+ */
 export function boundsOf(meshes: readonly BodyMesh[]): Bounds | undefined {
   const box = new Box3();
   for (const mesh of meshes) {
-    if (mesh.positions.length >= 3) box.union(new Box3().setFromArray(mesh.positions));
+    if (mesh.positions.length >= 3) box.union(meshBox(mesh.positions));
   }
   if (box.isEmpty()) return undefined;
   const sphere = box.getBoundingSphere(new Sphere());

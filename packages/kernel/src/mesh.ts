@@ -8,7 +8,10 @@
  * (TopoId, ADR-0005) of each in `faceIds`, `edgeIds` and `vertexIds`.
  */
 export interface BodyMesh {
-  /** xyz per mesh node. */
+  /**
+   * xyz per mesh node. Never written in place once the mesh exists: the view keeps each mesh's
+   * bounds by this array (ADR-0102 §9). A changed mesh gets a new array.
+   */
   positions: Float32Array;
   /** Unit normal per mesh node, pointing out of the solid. */
   normals: Float32Array;

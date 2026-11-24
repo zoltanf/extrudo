@@ -3911,6 +3911,14 @@ a spare, `prewarm()`'s `init()` rejection is swallowed (the client reports
 it), a project's worker dies with its `Recomputer` (no reuse across
 designs), and a direct link spawns cold; `e2e/kernel-prewarm.spec.ts` holds
 one worker from home through a template open.
+§9: each body mesh's bounds are worked out once — `viewport/meshBounds.ts` keeps `meshBox`
+(`Box3.setFromArray`'s box) and `meshSize` (`data-bodies`' size text) in `WeakMap`s by the
+mesh's `positions` array; `boundsOf` unions the kept boxes, `bodiesSummary` writes the kept size
+(same numbers and text, bit for bit); not through it: `posedBox` (through a pose) and
+`placeModel` (once per app-render picture). **Rules:** a walk over a mesh's nodes for its box or
+size goes through `meshBox`/`meshSize`; **nothing writes into a `BodyMesh`'s `positions`** once
+the mesh exists (moved or scaled nodes go into a new array; never transform a geometry built on
+a mesh's array in place); `meshBox`'s box is shared, read it only; `meshBounds.test.ts`.
 
 ADR-0101 (P6-15, proposed 2026-10-23) adds **Render Picture with Blender** (desktop only).
 `apps/desktop/src/main/blender.ts` is pure over an injected environment like `slicers.ts`:
