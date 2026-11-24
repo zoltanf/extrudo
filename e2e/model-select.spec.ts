@@ -165,12 +165,13 @@ test('boxes select bodies, or faces with bodies filtered out', async ({ page }) 
   await expect(filterButton).not.toHaveAttribute('data-filtered', 'true');
 });
 
-test('in the Top view a crossing box takes the hole wall it meets, and nothing far along its line', async ({
+test('in the Top view a crossing box takes the hole wall and the sides it meets, and nothing inside the hole', async ({
   page,
 }) => {
   // The hole's wall and the part's sides are seen edge-on from the top (ADR-0026's amendment
-  // of 2026-11-24): a crossing box takes them where it meets them, never only for lying on
-  // their line.
+  // of 2026-11-24): a crossing box takes them where it meets them. The common case, which the
+  // amendment must not change; a box that only lies on such a face's line is a unit test's
+  // (`pickBoxEdgeOn.test.ts`), since it needs the line on an exact pixel.
   const { viewport } = await testPart(page);
   const selection = page.locator('output[aria-label="Selection"]');
   await page
