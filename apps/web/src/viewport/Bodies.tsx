@@ -29,7 +29,8 @@ import {
   paintFaces,
   vertexPositions,
 } from '../selection/highlight';
-import { boundsOf, edgeSegments } from './bodyGeometry';
+import { keptEdgeSegments, paintAll } from './bodyBuilt';
+import { boundsOf } from './bodyGeometry';
 import { clipPlanes } from './clipPlanes';
 import { capColors, type Rgba } from './colors';
 import { createDotMaterial } from './dots';
@@ -283,7 +284,7 @@ const Body = memo(function Body({
   const regionFaces = useRegionFaces(mesh, regions);
   const edges = useMemo(() => {
     const g = new LineSegmentsGeometry();
-    g.setPositions(edgeSegments(mesh));
+    g.setPositions(keptEdgeSegments(mesh));
     return g;
   }, [mesh]);
   useEffect(
@@ -456,7 +457,10 @@ function useFaceColors(
     const key = `${palette.base.join()}/${palette.accent.join()}/${palette.error?.join() ?? ''}`;
     const last = painted.current;
     const previous = last?.geometry === faces && last.key === key ? last.states : undefined;
-    const range = paintFaces(attribute.array as Float32Array, mesh, states, palette, previous);
+    const colors = attribute.array as Float32Array;
+    const range = previous
+      ? paintFaces(colors, mesh, states, palette, previous)
+      : paintAll(colors, mesh, states, palette, key);
     painted.current = { geometry: faces, key, states };
     if (!range) return;
     attribute.clearUpdateRanges();
