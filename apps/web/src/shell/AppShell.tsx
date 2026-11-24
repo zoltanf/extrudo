@@ -294,7 +294,7 @@ import {
 } from './commands';
 import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
-import { createFeatureActions } from './featureActions';
+import { canEditFeature, createFeatureActions, hasFeatureDialog } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { sketchesWithHover } from './hoverDrawings';
 import { useLatest } from './latest';
@@ -2527,7 +2527,7 @@ function Shell({
           if (picking) cancelCreateSketch(stores);
           return dialog?.edit(id) ?? false;
         },
-        hasDialog: (type) => dialogs.get(type) !== undefined || type === 'plugin',
+        hasDialog: (type) => hasFeatureDialog(dialogs, type),
         fixFeature: (id, issues) => {
           if (picking) cancelCreateSketch(stores);
           return dialog?.edit(id, { fix: issues }) ?? false;
@@ -2582,10 +2582,17 @@ function Shell({
           const { features, timelineMarker } = store.getState().doc;
           const index = features.findIndex((f) => f.id === id);
           const feature = features[index];
-          return !!feature && featureActionsRef.current.canEdit(feature, index, timelineMarker);
+          // Asked while the notification history renders: from `dialogs`, not from the
+          // actions a ref holds (ADR-0159 §6).
+          return (
+            !!feature &&
+            canEditFeature(feature, index, timelineMarker, (type) =>
+              hasFeatureDialog(dialogs, type),
+            )
+          );
         },
       }),
-    [store, model, notify],
+    [store, model, notify, dialogs],
   );
 
   // Every active, unsuppressed, shown sketch on a known plane is drawn (the open one even if

@@ -9,11 +9,12 @@ import {
   readSketch,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
+import { featureDialogs } from '../features/registry';
 import { memoryPreferences } from '../platform';
 import { createSheet, openSheet } from '../sheets/mode';
 import { createSketchOn, finishSketch } from '../sketch/mode';
 import { createViewportStore } from '../viewport/store';
-import { createFeatureActions } from './featureActions';
+import { canEditFeature, createFeatureActions, hasFeatureDialog } from './featureActions';
 
 function setup() {
   const stores = {
@@ -234,5 +235,43 @@ describe('feature actions', () => {
     const actions = createFeatureActions(t, () => {}, { exportSketch: (id) => opened.push(id) });
     actions.exportSketch(t.b);
     expect(opened).toEqual([t.b]);
+  });
+
+  it('canEditFeature answers as the actions did, for every dialogs the shell can hold (ADR-0159 §6)', () => {
+    const t = setup();
+    const feature = (id: string, type: string) =>
+      ({ id: id as FeatureId, type, name: id, suppressed: false, inputs: {} }) as never;
+    const sketch = t.feature(t.a) as never;
+    const features: [never, number][] = [
+      [sketch, 0],
+      [sketch, 5],
+      [feature('e', 'extrude'), 1],
+      [feature('f', 'fillet'), 2],
+      [feature('p', 'plugin'), 3],
+      [feature('x', 'no-such-type'), 4],
+    ];
+    const registries = [
+      featureDialogs(),
+      { get: () => undefined },
+      { get: (type: string) => (type === 'fillet' ? {} : undefined) },
+    ];
+    for (const dialogs of registries) {
+      // What the shell handed the actions before: the same test the helper makes.
+      const actions = createFeatureActions(t, () => {}, {
+        exportSketch: () => {},
+        hasDialog: (type) => dialogs.get(type) !== undefined || type === 'plugin',
+      });
+      for (const [f, index] of features) {
+        for (const marker of [0, 3, 6]) {
+          expect(canEditFeature(f, index, marker, (type) => hasFeatureDialog(dialogs, type))).toBe(
+            actions.canEdit(f, index, marker),
+          );
+        }
+      }
+    }
+    // The registry's types and plugin features have a dialog; an unknown type has none.
+    expect(hasFeatureDialog(featureDialogs(), 'extrude')).toBe(true);
+    expect(hasFeatureDialog({ get: () => undefined }, 'plugin')).toBe(true);
+    expect(hasFeatureDialog(featureDialogs(), 'no-such-type')).toBe(false);
   });
 });
