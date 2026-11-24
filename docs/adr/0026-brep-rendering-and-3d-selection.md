@@ -264,8 +264,9 @@ replaced it.
   section on a quarter of them; a construction plane, axis and point; six directions,
   orthographic and perspective, a third close in so that bodies lie behind the eye or across its
   plane) × 25 boxes (anywhere, and small and large ones at a body's node, both directions) × every
-  filter kind alone, all of them and a random set: 30,000 boxes, all the same; and it reads less
-  than half the mesh data the exact test reads. A small box over one of 20 plates reads that
+  filter kind alone, all of them and a random set: 30,000 boxes, all the same; and it asks for
+  the mesh's arrays less than half as often as the exact test does (the test counts reads of the
+  arrays, not of their numbers). A small box over one of 20 plates reads that
   plate's triangles and no other plate's (`pickWarm.test.ts`: once warmed, a box that misses the
   body reads none of it). Taken out, each part fails a test: no cull, the counting tests; corners
   behind the eye skipped instead of stopping the cull, rejecting what isn't wholly inside, a
