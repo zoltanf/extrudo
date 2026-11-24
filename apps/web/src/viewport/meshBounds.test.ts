@@ -122,17 +122,17 @@ describe('meshBounds (ADR-0102 §9)', () => {
     const plate = () => counted(new Float32Array(Array.from({ length: 300 }, () => r() * 50)));
     const bodies = Array.from({ length: 20 }, plate);
     const bounds = boundsOf(bodies.map(mesh));
-    bodies.forEach((p) => meshSize(p));
+    for (const p of bodies) meshSize(p);
     expect(walks).toBe(40);
     walks = 0;
     // The same arrays again, in new mesh objects (as a new list of bodies brings them): no walk.
     expect(boundsOf(bodies.map(mesh))).toEqual(bounds);
-    bodies.forEach((p) => meshSize(p));
+    for (const p of bodies) meshSize(p);
     expect(walks).toBe(0);
     // One body changes: its new array is walked, once for the box and once for the size.
     bodies[7] = plate();
     boundsOf(bodies.map(mesh));
-    bodies.forEach((p) => meshSize(p));
+    for (const p of bodies) meshSize(p);
     expect(walks).toBe(2);
   });
 });
