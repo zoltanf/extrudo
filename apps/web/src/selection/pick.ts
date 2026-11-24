@@ -178,7 +178,7 @@ export function hasPickIndex(mesh: BodyMesh): boolean {
 /**
  * Builds the picking index of `meshes` in idle time, one mesh per idle
  * callback, so the first hover after a recompute doesn't pay for it
- * (ADR-0102 §2). Stops when `signal` aborts (the meshes were replaced);
+ * (ADR-0102 §2), and the box select's cull boxes with it. Stops when `signal` aborts (the meshes were replaced);
  * `indexOf` still builds on demand whatever is missing.
  */
 export function warmPickIndex(
@@ -186,7 +186,7 @@ export function warmPickIndex(
   signal?: AbortSignal,
   idle: (run: () => void) => () => void = whenIdle,
 ): void {
-  const queue = [...meshes].filter((mesh) => !meshIndex.has(mesh));
+  const queue = [...meshes].filter((mesh) => !meshIndex.has(mesh) || !cullBoxes.has(mesh));
   let cancel: (() => void) | undefined;
   const next = () => {
     cancel = undefined;
@@ -194,6 +194,9 @@ export function warmPickIndex(
     const mesh = queue.shift();
     if (!mesh) return;
     indexOf(mesh);
+    // And the boxes a box select culls with (ADR-0026's amendment "a box culls what it cannot
+    // meet"), so the first box after a recompute doesn't build them.
+    cullBoxesOf(mesh);
     if (queue.length > 0) cancel = idle(next);
   };
   if (queue.length === 0 || signal?.aborted) return;
@@ -894,6 +897,15 @@ export function segmentMeetsRect(
   );
 }
 
+/** Twice the signed area of a triangle of view points; exactly 0 when it has none on screen. */
+function doubleArea(
+  a: readonly [number, number],
+  b: readonly [number, number],
+  c: readonly [number, number],
+): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
 function insideTriangle(
   p: readonly [number, number],
   a: readonly [number, number],
@@ -987,12 +999,112 @@ function faceIn(mesh: BodyMesh, nodes: Float64Array, face: number, r: Rect, mode
       segmentMeetsRect(a, b, r) ||
       segmentMeetsRect(b, c, r) ||
       segmentMeetsRect(c, a, r) ||
-      insideTriangle(center, a, b, c)
+      // A box wholly inside the triangle. Not for a triangle of no area on screen (seen
+      // edge-on, or all three nodes on one point): every point on its line passes the test,
+      // so a box far along that line took it (ADR-0026's amendment of 2026-11-24); the
+      // segment tests above take it where the box meets it.
+      (doubleArea(a, b, c) !== 0 && insideTriangle(center, a, b, c))
     ) {
       return true;
     }
   }
   return mode === 'window';
+}
+
+// Box culling (ADR-0026's amendment "a box culls what it cannot meet") --------------
+
+/**
+ * World boxes of a mesh, min xyz then max xyz: its faces' together, each face's (the nodes its
+ * triangles use) and its edges' points. A box test rejects what lies wholly outside the box on
+ * screen before the exact test, which still decides everything else.
+ */
+interface CullBoxes {
+  nodes: Float64Array;
+  faces: Float64Array;
+  edges: Float64Array;
+}
+
+const cullBoxes = new WeakMap<BodyMesh, CullBoxes>();
+
+/** An empty box (`Infinity` mins, `-Infinity` maxes) at `o`. */
+function emptyBox(out: Float64Array, o: number) {
+  out[o] = out[o + 1] = out[o + 2] = Infinity;
+  out[o + 3] = out[o + 4] = out[o + 5] = -Infinity;
+}
+
+/** Grows the box at `o` by the point at `i` of `p` (xyz); a NaN makes the box NaN (no cull). */
+function grow(out: Float64Array, o: number, p: ArrayLike<number>, i: number) {
+  for (let k = 0; k < 3; k++) {
+    const v = p[i + k] ?? 0;
+    out[o + k] = Math.min(out[o + k] as number, v);
+    out[o + 3 + k] = Math.max(out[o + 3 + k] as number, v);
+  }
+}
+
+function cullBoxesOf(mesh: BodyMesh): CullBoxes {
+  let boxes = cullBoxes.get(mesh);
+  if (boxes) return boxes;
+  // Each box holds exactly the points the exact test reads (a missing number read as 0).
+  const { positions: p, indices, faceRanges, edgePoints: e, edgeRanges } = mesh;
+  const nodes = new Float64Array(6);
+  emptyBox(nodes, 0);
+  const count = faceRanges.length >> 1;
+  const faces = new Float64Array(6 * count);
+  for (let f = 0; f < count; f++) {
+    const o = 6 * f;
+    emptyBox(faces, o);
+    const first = 3 * (faceRanges[2 * f] ?? 0);
+    const end = first + 3 * (faceRanges[2 * f + 1] ?? 0);
+    for (let t = first; t < end; t++) grow(faces, o, p, 3 * (indices[t] ?? 0));
+    if (end > first) {
+      grow(nodes, 0, faces, o);
+      grow(nodes, 0, faces, o + 3);
+    }
+  }
+  const edges = new Float64Array(6);
+  emptyBox(edges, 0);
+  for (let i = 0; i < edgeRanges.length >> 1; i++) {
+    const first = edgeRanges[2 * i] ?? 0;
+    const n = edgeRanges[2 * i + 1] ?? 0;
+    for (let k = first; k < first + n; k++) grow(edges, 0, e, 3 * k);
+  }
+  boxes = { nodes, faces, edges };
+  cullBoxes.set(mesh, boxes);
+  return boxes;
+}
+
+/**
+ * Whether a world box lies wholly outside the box `r` on screen, so that nothing in it can be
+ * inside or meet `r`. Its eight corners are projected: the projection is affine (orthographic)
+ * or projective with every corner in front of the eye (perspective), so everything in the box
+ * shows within the corners' screen box. Never true for a box with a corner behind or at the eye,
+ * a corner too far out to compare (1e7 px), an empty box or a non-finite one; the corners' screen
+ * box is widened by a millionth of its size against rounding.
+ */
+function missesOnScreen(
+  box: Float64Array,
+  o: number,
+  project: ReturnType<typeof projector>,
+  r: Rect,
+): boolean {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let c = 0; c < 8; c++) {
+    const s = project(
+      box[o + (c & 1 ? 3 : 0)] as number,
+      box[o + 1 + (c & 2 ? 3 : 0)] as number,
+      box[o + 2 + (c & 4 ? 3 : 0)] as number,
+    );
+    if (!s || !(Math.abs(s[0]) < 1e7) || !(Math.abs(s[1]) < 1e7)) return false;
+    x0 = Math.min(x0, s[0]);
+    y0 = Math.min(y0, s[1]);
+    x1 = Math.max(x1, s[0]);
+    y1 = Math.max(y1, s[1]);
+  }
+  const m = 1e-6 * (1 + Math.max(Math.abs(x0), Math.abs(x1), Math.abs(y0), Math.abs(y1)));
+  return x1 + m < r.x0 || x0 - m > r.x1 || y1 + m < r.y0 || y0 - m > r.y1;
 }
 
 /** The kinds a box tries, in order: it takes the first kind it finds anything of. */
@@ -1021,6 +1133,22 @@ export function pickBox(
   to: readonly [number, number],
   filter: SelectionFilter,
 ): SelectionItem[] {
+  return pickBoxWith(scene, camera, from, to, filter, true);
+}
+
+/**
+ * `pickBox`, with (`cull`) or without the box culling; the tests compare the two. Culling
+ * rejects a body, a face or a body's edges only when its world box shows wholly outside the box
+ * on screen (`missesOnScreen`); the exact test decides everything it doesn't reject.
+ */
+export function pickBoxWith(
+  scene: PickScene,
+  camera: PickCamera,
+  from: readonly [number, number],
+  to: readonly [number, number],
+  filter: SelectionFilter,
+  cull: boolean,
+): SelectionItem[] {
   if (camera.width <= 0 || camera.height <= 0) return [];
   const mode: BoxMode = to[0] >= from[0] ? 'window' : 'crossing';
   const r: Rect = {
@@ -1040,22 +1168,31 @@ export function pickBox(
     return n;
   };
   const faceCount = (mesh: BodyMesh) => mesh.faceRanges.length >> 1;
+  // Whether a body's nodes, one of its faces or its edges show wholly outside the box.
+  const bodyMisses = (mesh: BodyMesh) =>
+    cull && missesOnScreen(cullBoxesOf(mesh).nodes, 0, project, r);
+  const faceMisses = (mesh: BodyMesh, f: number) =>
+    cull && missesOnScreen(cullBoxesOf(mesh).faces, 6 * f, project, r);
+  const edgesMiss = (mesh: BodyMesh) =>
+    cull && missesOnScreen(cullBoxesOf(mesh).edges, 0, project, r);
 
   const kinds: Record<string, () => SelectionItem[]> = {
     bodies: () =>
       scene.bodies
         .filter(({ mesh }) => {
           const n = faceCount(mesh);
-          if (n === 0) return false;
+          if (n === 0 || bodyMisses(mesh)) return false;
           const faces = Array.from({ length: n }, (_, f) => f);
-          return mode === 'window'
-            ? faces.every((f) => faceIn(mesh, nodesOf(mesh), f, r, mode))
-            : faces.some((f) => faceIn(mesh, nodesOf(mesh), f, r, mode));
+          // A face that shows outside the box is in neither a window nor a crossing box.
+          const faceIsIn = (f: number) =>
+            !faceMisses(mesh, f) && faceIn(mesh, nodesOf(mesh), f, r, mode);
+          return mode === 'window' ? faces.every(faceIsIn) : faces.some(faceIsIn);
         })
         .map(({ id }) => topologyItem({ kind: 'body', body: id, index: 0 })),
     faces: () =>
       scene.bodies.flatMap(({ id, mesh }) =>
-        Array.from({ length: faceCount(mesh) }, (_, f) => f)
+        Array.from({ length: bodyMisses(mesh) ? 0 : faceCount(mesh) }, (_, f) => f)
+          .filter((f) => !faceMisses(mesh, f))
           .filter((f) => !scene.clip || !faceClipped(mesh, f, scene.clip))
           .filter((f) => faceIn(mesh, nodesOf(mesh), f, r, mode))
           .map((f) => topologyItem({ kind: 'face', body: id, index: f })),
@@ -1063,6 +1200,7 @@ export function pickBox(
     edges: () =>
       scene.bodies.flatMap(({ id, mesh }) => {
         const out: SelectionItem[] = [];
+        if (edgesMiss(mesh)) return out;
         const { edgePoints: p, edgeRanges, edgeFlags } = mesh;
         for (let e = 0; e < edgeRanges.length >> 1; e++) {
           if (((edgeFlags[e] ?? 0) & UNPICKABLE) !== 0) continue;

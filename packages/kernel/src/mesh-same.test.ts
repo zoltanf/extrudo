@@ -71,6 +71,12 @@ describe('sameMesh', () => {
     expect(sameMesh(a, { ...a, edgeFlags: new Int8Array([0]) as unknown as Uint8Array })).toBe(
       false,
     );
+    // A hole in a list of names is not a name.
+    const holed = ['x', 'y'];
+    delete holed[0];
+    expect(
+      sameMesh({ ...a, faceIds: holed } as BodyMesh, { ...a, faceIds: ['z', 'y'] } as BodyMesh),
+    ).toBe(false);
     // A field this doesn't know.
     expect(
       sameMesh({ ...a, extra: { x: 1 } } as BodyMesh, { ...a, extra: { x: 1 } } as BodyMesh),

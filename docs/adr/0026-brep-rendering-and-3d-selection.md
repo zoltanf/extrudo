@@ -172,3 +172,103 @@ changing its callers. No feature makes a body yet (extrude is P2-06).
   "Select other…" then moves into it, and the long press stays.
 - Box selection sees through faces; a "visible only" option may be wanted.
 - An x-ray outline for hidden faces hovered in "Select other…".
+
+## Amendment (2026-11-24): a crossing box and triangles seen edge-on
+
+**The bug.** A crossing box (right to left) tests each triangle of a face for a node inside the
+box, a side through it, or the box's centre inside the triangle (`faceIn`, `insideTriangle` in
+`selection/pick.ts`); the last catches a box wholly inside a large triangle. For a triangle of
+no area on screen — a face seen edge-on, such as a part's sides or a hole's wall in the Top view,
+or three nodes on one point — every point on the triangle's line passes that test. So a crossing
+box whose centre lay on the line took the face, and its body, however far from it the box was: in
+the Top view of a 10 mm cube, a box well above the cube with its centre exactly on the left face's
+line selected the cube, and the same box 0.25 px to the side selected nothing.
+
+**The fix.** The centre test runs only for a triangle whose doubled signed area on screen
+(`doubleArea`, `(b − a) × (c − a)` over the projected nodes) is not exactly 0 in floating point.
+A triangle of no area is taken where the box meets it: a node inside the box, or a side through
+it (a triangle on one point: the point inside the box). A triangle with any area, however thin,
+is tested as before. Window boxes (left to right) are unchanged: they test nodes only.
+
+**What changes, and only that:** a crossing box no longer takes a face for a triangle of no area
+on screen that it doesn't meet; when that was the only thing it took of a kind, the box goes on to
+the next kind in `BOX_ORDER`, as for any box that finds nothing of a kind. Tested in
+`pickBoxEdgeOn.test.ts`: 150 seeded scenes (boxes, a plate with a hole's wall, a sliver, a
+triangle on a point, one on a line; five directions, orthographic and perspective) × 40 boxes,
+half of them with the centre exactly on a projected node's x or y, compared with the face test as
+it was (written out in the test; on main's `pick.ts` it gives `pickBox`'s answer for all 6,000
+boxes): every face the box no longer takes is one whose changed triangle has no area on screen
+and is met by no node and no side, window boxes give the same faces, and the boxes reach the
+case (more than 20 of them). By hand: the cube above takes nothing; a box across the left face's
+line inside its length takes the face and the cube; a 0.8 mm sliver takes a box inside it, as
+before, and not one beyond its tip; a triangle on one point is taken by a box around the point
+only. `e2e/model-select.spec.ts` checks the Top view of the test part: a crossing box across the
+hole's rim takes the top, the bottom and the wall, one inside the hole nothing, one across the
+left side the side, the top and the bottom.
+
+**Rule:** a box test takes a triangle only where the box meets what the triangle shows on
+screen; a test that can pass for a point off the triangle runs only for triangles with an area
+on screen.
+
+## Amendment (2026-11-24): a box culls what it cannot meet
+
+**Context.** A box select on 100 plates (each plate a sketch and an extrude with 30 holes)
+spent most of its blocked time in the exact face test (a CPU profile: 100 of 129 ms in
+`pickBox`): `pickBox` projected every node of every visible body and ran `faceIn` over their
+faces, although a box usually covers a few bodies.
+
+**Decision.** `pickBox` rejects, before the exact test, what shows wholly outside the box on
+screen: a body (its nodes' world box), each face of a body it didn't reject (the box of the nodes
+its triangles use), and a body's edges (the box of its edge points). The boxes are kept per mesh
+in a `WeakMap` (`cullBoxesOf`: each holds exactly the points the exact test reads, a missing
+number read as 0 as the exact test reads it; the body's box is its faces' together) and built in
+idle time with the pick index (`warmPickIndex`, one mesh per idle callback), or by the first box
+that needs them. A mesh is not changed in place (ADR-0102 §9 lists what writes mesh arrays).
+`missesOnScreen` projects a box's eight corners with the pick's own projector: the projection is
+affine (orthographic) or projective with every corner in front of the eye (perspective), so
+everything in the box shows within the corners' screen box. It never rejects a box with a corner
+behind or at the eye (a body crossing the eye's plane, or behind it), a corner further out than
+1e7 px, an empty box (a face with no triangles) or a non-finite one (a NaN node), and it widens
+the corners' screen box by a millionth of its size against rounding. Rejecting is safe in both
+modes: a window box needs every node inside, a crossing box a node inside or a side through it
+(and, since the amendment above, the centre test only inside a triangle with an area), and none
+of that can happen outside the corners' screen box. Vertices, profiles, sketch curves and
+construction items are tested as before (one projection each; nothing to save). Posed and hidden
+bodies are not in the pick scene (`pickableBodies`); a ghost body is picked like any other.
+
+**Measured** (designs of 30 and 100 plates with 30 holes each, production build, Chrome with a
+GPU, 1280 × 800, quiet machine; main → the fix above → this). The profiled action is a crossing
+box over the view's lower right corner. Blocked time (tasks of 50 ms or more from the action until
+1.5 s after it), median of 4 runs (lowest–highest): box select on 100 plates 104 (104–106) → 105
+(104–106) → 56 (56–57) ms; on 30 plates 0 → 0 → 0 (its task was under 50 ms already). In a CPU
+profile (unminified, one run) `pickBox`'s time goes 100 → 56 ms on 100 plates and 42 → 0 ms on
+30 plates (no busy stretch of 50 ms or more left). What is left is the exact test on the bodies the
+box covers. Clicks, edits, undo, opening a sketch, drags and opening the design stay within their
+runs' spread; the components rendered differ only as much as two runs of one build do (a click
+renders 146 or 159). A first build that made the boxes
+in the box select itself, with a callback per coordinate, made that box select slower (105 → 173
+ms on 100 plates): the boxes were built then, for every mesh; plain loops and the idle build
+replaced it.
+
+**Rules.**
+
+- A cull only rejects; the exact test decides everything it doesn't reject. A new reject must
+  hold for both box modes and come with the reason nothing in it can be taken.
+- A cull never rejects a box with a corner behind or at the eye, or one it can't compare.
+- A cull box holds exactly what the exact test reads; a change to what `faceIn`, `polylineIn` or
+  the edges' loop reads changes `cullBoxesOf` with it.
+- `pickBoxWith(…, false)` is the exact test alone, for the tests.
+- Tested: `pickBoxCull.test.ts` compares `pickBox` with `pickBoxWith(…, false)` over 120 seeded
+  scenes (1–10 bodies of four kinds: boxes, plates with a hole's wall, a triangle on one point and
+  one on a line, random triangles; hidden, posed and ghost bodies through `pickableBodies`; a
+  section on a quarter of them; a construction plane, axis and point; six directions,
+  orthographic and perspective, a third close in so that bodies lie behind the eye or across its
+  plane) × 25 boxes (anywhere, and small and large ones at a body's node, both directions) × every
+  filter kind alone, all of them and a random set: 30,000 boxes, all the same; and it asks for
+  the mesh's arrays less than half as often as the exact test does (the test counts reads of the
+  arrays, not of their numbers). A small box over one of 20 plates reads that
+  plate's triangles and no other plate's (`pickWarm.test.ts`: once warmed, a box that misses the
+  body reads none of it). Taken out, each part fails a test: no cull, the counting tests; corners
+  behind the eye skipped instead of stopping the cull, rejecting what isn't wholly inside, a
+  face's box from its first triangle, the body's box without its last face, the edges' box from
+  the first edge, the seeded test; no idle build, the warm test.

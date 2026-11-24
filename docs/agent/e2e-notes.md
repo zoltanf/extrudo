@@ -1717,6 +1717,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   with `projector(viewport)` from `e2e/helpers.ts` (switch to
   Orthographic first for exact numbers). "Selection filter" contains
   "Select": match the nav bar's Select button with `exact: true`.
+- The Top-view crossing-box test (ADR-0026, 2026-11-24) clicks the ViewCube's `Top` (exact),
+  waits for `data-camera-direction` `0,0,-1` and `settled`, and **takes `projector(viewport)`
+  again after the view changed** (the one `testPart` returns maps the old view). With Bodies off,
+  right-to-left boxes 12 px across the hole's rim (`at([24, 15, 20])`) take faces 1, 4 and 10
+  (top, bottom, wall), 8 px inside the hole nothing, across the left side (`at([0, 15, 20])`)
+  faces 0, 1 and 4.
 
 ### `e2e/move-mirror.spec.ts`
 

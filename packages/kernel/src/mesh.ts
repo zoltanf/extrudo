@@ -132,10 +132,12 @@ function sameField(a: unknown, b: unknown): boolean {
     return sameBytes(a, b);
   }
   if (Array.isArray(a) && Array.isArray(b)) {
-    return (
-      a.length === b.length &&
-      a.every((v, i) => typeof v === 'string' && typeof b[i] === 'string' && v === b[i])
-    );
+    if (a.length !== b.length) return false;
+    // By index, not `every`: that skips a hole, and a hole is not a string.
+    for (let i = 0; i < a.length; i++) {
+      if (typeof a[i] !== 'string' || a[i] !== b[i]) return false;
+    }
+    return true;
   }
   return false;
 }
