@@ -1,0 +1,1 @@
+- 2026-11-24 · **Quicker box selection in large designs**: a box select looks only at the bodies and faces the box can reach, so it takes about half as long in a design of 100 parts.
