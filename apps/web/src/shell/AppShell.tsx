@@ -631,6 +631,10 @@ function Shell({
     () => ({ files: platform.files, projects: platform.projects }),
     [platform],
   );
+  /** The File menu's Import, which is the Insert tab's tile (P4-06). */
+  const startImportLater = useLater<(picked?: File) => void>(() => {});
+  /** The File menu's Export Design as Script (P5-05). */
+  const exportScriptLater = useLater<() => void>(() => {});
   // The Home tab's file commands (ADR-0079): the model's export too (P2-12), versions
   // (P2-14), an import (P4-06), the script export (P5-05) and plugins (P6-03).
   const fileActions = useMemo(
@@ -842,10 +846,6 @@ function Shell({
   const runRef = useRef<(tool: ToolId) => void>(() => {});
   const startTutorialRef = useRef<() => void>(() => {});
   const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
-  /** The File menu's Import, which is the Insert tab's tile (P4-06). */
-  const startImportLater = useLater<(picked?: File) => void>(() => {});
-  /** The File menu's Export Design as Script (P5-05). */
-  const exportScriptLater = useLater<() => void>(() => {});
   /** A body menu's Convert to Solid… (P4-13): selection and `run` live later in the component. */
   const convertToSolidRef = useRef<(id: BodyId) => void>(() => {});
   /** Canvas's tool, which picks its picture before its dialog opens. */
@@ -961,6 +961,13 @@ function Shell({
     meshes: bodies,
     active: printing,
   });
+  /** Opens the Section Analysis panel on the section as it is (the browser's row). */
+  const openSection = () => {
+    if (mode !== 'model') return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    session.getState().setTool(SECTION_TOOL);
+  };
   const sectionPlane = (index: number) => {
     const plane = section.rows[index]?.state.plane;
     return plane
@@ -2049,13 +2056,6 @@ function Shell({
   );
   const chordPrefix = useShortcuts(shortcuts);
 
-  /** Opens the Section Analysis panel on the section as it is (the browser's row). */
-  const openSection = () => {
-    if (mode !== 'model') return;
-    if (picking) cancelCreateSketch(stores);
-    dialog?.cancel();
-    session.getState().setTool(SECTION_TOOL);
-  };
   /** Opens the Overhang Analysis panel on the analysis as it is (the browser's row). */
   const openOverhang = () => {
     if (mode !== 'model') return;
@@ -2099,6 +2099,91 @@ function Shell({
     dialog?.cancel();
     session.getState().setTool(THICKNESS_TOOL);
   };
+  /** Puts the sketch being redefined on `plane`: one undo step; a refusal keeps the pick going. */
+  const redefineTo = (id: FeatureId, plane: GeomRef) => {
+    try {
+      store.getState().dispatch(redefineSketchPlane({ id, plane }));
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+      return;
+    }
+    cancelCreateSketch(stores);
+    setRedefining(undefined);
+  };
+  /**
+   * Starts a sketch on a picked or selected face (P2-09) once the kernel has
+   * given its persistent reference: a flat face only. With `fallback`, a
+   * face that can't take a sketch leaves Create Sketch waiting for a plane.
+   */
+  const sketchOnFace = async (item: SelectionItem, fallback = false) => {
+    const face = readTopology(item);
+    if (face?.kind !== 'face') return;
+    const target = redefining;
+    const ref: GeomRef | undefined = await kernel?.reference(
+      face.body,
+      'face',
+      face.index,
+      target !== undefined && redefineBase !== undefined,
+    );
+    if (ref?.fingerprint?.type === 'plane') {
+      if (target) redefineTo(target, ref);
+      else createSketchOn(stores, ref);
+      return;
+    }
+    notify(
+      'error',
+      ref
+        ? 'A sketch needs a flat face or a plane: that face is curved.'
+        : "Can't sketch on that face yet: the model is still computing.",
+    );
+    if (fallback) startCreateSketch(stores);
+  };
+  const sketchOnFaceRef = useRef(sketchOnFace);
+  useInsertionEffect(() => {
+    sketchOnFaceRef.current = sketchOnFace;
+  });
+  // An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05).
+  const pickPlane = (plane: string) => {
+    const ref: GeomRef = { kind: 'plane', id: plane };
+    if (redefining) redefineTo(redefining, ref);
+    else createSketchOn(stores, ref);
+  };
+  const pickPlaneRef = useRef(pickPlane);
+  useInsertionEffect(() => {
+    pickPlaneRef.current = pickPlane;
+  });
+  const startRedefine = (id: FeatureId) => {
+    dialog?.cancel();
+    if (session.getState().activeTool !== CREATE_SKETCH) startCreateSketch(stores);
+    setRedefining(id);
+  };
+  const startRedefineLater = useLater(startRedefine);
+  useLaterValue(startRedefineLater, startRedefine);
+  // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
+  const featureActions = useMemo(
+    () =>
+      createFeatureActions(stores, notify, {
+        exportSketch: (id) =>
+          setExportRequest({
+            sketch: id,
+            selected: profileIdsIn(session.getState().selection, id),
+          }),
+        editFeature: (id) => {
+          if (picking) cancelCreateSketch(stores);
+          return dialog?.edit(id) ?? false;
+        },
+        hasDialog: (type) => hasFeatureDialog(dialogs, type),
+        fixFeature: (id, issues) => {
+          if (picking) cancelCreateSketch(stores);
+          return dialog?.edit(id, { fix: issues }) ?? false;
+        },
+        redefinePlane: (id) => startRedefineLater.get()(id),
+        isStopped: (id) => kernel?.isStopped?.(id) ?? false,
+        retryStopped: (id) => void kernel?.retry?.(id),
+      }),
+    [stores, notify, session, dialog, dialogs, picking, kernel],
+  );
   const run = (tool: ToolId) => {
     // Any other command ends the Joint dialog (P6-05), as it ends a feature dialog.
     if (tool !== 'joint') jointDialog?.cancel();
@@ -2474,91 +2559,6 @@ function Shell({
       session.getState().setTool(undefined);
   };
 
-  /**
-   * Starts a sketch on a picked or selected face (P2-09) once the kernel has
-   * given its persistent reference: a flat face only. With `fallback`, a
-   * face that can't take a sketch leaves Create Sketch waiting for a plane.
-   */
-  const sketchOnFace = async (item: SelectionItem, fallback = false) => {
-    const face = readTopology(item);
-    if (face?.kind !== 'face') return;
-    const target = redefining;
-    const ref: GeomRef | undefined = await kernel?.reference(
-      face.body,
-      'face',
-      face.index,
-      target !== undefined && redefineBase !== undefined,
-    );
-    if (ref?.fingerprint?.type === 'plane') {
-      if (target) redefineTo(target, ref);
-      else createSketchOn(stores, ref);
-      return;
-    }
-    notify(
-      'error',
-      ref
-        ? 'A sketch needs a flat face or a plane: that face is curved.'
-        : "Can't sketch on that face yet: the model is still computing.",
-    );
-    if (fallback) startCreateSketch(stores);
-  };
-  const sketchOnFaceRef = useRef(sketchOnFace);
-  useInsertionEffect(() => {
-    sketchOnFaceRef.current = sketchOnFace;
-  });
-  /** Puts the sketch being redefined on `plane`: one undo step; a refusal keeps the pick going. */
-  const redefineTo = (id: FeatureId, plane: GeomRef) => {
-    try {
-      store.getState().dispatch(redefineSketchPlane({ id, plane }));
-    } catch (error) {
-      if (!(error instanceof CommandError)) throw error;
-      notify('error', error.message);
-      return;
-    }
-    cancelCreateSketch(stores);
-    setRedefining(undefined);
-  };
-  // An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05).
-  const pickPlane = (plane: string) => {
-    const ref: GeomRef = { kind: 'plane', id: plane };
-    if (redefining) redefineTo(redefining, ref);
-    else createSketchOn(stores, ref);
-  };
-  const pickPlaneRef = useRef(pickPlane);
-  useInsertionEffect(() => {
-    pickPlaneRef.current = pickPlane;
-  });
-  const startRedefine = (id: FeatureId) => {
-    dialog?.cancel();
-    if (session.getState().activeTool !== CREATE_SKETCH) startCreateSketch(stores);
-    setRedefining(id);
-  };
-  const startRedefineLater = useLater(startRedefine);
-  useLaterValue(startRedefineLater, startRedefine);
-  // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
-  const featureActions = useMemo(
-    () =>
-      createFeatureActions(stores, notify, {
-        exportSketch: (id) =>
-          setExportRequest({
-            sketch: id,
-            selected: profileIdsIn(session.getState().selection, id),
-          }),
-        editFeature: (id) => {
-          if (picking) cancelCreateSketch(stores);
-          return dialog?.edit(id) ?? false;
-        },
-        hasDialog: (type) => hasFeatureDialog(dialogs, type),
-        fixFeature: (id, issues) => {
-          if (picking) cancelCreateSketch(stores);
-          return dialog?.edit(id, { fix: issues }) ?? false;
-        },
-        redefinePlane: (id) => startRedefineLater.get()(id),
-        isStopped: (id) => kernel?.isStopped?.(id) ?? false,
-        retryStopped: (id) => void kernel?.retry?.(id),
-      }),
-    [stores, notify, session, dialog, dialogs, picking, kernel],
-  );
   // The timeline's groups (P4-09, ADR-0065 §2) and the picked chips it shares with the
   // marking menu. Both are session state: nothing here is saved or undoable.
   const groups = useMemo(() => createGroupActions(store, notify), [store, notify]);
