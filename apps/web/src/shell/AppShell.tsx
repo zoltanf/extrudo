@@ -647,7 +647,7 @@ function Shell({
       versionHistory: () => setVersionsOpen(true),
       plugins: () => setSettingsOpen('plugins'),
     }),
-    [file],
+    [file, startImportLater, exportScriptLater],
   );
   // Text needs its font before it has curves or ink (P4-03): a font that arrives
   // late brings the sketch drawing and its profiles back with it.
@@ -734,7 +734,7 @@ function Shell({
         notify: (message) => notify('error', message),
         openSketch: () => openSketchLater.get(),
       }),
-    [store, session, model, viewport, annotationsUi, notify],
+    [store, session, model, viewport, annotationsUi, notify, openSketchLater],
   );
   // A deleted or undone annotation leaves the selection.
   useEffect(
@@ -1008,7 +1008,7 @@ function Shell({
       // the selection and `run` are defined later, so the menu reaches them through a ref.
       convertToSolid: (id: BodyId) => convertToSolidRef.current(id),
     }),
-    [store, session, notify],
+    [store, session, notify, bodyListLater],
   );
   // Delete with only faces of solid bodies selected makes a Remove Faces
   // feature in one step (P4-13, ADR-0099 §7); the pick rule takes a whole
@@ -1045,7 +1045,7 @@ function Shell({
             ?.bodies.map((b) => b.id) ?? [],
         notify,
       ),
-    [store, session, notify],
+    [store, session, notify, componentListLater],
   );
   // Joints (P6-05, ADR-0081 §4): the Joint dialog, the browser's rows and the view's axes.
   const componentOfBody = useMemo(() => {
@@ -1124,7 +1124,7 @@ function Shell({
             notify,
           })
         : undefined,
-    [store, session, dialog, notify],
+    [store, session, dialog, notify, componentListLater],
   );
   const selectedAnnotations = useMemo(
     () => new Set(selection.filter((item) => item.kind === 'annotation').map((item) => item.id)),
@@ -1284,24 +1284,22 @@ function Shell({
     return tools;
   }, [dialogs, canSlicer]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
-  const dialogCommands = useMemo(
-    () =>
-      [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap((spec) => {
-        const c = spec.command;
-        if (typeof c === 'string') return [];
-        return [
-          {
-            id: c.id,
-            label: c.label,
-            group: c.group,
-            keywords: `${c.group} ${c.hint}`,
-            icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
-            keys: keysFor(c.id),
-            run: () => runRef.current(c.id as ToolId),
-          },
-        ];
-      }),
-    [dialogs, pluginFeatures, keymap],
+  const dialogCommands = [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap(
+    (spec) => {
+      const c = spec.command;
+      if (typeof c === 'string') return [];
+      return [
+        {
+          id: c.id,
+          label: c.label,
+          group: c.group,
+          keywords: `${c.group} ${c.hint}`,
+          icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
+          keys: keysFor(c.id),
+          run: () => runRef.current(c.id as ToolId),
+        },
+      ];
+    },
   );
   // A dialog stops a nav tool, like any command.
   useEffect(() => {
@@ -1498,7 +1496,7 @@ function Shell({
     await twoFrames();
     const screenshot = await capture();
     setBugReport({ open: true, screenshot });
-  }, [capture]);
+  }, [capture, setBugReport]);
   const retakeBugReport = async () => {
     setBugReport((s) => ({ ...s, open: false }));
     await openBugReport();
@@ -1622,7 +1620,7 @@ function Shell({
     });
     if (route === 'cancel') cancelUpdate();
     else if (route === 'undo') undo();
-  }, [kernel, dialogOpen, jointOpen, store, session, cancelUpdate, undo]);
+  }, [kernel, dialogOpen, jointOpen, store, session, cancelUpdate, undo, updateNotice]);
   const redo = useCallback(() => {
     dialog?.cancel();
     jointDialog?.cancel();
@@ -1630,217 +1628,168 @@ function Shell({
   }, [dialog, jointDialog, store]);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
-  const commandBuilder = useMemo(
-    () => (m: EditMode, listing: boolean) =>
-      buildCommands({
-        mode: m,
-        runTool: (tool) => {
-          if (isRepeatable(tool)) setLastTool(tool);
-          // A key or a search result starts a sketch tool; only the toolbar toggles it off.
-          // The drawing import picks its file before it has a panel (P4-06), so it
-          // goes through `run` like the toolbar's tile does.
-          if (tool !== IMPORT_DRAWING_TOOL && isSketchTool(tool) && host) host.start(tool);
-          else runRef.current(tool);
-        },
-        notify,
-        undo,
-        redo,
-        ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
-        ...(!listing &&
-          m === 'sheet' &&
-          sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
-        // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
-        ...(!listing &&
-          m === 'model' &&
-          !dialogOpen &&
-          (selectedBodyIds.length > 0 || facesRemovable || selectedNotes.length > 0) && {
-            remove: removeModelSelection,
-          }),
-        ...(m === 'sketch' &&
-          (listing || host) && {
-            construction:
-              !listing && host
-                ? { on: construction ?? false, toggle: () => host.toggleConstruction() }
-                : { on: false, toggle: () => {} },
-          }),
-        ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
-        ...(m === 'model' &&
-          !dialogOpen &&
-          selection.length > 0 && {
-            lookAtSelection: () => {
-              const modelState = stores.model?.getState();
-              const shown: LookSketch[] = [];
-              for (const feature of stores.store.getState().doc.features) {
-                const sketch = readSketch(feature);
-                const frame =
-                  sketch &&
-                  sketchFrame(
-                    feature.id,
-                    sketch.plane,
-                    modelState?.sketches,
-                    modelState?.construction,
-                  );
-                if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
-              }
-              const selected = stores.session.getState().selection;
-              const notes = new Set(
-                selected.filter((i) => i.kind === 'annotation').map((i) => i.id as string),
-              );
-              const points =
-                notes.size === 0
-                  ? []
-                  : placedNow(
-                      stores.store.getState().doc,
-                      {
-                        annotations: modelState?.annotations ?? {},
-                        sketches: modelState?.sketches ?? {},
-                      },
-                      openSketchLater.get(),
-                    )
-                      .filter((p) => notes.has(p.annotation.id))
-                      .map((p) => p.at);
-              const target = selectionLookTarget(
-                selected,
-                (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
-                shown,
-                points,
-              );
-              if (!target) return;
-              viewport.getState().lookAtBox(target, target.direction);
-            },
-          }),
-        viewport,
-        browser: { collapsed: browser.collapsed, toggle: browser.toggle },
-        file: fileActions,
-        // Named views (ADR-0008's amendment): save opens the nav bar's prompt.
-        views: {
-          list: doc.views.map((v) => ({ id: v.id, name: v.name })),
-          save: () => namedViewSaveStore.getState().show(),
-          restore: (id: ViewId) => viewActions.restore(id),
-        },
-        sheets: {
-          list: (doc.sheets ?? []).map((sh) => ({ id: sh.id, name: sh.name })),
-          open: (id) => void openSheet(stores, id as SheetId),
-          newSheets: () => setNewSheetsOpen(true),
-          openSheets: () => void openSheets(stores),
-          fit: () => sheetControl.current?.fit(),
-          step: (delta) => stepSheet(stores, delta),
-        },
-        theme: { choice, set: setChoice },
-        settings: { open: () => setSettingsOpen(true) },
-        ...(listing
-          ? { repeat: { id: MODES[m].repeatSample } }
-          : lastTool && { repeat: { id: lastTool } }),
-        markingMenu: {
-          radial: markingStyle.radial,
-          toggle: markingStyle.toggle,
-          customize: () => setSettingsOpen('marking'),
-        },
-        ready,
-        dialogCommands,
-        plugins: pluginEntries,
-        ...(toasts?.history && {
-          notifications: { open: () => toasts.history?.getState().setOpen(true) },
-        }),
-        tutorial: { start: () => startTutorialRef.current() },
-        about: () => setAboutOpen(true),
-        reportBug: () => void openBugReport(),
-        docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
-        macro: { recording: recording !== undefined },
-        componentCount: doc.components?.length ?? 0,
-        pose: poseCommand,
-        ...(m === 'model' && {
-          joints: {
-            checkClearance: () => openJointCheckRef.current(),
-            ...(!(doc.joints ?? []).some((j) => j.type !== 'rigid' && !j.suppressed) && {
-              unavailable: 'Make a revolute or slider joint first.',
-            }),
-          },
-        }),
-        ...(m === 'model' && {
-          components: {
-            ...(selectedComponent !== undefined &&
-              selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
-            active: activeComponent !== undefined,
-            isolated: isolatedComponent !== undefined,
-            activate: () => {
-              if (selectedComponent === undefined) {
-                notify('info', 'Select the bodies of one component first.');
-                return;
-              }
-              session.getState().activateComponent(selectedComponent);
-            },
-            deactivate: () => session.getState().activateComponent(undefined),
-            isolate: () => {
-              if (selectedComponent === undefined) {
-                notify('info', 'Select the bodies of one component first.');
-                return;
-              }
-              session.getState().isolateComponent(selectedComponent);
-            },
-            exitIsolation: () => session.getState().isolateComponent(undefined),
-          },
-        }),
-        ...(desktop &&
-          platform.menus && {
-            desktop: {
-              nativeMenu: desktop.nativeMenu,
-              quit: () => void quitApp(),
-              ...(platform.updates?.check && {
-                checkForUpdates: () => platform.updates?.check?.(),
-              }),
-              clearRecent: () => void desktop.clearRecent(),
-            },
-          }),
-      }),
-    [
-      desktop,
-      quitApp,
-      host,
+  const commandBuilder = (m: EditMode, listing: boolean) =>
+    buildCommands({
+      mode: m,
+      runTool: (tool) => {
+        if (isRepeatable(tool)) setLastTool(tool);
+        // A key or a search result starts a sketch tool; only the toolbar toggles it off.
+        // The drawing import picks its file before it has a panel (P4-06), so it
+        // goes through `run` like the toolbar's tile does.
+        if (tool !== IMPORT_DRAWING_TOOL && isSketchTool(tool) && host) host.start(tool);
+        else runRef.current(tool);
+      },
       notify,
-      recording,
       undo,
       redo,
+      ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
+      ...(!listing &&
+        m === 'sheet' &&
+        sheetTargets.some((t) => t !== 'title-block') && { remove: removeSheetSelection }),
+      // Delete in the model (P2-08, P4-13, ADR-0126 §6): notes, bodies, faces of solid bodies.
+      ...(!listing &&
+        m === 'model' &&
+        !dialogOpen &&
+        (selectedBodyIds.length > 0 || facesRemovable || selectedNotes.length > 0) && {
+          remove: removeModelSelection,
+        }),
+      ...(m === 'sketch' &&
+        (listing || host) && {
+          construction:
+            !listing && host
+              ? { on: construction ?? false, toggle: () => host.toggleConstruction() }
+              : { on: false, toggle: () => {} },
+        }),
+      ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
+      ...(m === 'model' &&
+        !dialogOpen &&
+        selection.length > 0 && {
+          lookAtSelection: () => {
+            const modelState = stores.model?.getState();
+            const shown: LookSketch[] = [];
+            for (const feature of stores.store.getState().doc.features) {
+              const sketch = readSketch(feature);
+              const frame =
+                sketch &&
+                sketchFrame(
+                  feature.id,
+                  sketch.plane,
+                  modelState?.sketches,
+                  modelState?.construction,
+                );
+              if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
+            }
+            const selected = stores.session.getState().selection;
+            const notes = new Set(
+              selected.filter((i) => i.kind === 'annotation').map((i) => i.id as string),
+            );
+            const points =
+              notes.size === 0
+                ? []
+                : placedNow(
+                    stores.store.getState().doc,
+                    {
+                      annotations: modelState?.annotations ?? {},
+                      sketches: modelState?.sketches ?? {},
+                    },
+                    openSketchLater.get(),
+                  )
+                    .filter((p) => notes.has(p.annotation.id))
+                    .map((p) => p.at);
+            const target = selectionLookTarget(
+              selected,
+              (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
+              shown,
+              points,
+            );
+            if (!target) return;
+            viewport.getState().lookAtBox(target, target.direction);
+          },
+        }),
+      viewport,
+      browser: { collapsed: browser.collapsed, toggle: browser.toggle },
+      file: fileActions,
+      // Named views (ADR-0008's amendment): save opens the nav bar's prompt.
+      views: {
+        list: doc.views.map((v) => ({ id: v.id, name: v.name })),
+        save: () => namedViewSaveStore.getState().show(),
+        restore: (id: ViewId) => viewActions.restore(id),
+      },
+      sheets: {
+        list: (doc.sheets ?? []).map((sh) => ({ id: sh.id, name: sh.name })),
+        open: (id) => void openSheet(stores, id as SheetId),
+        newSheets: () => setNewSheetsOpen(true),
+        openSheets: () => void openSheets(stores),
+        fit: () => sheetControl.current?.fit(),
+        step: (delta) => stepSheet(stores, delta),
+      },
+      theme: { choice, set: setChoice },
+      settings: { open: () => setSettingsOpen(true) },
+      ...(listing
+        ? { repeat: { id: MODES[m].repeatSample } }
+        : lastTool && { repeat: { id: lastTool } }),
+      markingMenu: {
+        radial: markingStyle.radial,
+        toggle: markingStyle.toggle,
+        customize: () => setSettingsOpen('marking'),
+      },
       ready,
       dialogCommands,
-      pluginEntries,
-      drawing,
-      remove,
-      dialogOpen,
-      selectedBodyIds,
-      facesRemovable,
-      selectedNotes,
-      removeModelSelection,
-      sheetTargets,
-      removeSheetSelection,
-      selectedComponent,
-      selectedComponentName,
-      activeComponent,
-      isolatedComponent,
-      session,
-      selection,
-      viewActions,
-      doc.views,
-      doc.sheets,
-      construction,
-      stores,
-      viewport,
-      browser.collapsed,
-      browser.toggle,
-      fileActions,
-      choice,
-      setChoice,
-      toasts?.history,
-      lastTool,
-      markingStyle.radial,
-      markingStyle.toggle,
-      platform,
-      openBugReport,
-      doc.components?.length,
-      doc.joints,
-      poseCommand,
-    ],
-  );
+      plugins: pluginEntries,
+      ...(toasts?.history && {
+        notifications: { open: () => toasts.history?.getState().setOpen(true) },
+      }),
+      tutorial: { start: () => startTutorialRef.current() },
+      about: () => setAboutOpen(true),
+      reportBug: () => void openBugReport(),
+      docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
+      macro: { recording: recording !== undefined },
+      componentCount: doc.components?.length ?? 0,
+      pose: poseCommand,
+      ...(m === 'model' && {
+        joints: {
+          checkClearance: () => openJointCheckRef.current(),
+          ...(!(doc.joints ?? []).some((j) => j.type !== 'rigid' && !j.suppressed) && {
+            unavailable: 'Make a revolute or slider joint first.',
+          }),
+        },
+      }),
+      ...(m === 'model' && {
+        components: {
+          ...(selectedComponent !== undefined &&
+            selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
+          active: activeComponent !== undefined,
+          isolated: isolatedComponent !== undefined,
+          activate: () => {
+            if (selectedComponent === undefined) {
+              notify('info', 'Select the bodies of one component first.');
+              return;
+            }
+            session.getState().activateComponent(selectedComponent);
+          },
+          deactivate: () => session.getState().activateComponent(undefined),
+          isolate: () => {
+            if (selectedComponent === undefined) {
+              notify('info', 'Select the bodies of one component first.');
+              return;
+            }
+            session.getState().isolateComponent(selectedComponent);
+          },
+          exitIsolation: () => session.getState().isolateComponent(undefined),
+        },
+      }),
+      ...(desktop &&
+        platform.menus && {
+          desktop: {
+            nativeMenu: desktop.nativeMenu,
+            quit: () => void quitApp(),
+            ...(platform.updates?.check && {
+              checkForUpdates: () => platform.updates?.check?.(),
+            }),
+            clearRecent: () => void desktop.clearRecent(),
+          },
+        }),
+    });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode, keymap]);
   // The desktop MCP server's tools act on this design (P6-08, ADR-0087 §5): its host is
@@ -1873,7 +1822,7 @@ function Shell({
   const searchAtPointer = useMemo(
     () => () =>
       setSearch(pointer.current ? { from: 'pointer', at: pointer.current } : { from: 'centre' }),
-    [],
+    [setSearch],
   );
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
@@ -2026,6 +1975,7 @@ function Shell({
         : []),
     ],
     [
+      setSearch,
       commands,
       undoKey,
       searchAtPointer,
@@ -2182,7 +2132,7 @@ function Shell({
         isStopped: (id) => kernel?.isStopped?.(id) ?? false,
         retryStopped: (id) => void kernel?.retry?.(id),
       }),
-    [stores, notify, session, dialog, dialogs, picking, kernel],
+    [stores, notify, session, dialog, dialogs, picking, kernel, startRedefineLater],
   );
   const run = (tool: ToolId) => {
     // Any other command ends the Joint dialog (P6-05), as it ends a feature dialog.
@@ -2979,7 +2929,7 @@ function Shell({
             notify: (message) => notify('error', message),
           })
         : undefined,
-    [annotating, sessionSelect, store, session, annotationsUi, kernel, notify],
+    [annotating, sessionSelect, store, session, annotationsUi, kernel, notify, bodiesLater],
   );
   // Dragging a note's anchor dot onto other geometry (ADR-0126 S4): the tool's picks.
   const reanchor = useMemo(
@@ -2993,7 +2943,7 @@ function Shell({
           : undefined,
         openSketch: () => openSketchLater.get(),
       }),
-    [store, viewport, kernel],
+    [store, viewport, kernel, bodiesLater, openSketchLater],
   );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
