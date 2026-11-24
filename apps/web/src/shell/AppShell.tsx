@@ -44,6 +44,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useInsertionEffect,
   useMemo,
   useRef,
   useState,
@@ -297,7 +298,7 @@ import { docsPath } from './docsLinks';
 import { canEditFeature, createFeatureActions, hasFeatureDialog } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { sketchesWithHover } from './hoverDrawings';
-import { useLatest } from './latest';
+import { useLater, useLaterValue, useLatest } from './latest';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { MODES, perMode } from './modes';
 import { createViewActions } from './namedViews';
@@ -636,8 +637,8 @@ function Shell({
     () => ({
       ...file,
       exportModel: () => setModelExport({}),
-      importModel: () => startImportRef.current(),
-      exportScript: () => exportScriptRef.current(),
+      importModel: () => startImportLater.get()(),
+      exportScript: () => exportScriptLater.get()(),
       saveVersion: () => setVersionsOpen(true),
       versionHistory: () => setVersionsOpen(true),
       plugins: () => setSettingsOpen('plugins'),
@@ -714,7 +715,7 @@ function Shell({
   // What is edited in place, or drafted by the Annotate tool (ADR-0126 §6): view state.
   const annotationsUi = useMemo(() => createAnnotationsUi(), []);
   // The open sketch for the browser rows and Look At, which run outside a render.
-  const openSketchRef = useRef<OpenSketch | undefined>(undefined);
+  const openSketchLater = useLater<OpenSketch | undefined>(undefined);
   useEffect(() => {
     if (!annotating) annotationsUi.getState().setDraft(undefined);
   }, [annotating, annotationsUi]);
@@ -727,7 +728,7 @@ function Shell({
         viewport,
         ui: annotationsUi,
         notify: (message) => notify('error', message),
-        openSketch: () => openSketchRef.current,
+        openSketch: () => openSketchLater.get(),
       }),
     [store, session, model, viewport, annotationsUi, notify],
   );
@@ -842,9 +843,9 @@ function Shell({
   const startTutorialRef = useRef<() => void>(() => {});
   const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
   /** The File menu's Import, which is the Insert tab's tile (P4-06). */
-  const startImportRef = useRef<(picked?: File) => void>(() => {});
+  const startImportLater = useLater<(picked?: File) => void>(() => {});
   /** The File menu's Export Design as Script (P5-05). */
-  const exportScriptRef = useRef<() => void>(() => {});
+  const exportScriptLater = useLater<() => void>(() => {});
   /** A body menu's Convert to Solid… (P4-13): selection and `run` live later in the component. */
   const convertToSolidRef = useRef<(id: BodyId) => void>(() => {});
   /** Canvas's tool, which picks its picture before its dialog opens. */
@@ -865,7 +866,7 @@ function Shell({
   useEffect(() => {
     if (!dialog) return;
     const picked = takeModelImport(doc.id);
-    if (picked) startImportRef.current(picked);
+    if (picked) startImportLater.get()(picked);
   }, [dialog, doc.id]);
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
@@ -887,7 +888,7 @@ function Shell({
     [recomputed, pendingBodies, bodyList, doc],
   );
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
-  const bodyListRef = useRef(bodyList);
+  const bodyListLater = useLater(bodyList);
   // Measure and inspect (P2-13): the kernel measures the selected topology, for the status
   // bar's size readout and the Measure panel; sketch entities, axes and planes are measured
   // here (P3-17). Outside Measure the status bar's question waits for a still selection.
@@ -990,10 +991,10 @@ function Shell({
           onRemove: section.removeAll,
         }
       : undefined;
-  bodyListRef.current = browserBodies;
+  useLaterValue(bodyListLater, browserBodies);
   const bodyActions = useMemo(
     () => ({
-      ...createBodyActions({ store, session }, () => bodyListRef.current, notify),
+      ...createBodyActions({ store, session }, () => bodyListLater.get(), notify),
       // A body's menu exports it (P2-12).
       exportBodies: (ids: readonly BodyId[]) => setModelExport({ bodies: ids }),
       // A body's menu opens Mesh to Solid with the body picked (P4-13, ADR-0097 §5);
@@ -1024,15 +1025,17 @@ function Shell({
     [doc.views, viewActions],
   );
   const componentList = useMemo(() => componentRows(doc, bodyList).rows, [doc, bodyList]);
-  const componentListRef = useRef(componentList);
-  componentListRef.current = componentList;
+  const componentListLater = useLater(componentList);
+  useLaterValue(componentListLater, componentList);
   const componentActions = useMemo(
     () =>
       createComponentActions(
         { store, session },
         (id) =>
-          componentListRef.current.find((r) => r.component.id === id)?.bodies.map((b) => b.id) ??
-          [],
+          componentListLater
+            .get()
+            .find((r) => r.component.id === id)
+            ?.bodies.map((b) => b.id) ?? [],
         notify,
       ),
     [store, session, notify],
@@ -1107,7 +1110,8 @@ function Shell({
             session,
             dialog,
             members: (id) =>
-              componentListRef.current
+              componentListLater
+                .get()
                 .find((r) => r.component.id === id)
                 ?.bodies.map((b) => b.id) ?? [],
             notify,
@@ -1590,16 +1594,19 @@ function Shell({
     }
   }, [dialog, dialogOpen, jointDialog, jointOpen, store, stores, session]);
   // What the update notice offers (ADR-0161): the key's undo below reads it.
-  const updateNotice = useRef<UpdateNotice>(undefined);
-  const tellUpdateNotice = useCallback((notice: UpdateNotice) => {
-    updateNotice.current = notice;
-  }, []);
+  const updateNotice = useLater<UpdateNotice>(undefined);
+  const tellUpdateNotice = useCallback(
+    (notice: UpdateNotice) => {
+      updateNotice.set(notice);
+    },
+    [updateNotice],
+  );
   // Ctrl+Z and the top bar's Undo (ADR-0161): Cancel while the notice offers it and Cancel
   // would only undo, nothing while a pressed Cancel waits, else the plain undo. The command
   // list's Undo (search, marking menu, the agent) stays the plain one.
   const undoKey = useCallback(() => {
     const route = undoRoute({
-      notice: updateNotice.current,
+      notice: updateNotice.get(),
       cancelUndoes: kernel?.revertToShownUndoes?.() ?? false,
       editing:
         Boolean(dialogOpen || jointOpen) ||
@@ -1681,7 +1688,7 @@ function Shell({
                         annotations: modelState?.annotations ?? {},
                         sketches: modelState?.sketches ?? {},
                       },
-                      openSketchRef.current,
+                      openSketchLater.get(),
                     )
                       .filter((p) => notes.has(p.annotation.id))
                       .map((p) => p.at);
@@ -1844,7 +1851,7 @@ function Shell({
       await autosave.flush();
     },
     toolHost: host,
-    openSketch: () => openSketchRef.current,
+    openSketch: () => openSketchLater.get(),
     sheetFields,
   });
   // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
@@ -2082,7 +2089,9 @@ function Shell({
     jointCheck.controller.open(joint);
     if (run) void jointCheck.controller.start();
   };
-  openJointCheckRef.current = openJointCheck;
+  useInsertionEffect(() => {
+    openJointCheckRef.current = openJointCheck;
+  });
   /** Opens the Wall Thickness panel on the check as it is (the browser's row). */
   const openThickness = () => {
     if (mode !== 'model') return;
@@ -2243,7 +2252,7 @@ function Shell({
       }
       dialog?.cancel();
       if (tool === 'canvas') startCanvasRef.current();
-      else startImportRef.current();
+      else startImportLater.get()();
       return;
     }
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
@@ -2361,8 +2370,8 @@ function Shell({
   // P4-06: Import picks a model file, stores its bytes with the design and opens
   // the dialog, which previews what the file holds (ADR-0066 §0, §2). An `.f3d`
   // opens as a new design instead (ADR-0083 §4).
-  exportScriptRef.current = () => setScriptExportOpen(true);
-  startImportRef.current = (picked) => {
+  useLaterValue(exportScriptLater, () => setScriptExportOpen(true));
+  useLaterValue(startImportLater, (picked) => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
     if (
@@ -2387,21 +2396,27 @@ function Shell({
     }).then((pending) => {
       if (pending) dialog?.start(IMPORT_TYPE);
     });
-  };
+  });
   // P4-06: Canvas picks an image, stores its bytes with the design and opens
   // its dialog, which previews the picture on its plane (ADR-0066 §5).
-  startCanvasRef.current = () => {
-    void pickCanvasFile({
-      files: platform.files,
-      projects: platform.projects,
-      store,
-      notify,
-    }).then((pending) => {
-      if (pending) dialog?.start(CANVAS_TYPE);
-    });
-  };
-  runRef.current = run;
-  startTutorialRef.current = startTutorial;
+  useInsertionEffect(() => {
+    startCanvasRef.current = () => {
+      void pickCanvasFile({
+        files: platform.files,
+        projects: platform.projects,
+        store,
+        notify,
+      }).then((pending) => {
+        if (pending) dialog?.start(CANVAS_TYPE);
+      });
+    };
+  });
+  useInsertionEffect(() => {
+    runRef.current = run;
+  });
+  useInsertionEffect(() => {
+    startTutorialRef.current = startTutorial;
+  });
   // What the toolbar and the app bar are handed: functions that stay the same and call the
   // latest (ADR-0159 §4); a new `run` on every render of the shell rendered every tile.
   const runLatest = useLatest(run);
@@ -2416,20 +2431,22 @@ function Shell({
   });
   // P6-03: a plugin command (ADR-0077 §5). An open dialog or panel ends first, so the
   // features land at the marker as the timeline shows it.
-  runPluginRef.current = (command) => {
-    if (mode !== 'model' || !kernel?.runPluginCommand) return;
-    if (picking) cancelCreateSketch(stores);
-    dialog?.cancel();
-    const selected = selectionRefs(session.getState().selection, model.getState().bodies);
-    void runPluginCommand({
-      command,
-      kernel: kernel as PluginCommandKernel,
-      plugins: platform.plugins,
-      store,
-      session,
-      selection: selected,
-    }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
-  };
+  useInsertionEffect(() => {
+    runPluginRef.current = (command) => {
+      if (mode !== 'model' || !kernel?.runPluginCommand) return;
+      if (picking) cancelCreateSketch(stores);
+      dialog?.cancel();
+      const selected = selectionRefs(session.getState().selection, model.getState().bodies);
+      void runPluginCommand({
+        command,
+        kernel: kernel as PluginCommandKernel,
+        plugins: platform.plugins,
+        store,
+        session,
+        selection: selected,
+      }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
+    };
+  });
   // The browser's own right-click menu stays out of the app while a project is open.
   useEffect(() => {
     window.addEventListener('contextmenu', keepNativeMenuOut);
@@ -2486,7 +2503,9 @@ function Shell({
     if (fallback) startCreateSketch(stores);
   };
   const sketchOnFaceRef = useRef(sketchOnFace);
-  sketchOnFaceRef.current = sketchOnFace;
+  useInsertionEffect(() => {
+    sketchOnFaceRef.current = sketchOnFace;
+  });
   /** Puts the sketch being redefined on `plane`: one undo step; a refusal keeps the pick going. */
   const redefineTo = (id: FeatureId, plane: GeomRef) => {
     try {
@@ -2506,14 +2525,16 @@ function Shell({
     else createSketchOn(stores, ref);
   };
   const pickPlaneRef = useRef(pickPlane);
-  pickPlaneRef.current = pickPlane;
+  useInsertionEffect(() => {
+    pickPlaneRef.current = pickPlane;
+  });
   const startRedefine = (id: FeatureId) => {
     dialog?.cancel();
     if (session.getState().activeTool !== CREATE_SKETCH) startCreateSketch(stores);
     setRedefining(id);
   };
-  const startRedefineRef = useRef(startRedefine);
-  startRedefineRef.current = startRedefine;
+  const startRedefineLater = useLater(startRedefine);
+  useLaterValue(startRedefineLater, startRedefine);
   // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
   const featureActions = useMemo(
     () =>
@@ -2532,7 +2553,7 @@ function Shell({
           if (picking) cancelCreateSketch(stores);
           return dialog?.edit(id, { fix: issues }) ?? false;
         },
-        redefinePlane: (id) => startRedefineRef.current(id),
+        redefinePlane: (id) => startRedefineLater.get()(id),
         isStopped: (id) => kernel?.isStopped?.(id) ?? false,
         retryStopped: (id) => void kernel?.retry?.(id),
       }),
@@ -2558,7 +2579,9 @@ function Shell({
   }, [doc, viewport]);
   // A recompute's first new error goes into the notification history (P3-13).
   const featureActionsRef = useRef(featureActions);
-  featureActionsRef.current = featureActions;
+  useInsertionEffect(() => {
+    featureActionsRef.current = featureActions;
+  });
   useEffect(
     () =>
       watchRecomputeErrors({
@@ -2898,7 +2921,7 @@ function Shell({
         : undefined,
     [mode, activeSketchId, sketchPlane],
   );
-  openSketchRef.current = openSketch;
+  useLaterValue(openSketchLater, openSketch);
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
   const runningTool = useMemo(
     () =>
@@ -2937,8 +2960,8 @@ function Shell({
     mode === 'model' && !picking && !dialogOpen && !jointOpen,
   );
   // While Annotate runs, a click drafts a note where it lands (ADR-0126 §6).
-  const bodiesRef = useRef(bodies);
-  bodiesRef.current = bodies;
+  const bodiesLater = useLater(bodies);
+  useLaterValue(bodiesLater, bodies);
   const annotateSelect = useMemo(
     () =>
       annotating && sessionSelect
@@ -2946,7 +2969,7 @@ function Shell({
             store,
             ui: annotationsUi,
             base: sessionSelect,
-            bodies: () => bodiesRef.current,
+            bodies: () => bodiesLater.get(),
             resolve: kernel?.resolveAnnotation
               ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
               : undefined,
@@ -2964,11 +2987,11 @@ function Shell({
       createReanchor({
         store,
         viewport,
-        bodies: () => bodiesRef.current,
+        bodies: () => bodiesLater.get(),
         resolve: kernel?.resolveAnnotation
           ? (annotation) => kernel.resolveAnnotation?.(annotation) ?? Promise.resolve(undefined)
           : undefined,
-        openSketch: () => openSketchRef.current,
+        openSketch: () => openSketchLater.get(),
       }),
     [store, viewport, kernel],
   );
@@ -2991,10 +3014,12 @@ function Shell({
   // A body menu's Convert to Solid… selects the body the way a browser row's click
   // does, then runs the tool the way a tile click does (P4-13, ADR-0097 §5): the
   // dialog pre-selects from the session's selection.
-  convertToSolidRef.current = (id) => {
-    modelSelect?.onClick({ kind: 'body', id }, false);
-    runRef.current('meshToSolid');
-  };
+  useInsertionEffect(() => {
+    convertToSolidRef.current = (id) => {
+      modelSelect?.onClick({ kind: 'body', id }, false);
+      runRef.current('meshToSolid');
+    };
+  });
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
