@@ -377,9 +377,12 @@ of 4 runs (lowest–highest), minified build:
 | Undo an edit | 0 → 0 ms | 87 (85–90) → 68 (65–69) ms |
 | Open a sketch | 84 (83–84) → 78 (78–85) ms | 124 (121–128) → 110 (107–116) ms |
 | Drag a point in an open sketch | 0 (0–53) → 0 ms | 452 (434–459) → 170 (118–216) ms |
-| Open the design | OPEN30 | 840 (812–890) → 848 (801–862) ms |
+| Open the design | 586 (421–651) → 600 (427–676) ms, 16 runs | 840 (812–890) → 848 (801–862) ms |
 
 A 0 means no task of 50 ms or more, not no work: the 100-plate click's task is now under 50 ms.
+Opening the 30-plate design took 16 runs of each build: both fall into the same two groups (about
+420–470 and 575–675 ms), main in the higher one 9 times, this change 13 times; within the runs'
+spread.
 Pointer moves, hovers, orbits and typing render the same. The keyboard shortcuts' window
 listeners are added as often as before in every action.
 
