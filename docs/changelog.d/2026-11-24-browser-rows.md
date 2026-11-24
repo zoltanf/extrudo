@@ -1,0 +1,1 @@
+- 2026-11-24 · **Quicker browser in large designs**: selecting, undoing, finishing a feature edit and dragging a sketch point no longer redraw every row of the browser, so they respond faster in designs with dozens of parts (a sketch-point drag in a 100-part design holds up the page less than half as long).

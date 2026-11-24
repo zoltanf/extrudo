@@ -313,3 +313,93 @@ render of `Shell` and its insertion effects with it.
   or a plain call of a builder, can leave a value unmemoised: check the compiled output.
 - A command's keys come from `useKeysFor()` in `Shell`, never the module's `keysFor` in render.
 - Effect order: blocks moved for item 4 must not carry a layout or passive effect past another.
+
+## Amendment (2026-11-24): the browser's rows keep their props
+
+**Context.** The browser (`shell/BrowserPanel.tsx`) renders on every document change and every
+selection change, and every sketch row and body row rendered with it, each with its context
+menu, tooltip, eye and their Radix parts. In a 100-plate design the browser was 28,455 of the
+35,834 components a sketch-point drag rendered, and 8,983 of 9,652 in a box select. No row was
+memoised, and none could have been kept: the browser built a `position` object, a pick closure,
+an icon element and a `rowAttribute` object for each sketch row in its render; `bodyEntries`
+makes new entries on every document change; every body row took the selected set; and `Shell`
+handed the browser `onPickBody` and `onHoverBody` as closures made in its render, new whenever
+`modelSelect` changed (a dialog opens or closes, a sketch opens).
+
+**Decision.**
+
+1. `SketchLeaf` is `memo`. It takes the feature's place as three numbers (`index`, `marker`,
+   `count`) and builds the menu's `position` from them, the browser's `onPickFeature` instead of
+   a closure per row, and its icon and test attribute as strings (`iconCategory`,
+   `rowAttribute`). The feature is compared by identity (an edit makes a new object for the
+   features it changes only), its problem comes from `featureProblem` (one object per status
+   object, ADR-0156's amendment of 2026-11-19), its actions are the shell's feature actions.
+2. Body rows are `BodyLeaf = memo(BodyRow, …)`: the entry compared by value with
+   `sameBodyEntry` (`shell/bodies.ts`: every field by identity, `meta` field by field), every
+   other prop by identity.
+3. A body row takes `selected` and reads the whole selection only when its drag, its Delete or
+   its menu's Delete or Export runs: `selection` is a getter, the browser's `useLatest(() =>
+   selectedBodies)`, the same function for good. A selection change renders only the rows it
+   selects or clears.
+4. `Shell` hands the browser `pickBody` and `hoverBody` from `useLatest` (a row only calls them;
+   with no `modelSelect` they do nothing, as the row's `onPick?.()` did with none), and the
+   assembly hint's New Component runs `runLatest`, so the hint's object stays the same while its
+   dismiss does.
+
+**Exceptions.** A row's appearance popover gets the entry object (`AppearancePanel`), new on
+every document change; Radix mounts the popover's content only while it is open, as it does the
+row's menu. While the Project tool runs `Shell` still hands the browser an `onPickFeature` made
+in its render, so a change of `modelSelect` then renders every sketch row. A move of the marker
+renders every sketch row: each shows its place in its menu. Opening a design mounts every row.
+
+**Measured** (designs of 30 and 100 plates with 30 holes each, production build, Chrome with a
+GPU, 1280 × 800; before is main with `Shell` compiled). Components rendered (one run, unminified
+build; a memo with a comparator counted once), all → of them in the browser:
+
+| action | 30 plates | 100 plates |
+|---|--:|--:|
+| Click on a face | 1,106 → 146 (999 → 39) | 3,359 → 146 (3,239 → 39) |
+| Box select | 3,492 → 699 (2,823 → 58) | 9,652 → 699 (8,983 → 58) |
+| Commit an edit in a feature dialog | 10,511 → 7,225 (3,447 → 135) | 32,604 → 21,752 (11,007 → 135) |
+| Undo an edit | 3,642 → 799 (2,988 → 132) | 15,882 → 6,470 (9,568 → 132) |
+| Open a sketch | 6,132 → 5,176 (1,014 → 67) | 14,237 → 11,043 (3,254 → 67) |
+| Drag a point in an open sketch | 15,232 → 4,505 (11,385 → 689) | 35,834 → 7,885 (28,455 → 546) |
+| Open the design | 26,867 → 24,777 (7,901 → 6,201) | 76,547 → 70,940 (24,211 → 18,801) |
+
+Time the page was blocked (tasks of 50 ms or more from the action until 1.5 s after it), median
+of 4 runs (lowest–highest), minified build:
+
+| action | 30 plates | 100 plates |
+|---|--:|--:|
+| Click on a face | 0 → 0 ms | 52 (51–54) → 0 ms |
+| Box select | 52 (51–53) → 0 ms | 119 (117–123) → 105 (103–106) ms |
+| Commit an edit in a feature dialog | 58 (58–59) → 53 (53–53) ms | 229 (226–238) → 198 (195–201) ms |
+| Undo an edit | 0 → 0 ms | 87 (85–90) → 68 (65–69) ms |
+| Open a sketch | 84 (83–84) → 78 (78–85) ms | 124 (121–128) → 110 (107–116) ms |
+| Drag a point in an open sketch | 0 (0–53) → 0 ms | 452 (434–459) → 170 (118–216) ms |
+| Open the design | OPEN30 | 840 (812–890) → 848 (801–862) ms |
+
+A 0 means no task of 50 ms or more, not no work: the 100-plate click's task is now under 50 ms.
+Pointer moves, hovers, orbits and typing render the same. The keyboard shortcuts' window
+listeners are added as often as before in every action.
+
+**Rules.**
+
+- What the browser hands every row is a value, or an object or function kept while it is
+  unchanged: no object, closure or element made per row in the browser's render.
+- A new `BodyEntry` field is compared by identity in `sameBodyEntry`; a field holding an object
+  made anew by `bodyEntries` needs its own comparison, as `meta` has.
+- A value that changes often and that a row reads only when an event runs (the selection) reaches
+  it as a getter (`useLatest`), called from handlers only, never during a render.
+- A callback `Shell` hands the browser for the rows to call is from `useLatest`, not made in its
+  render.
+- Tested: `bodies.test.ts` (`sameBodyEntry`: the same entry in new objects is the same; each part
+  that changes is not) and `BrowserPanel.renders.test.tsx` with the real `BrowserPanel` (30
+  sketches, 30 bodies, renders counted as React's devtools count them): a render with nothing new
+  renders no row; an edit inside one sketch renders that row and no body row; a selection change
+  renders only the rows it selects or clears; a row's Delete takes the latest selection although
+  the row didn't render for it; a body's new name or visibility renders its row alone; a new
+  status renders its sketch's row alone, the same statuses in a new object none, a new active
+  sketch its row, a marker move all 30. Taken out, each part fails tests: `SketchLeaf` not
+  memoised, or entries compared by identity, all six; a new getter on every render, the
+  selection's two; a getter keeping the first render's selection, the Delete test.
