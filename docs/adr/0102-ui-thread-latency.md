@@ -415,3 +415,56 @@ The rules:
   array among them once for its box and once for its size (walks counted by reads of a counting
   proxy, no clock). Taken out, the cache fails the counting test; a size that lets a NaN through
   (`Math.min`), or a box from a plain loop instead of `setFromArray`, fails the equality test.
+
+## §10. Amendment 2026-11-24: a body that mounts again takes what it built from its mesh
+
+While a feature is edited the view shows only the bodies before it (`dialogBodies`), so when the
+dialog closes every body after the edited feature mounts again. With ADR-0024's amendment of
+2026-11-24 their mesh objects are the same, but a new `Body` built everything again: its edge
+segments (`edgeSegments`), the whole painting of its face colours (`paintFaces`) and its two
+geometries. In a CPU profile of a 100-plate commit (unminified, one run) the first two took
+19 + 13 ms.
+
+**The fix:** `viewport/bodyBuilt.ts` keeps, in `WeakMap`s by the mesh object, what is built from
+the mesh alone: `keptEdgeSegments` (the edge array; `LineSegmentsGeometry.setPositions` uses the
+array as its buffer and nothing writes into it, so every geometry of the mesh shares it) and
+`paintAll` (the last whole painting: the palette's key, a copy of the face states it was painted
+for and a copy of the colours). A new geometry painted for the same key and the same states copies
+the colours; anything else paints and keeps the new painting. A whole painting writes every node
+of every face of a geometry whose colours start at 0, so the copy is what painting gives. The
+partial paintings after a hover or a selection still go through `paintFaces` with the states
+before, as before.
+
+**Not kept:** the geometries. They are made per mount and disposed when the body unmounts, as
+before, so nothing changes for the GPU's buffers (the uploads, `bufferData`, 10 → 15 ms in the
+one-run profiles). Keeping them across mounts would need a place that knows when a mesh has left
+the model for good to dispose them; the view only knows what it shows. The silhouettes, the marks,
+the region preview and the thin-wall flags depend on more than the mesh and stay per mount.
+
+**What is held:** per mesh the page holds, until the mesh object goes, its edge array (which a
+mounted body holds anyway) and one copy of its face colours (as long as its positions array). The
+`WeakMap`s keep nothing alive.
+
+**Measured** (30 and 100 plates with 30 holes each, production build, Chrome with a GPU,
+1280 × 800, quiet machine; before is the branch with ADR-0024's amendment of 2026-11-24). Blocked
+time (tasks of 50 ms or more from the action until 1.5 s after it), median of 4 runs
+(lowest–highest): commit of an edit in a feature dialog on 100 plates 123 (122–124) → 92 (92–95)
+ms, on 30 plates 50 (50–55) → 0 ms. Every other action stays within its runs' spread; the
+components rendered move as much as two runs of one build do. In the profile of the 100-plate commit, edges and colours take
+32 → 4 ms (`paintAll`'s copies).
+
+The rules:
+
+- What `bodyBuilt.ts` keeps is a pure function of the mesh (and, for the colours, of the key and
+  the states it is stored with); anything that also depends on another input is built per mount
+  or keyed by that input too.
+- A kept array is never written: the edge array is shared by geometries, the colours are copied
+  into a new geometry's attribute and never handed out.
+- Geometries stay per mount and are disposed on unmount.
+- Tested: `bodyBuilt.test.ts` (one edge array per mesh, equal to building it; a painting from the
+  cache equals painting every face, for two palettes and two sets of states, from the cache or
+  not; a later hover painted into a geometry, or a states array changed in place, doesn't reach
+  the kept painting) and `Bodies.remount.test.tsx` (30 bodies mount, are hidden as a dialog does,
+  and mount again with one new mesh: 1 edge build and 1 whole painting, not 30). Taken out, the
+  cache fails both counting tests; not comparing the states or the palette, or keeping the
+  colours by reference, fails the equality tests.

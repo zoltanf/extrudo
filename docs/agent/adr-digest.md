@@ -3919,6 +3919,13 @@ mesh's `positions` array; `boundsOf` unions the kept boxes, `bodiesSummary` writ
 size goes through `meshBox`/`meshSize`; **nothing writes into a `BodyMesh`'s `positions`** once
 the mesh exists (moved or scaled nodes go into a new array; never transform a geometry built on
 a mesh's array in place); `meshBox`'s box is shared, read it only; `meshBounds.test.ts`.
+§10: a body that mounts again takes what it built from its mesh — `viewport/bodyBuilt.ts` keeps
+`keptEdgeSegments` (shared edge array) and `paintAll` (the last whole face painting: key, states
+copy, colours copy) in `WeakMap`s by the mesh; geometries stay per mount and are disposed on
+unmount. **Rules:** keep only what is a pure function of the mesh (and of the key it is stored
+with); never write a kept array (the colours are copied into a geometry, never handed out); no
+geometry kept across mounts without an owner that disposes it; `bodyBuilt.test.ts`,
+`Bodies.remount.test.tsx`.
 
 ADR-0101 (P6-15, proposed 2026-10-23) adds **Render Picture with Blender** (desktop only).
 `apps/desktop/src/main/blender.ts` is pure over an injected environment like `slicers.ts`:
