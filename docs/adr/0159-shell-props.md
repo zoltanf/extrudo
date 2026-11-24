@@ -166,8 +166,8 @@ calls `clipPlanes` on every render), so the planes every body takes were new eac
 **Decision.**
 
 1. `useBodyProps` (`viewport/bodyProps.ts`) gives the scene the accent and the analyses'
-   objects (overhang, thickness, collisions, section), each the same object while its parts
-   are.
+   objects (overhang, thickness, collisions, section, the region preview), each the same
+   object while its parts are.
 2. `Body` is `memo`. `Bodies` hands it the shared section and thickness objects (not one per
    body; `Body` takes its own thin flags and its caps' render order as a number), and the
    clipping planes from `planesOf`: one list per list of clips, kept in a `WeakMap` by the clips
@@ -198,6 +198,6 @@ gives the same object for the same input. No store, global or setting is read in
 - Tested: `Bodies.renders.test.tsx` with the real `Bodies` (a render with the same props renders
   no body; a hover on one body renders that body; a new mesh renders its body; with a section
   and a thickness check on, a render renders none and a new section renders all; a new accent
-  renders all), `bodyProps.test.tsx` (the same objects across renders; a new accent colour gives
-  a new accent). Each fails with its part of the change taken out.
+  renders all), `bodyProps.test.tsx` (the same objects across renders; a new part gives a new object
+  for that part alone; a new accent colour gives a new accent). Each fails with its part of the change taken out.
 

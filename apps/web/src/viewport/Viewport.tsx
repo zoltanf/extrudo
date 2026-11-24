@@ -1084,7 +1084,14 @@ function Scene({
     [colors],
   );
   // The accent and the analyses for the bodies: the same objects while unchanged (ADR-0159 §5).
-  const look = useBodyProps({ colors, overhang, thin, collisions, sectionClip });
+  const look = useBodyProps({
+    colors,
+    overhang,
+    thin,
+    collisions,
+    sectionClip,
+    regions: preview?.regions,
+  });
   // Fills are big: the accent goes lighter than on curves (ADR-0020).
   const profileColors = useMemo(
     () => ({
@@ -1136,14 +1143,7 @@ function Scene({
         {...(look.thickness && { thickness: look.thickness })}
         {...(look.collisions && { collisions: look.collisions })}
         {...(look.section && { section: look.section })}
-        {...(preview?.regions && {
-          regions: {
-            view: preview.regions,
-            plane: colors.regionPlane,
-            curved: colors.regionCurved,
-            unfit: colors.regionUnfit,
-          },
-        })}
+        {...(look.regions && { regions: look.regions })}
       />
       {/* Ghost bodies (ADR-0030's amendment): a vague grey shape, no picking or analysis. */}
       <GhostBodies

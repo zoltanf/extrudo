@@ -212,9 +212,9 @@ function hex(value: string): Rgba {
 /**
  * A body renders only when one of its props changes (ADR-0159 §5): the view renders on every
  * hover and document change, and every body rendered with it, each with its four marks. Every
- * prop is a value or an object kept while it doesn't change (the accent and the analyses'
- * objects in `Scene`, the marks in `createHighlightMemo`; the section and the thickness check
- * check's parts above); what a body reads beyond its props is read per frame or in effects.
+ * prop is a value or an object kept while it doesn't change (the accent, the analyses' and the
+ * region preview's objects in `Scene`, the marks in `createHighlightMemo`, the planes in
+ * `planesOf`); what a body reads beyond its props is read per frame or in effects.
  */
 const Body = memo(function Body({
   id,
