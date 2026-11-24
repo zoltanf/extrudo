@@ -355,3 +355,63 @@ Rejected: keeping a project's worker for the next design — its fonts, files
 and shape caches would each need a reset path, against one worker per open
 project (ADR-0024); prewarming on every route — a direct link spawns at once
 anyway, and the home screen is the only route that idles before opening.
+
+## §9. Amendment 2026-11-24: each mesh's bounds are worked out once
+
+A CPU profile of a sketch-point drag in a 100-plate design (each plate a sketch and an
+extrude with 30 holes) spent 66 ms of the drag's blocked time in two functions that walk every
+node of every shown body: `boundsOf` (`viewport/bodyGeometry.ts`, `Bodies`' bounds for the
+camera) and `bodiesSummary` (`viewport/Viewport.tsx`, the `data-bodies` attribute). Both run
+whenever the list of shown bodies is a new object, which a drag makes on every step although
+no body changes.
+
+**The fix:** `viewport/meshBounds.ts` keeps each mesh's box (`meshBox`, what
+`new Box3().setFromArray` gives) and its `data-bodies` size (`meshSize`, the summary's loop
+as it was) in a `WeakMap` by the mesh's `positions` array. `boundsOf` unions the kept boxes in
+the order it always did and `bodiesSummary` writes the kept size, so both give the same numbers
+and text as before, bit for bit; every caller of `boundsOf` (`Bodies`, `SectionCap`, the shell's
+centre for a joint's pose, Move's pivot and Pattern's centre) goes through the cache with it.
+
+**Why by the positions array, and why it can't go stale.** The bounds are read from that array
+alone, so a new mesh object around the same array keeps them. A kept value could go stale only
+if the array were written in place, and nothing writes into a mesh's positions: the kernel copies
+them out of WASM into a new array per mesh (`kernel.ts`, `#copy`), the worker transfers their
+buffers, so the page gets arrays of its own, the importers' scaling and transforms
+(`features/import.ts`, `scaled`, `transformMesh`) write into new arrays, and the view's
+geometries take them as they are (no geometry built on them is transformed in place). Searched
+for: index writes, `set`, `fill`, `copyWithin`, `sort`, `reverse` on any `positions`, and
+`applyMatrix4`, `translate`, `rotate*`, `scale`, `center` on the view's geometries.
+
+**Not through the cache:** `posedBox` (`viewport/posedBodies.ts`, the `data-posed-bodies`
+summary) walks the nodes through the body's pose, and a box of moved nodes is not the moved box;
+`placeModel` (`render/app/scenes.ts`) walks the nodes once per picture of the app-render job.
+After a recompute the kernel brings new arrays, so an edit's or an undo's first ask walks every
+body once, as before; later asks in the same action find them kept.
+
+**Measured** (30 and 100 plates, production build, Chrome with a GPU, 1280 × 800, before is
+main). Profile time in the two functions (mean of 2 runs, unminified): 100-plate drag 66 → 2 ms,
+30-plate drag 18 → 0 ms, edit commit and undo 20 → 8 ms. Blocked time (tasks of 50 ms or more
+from the action until 1.5 s after it, median of 4 runs, lowest–highest): 100-plate drag 450
+(448–453) → 309 (169–396) ms, 30-plate drag 25 (0–53) → 0 (0–50) ms; the drag's steps sit around
+the 50 ms line (its longest task 73–80 → 64–68 ms), so a few milliseconds less per step drops
+whole steps out of the sum and the runs spread. Every other action stays within its runs'
+spread (click, box select, edit commit, undo, opening a sketch, opening the design), and the
+components rendered are the same.
+
+The rules:
+
+- A walk over a body mesh's nodes for its box or size goes through `meshBox`/`meshSize`; a new
+  kind of per-mesh summary that reads only `positions` gets a `WeakMap` by that array the same
+  way.
+- Nothing writes into a `BodyMesh`'s `positions` once the mesh exists; code that needs moved or
+  scaled nodes writes them into a new array (and a geometry built on a mesh's array is never
+  transformed in place).
+- `meshBox`'s box is shared: callers read it (`Box3.union`), never change it.
+- Tested in `meshBounds.test.ts`: the bounds and sizes equal the old walks bit for bit (every
+  number compared by its bits) for an empty array, fewer than three numbers, one node, repeated
+  nodes, a flat mesh, `-0`, NaN and infinite nodes, a length not a multiple of three, a
+  `Float64Array` and seeded random meshes of up to 2,000 nodes, alone and together in two orders;
+  and 20 bodies are walked once each, the same arrays in new mesh objects not at all, and one new
+  array among them once for its box and once for its size (walks counted by reads of a counting
+  proxy, no clock). Taken out, the cache fails the counting test; a size that lets a NaN through
+  (`Math.min`), or a box from a plain loop instead of `setFromArray`, fails the equality test.
