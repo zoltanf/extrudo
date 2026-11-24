@@ -25,7 +25,7 @@ beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
 });
 
-describe('measure (ADR-0001, 2026-11-25)', () => {
+describe('measure (ADR-0035, 2026-11-24)', () => {
   it('gives the same box before and after a shape is meshed, curved or flat', () => {
     const shapes = {
       cylinder: kernel.cylinder(5, 10, [0, 0, 0]),

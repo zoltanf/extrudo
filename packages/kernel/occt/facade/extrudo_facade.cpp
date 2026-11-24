@@ -2635,7 +2635,7 @@ public:
       // From the faces' geometry, never their triangulation (useTriangulation false): meshing a
       // shape for display or a sheet view leaves a triangulation on its faces, and a box from it
       // is larger, so the same shape measured before and after drawing it gave two boxes
-      // (ADR-0001's amendment of 2026-11-25). A face with no surface (a mesh body) still uses its
+      // (ADR-0035's amendment of 2026-11-24). A face with no surface (a mesh body) still uses its
       // triangulation, as before. Every BRepBndLib::Add here passes false for the same reason.
       Bnd_Box box;
       BRepBndLib::Add(*s, box, false);
