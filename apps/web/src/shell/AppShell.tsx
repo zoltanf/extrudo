@@ -1742,9 +1742,8 @@ function Shell({
       ready,
       dialogCommands,
       plugins: pluginEntries,
-      ...(toasts?.history && {
-        notifications: { open: () => toasts.history?.getState().setOpen(true) },
-      }),
+      // `history`, not `toasts`: that object is new with every toast, and the commands would be.
+      ...(history && { notifications: { open: () => history.getState().setOpen(true) } }),
       tutorial: { start: () => startTutorialRef.current() },
       about: () => setAboutOpen(true),
       reportBug: () => void openBugReport(),

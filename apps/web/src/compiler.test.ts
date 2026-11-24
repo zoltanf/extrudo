@@ -162,8 +162,9 @@ function skipped(path: string): string[] {
 
 /**
  * The top-level values a compiled component builds on every render: declared from an
- * allocation (array, object, function, `new`, a call other than a hook's) rather than from a
- * temporary the compiler assigns inside a memo guard (`if ($[n] !== …)`).
+ * allocation (array, object, function, `new`, a call other than a hook's; also in a branch of
+ * `?:`, `&&`, `||` or `??`) rather than from a temporary the compiler assigns inside a memo
+ * guard (`if ($[n] !== …)`).
  */
 function unguardedValues(file: string, component: string): string[] {
   const { code } = transformSync(file, readFileSync(file, 'utf8'), {
@@ -174,6 +175,7 @@ function unguardedValues(file: string, component: string): string[] {
   const fn = ast.body.find(
     (s: Node) => s.type === 'FunctionDeclaration' && s.id?.name === component,
   );
+  if (!fn) throw new Error(`${component} is not a function declaration in the compiled ${file}`);
   const guarded = new Set<string>();
   const walk = (node: Node, inGuard: boolean) => {
     if (!node || typeof node.type !== 'string') return;
@@ -189,20 +191,24 @@ function unguardedValues(file: string, component: string): string[] {
     }
   };
   for (const s of fn.body.body) walk(s, false);
+  // No guard at all: the compiler's output changed shape, and every value would look unguarded.
+  if (guarded.size === 0) throw new Error(`no memo guard found in the compiled ${component}`);
+  const allocates = (init: Node): boolean => {
+    if (init.type === 'ConditionalExpression')
+      return allocates(init.consequent) || allocates(init.alternate);
+    if (init.type === 'LogicalExpression') return allocates(init.left) || allocates(init.right);
+    if (init.type === 'CallExpression') return !/^(use[A-Z]|_c$)/.test(init.callee?.name ?? '');
+    return /^(ArrayExpression|ObjectExpression|ArrowFunctionExpression|FunctionExpression|NewExpression)$/.test(
+      init.type,
+    );
+  };
   const out: string[] = [];
   for (const s of fn.body.body) {
     if (s.type !== 'VariableDeclaration') continue;
     for (const d of s.declarations) {
       const init = d.init;
       if (!init || d.id.type !== 'Identifier') continue;
-      const hook =
-        init.type === 'CallExpression' && /^(use[A-Z]|_c$)/.test(init.callee?.name ?? '');
-      const allocates =
-        /^(ArrayExpression|ObjectExpression|ArrowFunctionExpression|FunctionExpression|NewExpression)$/.test(
-          init.type,
-        ) ||
-        (init.type === 'CallExpression' && !hook);
-      if (allocates && !guarded.has(d.id.name)) out.push(d.id.name);
+      if (allocates(init) && !guarded.has(d.id.name)) out.push(d.id.name);
     }
   }
   return out;
