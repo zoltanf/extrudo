@@ -71,7 +71,7 @@ import type { Inspection, InspectTarget } from './inspect';
 import type { Interference } from './interference';
 import type { JointCheck, JointCheckRequest } from './joints/check';
 import type { MeshRegions } from './kernel';
-import type { BodyMesh, MeshOptions } from './mesh';
+import { type BodyMesh, type MeshOptions, sameMesh } from './mesh';
 import type { StepBody } from './model-export';
 import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
 import { canonicalJson, hashString } from './recompute/hash';
@@ -1532,7 +1532,7 @@ export class Recomputer {
     const meshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
     let missing = false;
     for (const body of result.bodies) {
-      const mesh = body.mesh ?? this.#held(body);
+      const mesh = body.mesh ? this.#kept(body.id, body.mesh) : this.#held(body);
       if (mesh) meshes.set(body.id, { version: body.version, mesh });
       else missing = true;
     }
@@ -1672,6 +1672,20 @@ export class Recomputer {
   #heldBase(body: BodyResult): BodyMesh | undefined {
     const held = this.#baseMeshes.get(body.id);
     return held?.version === body.version ? held.mesh : undefined;
+  }
+
+  /**
+   * A mesh the kernel sent for the model, or the mesh this already holds for the body when the two
+   * are the same in every field (`sameMesh`; ADR-0024's amendment of 2026-11-24). The kernel
+   * sends a body again whenever its version changes, and a version changes with the cache key of
+   * the feature that made it, which takes in every body-writing feature before it: an edit of the
+   * first of many plates sends every later plate again, each the same as before. Handing out the
+   * held object keeps everything the page keeps by mesh (the view's bodies, bounds, pick index).
+   * Previews don't: the view shows only the bodies before the draft while it is edited.
+   */
+  #kept(id: BodyId, mesh: BodyMesh): BodyMesh {
+    const held = this.#meshes.get(id)?.mesh;
+    return held && sameMesh(held, mesh) ? held : mesh;
   }
 
   #held(body: BodyResult): BodyMesh | undefined {
