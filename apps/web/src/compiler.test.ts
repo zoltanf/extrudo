@@ -19,6 +19,15 @@ import { describe, expect, it } from 'vitest';
 const SRC = dirname(fileURLToPath(import.meta.url));
 const LIST = join(SRC, '../compiler-skips.json');
 
+/** TypeScript nodes that wrap an expression: the expression is visited, the type not. */
+const TYPE_WRAPPERS = new Set([
+  'TSAsExpression',
+  'TSNonNullExpression',
+  'TSSatisfiesExpression',
+  'TSTypeAssertion',
+  'TSInstantiationExpression',
+]);
+
 /** Components that must compile, whatever the list says (ADR-0159 §6). */
 const MUST_COMPILE = ['shell/AppShell.tsx › Shell'];
 
@@ -44,7 +53,8 @@ function bound(pattern: Node, out: string[] = []): string[] {
  * parameter, its own declaration) shadows the component's; property names and keys don't count.
  */
 function forwardReferences(file: string, component: string): string[] {
-  const ast = parseAst(readFileSync(file, 'utf8'), { lang: 'tsx' }) as Node;
+  const lang = file.endsWith('.tsx') ? 'tsx' : 'ts';
+  const ast = parseAst(readFileSync(file, 'utf8'), { lang }) as Node;
   const fn = ast.body.find(
     (s: Node) => s.type === 'FunctionDeclaration' && s.id?.name === component,
   );
@@ -68,18 +78,30 @@ function forwardReferences(file: string, component: string): string[] {
   const found = new Set<string>();
   const visit = (node: Node, at: number, parent: Node, key: string, shadow: Set<string>) => {
     if (!node || typeof node.type !== 'string') return;
+    // A type wrapper around an expression (`x as T`, `x!`, `x satisfies T`, `<T>x`): its
+    // expression counts; any other TypeScript node is a type and names nothing at run time.
+    if (TYPE_WRAPPERS.has(node.type)) {
+      visit(node.expression, at, node, 'expression', shadow);
+      return;
+    }
+    if (node.type.startsWith('TS')) return;
     let inner = shadow;
     if (/Function/.test(node.type)) inner = new Set([...shadow, ...own(node)]);
     const isKey =
       (parent?.type === 'MemberExpression' && key === 'property' && !parent.computed) ||
       (parent?.type === 'Property' && key === 'key' && !parent.computed);
-    if (node.type === 'Identifier' && !isKey && !inner.has(node.name)) {
+    // A JSX element's name (`<Later />`, `<Later.Item>`'s object) is a use of that name.
+    const element =
+      node.type === 'JSXIdentifier' &&
+      ((/^JSX(Opening|Closing)Element$/.test(parent?.type ?? '') && key === 'name') ||
+        (parent?.type === 'JSXMemberExpression' && key === 'object'));
+    if ((node.type === 'Identifier' || element) && !isKey && !inner.has(node.name)) {
       const later = declaredAt.get(node.name);
       if (later !== undefined && later > at) found.add(node.name);
     }
     for (const [k, v] of Object.entries(node)) {
       if (k === 'typeAnnotation' || k === 'returnType' || k === 'typeArguments') continue;
-      if (k === 'typeParameters' || /^TS/.test((v as Node)?.type ?? '')) continue;
+      if (k === 'typeParameters') continue;
       if (Array.isArray(v)) for (const c of v) visit(c, at, node, k, inner);
       else if (v && typeof v === 'object') visit(v, at, node, k, inner);
     }
@@ -252,5 +274,44 @@ describe('the React Compiler', () => {
       }`,
     );
     expect(forwardReferences(file, 'Shell')).toEqual(['go', 'later']);
+  });
+
+  it('the forward-reference check sees names inside type wrappers and JSX element names', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'forward-ref-'));
+    const tsx = join(dir, 'probe.tsx');
+    writeFileSync(
+      tsx,
+      `function Shell() {
+        const a = () => (asCast as number) + nonNull! + (satisfied satisfies number);
+        const b = () => <Later.Item><Shown /></Later.Item>;
+        const t: Later = 1 as unknown as Later;
+        const typed = (x: OnlyType): OnlyType => x as OnlyType;
+        const asCast = 1;
+        const nonNull = 2;
+        const satisfied = 3;
+        const Later = { Item: () => null };
+        const Shown = () => null;
+        const OnlyType = 4;
+        return [a, b, t, typed];
+      }`,
+    );
+    expect(forwardReferences(tsx, 'Shell')).toEqual([
+      'Later',
+      'Shown',
+      'asCast',
+      'nonNull',
+      'satisfied',
+    ]);
+    // An angle-bracket assertion needs a .ts file.
+    const ts = join(dir, 'probe.ts');
+    writeFileSync(
+      ts,
+      `function Shell() {
+        const a = () => <number>casted;
+        const casted = 1;
+        return a;
+      }`,
+    );
+    expect(forwardReferences(ts, 'Shell')).toEqual(['casted']);
   });
 });
