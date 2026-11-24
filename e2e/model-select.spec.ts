@@ -165,6 +165,45 @@ test('boxes select bodies, or faces with bodies filtered out', async ({ page }) 
   await expect(filterButton).not.toHaveAttribute('data-filtered', 'true');
 });
 
+test('in the Top view a crossing box takes the hole wall it meets, and nothing far along its line', async ({
+  page,
+}) => {
+  // The hole's wall and the part's sides are seen edge-on from the top (ADR-0026's amendment
+  // of 2026-11-24): a crossing box takes them where it meets them, never only for lying on
+  // their line.
+  const { viewport } = await testPart(page);
+  const selection = page.locator('output[aria-label="Selection"]');
+  await page
+    .getByRole('group', { name: 'ViewCube' })
+    .getByRole('button', { name: 'Top', exact: true })
+    .click();
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
+  await settled(viewport);
+  const at = await projector(viewport);
+  const filterButton = page.getByRole('button', { name: 'Selection filter' });
+  await filterButton.click();
+  await page.getByRole('menuitemcheckbox', { name: 'Bodies' }).click();
+  await page.keyboard.press('Escape');
+  // Across the hole's rim (the hole is Ø8 at the part's middle, 20, 15): the top and the
+  // bottom face around it and the wall.
+  const rim = at([24, 15, 20]);
+  await box(page, { x: rim.x + 6, y: rim.y - 6 }, { x: rim.x - 6, y: rim.y + 6 });
+  await expect(selection).toHaveText('3 faces');
+  const faces = (await selected(viewport)).split(' ');
+  // Inside the hole, clear of the wall: nothing.
+  await page.keyboard.press('Escape');
+  const middle = at([20, 15, 20]);
+  await box(page, { x: middle.x + 4, y: middle.y - 4 }, { x: middle.x - 4, y: middle.y + 4 });
+  await expect(selection).toHaveText('Nothing selected');
+  // Across the left side (x = 0, seen edge-on), inside its length: the side, the top, the bottom.
+  const side = at([0, 15, 20]);
+  await box(page, { x: side.x + 6, y: side.y - 6 }, { x: side.x - 6, y: side.y + 6 });
+  await expect(selection).toHaveText('3 faces');
+  expect((await selected(viewport)).split(' ').filter((f) => faces.includes(f))).toHaveLength(2);
+  await filterButton.click();
+  await page.getByRole('menuitem', { name: 'Select everything' }).click();
+});
+
 test('Select other lists the stack under the pointer', async ({ page }) => {
   const { viewport, at } = await testPart(page);
   const selection = page.locator('output[aria-label="Selection"]');
