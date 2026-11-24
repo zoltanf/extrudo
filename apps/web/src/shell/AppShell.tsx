@@ -578,7 +578,7 @@ function Shell({
   );
   // A plugin command (ADR-0077 §5) runs in the kernel worker on the model selection; what it
   // made goes in at the marker as one undo step. A ref, so the command list stays stable.
-  const runPluginRef = useRef<(command: PluginCommand) => void>(() => {});
+  const runPluginLater = useLater<(command: PluginCommand) => void>(() => {});
   const pluginEntries = useMemo(
     () =>
       kernel?.runPluginCommand
@@ -587,10 +587,10 @@ function Shell({
             label: command.label,
             group: command.group,
             ...(command.hint !== undefined && { hint: command.hint }),
-            run: () => runPluginRef.current(command),
+            run: () => runPluginLater.get()(command),
           }))
         : [],
-    [installedPlugins, kernel],
+    [installedPlugins, kernel, runPluginLater],
   );
   // "Update to <version>" (slice 3): the installed file replaces the design's older copy.
   const updatePlugin = useCallback(
@@ -845,7 +845,7 @@ function Shell({
   }, [host, model, store]);
 
   // `run` changes every render; commands reach the latest one through a ref.
-  const runRef = useRef<(tool: ToolId) => void>(() => {});
+  const runLater = useLater<(tool: ToolId) => void>(() => {});
   const startTutorialRef = useRef<() => void>(() => {});
   const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
   /** A body menu's Convert to Solid… (P4-13): selection and `run` live later in the component. */
@@ -1285,22 +1285,26 @@ function Shell({
     tools.add('render');
     return tools;
   }, [dialogs, canSlicer]);
-  const dialogCommands = [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap(
-    (spec) => {
-      const c = spec.command;
-      if (typeof c === 'string') return [];
-      return [
-        {
-          id: c.id,
-          label: c.label,
-          group: c.group,
-          keywords: `${c.group} ${c.hint}`,
-          icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
-          keys: keysOf(c.id),
-          run: () => runRef.current(c.id as ToolId),
-        },
-      ];
-    },
+  // The dialogs' commands: kept while the dialogs, the plugin features and the keys stay, and
+  // running the latest `run` (ADR-0159 §6).
+  const dialogCommands = useMemo(
+    () =>
+      [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap((spec) => {
+        const c = spec.command;
+        if (typeof c === 'string') return [];
+        return [
+          {
+            id: c.id,
+            label: c.label,
+            group: c.group,
+            keywords: `${c.group} ${c.hint}`,
+            icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
+            keys: keysOf(c.id),
+            run: () => runLater.get()(c.id as ToolId),
+          },
+        ];
+      }),
+    [dialogs, pluginFeatures, keysOf, runLater],
   );
   // A dialog stops a nav tool, like any command.
   useEffect(() => {
@@ -1396,14 +1400,14 @@ function Shell({
       return next;
     });
   // S opens the search at the pointer: the last place it was seen over the page.
-  const pointer = useRef<{ x: number; y: number }>(undefined);
+  const pointer = useLater<{ x: number; y: number } | undefined>(undefined);
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
-      pointer.current = { x: event.clientX, y: event.clientY };
+      pointer.set({ x: event.clientX, y: event.clientY });
     };
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
-  }, []);
+  }, [pointer]);
   // Replacing the whole document is one undo step of its own (ADR-0036, and a
   // linked folder's "Load from disk", P4-09), so whatever holds a transaction
   // open ends first. The linked folder's toast button is clicked from the
@@ -1639,7 +1643,7 @@ function Shell({
         // The drawing import picks its file before it has a panel (P4-06), so it
         // goes through `run` like the toolbar's tile does.
         if (tool !== IMPORT_DRAWING_TOOL && isSketchTool(tool) && host) host.start(tool);
-        else runRef.current(tool);
+        else runLater.get()(tool);
       },
       notify,
       undo,
@@ -1792,7 +1796,10 @@ function Shell({
           },
         }),
     });
-  const commands = commandBuilder(mode, false);
+  // Kept by hand: left to the compiler, a plain `commandBuilder(mode, false)` is called on every
+  // render, and with it everything built from the commands (ADR-0159 §6).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the compiler memoises `commandBuilder`.
+  const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
   // The desktop MCP server's tools act on this design (P6-08, ADR-0087 §5): its host is
   // registered while the shell is mounted, desktop only.
   useAgentHost({
@@ -1816,8 +1823,10 @@ function Shell({
     settingsOpen !== false
       ? perMode((m) => relabelRepeat(commandBuilder(m, true)))
       : perMode(() => []);
-  const searchAtPointer = () =>
-    setSearch(pointer.current ? { from: 'pointer', at: pointer.current } : { from: 'centre' });
+  const searchAtPointer = () => {
+    const at = pointer.get();
+    setSearch(at ? { from: 'pointer', at } : { from: 'centre' });
+  };
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
@@ -2409,9 +2418,7 @@ function Shell({
       });
     };
   });
-  useInsertionEffect(() => {
-    runRef.current = run;
-  });
+  useLaterValue(runLater, run);
   useInsertionEffect(() => {
     startTutorialRef.current = startTutorial;
   });
@@ -2429,21 +2436,19 @@ function Shell({
   });
   // P6-03: a plugin command (ADR-0077 §5). An open dialog or panel ends first, so the
   // features land at the marker as the timeline shows it.
-  useInsertionEffect(() => {
-    runPluginRef.current = (command) => {
-      if (mode !== 'model' || !kernel?.runPluginCommand) return;
-      if (picking) cancelCreateSketch(stores);
-      dialog?.cancel();
-      const selected = selectionRefs(session.getState().selection, model.getState().bodies);
-      void runPluginCommand({
-        command,
-        kernel: kernel as PluginCommandKernel,
-        plugins: platform.plugins,
-        store,
-        session,
-        selection: selected,
-      }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
-    };
+  useLaterValue(runPluginLater, (command: PluginCommand) => {
+    if (mode !== 'model' || !kernel?.runPluginCommand) return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    const selected = selectionRefs(session.getState().selection, model.getState().bodies);
+    void runPluginCommand({
+      command,
+      kernel: kernel as PluginCommandKernel,
+      plugins: platform.plugins,
+      store,
+      session,
+      selection: selected,
+    }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
   });
   // The browser's own right-click menu stays out of the app while a project is open.
   useEffect(() => {
@@ -2930,7 +2935,7 @@ function Shell({
   useInsertionEffect(() => {
     convertToSolidRef.current = (id) => {
       modelSelect?.onClick({ kind: 'body', id }, false);
-      runRef.current('meshToSolid');
+      runLater.get()('meshToSolid');
     };
   });
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
