@@ -867,7 +867,7 @@ function Shell({
     if (!dialog) return;
     const picked = takeModelImport(doc.id);
     if (picked) startImportLater.get()(picked);
-  }, [dialog, doc.id]);
+  }, [dialog, doc.id, startImportLater]);
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
@@ -1283,7 +1283,6 @@ function Shell({
     tools.add('render');
     return tools;
   }, [dialogs, canSlicer]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
   const dialogCommands = [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap(
     (spec) => {
       const c = spec.command;
@@ -1492,11 +1491,11 @@ function Shell({
   }, [platform.desktop, viewport, session]);
   // Two frames before a capture, so the menu that was just closed (or the dialog and its
   // overlay on a retake) are gone from the window capture.
-  const openBugReport = useCallback(async () => {
+  const openBugReport = async () => {
     await twoFrames();
     const screenshot = await capture();
     setBugReport({ open: true, screenshot });
-  }, [capture, setBugReport]);
+  };
   const retakeBugReport = async () => {
     setBugReport((s) => ({ ...s, open: false }));
     await openBugReport();
@@ -1810,20 +1809,13 @@ function Shell({
     openSketch: () => openSketchLater.get(),
     sheetFields,
   });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
-  const markingCommands = useMemo(
-    () =>
-      // Built only while Settings is open: its Marking menu section lists them.
-      settingsOpen !== false
-        ? perMode((m) => relabelRepeat(commandBuilder(m, true)))
-        : perMode(() => []),
-    [settingsOpen, commandBuilder, keymap],
-  );
-  const searchAtPointer = useMemo(
-    () => () =>
-      setSearch(pointer.current ? { from: 'pointer', at: pointer.current } : { from: 'centre' }),
-    [setSearch],
-  );
+  const markingCommands =
+    // Built only while Settings is open: its Marking menu section lists them.
+    settingsOpen !== false
+      ? perMode((m) => relabelRepeat(commandBuilder(m, true)))
+      : perMode(() => []);
+  const searchAtPointer = () =>
+    setSearch(pointer.current ? { from: 'pointer', at: pointer.current } : { from: 'centre' });
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
@@ -1875,135 +1867,104 @@ function Shell({
     };
   }, [platform.menus, commands, fileActions, quitApp]);
 
-  const shortcuts = useMemo(
-    () => [
-      // An open feature dialog: Esc cancels it (a field whose text doesn't evaluate reverts
-      // that first and keeps the key), Enter presses OK (fields press it after committing).
-      ...(dialogOpen && dialog
-        ? [
-            {
-              keys: 'Escape',
-              inFields: true,
-              run: () => dialog.cancel(),
+  const shortcuts = [
+    // An open feature dialog: Esc cancels it (a field whose text doesn't evaluate reverts
+    // that first and keeps the key), Enter presses OK (fields press it after committing).
+    ...(dialogOpen && dialog
+      ? [
+          {
+            keys: 'Escape',
+            inFields: true,
+            run: () => dialog.cancel(),
+          },
+          { keys: 'Enter', run: () => dialog.ok() },
+        ]
+      : []),
+    // The Joint dialog (P6-05) the same way.
+    ...(jointOpen && jointDialog
+      ? [
+          { keys: 'Escape', inFields: true, run: () => jointDialog.cancel() },
+          { keys: 'Enter', run: () => void jointDialog.ok() },
+        ]
+      : []),
+    ...commandShortcuts(commands, { undo: undoKey }),
+    ...keysFor('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
+    ...keysFor('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
+    ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
+    ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
+    ...(drawing && host
+      ? [
+          { keys: 'Escape', run: () => host.escape() },
+          { keys: 'Enter', run: () => host.enter() },
+        ]
+      : []),
+    ...(measuring ||
+    annotating ||
+    sectioning ||
+    printing ||
+    overhanging ||
+    thickening ||
+    customizing
+      ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
+      : []),
+    // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
+    // the selection (P2-03).
+    ...(mode === 'model' && !picking
+      ? [
+          {
+            keys: 'Escape',
+            run: () => {
+              if (viewport.getState().tool) viewport.getState().setTool(undefined);
+              else session.getState().clearSelection();
             },
-            { keys: 'Enter', run: () => dialog.ok() },
-          ]
-        : []),
-      // The Joint dialog (P6-05) the same way.
-      ...(jointOpen && jointDialog
-        ? [
-            { keys: 'Escape', inFields: true, run: () => jointDialog.cancel() },
-            { keys: 'Enter', run: () => void jointDialog.ok() },
-          ]
-        : []),
-      ...commandShortcuts(commands, { undo: undoKey }),
-      ...keysFor('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
-      ...keysFor('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
-      ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
-      ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
-      ...(drawing && host
-        ? [
-            { keys: 'Escape', run: () => host.escape() },
-            { keys: 'Enter', run: () => host.enter() },
-          ]
-        : []),
-      ...(measuring ||
-      annotating ||
-      sectioning ||
-      printing ||
-      overhanging ||
-      thickening ||
-      customizing
-        ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
-        : []),
-      // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
-      // the selection (P2-03).
-      ...(mode === 'model' && !picking
-        ? [
-            {
-              keys: 'Escape',
-              run: () => {
-                if (viewport.getState().tool) viewport.getState().setTool(undefined);
-                else session.getState().clearSelection();
-              },
+          },
+        ]
+      : []),
+    // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
+    ...(mode === 'sheet' && sheetTargets.some(movable)
+      ? (
+          [
+            ['ArrowLeft', -1, 0],
+            ['ArrowRight', 1, 0],
+            ['ArrowUp', 0, -1],
+            ['ArrowDown', 0, 1],
+          ] as const
+        ).flatMap(([key, x, y]) =>
+          [1, 10].map((step) => ({
+            keys: step === 1 ? key : `Shift+${key}`,
+            run: () =>
+              sheetChange(() =>
+                moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
+              ),
+          })),
+        )
+      : []),
+    // In the drawing, Esc ends a view tool, stops Pan or Zoom, or else clears the
+    // selection; it never leaves the mode (plan §3.2).
+    ...(mode === 'sheet'
+      ? [
+          {
+            keys: 'Escape',
+            run: () => {
+              if (sheetToolRunning) session.getState().setTool(undefined);
+              else if (viewport.getState().tool) viewport.getState().setTool(undefined);
+              else session.getState().clearSelection();
             },
-          ]
-        : []),
-      // The arrow keys nudge what is selected on the sheet by 1 mm (with Shift 10 mm).
-      ...(mode === 'sheet' && sheetTargets.some(movable)
-        ? (
-            [
-              ['ArrowLeft', -1, 0],
-              ['ArrowRight', 1, 0],
-              ['ArrowUp', 0, -1],
-              ['ArrowDown', 0, 1],
-            ] as const
-          ).flatMap(([key, x, y]) =>
-            [1, 10].map((step) => ({
-              keys: step === 1 ? key : `Shift+${key}`,
-              run: () =>
-                sheetChange(() =>
-                  moveTargets(store, sheetTargets.filter(movable), x * step, y * step),
-                ),
-            })),
-          )
-        : []),
-      // In the drawing, Esc ends a view tool, stops Pan or Zoom, or else clears the
-      // selection; it never leaves the mode (plan §3.2).
-      ...(mode === 'sheet'
-        ? [
-            {
-              keys: 'Escape',
-              run: () => {
-                if (sheetToolRunning) session.getState().setTool(undefined);
-                else if (viewport.getState().tool) viewport.getState().setTool(undefined);
-                else session.getState().clearSelection();
-              },
+          },
+        ]
+      : []),
+    // Esc puts dragged geometry back, or else clears the selection (P1-09).
+    ...(mode === 'sketch' && !drawing
+      ? [
+          {
+            keys: 'Escape',
+            run: () => {
+              if (!host?.cancelMove()) session.getState().clearSelection();
             },
-          ]
-        : []),
-      // Esc puts dragged geometry back, or else clears the selection (P1-09).
-      ...(mode === 'sketch' && !drawing
-        ? [
-            {
-              keys: 'Escape',
-              run: () => {
-                if (!host?.cancelMove()) session.getState().clearSelection();
-              },
-            },
-          ]
-        : []),
-    ],
-    [
-      setSearch,
-      commands,
-      undoKey,
-      searchAtPointer,
-      session,
-      stores,
-      picking,
-      projecting,
-      measuring,
-      annotating,
-      sectioning,
-      printing,
-      overhanging,
-      thickening,
-      customizing,
-      sheetToolRunning,
-      mode,
-      drawing,
-      host,
-      viewport,
-      dialogOpen,
-      dialog,
-      jointOpen,
-      jointDialog,
-      sheetTargets,
-      sheetChange,
-      store,
-    ],
-  );
+          },
+        ]
+      : []),
+  ];
   const chordPrefix = useShortcuts(shortcuts);
 
   /** Opens the Overhang Analysis panel on the analysis as it is (the browser's row). */
