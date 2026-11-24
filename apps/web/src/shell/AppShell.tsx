@@ -2928,7 +2928,7 @@ function Shell({
         : projecting
           ? project.select
           : (annotateSelect ?? measureSelect ?? sessionSelect);
-  // The browser's body rows take these for good (ADR-0159 §8): a row only calls them, so a new
+  // The browser's body rows take these for good (ADR-0159 §7): a row only calls them, so a new
   // `modelSelect` (a dialog opens or closes, a sketch opens) doesn't render every row.
   const pickBody = useLatest((id: BodyId, toggle: boolean) =>
     modelSelect?.onClick({ kind: 'body', id }, toggle),
@@ -3163,7 +3163,7 @@ function Shell({
                 mode === 'model' && {
                   assemblyHint: {
                     // `runLatest`, not `run`: the hint's object then stays the same while the
-                    // dismiss does, and the browser keeps its rows (ADR-0159 §8).
+                    // dismiss does, and the browser keeps its rows (ADR-0159 §7).
                     onNewComponent: () => runLatest('newComponent'),
                     onDismiss: dismissAssemblyHint,
                   },

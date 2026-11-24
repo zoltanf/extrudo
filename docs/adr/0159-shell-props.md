@@ -350,7 +350,13 @@ handed the browser `onPickBody` and `onHoverBody` as closures made in its render
 every document change; Radix mounts the popover's content only while it is open, as it does the
 row's menu. While the Project tool runs `Shell` still hands the browser an `onPickFeature` made
 in its render, so a change of `modelSelect` then renders every sketch row. A move of the marker
-renders every sketch row: each shows its place in its menu. Opening a design mounts every row.
+renders every sketch row: each shows its place in its menu. So does adding, deleting or moving
+a feature (the count changes, and the place of the rows after it), and a new `featureActions`
+object (its memo follows the open dialog, the dialogs, sketch-plane picking and the kernel). A
+new `doc.components` (a component added or renamed, bodies moved into one) renders every body
+row: each lists the components in its menu. An open row menu renders with its row only: what
+it reads from the feature actions while rendering (locked, issues, stopped) is as of the row's
+last render, as on the timeline's chips. Opening a design mounts every row.
 
 **Measured** (designs of 30 and 100 plates with 30 holes each, production build, Chrome with a
 GPU, 1280 × 800; before is main with `Shell` compiled). Components rendered (one run, unminified

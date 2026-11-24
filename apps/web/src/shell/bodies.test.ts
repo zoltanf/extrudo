@@ -578,7 +578,7 @@ describe('bodiesEmptyState', () => {
   });
 });
 
-describe('sameBodyEntry (ADR-0159 §8)', () => {
+describe('sameBodyEntry (ADR-0159 §7)', () => {
   const entry: BodyEntry = {
     id: bid('b1'),
     meta: { name: 'Body1', visible: true, color: '#ff0000', opacity: 0.5 },
@@ -610,5 +610,9 @@ describe('sameBodyEntry (ADR-0159 §8)', () => {
     expect(sameBodyEntry(entry, loose as BodyEntry)).toBe(false);
     const { color: _k, ...plain } = entry.meta;
     expect(sameBodyEntry(entry, { ...entry, meta: plain })).toBe(false);
+    // As many keys, but another one (an absent part against one set to `undefined`).
+    expect(sameBodyEntry({ ...loose, pending: undefined } as BodyEntry, entry)).toBe(false);
+    const other = { ...plain, ghost: undefined } as BodyEntry['meta'];
+    expect(sameBodyEntry({ ...entry, meta: other }, entry)).toBe(false);
   });
 });

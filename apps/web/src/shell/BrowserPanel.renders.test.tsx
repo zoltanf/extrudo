@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Counted renders of the browser's rows (ADR-0159 §8): the browser renders on every document
+ * Counted renders of the browser's rows (ADR-0159 §7): the browser renders on every document
  * change and every selection change, and a row renders only when what it shows does. Renders
  * are counted the way React's devtools see them: a component counts once per commit in which
  * it did work (a hook installed before React loads).
@@ -146,7 +146,7 @@ function view() {
 type Doc = ReturnType<typeof design>;
 const none = { sketches: 0, bodies: 0 };
 
-describe('BrowserPanel rows (ADR-0159 §8)', () => {
+describe('BrowserPanel rows (ADR-0159 §7)', () => {
   it('a render with nothing new renders no row', () => {
     expect(view().change()).toEqual(none);
   }, 30_000);

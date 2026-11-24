@@ -165,7 +165,7 @@ export function bodyEntries(
 }
 
 /**
- * Whether two entries show the same in the browser (ADR-0159 §8): the same ID, flags,
+ * Whether two entries show the same in the browser (ADR-0159 §7): the same ID, flags,
  * component and display, and metadata with the same values. `bodyEntries` makes new entries
  * (and new metadata for a name about to be stored) on every document change, so a row that
  * compared them by identity rendered for every edit anywhere.
@@ -174,15 +174,20 @@ export function sameBodyEntry(a: BodyEntry, b: BodyEntry): boolean {
   if (a === b) return true;
   const keys = Object.keys(a) as (keyof BodyEntry)[];
   if (keys.length !== Object.keys(b).length) return false;
-  return keys.every((key) =>
-    key === 'meta' ? sameMeta(a.meta, b.meta) : Object.is(a[key], b[key]),
+  return keys.every(
+    (key) =>
+      Object.hasOwn(b, key) &&
+      (key === 'meta' ? sameMeta(a.meta, b.meta) : Object.is(a[key], b[key])),
   );
 }
 
 function sameMeta(a: BodyMeta, b: BodyMeta): boolean {
   if (a === b) return true;
   const keys = Object.keys(a) as (keyof BodyMeta)[];
-  return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && Object.is(a[key], b[key]))
+  );
 }
 
 /**

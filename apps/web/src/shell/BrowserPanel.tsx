@@ -265,7 +265,7 @@ export function BrowserPanel({
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
   const bodiesShown = bodies.some(({ display }) => display === 'shown');
   const grouped = componentRows(doc, bodies);
-  // The selected bodies, read by a row's drag, Delete and menu when they run (ADR-0159 §8): the
+  // The selected bodies, read by a row's drag, Delete and menu when they run (ADR-0159 §7): the
   // same function for good, so a selection change renders only the rows it selects or clears.
   const selectionNow = useLatest(() => selectedBodies);
   const components = doc.components ?? [];
@@ -638,7 +638,7 @@ export function BrowserPanel({
 }
 
 /**
- * A feature's row. Memoised (ADR-0159 §8): the browser renders on every document change, and
+ * A feature's row. Memoised (ADR-0159 §7): the browser renders on every document change, and
  * every row rendered with it, each with its context menu, tooltip and eye; every prop is a
  * value or an object kept while unchanged (the feature, its problem object, the actions).
  */
@@ -892,7 +892,7 @@ function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) 
 }
 
 /**
- * Memoised, comparing the entry by value (ADR-0159 §8): `bodyEntries` makes new entries on every
+ * Memoised, comparing the entry by value (ADR-0159 §7): `bodyEntries` makes new entries on every
  * document change. The selection is read when a drag, Delete or the menu runs.
  */
 const BodyLeaf = memo(BodyRow, (a, b) => {
