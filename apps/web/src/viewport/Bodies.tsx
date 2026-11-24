@@ -2,7 +2,7 @@ import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import type { Matrix12 } from '@extrudo/kernel/matrix';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -151,12 +151,11 @@ export function Bodies({
   const bounds = useMemo(() => boundsOf(shown.map(([, mesh]) => mesh)), [shown]);
   useEffect(() => onBounds(bounds), [bounds, onBounds]);
   const clips = section?.clips;
-  const planes = useMemo(() => clipPlanes(clips), [clips]);
+  const planes = planesOf(clips);
   // One highlight per body, kept while nothing that names the body changes (ADR-0102 §2).
   const [highlights] = useState(createHighlightMemo);
   const keys = highlightKeys(hover, selection);
   useEffect(() => highlights.prune(new Set(shown.map(([id]) => id))), [highlights, shown]);
-
   return shown.map(([id, mesh], index) => (
     <Body
       key={id}
@@ -173,11 +172,28 @@ export function Bodies({
       {...(posed?.[id] && { pose: posed[id] })}
       {...(regions?.view.body === id && { regions })}
       {...(overhang && { overhang })}
-      {...(thickness && { thickness: { thin: thickness.thin[id], color: thickness.color } })}
-      {...(section &&
-        planes && { section: { ...section, planes, order: 10 + 3 * CAP_SLOTS * index } })}
+      // The shared objects, not one per body: a body takes its part (ADR-0159 §5).
+      {...(thickness && { thickness })}
+      {...(section && planes && { section, planes, order: 10 + 3 * CAP_SLOTS * index })}
     />
   ));
+}
+
+/**
+ * One list of clipping planes per list of clips (the section's clips are immutable, ADR-0045),
+ * so every body keeps its `planes` prop while the section stays (ADR-0159 §5).
+ */
+const planeLists = new WeakMap<readonly SectionClip[], Plane[]>();
+
+function planesOf(clips: readonly SectionClip[] | undefined): Plane[] | undefined {
+  if (!clips) return undefined;
+  let planes = planeLists.get(clips);
+  if (!planes) {
+    planes = clipPlanes(clips);
+    if (!planes) return undefined;
+    planeLists.set(clips, planes);
+  }
+  return planes;
 }
 
 /** One object per colour, so a body's colour keeps its identity across renders (`useFaceColors`). */
@@ -193,7 +209,14 @@ function hex(value: string): Rgba {
   return rgba;
 }
 
-function Body({
+/**
+ * A body renders only when one of its props changes (ADR-0159 §5): the view renders on every
+ * hover and document change, and every body rendered with it, each with its four marks. Every
+ * prop is a value or an object kept while it doesn't change (the accent and the analyses'
+ * objects in `Scene`, the marks in `createHighlightMemo`; the section and the thickness check
+ * check's parts above); what a body reads beyond its props is read per frame or in effects.
+ */
+const Body = memo(function Body({
   id,
   mesh,
   style,
@@ -205,6 +228,8 @@ function Body({
   marks,
   onSilhouettes,
   section,
+  planes: sectionPlanes,
+  order = 0,
   overhang,
   thickness,
   pose,
@@ -222,29 +247,28 @@ function Body({
   error?: Rgba;
   marks: BodyHighlight;
   onSilhouettes?(body: BodyId, segments: number): void;
-  section?: {
-    clips: readonly SectionClip[];
-    color: Rgba;
-    hatch: Rgba;
-    planes: Plane[];
-    order: number;
-  };
+  section?: { clips: readonly SectionClip[]; color: Rgba; hatch: Rgba };
+  /** The section's clipping planes (with `section`). */
+  planes?: Plane[];
+  /** The first render order of the section's caps (with `section`). */
+  order?: number;
   overhang?: { view: OverhangView; color: Rgba };
-  /** The wall-thickness check (P5-06): per-node thin flags, shaded in `color`. */
-  thickness?: { thin: Float32Array | undefined; color: Rgba };
+  /** The wall-thickness check (P5-06): per-node thin flags by body, shaded in `color`. */
+  thickness?: { thin: Record<BodyId, Float32Array>; color: Rgba };
   /** Drawn through this matrix (a joint posed, P6-05 J2). */
   pose?: Matrix12;
   /** Mesh to Solid's region preview of this body, drawn in place of its faces. */
   regions?: BodyRegions;
 }) {
-  const planes = section?.planes ?? null;
+  const planes = (section && sectionPlanes) ?? null;
+  const thin = thickness?.thin[id];
   const group = usePose(pose);
   // The analysis shadings are patches of the face material; their settings are uniforms.
   // The thin-wall mix runs after the overhang one wherever both flag a triangle (ADR-0072 §3).
   const shading = useMemo(() => createOverhangShading(), []);
   const thinShading = useMemo(() => createThicknessShading(), []);
   shading.set(overhang?.view, overhang?.color ?? body);
-  thinShading.set(thickness?.thin ? thickness.color : undefined);
+  thinShading.set(thin ? thickness?.color : undefined);
   const faces = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(mesh.positions, 3));
@@ -255,7 +279,7 @@ function Body({
     return g;
   }, [mesh]);
   useFaceColors(faces, mesh, body, accent, marks.faces, error);
-  useThinFlags(faces, thickness?.thin);
+  useThinFlags(faces, thin);
   const regionFaces = useRegionFaces(mesh, regions);
   const edges = useMemo(() => {
     const g = new LineSegmentsGeometry();
@@ -348,7 +372,7 @@ function Body({
           mesh={mesh}
           clips={section.clips}
           {...capColors(body, section.color, section.hatch)}
-          order={section.order}
+          order={order}
         />
       )}
       {showEdges && <primitive object={edgeLines} />}
@@ -376,7 +400,7 @@ function Body({
       <VertexMarks mesh={mesh} vertices={marks.hoverVertices} color={accent} planes={planes} />
     </group>
   );
-}
+});
 
 /**
  * Puts a pose on a group (P6-05 J2): the matrix is the group's own, never recomputed from

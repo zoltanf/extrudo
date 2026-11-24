@@ -77,6 +77,7 @@ import { type PlanePointer, type SketchBox, SNAP_PIXELS } from '../sketch/tools/
 import { applyView } from './applyView';
 import { Bodies, clipPlanes } from './Bodies';
 import { ghostBodiesSummary } from './bodyGhosts';
+import { useBodyProps } from './bodyProps';
 import { CameraRig } from './CameraRig';
 import { CalibrationMarks, Canvases } from './Canvas';
 import { Construction } from './Construction';
@@ -1082,6 +1083,8 @@ function Scene({
     () => ({ free: colors.sketch, fixed: colors.sketchFixed, conflict: colors.sketchConflict }),
     [colors],
   );
+  // The accent and the analyses for the bodies: the same objects while unchanged (ADR-0159 §5).
+  const look = useBodyProps({ colors, overhang, thin, collisions, sectionClip });
   // Fills are big: the accent goes lighter than on curves (ADR-0020).
   const profileColors = useMemo(
     () => ({
@@ -1123,18 +1126,16 @@ function Scene({
         style={visualStyle}
         body={colors.body}
         edge={colors.edge}
-        highlight={{ ...colors.preselect, a: 1 }}
+        highlight={look.accent}
         hover={hover}
         selection={selection}
         onBounds={setBodyBounds}
         onSilhouettes={onSilhouettes}
         {...(posed && { posed })}
-        {...(overhang && { overhang: { view: overhang, color: colors.overhang } })}
-        {...(thin && { thickness: { thin, color: colors.thickness } })}
-        {...(collisions && { collisions: { faces: collisions, color: colors.thickness } })}
-        {...(sectionClip && {
-          section: { clips: sectionClip, color: colors.section, hatch: colors.sectionHatch },
-        })}
+        {...(look.overhang && { overhang: look.overhang })}
+        {...(look.thickness && { thickness: look.thickness })}
+        {...(look.collisions && { collisions: look.collisions })}
+        {...(look.section && { section: look.section })}
         {...(preview?.regions && {
           regions: {
             view: preview.regions,
