@@ -137,8 +137,10 @@ sees this render's function).
   goes through `useLatest` (or is otherwise stable); never an inline function or a function
   made in the shell's render.
 - `useLatest`'s result is called from events and effects, never during a render.
-- Vitest doesn't run the React Compiler, so the tiles' reuse can't be counted there: it rests on
-  the toolbar being compiled, which `compiler.test.ts` (§1) keeps. Tested: `latest.test.tsx`
+- The tiles' reuse rests on the toolbar being compiled, which `compiler.test.ts` (§1) keeps.
+  (Corrected 2026-11-24: this said Vitest doesn't run the React Compiler. It does, for tests in
+  the jsdom environment: they get the app's code as the build compiles it; a test in the node
+  environment gets it uncompiled. See the amendment on bodies.) Tested: `latest.test.tsx`
   (the same function across renders under StrictMode, calling the latest; a child's layout
   effect already calls this render's function, which a passive effect would not).
 
@@ -148,3 +150,54 @@ point in an open sketch (10 pointer moves) 51,981 → 29,681 / 118,286 → 53,80
 edit 9,480 → 6,748 / 30,375 → 21,318; opening a sketch 10,280 → 9,833 / 25,031 → 23,460; a
 box select 12,056 → 11,803 / 29,066 → 28,279. The renders of `Shell` itself are unchanged
 (11 / 8 for the drag): what changed is what each of them renders.
+
+## Amendment (2026-11-24): bodies keep their props
+
+**Context.** A render of the view (every hover, every document change, every step of a drag)
+rendered every body with each of its four mark components: `Body`, `EdgeMarks` and
+`VertexMarks` are skipped by the compiler (they set three.js materials in render) and `Body`
+was not memoised. Even memoised it would have rendered every time: the scene (also skipped)
+handed `Bodies` a new accent object (`{ ...colors.preselect, a: 1 }`) on every render, which
+every body passes to its marks, and a new section or thickness object while an analysis is on.
+And with a section on, `Bodies` made new clipping planes on every render: its
+`useMemo(() => clipPlanes(clips), [clips])` is dropped by the compiler (the compiled code
+calls `clipPlanes` on every render), so the planes every body takes were new each time.
+
+**Decision.**
+
+1. `useBodyProps` (`viewport/bodyProps.ts`) gives the scene the accent and the analyses'
+   objects (overhang, thickness, collisions, section, the region preview), each the same
+   object while its parts are.
+2. `Body` is `memo`. `Bodies` hands it the shared section and thickness objects (not one per
+   body; `Body` takes its own thin flags and its caps' render order as a number), and the
+   clipping planes from `planesOf`: one list per list of clips, kept in a `WeakMap` by the clips
+   array (the section's clips are immutable: a new array whenever they change, ADR-0045), so
+   they don't depend on a memo the compiler can drop.
+3. `EdgeMarks` and `VertexMarks` stay as they are: with `Body` memoised a body renders only
+   when its own props change, and then one or two of its four marks change; memoising them
+   would spare two or three components per changed body.
+
+**What a body and its marks read from outside their props, and why none can go stale.**
+The camera (silhouettes) is read per frame in `useFrame`; the renderer's pixel ratio (vertex
+dots) in `onBeforeRender`, per frame; the line materials' resolution is set by three's
+`LineSegments2.onBeforeRender`, per frame; `useThree`'s `invalidate` is a subscription. The
+material and shading settings written in render (colours, opacity, clipping planes, the
+analysis shadings) come from props only, so a skipped render leaves them as the same props
+set them. The face colours, thin flags and the region preview are written in layout effects
+keyed on props. Everything else is a pure function of props (`edgeSegments`, `paintFaces`,
+`capColors`, `bodyObjectName`) or a module cache keyed by value (`hex`, `planesOf`), which
+gives the same object for the same input. No store, global or setting is read in render.
+
+**Rules.**
+
+- What `Bodies` hands a body is a value or an object kept while unchanged: no object built per
+  body per render, no value that depends on a memo the compiler may drop (check the compiled
+  output, `oxc-transform-react` client mode).
+- A new input a body or a mark reads in render from outside its props (a store, a setting)
+  must reach it as a prop, or be read per frame or in an effect.
+- Tested: `Bodies.renders.test.tsx` with the real `Bodies` (a render with the same props renders
+  no body; a hover on one body renders that body; a new mesh renders its body; with a section
+  and a thickness check on, a render renders none and a new section renders all; a new accent
+  renders all), `bodyProps.test.tsx` (the same objects across renders; a new part gives a new object
+  for that part alone; a new accent colour gives a new accent). Each fails with its part of the change taken out.
+
