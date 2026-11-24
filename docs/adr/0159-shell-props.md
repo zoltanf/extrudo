@@ -180,9 +180,12 @@ after an effect read it). So every render of it handed new values to everything 
    `pickPlane` and `startRedefine` (above `run`), `openSection` (above the section's row), the
    import and script-export boxes (above the file actions). The moved blocks hold memos and
    insertion-effect writes only: no layout or passive effect changed place.
-5. Dependency lists are complete (the boxes, the state setters, the update notice); the command
-   lists (`dialogCommands`, `commandBuilder`) are left to the compiler. `featureActions` keeps its
-   manual memo: with the declarations in order, the compiler keeps it.
+5. Dependency lists are complete (the boxes, the update notice). Memos the compiler can't keep,
+   or whose lists it and Biome's `useExhaustiveDependencies` read differently (Biome calls a
+   state setter needless, the compiler counts it), are left to the compiler: the command lists
+   (`dialogCommands`, `commandBuilder`, `markingCommands`), `shortcuts`, `searchAtPointer` and
+   `openBugReport`. `featureActions` keeps its manual memo: with the declarations in order, the
+   compiler keeps it.
 6. `compiler.test.ts` lists `Shell` as a component that must compile and checks it for names used
    in a closure before their declaration (`forwardReferences`, on Vite's `parseAst`).
 
