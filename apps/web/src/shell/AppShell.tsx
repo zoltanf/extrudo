@@ -297,6 +297,7 @@ import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { sketchesWithHover } from './hoverDrawings';
+import { useLatest } from './latest';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { MODES, perMode } from './modes';
 import { createViewActions } from './namedViews';
@@ -2394,6 +2395,18 @@ function Shell({
   };
   runRef.current = run;
   startTutorialRef.current = startTutorial;
+  // What the toolbar and the app bar are handed: functions that stay the same and call the
+  // latest (ADR-0159 §4); a new `run` on every render of the shell rendered every tile.
+  const runLatest = useLatest(run);
+  const startTutorialLatest = useLatest(startTutorial);
+  // The tool under the pointer, for the app menu's Help (asked when the menu opens).
+  const helpToolLatest = useLatest(() => {
+    const tool = lastHoveredTool();
+    const label = tool && commands.find((c) => c.id === tool)?.label;
+    return label
+      ? { label, onHelp: () => platform.openDocs(docsPath({ tool: tool as string })) }
+      : undefined;
+  });
   // P6-03: a plugin command (ADR-0077 §5). An open dialog or panel ends first, so the
   // features land at the marker as the timeline shows it.
   runPluginRef.current = (command) => {
@@ -3087,15 +3100,9 @@ function Shell({
           onRedo={redo}
           dialogOpen={dialogOpen !== undefined || jointOpen !== undefined}
           onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
-          onTutorial={startTutorial}
+          onTutorial={startTutorialLatest}
           onDocs={(page) => platform.openDocs(docsPath(page))}
-          helpTool={() => {
-            const tool = lastHoveredTool();
-            const label = tool && commands.find((c) => c.id === tool)?.label;
-            return label
-              ? { label, onHelp: () => platform.openDocs(docsPath({ tool: tool as string })) }
-              : undefined;
-          }}
+          helpTool={helpToolLatest}
           version={BUILD.version}
           updates={updates}
           {...(platform.updates?.check && { onCheckUpdates: () => platform.updates?.check?.() })}
@@ -3134,7 +3141,7 @@ function Shell({
                   ? dialogOpen.spec.command
                   : undefined
           }
-          onRun={run}
+          onRun={runLatest}
           onChangeShortcut={changeShortcut}
           ready={ready}
           hidden={macroHidden}

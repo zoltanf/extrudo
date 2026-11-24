@@ -1,0 +1,1 @@
+- 2026-11-23 · **Smoother sketch editing in large designs**: dragging a point in an open sketch no longer redraws every other sketch, every timeline chip and every toolbar button, so it stays smooth in designs with dozens of parts; undo is quicker there too.

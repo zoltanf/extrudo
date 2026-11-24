@@ -107,6 +107,71 @@ function dressed(
   return drawing;
 }
 
+/** The drawings `keepDrawings` kept, by sketch ID, and the fonts' version they were made for. */
+export interface KeptDrawings {
+  fontsVersion: number;
+  drawings: ReadonlyMap<string, SketchDrawing>;
+}
+
+const NOTHING_KEPT: ReadonlyMap<string, SketchDrawing> = new Map();
+/** Nothing kept yet. */
+export const NO_KEPT_DRAWINGS: KeptDrawings = { fontsVersion: -1, drawings: NOTHING_KEPT };
+
+/**
+ * The base with each sketch's drawing from `kept` (the last base's, by sketch) where the new
+ * one draws the same (ADR-0159 §2): the shell makes every drawing again on each document
+ * change, so a sketch edit (one per pointer move while a point is dragged) would draw every
+ * shown sketch again. The data and the solver's status count by identity (the document's
+ * data is frozen and changes with every edit of its sketch); everything else by value. The
+ * same base comes back while nothing is replaced; a replaced item is a copy (the base is
+ * never written to). The returned `kept` holds this base's drawings only.
+ *
+ * What a drawing's readers take from outside it is left to the outside: the open sketch's
+ * fill reads the profile cache by its data and the fonts' version, and a font that arrives
+ * changes what the same data draws. So nothing is kept across a new fonts version: every
+ * drawing is the shell's new one, as before drawings were kept.
+ */
+export function keepDrawings(
+  base: ShownSketchBase,
+  kept: KeptDrawings,
+): { base: ShownSketchBase; kept: KeptDrawings } {
+  const next = new Map<string, SketchDrawing>();
+  const before = kept.fontsVersion === base.fontsVersion ? kept.drawings : NOTHING_KEPT;
+  let replaced = false;
+  const items = base.items.map((item) => {
+    const old = before.get(item.drawing.id);
+    const drawing = old && drawsTheSame(old, item.drawing) ? old : item.drawing;
+    next.set(drawing.id, drawing);
+    if (drawing === item.drawing) return item;
+    replaced = true;
+    return { ...item, drawing };
+  });
+  return {
+    base: replaced ? { ...base, items } : base,
+    kept: { fontsVersion: base.fontsVersion, drawings: next },
+  };
+}
+
+function drawsTheSame(a: SketchDrawing, b: SketchDrawing): boolean {
+  const keys = Object.keys(a) as (keyof SketchDrawing)[];
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) =>
+    key === 'data' || key === 'status' ? a[key] === b[key] : sameValue(a[key], b[key]),
+  );
+}
+
+/** Plain values compared by value: numbers, strings, arrays and objects of them. */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((key) =>
+    sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+  );
+}
+
 /**
  * The results' part of the shown sketches: which closed sketches have regions,
  * a fill or a verdict, the budget's verdicts, and the jobs the worker is asked
@@ -224,12 +289,20 @@ export function ShownSketchesProvider({
   // What the open sketch was granted when it was opened (`regionVerdicts`' `held`).
   const held = useRef<{ id: string; bytes: number } | undefined>(undefined);
   const memo = useRef(new WeakMap<SketchDrawing, Dressed>());
+  // Each sketch's drawing stays the same object while it draws the same (ADR-0159 §2), so its
+  // dressed drawing does too, and a document change draws only the sketches it changed.
+  const kept = useRef<KeptDrawings>(NO_KEPT_DRAWINGS);
+  const steady = useMemo(() => {
+    const next = keepDrawings(base, kept.current);
+    kept.current = next.kept;
+    return next.base;
+  }, [base]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `unbuiltFill` and `regionsVersion` say when to ask again.
   const shown = useMemo(() => {
-    const next = withResults(base, client, held.current, memo.current);
+    const next = withResults(steady, client, held.current, memo.current);
     held.current = next.held;
     return next;
-  }, [base, client, unbuiltFill, regionsVersion]);
+  }, [steady, client, unbuiltFill, regionsVersion]);
   // Fonts reach the worker before the jobs that need them.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new fonts' version means new fonts.
   useEffect(() => {

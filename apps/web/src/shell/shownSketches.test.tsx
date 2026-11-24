@@ -21,6 +21,8 @@ import type { RegionsClient, RegionsEntry, RegionsState } from '../sketch/region
 import { fillFailed, noteUnbuiltFill, type ProfileFill } from '../viewport/profileFills';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import {
+  keepDrawings,
+  NO_KEPT_DRAWINGS,
   type ShownSketchBase,
   ShownSketchesProvider,
   useShownDrawings,
@@ -87,6 +89,32 @@ function fakeClient() {
       store.setState((s) => ({ version: s.version + 1 }));
     });
   return { client, batch, done, asked };
+}
+
+/**
+ * The base the shell makes after a document change: every drawing, frame and list a new
+ * object, the same values; `changed` sketches get new data (an edit).
+ */
+function remade(base: ShownSketchBase, changed: readonly number[] = []): ShownSketchBase {
+  return {
+    ...base,
+    items: base.items.map((item, i) => {
+      const { drawing } = item;
+      const data = changed.includes(i)
+        ? (Object.freeze({ ...drawing.data }) as SketchData)
+        : drawing.data;
+      return {
+        ...item,
+        drawing: {
+          ...drawing,
+          data,
+          frame: JSON.parse(JSON.stringify(drawing.frame)) as SketchFrame,
+          selectedEntities: [...(drawing.selectedEntities ?? [])],
+          selectedProfiles: [...(drawing.selectedProfiles ?? [])],
+        },
+      } as typeof item;
+    }),
+  };
 }
 
 const renders: Record<string, number> = {};
@@ -164,6 +192,78 @@ describe('ShownSketchesProvider renders', () => {
     const still = { ...renders };
     batch([]);
     expect(renders).toEqual(still);
+  });
+
+  it('a document change in one of 30 sketches renders that sketch only (ADR-0159 §2)', () => {
+    const base = base30();
+    const { client } = fakeClient();
+    for (const k of Object.keys(renders)) delete renders[k];
+    const tree = (b: ShownSketchBase) => (
+      <ShownSketchesProvider base={b} client={client}>
+        <Layer />
+      </ShownSketchesProvider>
+    );
+    const view = render(tree(base));
+    const before = { ...renders };
+    const after = (name: string) => (renders[name] ?? 0) - (before[name] ?? 0);
+    const edited = remade(base, [7]);
+    view.rerender(tree(edited));
+    const sketches = Object.keys(renders).filter((k) => k.startsWith('sketch sk'));
+    expect(sketches.filter((k) => after(k) > 0)).toEqual(['sketch sk7']);
+    // The same drawings again (a selection elsewhere, say): no sketch renders.
+    const still = { ...renders };
+    view.rerender(tree(remade(edited)));
+    expect(Object.keys(renders).filter((k) => renders[k] !== still[k])).toEqual(['sketch layer']);
+  });
+
+  it('keeps a drawing that draws the same, by value, and never writes into the base', () => {
+    const base = base30();
+    const first = keepDrawings(base, NO_KEPT_DRAWINGS);
+    // Nothing kept yet: the base itself.
+    expect(first.base).toBe(base);
+    expect(first.kept.drawings.size).toBe(30);
+    // The same values in new objects: the old drawings, in a copy of the base.
+    const again = remade(base);
+    const frozen = JSON.stringify(again);
+    const second = keepDrawings(again, first.kept);
+    expect(second.base.items.map((i) => i.drawing)).toEqual(base.items.map((i) => i.drawing));
+    second.base.items.forEach((item, i) => {
+      expect(item.drawing).toBe(base.items[i]?.drawing);
+    });
+    expect(JSON.stringify(again)).toBe(frozen);
+    expect(again.items[0]?.drawing).not.toBe(base.items[0]?.drawing);
+    // A new base with the kept drawings comes back as itself.
+    expect(keepDrawings(second.base, second.kept).base).toBe(second.base);
+    // Anything drawn differently is the new drawing: data (by identity), a selection, a frame.
+    const changes: ((d: SketchDrawing) => SketchDrawing)[] = [
+      (d) => ({ ...d, data: Object.freeze({ ...d.data }) as SketchData }),
+      (d) => ({ ...d, selectedEntities: ['e1'] }),
+      (d) => ({ ...d, frame: { ...d.frame, origin: [0, 0, 1] } }),
+      (d) => ({ ...d, showPoints: true }),
+      (d) => ({ ...d, status: {} }),
+    ];
+    for (const change of changes) {
+      const next = {
+        ...base,
+        items: base.items.map((item, i) =>
+          i === 3 ? { ...item, drawing: change(item.drawing) } : item,
+        ),
+      } as ShownSketchBase;
+      const out = keepDrawings(next, first.kept);
+      expect(out.base.items[3]?.drawing).toBe(next.items[3]?.drawing);
+      expect(out.base.items[4]?.drawing).toBe(base.items[4]?.drawing);
+    }
+    // Only the shown sketches are kept: a hidden one is let go.
+    const fewer = { ...base, items: base.items.slice(0, 10) };
+    expect([...keepDrawings(fewer, first.kept).kept.drawings.keys()]).toHaveLength(10);
+    // A new fonts version keeps nothing: every drawing is the new one.
+    const fonts = keepDrawings({ ...again, fontsVersion: 1 }, first.kept);
+    fonts.base.items.forEach((item, i) => {
+      expect(item.drawing).toBe(again.items[i]?.drawing);
+    });
+    // And from then on the drawings made for it are kept again.
+    const fontsAgain = keepDrawings({ ...remade(again), fontsVersion: 1 }, fonts.kept);
+    expect(fontsAgain.base.items[0]?.drawing).toBe(again.items[0]?.drawing);
   });
 
   it('keeps a drawing while its results stay, and makes fresh jobs every time', () => {
