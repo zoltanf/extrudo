@@ -2928,6 +2928,14 @@ function Shell({
         : projecting
           ? project.select
           : (annotateSelect ?? measureSelect ?? sessionSelect);
+  // The browser's body rows take these for good (ADR-0159 §7): a row only calls them, so a new
+  // `modelSelect` (a dialog opens or closes, a sketch opens) doesn't render every row.
+  const pickBody = useLatest((id: BodyId, toggle: boolean) =>
+    modelSelect?.onClick({ kind: 'body', id }, toggle),
+  );
+  const hoverBody = useLatest((id: BodyId | undefined) =>
+    modelSelect?.onHover(id ? { kind: 'body', id } : undefined),
+  );
   // A body menu's Convert to Solid… selects the body the way a browser row's click
   // does, then runs the tool the way a tile click does (P4-13, ADR-0097 §5): the
   // dialog pre-selects from the session's selection.
@@ -3154,19 +3162,17 @@ function Shell({
               {...(assemblyHint &&
                 mode === 'model' && {
                   assemblyHint: {
-                    onNewComponent: () => run('newComponent'),
+                    // `runLatest`, not `run`: the hint's object then stays the same while the
+                    // dismiss does, and the browser keeps its rows (ADR-0159 §7).
+                    onNewComponent: () => runLatest('newComponent'),
                     onDismiss: dismissAssemblyHint,
                   },
                 })}
               selectedBodies={selectedBodies}
               statuses={featureStatuses}
               recomputeFinished={recomputeFinished}
-              onPickBody={
-                modelSelect
-                  ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
-                  : undefined
-              }
-              onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
+              onPickBody={pickBody}
+              onHoverBody={hoverBody}
               {...(projecting &&
                 modelSelect && {
                   onPickFeature: (id, toggle) =>

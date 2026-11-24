@@ -21,6 +21,7 @@ import type { BodyMesh } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import { boxMesh } from '../selection/testing';
 import {
+  type BodyEntry,
   bodiesEmptyState,
   bodyEntries,
   bodyMetaOf,
@@ -33,6 +34,7 @@ import {
   isSwatch,
   parseBodyColor,
   pendingBodyEntries,
+  sameBodyEntry,
 } from './bodies';
 
 const feature = (id: string): Feature => ({
@@ -573,5 +575,44 @@ describe('bodiesEmptyState', () => {
     expect(bodiesEmptyState({ listed: 0, finished: false, activeFeatures: 0 })).toBe('none');
     expect(bodiesEmptyState({ listed: 0, finished: true, activeFeatures: 2 })).toBe('none');
     expect(bodiesEmptyState({ listed: 1, finished: false, activeFeatures: 2 })).toBe('none');
+  });
+});
+
+describe('sameBodyEntry (ADR-0159 §7)', () => {
+  const entry: BodyEntry = {
+    id: bid('b1'),
+    meta: { name: 'Body1', visible: true, color: '#ff0000', opacity: 0.5 },
+    stored: true,
+    component: 'c1' as ComponentId,
+    display: 'shown',
+  };
+  it('is the same for an equal entry in new objects, metadata included', () => {
+    expect(sameBodyEntry(entry, { ...entry, meta: { ...entry.meta } })).toBe(true);
+    expect(sameBodyEntry(entry, entry)).toBe(true);
+  });
+  it('differs when any one part does', () => {
+    const changes: Partial<BodyEntry>[] = [
+      { id: bid('b2') },
+      { stored: false },
+      { mesh: true },
+      { pending: true },
+      { component: 'c2' as ComponentId },
+      { display: 'ghost' },
+      { meta: { ...entry.meta, name: 'Body2' } },
+      { meta: { ...entry.meta, visible: false } },
+      { meta: { ...entry.meta, color: '#00ff00' } },
+      { meta: { ...entry.meta, opacity: 1 } },
+      { meta: { ...entry.meta, ghost: true } },
+    ];
+    for (const change of changes) expect(sameBodyEntry(entry, { ...entry, ...change })).toBe(false);
+    // A part that goes away differs too.
+    const { component: _c, ...loose } = entry;
+    expect(sameBodyEntry(entry, loose as BodyEntry)).toBe(false);
+    const { color: _k, ...plain } = entry.meta;
+    expect(sameBodyEntry(entry, { ...entry, meta: plain })).toBe(false);
+    // As many keys, but another one (an absent part against one set to `undefined`).
+    expect(sameBodyEntry({ ...loose, pending: undefined } as BodyEntry, entry)).toBe(false);
+    const other = { ...plain, ghost: undefined } as BodyEntry['meta'];
+    expect(sameBodyEntry({ ...entry, meta: other }, entry)).toBe(false);
   });
 });
