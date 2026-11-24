@@ -1,1 +1,0 @@
-- 2026-11-24 · **"Through all" lengths**: an extrude or a hole "through all" now reaches the same length whether or not the bodies it goes through were already drawn, so a design gives the same result after an edit as when it is opened.
