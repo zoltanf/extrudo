@@ -172,3 +172,40 @@ changing its callers. No feature makes a body yet (extrude is P2-06).
   "Select other…" then moves into it, and the long press stays.
 - Box selection sees through faces; a "visible only" option may be wanted.
 - An x-ray outline for hidden faces hovered in "Select other…".
+
+## Amendment (2026-11-24): a crossing box and triangles seen edge-on
+
+**The bug.** A crossing box (right to left) tests each triangle of a face for a node inside the
+box, a side through it, or the box's centre inside the triangle (`faceIn`, `insideTriangle` in
+`selection/pick.ts`); the last catches a box wholly inside a large triangle. For a triangle of
+no area on screen — a face seen edge-on, such as a part's sides or a hole's wall in the Top view,
+or three nodes on one point — every point on the triangle's line passes that test. So a crossing
+box whose centre lay on the line took the face, and its body, however far from it the box was: in
+the Top view of a 10 mm cube, a box well above the cube with its centre exactly on the left face's
+line selected the cube, and the same box 0.25 px to the side selected nothing.
+
+**The fix.** The centre test runs only for a triangle whose doubled signed area on screen
+(`doubleArea`, `(b − a) × (c − a)` over the projected nodes) is not exactly 0 in floating point.
+A triangle of no area is taken where the box meets it: a node inside the box, or a side through
+it (a triangle on one point: the point inside the box). A triangle with any area, however thin,
+is tested as before. Window boxes (left to right) are unchanged: they test nodes only.
+
+**What changes, and only that:** a crossing box no longer takes a face for a triangle of no area
+on screen that it doesn't meet; when that was the only thing it took of a kind, the box goes on to
+the next kind in `BOX_ORDER`, as for any box that finds nothing of a kind. Tested in
+`pickBoxEdgeOn.test.ts`: 150 seeded scenes (boxes, a plate with a hole's wall, a sliver, a
+triangle on a point, one on a line; five directions, orthographic and perspective) × 40 boxes,
+half of them with the centre exactly on a projected node's x or y, compared with the face test as
+it was (written out in the test; on main's `pick.ts` it gives `pickBox`'s answer for all 6,000
+boxes): every face the box no longer takes is one whose changed triangle has no area on screen
+and is met by no node and no side, window boxes give the same faces, and the boxes reach the
+case (more than 20 of them). By hand: the cube above takes nothing; a box across the left face's
+line inside its length takes the face and the cube; a 0.8 mm sliver takes a box inside it, as
+before, and not one beyond its tip; a triangle on one point is taken by a box around the point
+only. `e2e/model-select.spec.ts` checks the Top view of the test part: a crossing box across the
+hole's rim takes the top, the bottom and the wall, one inside the hole nothing, one across the
+left side the side, the top and the bottom.
+
+**Rule:** a box test takes a triangle only where the box meets what the triangle shows on
+screen; a test that can pass for a point off the triangle runs only for triangles with an area
+on screen.

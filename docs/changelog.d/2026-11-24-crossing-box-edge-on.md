@@ -1,0 +1,1 @@
+- 2026-11-24 · **Box selection**: a right-to-left (crossing) box no longer selects a face seen edge-on, or its body, when the box only lines up with the face from far away; it takes such a face where it touches it.

@@ -894,6 +894,15 @@ export function segmentMeetsRect(
   );
 }
 
+/** Twice the signed area of a triangle of view points; exactly 0 when it has none on screen. */
+function doubleArea(
+  a: readonly [number, number],
+  b: readonly [number, number],
+  c: readonly [number, number],
+): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
 function insideTriangle(
   p: readonly [number, number],
   a: readonly [number, number],
@@ -987,7 +996,11 @@ function faceIn(mesh: BodyMesh, nodes: Float64Array, face: number, r: Rect, mode
       segmentMeetsRect(a, b, r) ||
       segmentMeetsRect(b, c, r) ||
       segmentMeetsRect(c, a, r) ||
-      insideTriangle(center, a, b, c)
+      // A box wholly inside the triangle. Not for a triangle of no area on screen (seen
+      // edge-on, or all three nodes on one point): every point on its line passes the test,
+      // so a box far along that line took it (ADR-0026's amendment of 2026-11-24); the
+      // segment tests above take it where the box meets it.
+      (doubleArea(a, b, c) !== 0 && insideTriangle(center, a, b, c))
     ) {
       return true;
     }
