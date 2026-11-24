@@ -178,7 +178,7 @@ export function hasPickIndex(mesh: BodyMesh): boolean {
 /**
  * Builds the picking index of `meshes` in idle time, one mesh per idle
  * callback, so the first hover after a recompute doesn't pay for it
- * (ADR-0102 §2). Stops when `signal` aborts (the meshes were replaced);
+ * (ADR-0102 §2), and the box select's cull boxes with it. Stops when `signal` aborts (the meshes were replaced);
  * `indexOf` still builds on demand whatever is missing.
  */
 export function warmPickIndex(
@@ -186,7 +186,7 @@ export function warmPickIndex(
   signal?: AbortSignal,
   idle: (run: () => void) => () => void = whenIdle,
 ): void {
-  const queue = [...meshes].filter((mesh) => !meshIndex.has(mesh));
+  const queue = [...meshes].filter((mesh) => !meshIndex.has(mesh) || !cullBoxes.has(mesh));
   let cancel: (() => void) | undefined;
   const next = () => {
     cancel = undefined;
@@ -194,6 +194,9 @@ export function warmPickIndex(
     const mesh = queue.shift();
     if (!mesh) return;
     indexOf(mesh);
+    // And the boxes a box select culls with (ADR-0026's amendment "a box culls what it cannot
+    // meet"), so the first box after a recompute doesn't build them.
+    cullBoxesOf(mesh);
     if (queue.length > 0) cancel = idle(next);
   };
   if (queue.length === 0 || signal?.aborted) return;
@@ -1011,8 +1014,8 @@ function faceIn(mesh: BodyMesh, nodes: Float64Array, face: number, r: Rect, mode
 // Box culling (ADR-0026's amendment "a box culls what it cannot meet") --------------
 
 /**
- * World boxes of a mesh, min xyz then max xyz: all its nodes, each face's (the nodes its
- * triangles use) and its edge points. A box test rejects what lies wholly outside the box on
+ * World boxes of a mesh, min xyz then max xyz: its faces' together, each face's (the nodes its
+ * triangles use) and its edges' points. A box test rejects what lies wholly outside the box on
  * screen before the exact test, which still decides everything else.
  */
 interface CullBoxes {
@@ -1023,35 +1026,48 @@ interface CullBoxes {
 
 const cullBoxes = new WeakMap<BodyMesh, CullBoxes>();
 
-/** min/max of `n` points read by `at` into `out` from `o`; NaN propagates (no cull then). */
-function boxInto(out: Float64Array, o: number, n: number, at: (i: number, k: number) => number) {
-  out.set([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], o);
-  for (let i = 0; i < n; i++) {
-    for (let k = 0; k < 3; k++) {
-      const v = at(i, k);
-      out[o + k] = Math.min(out[o + k] as number, v);
-      out[o + 3 + k] = Math.max(out[o + 3 + k] as number, v);
-    }
+/** An empty box (`Infinity` mins, `-Infinity` maxes) at `o`. */
+function emptyBox(out: Float64Array, o: number) {
+  out[o] = out[o + 1] = out[o + 2] = Infinity;
+  out[o + 3] = out[o + 4] = out[o + 5] = -Infinity;
+}
+
+/** Grows the box at `o` by the point at `i` of `p` (xyz); a NaN makes the box NaN (no cull). */
+function grow(out: Float64Array, o: number, p: ArrayLike<number>, i: number) {
+  for (let k = 0; k < 3; k++) {
+    const v = p[i + k] ?? 0;
+    out[o + k] = Math.min(out[o + k] as number, v);
+    out[o + 3 + k] = Math.max(out[o + 3 + k] as number, v);
   }
 }
 
 function cullBoxesOf(mesh: BodyMesh): CullBoxes {
   let boxes = cullBoxes.get(mesh);
   if (boxes) return boxes;
-  const p = mesh.positions;
-  const node = (i: number, k: number) => p[3 * i + k] ?? 0;
+  // Each box holds exactly the points the exact test reads (a missing number read as 0).
+  const { positions: p, indices, faceRanges, edgePoints: e, edgeRanges } = mesh;
   const nodes = new Float64Array(6);
-  boxInto(nodes, 0, p.length / 3, node);
-  const count = mesh.faceRanges.length >> 1;
+  emptyBox(nodes, 0);
+  const count = faceRanges.length >> 1;
   const faces = new Float64Array(6 * count);
   for (let f = 0; f < count; f++) {
-    const first = mesh.faceRanges[2 * f] ?? 0;
-    const triangles = mesh.faceRanges[2 * f + 1] ?? 0;
-    boxInto(faces, 6 * f, 3 * triangles, (i, k) => node(mesh.indices[3 * first + i] ?? 0, k));
+    const o = 6 * f;
+    emptyBox(faces, o);
+    const first = 3 * (faceRanges[2 * f] ?? 0);
+    const end = first + 3 * (faceRanges[2 * f + 1] ?? 0);
+    for (let t = first; t < end; t++) grow(faces, o, p, 3 * (indices[t] ?? 0));
+    if (end > first) {
+      grow(nodes, 0, faces, o);
+      grow(nodes, 0, faces, o + 3);
+    }
   }
   const edges = new Float64Array(6);
-  const e = mesh.edgePoints;
-  boxInto(edges, 0, e.length / 3, (i, k) => e[3 * i + k] ?? 0);
+  emptyBox(edges, 0);
+  for (let i = 0; i < edgeRanges.length >> 1; i++) {
+    const first = edgeRanges[2 * i] ?? 0;
+    const n = edgeRanges[2 * i + 1] ?? 0;
+    for (let k = first; k < first + n; k++) grow(edges, 0, e, 3 * k);
+  }
   boxes = { nodes, faces, edges };
   cullBoxes.set(mesh, boxes);
   return boxes;
