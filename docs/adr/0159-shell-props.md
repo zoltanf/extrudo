@@ -148,3 +148,76 @@ point in an open sketch (10 pointer moves) 51,981 → 29,681 / 118,286 → 53,80
 edit 9,480 → 6,748 / 30,375 → 21,318; opening a sketch 10,280 → 9,833 / 25,031 → 23,460; a
 box select 12,056 → 11,803 / 29,066 → 28,279. The renders of `Shell` itself are unchanged
 (11 / 8 for the drag): what changed is what each of them renders.
+
+## Amendment (2026-11-24): `Shell` compiles
+
+**Context.** `Shell` (`shell/AppShell.tsx`) was the largest component the React Compiler
+skipped: 47 diagnostics on 2026-11-24 (refs written in render and closures reading refs handed
+to the action creators, 24; manual memos it couldn't keep, 15; `import()`, 7; one ref written
+after an effect read it). So every render of it handed new values to everything it renders.
+
+**Decision.**
+
+1. The chunks it loads on demand come from module-level loaders (`loadDrawingTools`,
+   `loadSolver`, `loadStandardViews`), called where the `import()`s were.
+2. No ref is written during its render. The 16 refs that were get their value in an insertion
+   effect, which runs in the commit before every layout and passive effect and every event
+   after it. Seven of them are read through functions called during the render (the action
+   creators' getters, the file commands): they sit in `Later` boxes (`shell/latest.ts`:
+   `useLater`, set by `useLaterValue` in an insertion effect); a ref can't go there, since the
+   compiler can't tell the function won't read it at once. The update notice the Ctrl+Z route
+   reads (handed to the shortcuts' builder) is a `Later` too, set where the notice tells it, as
+   its ref was.
+3. The recompute error's Edit asks `canEditFeature` with `hasFeatureDialog(dialogs, type)`
+   (`shell/featureActions.ts`, pure) instead of the feature actions through a ref: the
+   notification history asks it while it renders, and a ref given its value in an effect would
+   answer with the last commit's actions there. Same answers for every `dialogs` (tested); the
+   watcher subscribes again if `dialogs` changes (the app passes one constant registry).
+4. Every value is declared above the closures that use it: a closure that uses a `const`
+   declared further down makes the compiler build that value inside the closure's memo scope,
+   so it is made again whenever anything the closure reads changes (the first attempt rendered
+   2–3× more for that). Moved up: `featureActions` with `sketchOnFace`, `redefineTo`,
+   `pickPlane` and `startRedefine` (above `run`), `openSection` (above the section's row), the
+   import and script-export boxes (above the file actions). The moved blocks hold memos and
+   insertion-effect writes only: no layout or passive effect changed place.
+5. Dependency lists are complete (the boxes, the state setters, the update notice); the command
+   lists (`dialogCommands`, `commandBuilder`) are left to the compiler. `featureActions` keeps its
+   manual memo: with the declarations in order, the compiler keeps it.
+6. `compiler.test.ts` lists `Shell` as a component that must compile and checks it for names used
+   in a closure before their declaration (`forwardReferences`, on Vite's `parseAst`).
+
+**Who reads the 16 refs, and when** (checked one by one; none reads during a render):
+
+| ref (box) | read by | runs on |
+|---|---|---|
+| `bodyListRef` (`bodyListLater`) | body actions' `entry` (rename, display, visibility, colour, opacity) | browser row and menu handlers |
+| `componentListRef` (`componentListLater`) | component `select`, placement move/copy/place on bed | browser click and menus, the marking menu |
+| `openJointCheckRef` | the Check Clearance command | command run: key, search, menus, desktop menu, agent (async) |
+| `exportScriptRef` (`exportScriptLater`) | the file command, `run` | command run |
+| `startImportRef` (`startImportLater`) | the file command, `run`, the model-import effect | command run; a passive effect (after the insertion effects) |
+| `startCanvasRef` | `run` | command run |
+| `runRef` | dialog commands, `runTool`, Convert to Solid | command run, menus |
+| `startTutorialRef` | the tutorial command | command run |
+| `runPluginRef` | plugin menu items | command run |
+| `sketchOnFaceRef` | the plane picker's face pick | the view's pointer click |
+| `pickPlaneRef` | the plane picker's plane pick | the view's click, the origin's click |
+| `startRedefineRef` (`startRedefineLater`) | feature actions' Redefine Plane / Fix | feature menu |
+| `featureActionsRef` | the recompute error's Edit (`canEdit` no longer: item 3) | the toast's and the history's click |
+| `openSketchRef` (`openSketchLater`) | annotation select/edit, Look At, the agent, re-anchoring | browser keys/clicks/menus, a command, MCP (async), annotation drags |
+| `bodiesRef` (`bodiesLater`) | annotating a model point, re-anchoring | the view's click, annotation drag end |
+| `convertToSolidRef` | the body menu's Convert to Solid | menu |
+
+Nothing in the app uses transitions or deferred values, and no Suspense boundary sits above
+`Shell`: its renders are synchronous, so no event runs between a render and its commit.
+
+**Rules.**
+
+- `Shell` must compile (`compiler.test.ts`): no ref written in its render, no `import()` in it, no
+  name used in a closure before its declaration, dependency lists that match what it reads.
+- A value a render hands to a function called in the render, for the function to read later,
+  goes in a `Later` box; a `Later` (or a ref) is never read during a render, the shell's or a
+  child's: a child's render would see the last commit's value.
+- `sketchBase` stays a manual `useMemo` (it pins and closes the profile cache's open sketch); the
+  compiler keeps it, guarded on the same inputs (`status` narrowed to `status?.entities`, the only
+  part it reads; `pinOpenSketch` and `closeOpenSketch` are idempotent).
+- Effect order: blocks moved for item 4 must not carry a layout or passive effect past another.
