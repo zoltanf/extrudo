@@ -3154,7 +3154,9 @@ function Shell({
               {...(assemblyHint &&
                 mode === 'model' && {
                   assemblyHint: {
-                    onNewComponent: () => run('newComponent'),
+                    // `runLatest`, not `run`: the hint's object then stays the same while the
+                    // dismiss does, and the browser keeps its rows (ADR-0159 §8).
+                    onNewComponent: () => runLatest('newComponent'),
                     onDismiss: dismissAssemblyHint,
                   },
                 })}

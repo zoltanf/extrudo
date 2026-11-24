@@ -47,8 +47,10 @@ import {
   type HTMLAttributes,
   type KeyboardEvent,
   type MouseEvent,
+  memo,
   type ReactNode,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -87,10 +89,12 @@ import {
   isSwatch,
   nextBodyDisplay,
   parseBodyColor,
+  sameBodyEntry,
 } from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
+import { useLatest } from './latest';
 import type { ViewActions } from './namedViews';
 import { toolForFeature } from './tools';
 
@@ -261,6 +265,9 @@ export function BrowserPanel({
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
   const bodiesShown = bodies.some(({ display }) => display === 'shown');
   const grouped = componentRows(doc, bodies);
+  // The selected bodies, read by a row's drag, Delete and menu when they run (ADR-0159 §8): the
+  // same function for good, so a selection change renders only the rows it selects or clears.
+  const selectionNow = useLatest(() => selectedBodies);
   const components = doc.components ?? [];
 
   // The panel floats over the view's left edge in frosted glass (like the nav bar), so the
@@ -372,12 +379,12 @@ export function BrowserPanel({
                       editable={actions.canEdit(feature, index, doc.timelineMarker)}
                       rolledBack={index >= doc.timelineMarker}
                       problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
-                      position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                      index={index}
+                      marker={doc.timelineMarker}
+                      count={doc.features.length}
                       active={feature.id === activeSketchId}
                       actions={actions}
-                      {...(onPickFeature && {
-                        onPick: (toggle: boolean) => onPickFeature(feature.id, toggle),
-                      })}
+                      onPickFeature={onPickFeature}
                     />
                   ))
                 )}
@@ -408,17 +415,13 @@ export function BrowserPanel({
                       editable={actions.canEdit(feature, index, doc.timelineMarker)}
                       rolledBack={index >= doc.timelineMarker}
                       problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
-                      position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                      index={index}
+                      marker={doc.timelineMarker}
+                      count={doc.features.length}
                       active={false}
                       actions={actions}
-                      rowAttribute={{ 'data-construction': feature.id }}
-                      icon={
-                        <ToolIcon
-                          name={toolForFeature(feature.type).icon}
-                          category="construct"
-                          size={14}
-                        />
-                      }
+                      rowAttribute="data-construction"
+                      iconCategory="construct"
                     />
                   ))
                 )}
@@ -446,17 +449,13 @@ export function BrowserPanel({
                       editable={actions.canEdit(feature, index, doc.timelineMarker)}
                       rolledBack={index >= doc.timelineMarker}
                       problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
-                      position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                      index={index}
+                      marker={doc.timelineMarker}
+                      count={doc.features.length}
                       active={false}
                       actions={actions}
-                      rowAttribute={{ 'data-canvas': feature.id }}
-                      icon={
-                        <ToolIcon
-                          name={toolForFeature(feature.type).icon}
-                          category="insert"
-                          size={14}
-                        />
-                      }
+                      rowAttribute="data-canvas"
+                      iconCategory="insert"
                     />
                   ))}
                 </Folder>
@@ -586,7 +585,7 @@ export function BrowserPanel({
                           key={body.id}
                           body={body}
                           selected={selectedBodies.has(body.id)}
-                          selection={selectedBodies}
+                          selection={selectionNow}
                           actions={bodyActions}
                           components={components}
                           onPick={onPickBody}
@@ -603,7 +602,7 @@ export function BrowserPanel({
                         key={body.id}
                         body={body}
                         selected={selectedBodies.has(body.id)}
-                        selection={selectedBodies}
+                        selection={selectionNow}
                         actions={bodyActions}
                         components={components}
                         onPick={onPickBody}
@@ -638,34 +637,50 @@ export function BrowserPanel({
   );
 }
 
-function SketchLeaf({
+/**
+ * A feature's row. Memoised (ADR-0159 §8): the browser renders on every document change, and
+ * every row rendered with it, each with its context menu, tooltip and eye; every prop is a
+ * value or an object kept while unchanged (the feature, its problem object, the actions).
+ */
+const SketchLeaf = memo(function SketchLeaf({
   feature,
   editable,
   rolledBack,
   problem,
-  position,
+  index,
+  marker,
+  count,
   active,
   actions,
-  icon,
+  iconCategory,
   rowAttribute,
-  onPick,
+  onPickFeature,
 }: {
   feature: Feature;
   editable: boolean;
   rolledBack: boolean;
   /** The kernel's warning or error, shown as on a timeline chip (P3-17). */
   problem?: FeatureProblem;
-  position: { index: number; marker: number; count: number };
+  /** The feature's place in the timeline, the marker and the number of features (its menu). */
+  index: number;
+  marker: number;
+  count: number;
   active: boolean;
   actions: FeatureActions;
-  /** A small icon before the name (construction and canvas rows, P3-05, P4-06). */
-  icon?: ReactNode;
-  /** A hook for the test to find this row (`data-construction`, `data-canvas`). */
-  rowAttribute?: Record<string, string>;
+  /** A small icon before the name, the feature's tool's (construction and canvas rows). */
+  iconCategory?: 'construct' | 'insert';
+  /** A hook for the test to find this row, set to the feature's ID. */
+  rowAttribute?: 'data-construction' | 'data-canvas';
   /** A click on the row while the Project tool runs (ADR-0125): the whole sketch is picked. */
-  onPick?: (toggle: boolean) => void;
+  onPickFeature?: (id: FeatureId, toggle: boolean) => void;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const position = useMemo(() => ({ index, marker, count }), [index, marker, count]);
+  const onPick =
+    onPickFeature && ((toggle: boolean) => onPickFeature(feature.id as FeatureId, toggle));
+  const icon = iconCategory && (
+    <ToolIcon name={toolForFeature(feature.type).icon} category={iconCategory} size={14} />
+  );
   const visible = isFeatureVisible(feature);
   const states = [
     active && 'editing',
@@ -688,7 +703,7 @@ function SketchLeaf({
       trigger={
         <Leaf
           active={active}
-          {...rowAttribute}
+          {...(rowAttribute && { [rowAttribute]: feature.id })}
           data-feature-row={feature.id}
           data-feature-status={problem?.status}
           onClick={
@@ -763,7 +778,7 @@ function SketchLeaf({
       />
     </ContextMenu>
   );
-}
+});
 
 const NO_BODIES: ReadonlySet<string> = new Set();
 const NO_STATUSES: Readonly<Record<string, FeatureStatus | undefined>> = {};
@@ -876,7 +891,33 @@ function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) 
   );
 }
 
-function BodyLeaf({
+/**
+ * Memoised, comparing the entry by value (ADR-0159 §8): `bodyEntries` makes new entries on every
+ * document change. The selection is read when a drag, Delete or the menu runs.
+ */
+const BodyLeaf = memo(BodyRow, (a, b) => {
+  const keys = Object.keys(a) as (keyof BodyRowProps)[];
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) =>
+      key === 'body' ? sameBodyEntry(a.body, b.body) : Object.is(a[key], b[key]),
+    )
+  );
+});
+
+interface BodyRowProps {
+  body: BodyEntry;
+  selected: boolean;
+  /** The selected bodies, now: a function that stays the same; call it from handlers only. */
+  selection: () => ReadonlySet<string>;
+  actions: BodyActions;
+  /** The design's components, for the menu's "Move to Component". */
+  components: readonly Component[];
+  onPick?(id: BodyId, toggle: boolean): void;
+  onHover?(id: BodyId | undefined): void;
+}
+
+function BodyRow({
   body,
   selected,
   selection,
@@ -884,16 +925,7 @@ function BodyLeaf({
   components,
   onPick,
   onHover,
-}: {
-  body: BodyEntry;
-  selected: boolean;
-  selection: ReadonlySet<string>;
-  actions: BodyActions;
-  /** The design's components, for the menu's "Move to Component". */
-  components: readonly Component[];
-  onPick?(id: BodyId, toggle: boolean): void;
-  onHover?(id: BodyId | undefined): void;
-}) {
+}: BodyRowProps) {
   const [renaming, setRenaming] = useState(false);
   const [appearance, setAppearance] = useState(false);
   const { id, meta } = body;
@@ -901,9 +933,12 @@ function BodyLeaf({
   // hidden or ghost state wins, ADR-0081 §6).
   const own = bodyDisplay(meta);
   const display = body.display;
-  const dragIds = () => (selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
-  const remove = () =>
-    actions.remove(selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
+  // This body, or every selected one when it is one of several selected.
+  const dragIds = () => {
+    const now = selection();
+    return selected && now.size > 1 ? ([...now] as BodyId[]) : [id];
+  };
+  const remove = () => actions.remove(dragIds());
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'F2') setRenaming(true);
     else if (event.key === 'Delete' || event.key === 'Backspace') remove();
@@ -1034,14 +1069,7 @@ function BodyLeaf({
         )}
       </MenuSub>
       {actions.exportBodies && (
-        <MenuItem
-          icon={<FileDown size={14} />}
-          onSelect={() =>
-            actions.exportBodies?.(
-              selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id],
-            )
-          }
-        >
+        <MenuItem icon={<FileDown size={14} />} onSelect={() => actions.exportBodies?.(dragIds())}>
           Export…
         </MenuItem>
       )}
