@@ -4,6 +4,12 @@
 // engine with a cleared cache gives for the same document: statuses and errors, origins, reports,
 // body IDs and their order, and every array and name of every mesh. Real OCCT, strict leaks, no
 // clock. Plus negative controls that must make the comparison fail, and counters.
+//
+// "Through all" is edited only in designs whose bodies are flat. Over curved bodies its length
+// comes from `measure`'s box, which today depends on whether the bodies were meshed for display
+// (ADR-0035: the box uses a face's triangulation when it has one), so a cached recompute (bodies
+// drawn) and a cleared one (nothing drawn) can differ there with or without `add`. In the other
+// designs the extent edit switches the direction (one side, symmetric) instead.
 import {
   type AttachmentId,
   applyCommand,
@@ -59,20 +65,23 @@ function fixture(dataUrl: string): ExtrudoDocument {
   return loadDocument(JSON.parse(strFromU8(json))).doc;
 }
 
-/** A 60 × 40 mm plate at `x` with two holes: its outer region and the holes' regions. */
-function plateSketch(x: number, y = 0) {
+/** A 60 × 40 mm plate at `x`, with two holes (curved walls) or none. */
+function plateSketch(x: number, holes = true) {
+  const y = 0;
   const b = new SketchBuilder();
   b.line(x, y, x + 60, y);
   b.line(x + 60, y, x + 60, y + 40);
   b.line(x + 60, y + 40, x, y + 40);
   b.line(x, y + 40, x, y);
-  b.circle(x + 15, y + 20, 5);
-  b.circle(x + 45, y + 20, 5);
+  if (holes) {
+    b.circle(x + 15, y + 20, 5);
+    b.circle(x + 45, y + 20, 5);
+  }
   return b.sketch;
 }
 
-function plateFeatures(i: number, x: number, distance: string): Feature[] {
-  const data = plateSketch(x);
+function plateFeatures(i: number, x: number, distance: string, holes = true): Feature[] {
+  const data = plateSketch(x, holes);
   const regions = detectProfiles(data);
   const outer = regions.reduce((a, r) => ((r.holes?.length ?? 0) > (a.holes?.length ?? 0) ? r : a));
   return [
@@ -99,9 +108,9 @@ function plateFeatures(i: number, x: number, distance: string): Feature[] {
 }
 
 /** `n` plates side by side (`gap` apart; under 60 they overlap), some lengths from a parameter. */
-function plates(n: number, gap = 80): ExtrudoDocument {
+function plates(n: number, gap = 80, holes = true): ExtrudoDocument {
   const features = Array.from({ length: n }, (_, i) =>
-    plateFeatures(i, i * gap, i % 2 ? 't' : `${3 + i} mm`),
+    plateFeatures(i, i * gap, i % 2 ? 't' : `${3 + i} mm`, holes),
   ).flat();
   return {
     ...createDocument({ name: `plates ${n}` }),
@@ -111,9 +120,9 @@ function plates(n: number, gap = 80): ExtrudoDocument {
   } as ExtrudoDocument;
 }
 
-/** Overlapping plates and a slot cut through all of them. */
-function platesCut(): ExtrudoDocument {
-  const doc = plates(4, 45);
+/** Overlapping plates (with holes or flat) and a slot cut through all of them. */
+function platesCut(holes = true): ExtrudoDocument {
+  const doc = plates(4, 45, holes);
   const b = new SketchBuilder();
   b.line(-10, 18, 220, 18);
   b.line(220, 18, 220, 22);
@@ -265,6 +274,7 @@ function edit(
   rand: () => number,
   history: readonly ExtrudoDocument[],
   deleted: Feature[],
+  flat: boolean,
 ): ExtrudoDocument | undefined {
   const pick = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
   const set = (id: string, change: (f: Feature) => Feature) => ({
@@ -308,6 +318,17 @@ function edit(
     }
     case 'extent': {
       const f = pick(extrudes);
+      if (!flat) {
+        // Not "through all" over curved bodies (see the top of the file): the direction instead.
+        const direction = pick(['one-side', 'symmetric'] as const) ?? 'one-side';
+        return (
+          f &&
+          set(f.id, (x) => ({
+            ...x,
+            inputs: { ...x.inputs, direction: { kind: 'enum', value: direction } },
+          }))
+        );
+      }
       const extent = pick(['through-all', 'distance'] as const) ?? 'distance';
       return (
         f &&
@@ -368,7 +389,10 @@ function edit(
       const features = [...doc.features];
       const at = Math.floor(rand() * (features.length + 1));
       if (back) features.splice(at, 0, back);
-      else features.push(...plateFeatures(50 + history.length, 600 + 70 * history.length, '5 mm'));
+      else
+        features.push(
+          ...plateFeatures(50 + history.length, 600 + 70 * history.length, '5 mm', !flat),
+        );
       return { ...doc, features, timelineMarker: features.length };
     }
     case 'undo':
@@ -410,6 +434,8 @@ async function differential(
     registry?: () => FeatureRegistry<KernelFeatureDefinition>;
     engine?: typeof RecomputeEngine;
     stopped?: readonly FeatureId[];
+    /** The design's bodies are flat: "through all" is one of its edits. */
+    flat?: boolean;
   } = {},
 ): Promise<Run> {
   const Make = options.engine ?? RecomputeEngine;
@@ -433,7 +459,7 @@ async function differential(
     for (let step = 0; step <= steps; step++) {
       if (step > 0) {
         const kind = (KINDS[step - 1] ?? KINDS[Math.floor(rand() * KINDS.length)]) as Kind;
-        const next = edit(kind, current, rand, history, deleted);
+        const next = edit(kind, current, rand, history, deleted, options.flat ?? false);
         if (!next) continue;
         current = next;
         history.push(current);
@@ -462,24 +488,28 @@ async function differential(
 
 // ------------------------------------------------------------------------------- the proof
 
-/** A design, how to make it, the features stopped in it, and the ones in error before any edit. */
-const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[]][] = [
-  ['plates with a parameter', () => plates(5), [], []],
-  ['overlapping plates and a cut through them', platesCut, [], []],
-  ['b2 storage box', () => fixture(b2), [], []],
-  ['b3 phone stand', () => fixture(b3), [], []],
-  ['b4 box with lid', () => fixture(b4), [], []],
-  ['the hinge (components)', () => fixture(hinge), [], []],
-  ['plates and an inserted design (an isolated expansion)', withInsert, [], []],
-  ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId], ['ex1', 'ex2']],
+/**
+ * A design, how to make it, the features stopped in it, the ones in error before any edit, and
+ * whether its bodies are flat (then "through all" is one of its edits).
+ */
+const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[], boolean][] = [
+  ['plates with a parameter', () => plates(5), [], [], false],
+  ['overlapping plates and a cut through them', () => platesCut(), [], [], false],
+  ['flat overlapping plates and a cut, "through all" edited', () => platesCut(false), [], [], true],
+  ['b2 storage box', () => fixture(b2), [], [], false],
+  ['b3 phone stand', () => fixture(b3), [], [], false],
+  ['b4 box with lid', () => fixture(b4), [], [], false],
+  ['the hinge (components)', () => fixture(hinge), [], [], false],
+  ['plates and an inserted design (an isolated expansion)', withInsert, [], [], false],
+  ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId], ['ex1', 'ex2'], false],
 ];
 
 describe('add access: the cached engine gives what a cleared one gives (ADR-0024, `add` access)', () => {
   it.each(DESIGNS)(
     '%s, 40 seeded edits',
     { timeout: 900_000 },
-    async (_n, make, stopped, errors) => {
-      const run = await differential(make(), 40, 2511, { stopped });
+    async (_n, make, stopped, errors, flat) => {
+      const run = await differential(make(), 40, 2511, { stopped, flat });
       expect(run.initialErrors.sort()).toEqual(errors);
       expect(run.problems).toEqual([]);
       // Every kind of edit happened (those the design has something for), and the cache saved work.
@@ -544,7 +574,8 @@ async function engineWithoutChain(): Promise<{
 
 describe('the comparison catches a wrong `add` (negative controls)', () => {
   it('the extrude saying `add` for joins and cuts fails it', { timeout: 600_000 }, async () => {
-    const run = await differential(platesCut(), 20, 7, {
+    const run = await differential(platesCut(false), 20, 7, {
+      flat: true,
       registry: withExtrudeAccess((inputs) => {
         const settings = (inputs as ExtrudeInputs).extent?.value ?? 'distance';
         return settings === 'distance' ? 'add' : 'write';
@@ -554,7 +585,8 @@ describe('the comparison catches a wrong `add` (negative controls)', () => {
   });
 
   it('the extrude saying `add` for "through all" fails it', { timeout: 600_000 }, async () => {
-    const run = await differential(platesCut(), 20, 11, {
+    const run = await differential(platesCut(false), 20, 11, {
+      flat: true,
       registry: withExtrudeAccess((inputs) => {
         const operation = (inputs as ExtrudeInputs).operation?.value ?? 'new-body';
         return operation === 'new-body' ? 'add' : 'write';
@@ -566,7 +598,10 @@ describe('the comparison catches a wrong `add` (negative controls)', () => {
   it('the body set not chained after an `add` fails it', { timeout: 600_000 }, async () => {
     const broken = await engineWithoutChain();
     try {
-      const run = await differential(platesCut(), 20, 3, { engine: broken.engine });
+      const run = await differential(platesCut(false), 20, 3, {
+        engine: broken.engine,
+        flat: true,
+      });
       expect(run.problems.length).toBeGreaterThan(0);
     } finally {
       broken.remove();
