@@ -46,6 +46,38 @@ test("a tile's Change shortcut… records its key, and the key runs it after a r
   await expect(page.getByRole('region', { name: 'Hole dialog' })).toBeVisible();
 });
 
+test('a rebound key runs its tool and shows in the command search at once, no reload', async ({
+  page,
+}) => {
+  await openProject(page);
+  await kernelReady(page);
+  await page.locator('[data-tool="hole"]').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Change shortcut/ }).click();
+  await expect(row(page, 'hole')).toHaveAttribute('data-keymap-recording', '');
+  await page.keyboard.press('Shift+O');
+  await page.keyboard.press('Enter');
+  await expect(row(page, 'hole').getByRole('button', { name: 'Hole: Shift+O' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(keyboard(page)).toBeHidden();
+  // The shortcuts and the command list follow the keymap without a reload (ADR-0159 §6: the
+  // shell builds them with the live lookup, and the compiler keeps them between changes).
+  await page
+    .locator('canvas')
+    .first()
+    .click({ position: { x: 600, y: 400 } });
+  await page.keyboard.press('h');
+  await expect(page.getByRole('region', { name: 'Hole dialog' })).toBeHidden();
+  await page.keyboard.press('Shift+O');
+  await expect(page.getByRole('region', { name: 'Hole dialog' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('region', { name: 'Hole dialog' })).toBeHidden();
+  await page.keyboard.press('Control+k');
+  const search = page.getByRole('dialog', { name: 'Search', exact: true });
+  await search.getByRole('combobox', { name: 'Search commands' }).fill('hole');
+  const hole = search.getByRole('option', { name: /^Hole/ }).first();
+  await expect(hole.locator('kbd').first()).toHaveText('Shift+O');
+});
+
 test('a key another command uses here asks first; Replace takes it, Reset gives it back', async ({
   page,
 }) => {

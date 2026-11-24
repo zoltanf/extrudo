@@ -655,4 +655,20 @@ describe("the drawing's commands (P6-24, ADR-0143)", () => {
     const one = { ...twoSheets(), list: [{ id: 's1', name: 'Assembly' }] };
     expect(ids(context('sheet', { sheets: one }))).not.toContain('nextSheet');
   });
+
+  it('takes every command key from the keys lookup it is given (ADR-0159 §6)', () => {
+    // A key rebound in Settings › Keyboard: the live lookup answers the new key.
+    const rebound = (id: string): readonly string[] =>
+      id === 'extrude' ? ['Mod+Alt+E'] : id === 'parameters' ? [] : (DEFAULT_KEYMAP[id] ?? []);
+    const before = byId(context('model'));
+    const after = byId(context('model', { keysFor: rebound }));
+    expect(before.get('extrude')?.keys).toEqual(DEFAULT_KEYMAP.extrude ?? []);
+    expect(after.get('extrude')?.keys).toEqual(['Mod+Alt+E']);
+    expect(after.get('parameters')?.keys).toEqual([]);
+    // And the shortcuts made from them.
+    const keys = commandShortcuts(buildCommands(context('model', { keysFor: rebound }))).map(
+      (s) => s.keys,
+    );
+    expect(keys).toContain('Mod+Alt+E');
+  });
 });

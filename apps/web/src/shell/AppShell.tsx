@@ -61,8 +61,7 @@ import {
   createSketchAnnotateInput,
 } from '../annotations/tool';
 import { createAnnotationsUi } from '../annotations/ui';
-import { keysFor } from '../commands/keymap';
-import { useKeymap } from '../commands/keymapStore';
+import { useKeymap, useKeysFor } from '../commands/keymapStore';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { followComponentSession } from '../components/active';
@@ -543,8 +542,11 @@ function Shell({
     setRecordKey(id);
     setSettingsOpen('keyboard');
   };
-  // The person's keys: the command lists below are built again when they change.
-  const keymap = useKeymap(platform.preferences);
+  // The person's keys: `useKeymap` loads the stored overrides and follows later changes; the
+  // live lookup reads them, so a key rebound in Settings › Keyboard reaches the commands, the
+  // shortcuts and the menus without a reload (ADR-0159 §6).
+  useKeymap(platform.preferences);
+  const keysOf = useKeysFor();
   const installedPlugins = useStore(plugins, (s) => s.installed);
   // The custom features of the enabled plugins (ADR-0077 §6): a second, dynamic registry of
   // dialogs beside `dialogs`, and the plugin files the design carries (a stored feature's
@@ -1294,7 +1296,7 @@ function Shell({
           group: c.group,
           keywords: `${c.group} ${c.hint}`,
           icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
-          keys: keysFor(c.id),
+          keys: keysOf(c.id),
           run: () => runRef.current(c.id as ToolId),
         },
       ];
@@ -1630,6 +1632,7 @@ function Shell({
   const commandBuilder = (m: EditMode, listing: boolean) =>
     buildCommands({
       mode: m,
+      keysFor: keysOf,
       runTool: (tool) => {
         if (isRepeatable(tool)) setLastTool(tool);
         // A key or a search result starts a sketch tool; only the toolbar toggles it off.
@@ -1789,8 +1792,7 @@ function Shell({
           },
         }),
     });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `keymap` stands for `keysFor`'s overrides
-  const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode, keymap]);
+  const commands = commandBuilder(mode, false);
   // The desktop MCP server's tools act on this design (P6-08, ADR-0087 §5): its host is
   // registered while the shell is mounted, desktop only.
   useAgentHost({
@@ -1888,8 +1890,8 @@ function Shell({
         ]
       : []),
     ...commandShortcuts(commands, { undo: undoKey }),
-    ...keysFor('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
-    ...keysFor('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
+    ...keysOf('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
+    ...keysOf('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
     ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
     ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
     ...(drawing && host
