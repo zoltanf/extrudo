@@ -375,8 +375,8 @@ centre for a joint's pose, Move's pivot and Pattern's centre) goes through the c
 **Why by the positions array, and why it can't go stale.** The bounds are read from that array
 alone, so a new mesh object around the same array keeps them. A kept value could go stale only
 if the array were written in place, and nothing writes into a mesh's positions: the kernel copies
-them out of WASM into a new array per mesh (`kernel.ts`, `#copy`), the worker's messages bring
-the page copies of them (structured clone), the importers' scaling and transforms
+them out of WASM into a new array per mesh (`kernel.ts`, `#copy`), the worker transfers their
+buffers, so the page gets arrays of its own, the importers' scaling and transforms
 (`features/import.ts`, `scaled`, `transformMesh`) write into new arrays, and the view's
 geometries take them as they are (no geometry built on them is transformed in place). Searched
 for: index writes, `set`, `fill`, `copyWithin`, `sort`, `reverse` on any `positions`, and
