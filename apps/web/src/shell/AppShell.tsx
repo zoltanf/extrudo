@@ -485,6 +485,19 @@ export function AppShell(props: AppShellProps) {
   );
 }
 
+// The chunks `Shell` loads on demand. At module level: the React Compiler can't compile a
+// function with an `import()` in it (ADR-0159 §6); each is still called where it was.
+const loadDrawingTools = () =>
+  Promise.all([
+    import('../sketch/tools/host'),
+    import('../sketch/tools/SketchOverlay'),
+    import('../sketch/tools/ConstraintGlyphs'),
+    import('../sketch/tools/DimensionLabels'),
+    import('../sketch/tools/SelectionOverlay'),
+  ]);
+const loadSolver = () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver());
+const loadStandardViews = () => import('../sheets/standardViews');
+
 function Shell({
   store,
   session,
@@ -773,13 +786,7 @@ function Shell({
   useEffect(() => {
     let h: ToolHost | undefined;
     let cancelled = false;
-    Promise.all([
-      import('../sketch/tools/host'),
-      import('../sketch/tools/SketchOverlay'),
-      import('../sketch/tools/ConstraintGlyphs'),
-      import('../sketch/tools/DimensionLabels'),
-      import('../sketch/tools/SelectionOverlay'),
-    ]).then(
+    loadDrawingTools().then(
       ([
         { createToolHost },
         { SketchOverlay },
@@ -792,7 +799,7 @@ function Shell({
           store,
           session,
           viewport,
-          loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+          loadSolver,
           // The shown construction axes and points before the sketch (ADR-0093
           // slice 2), read at every pick from the current state.
           constructionDatums: () =>
@@ -3755,7 +3762,7 @@ function Shell({
           bodies={newSheetBodies}
           {...(sheetViewsKernel && {
             plan: (start, request) =>
-              import('../sheets/standardViews').then((m) =>
+              loadStandardViews().then((m) =>
                 m.planSheetStart(
                   sheetViewsKernel,
                   store.getState().doc,
