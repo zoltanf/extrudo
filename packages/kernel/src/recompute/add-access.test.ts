@@ -5,11 +5,11 @@
 // body IDs and their order, and every array and name of every mesh. Real OCCT, strict leaks, no
 // clock. Plus negative controls that must make the comparison fail, and counters.
 //
-// "Through all" is edited only in designs whose bodies are flat. Over curved bodies its length
-// comes from `measure`'s box, which today depends on whether the bodies were meshed for display
-// (ADR-0035: the box uses a face's triangulation when it has one), so a cached recompute (bodies
-// drawn) and a cleared one (nothing drawn) can differ there with or without `add`. In the other
-// designs the extent edit switches the direction (one side, symmetric) instead.
+// "Through all" is not among the edits: its length comes from `measure`'s box, which today depends
+// on whether the bodies were meshed for display (ADR-0035: the box uses a face's triangulation
+// when it has one, curved or flat), so a cached recompute (bodies drawn) and a cleared one
+// (nothing drawn) differ there with or without `add`. The extent edit switches the direction (one
+// side, symmetric) instead. Designs that start with a "through all" feature keep it as it is.
 import {
   type AttachmentId,
   applyCommand,
@@ -274,7 +274,6 @@ function edit(
   rand: () => number,
   history: readonly ExtrudoDocument[],
   deleted: Feature[],
-  flat: boolean,
 ): ExtrudoDocument | undefined {
   const pick = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
   const set = (id: string, change: (f: Feature) => Feature) => ({
@@ -317,24 +316,14 @@ function edit(
       );
     }
     case 'extent': {
+      // Not "through all" (see the top of the file): the direction.
       const f = pick(extrudes);
-      if (!flat) {
-        // Not "through all" over curved bodies (see the top of the file): the direction instead.
-        const direction = pick(['one-side', 'symmetric'] as const) ?? 'one-side';
-        return (
-          f &&
-          set(f.id, (x) => ({
-            ...x,
-            inputs: { ...x.inputs, direction: { kind: 'enum', value: direction } },
-          }))
-        );
-      }
-      const extent = pick(['through-all', 'distance'] as const) ?? 'distance';
+      const direction = pick(['one-side', 'symmetric'] as const) ?? 'one-side';
       return (
         f &&
         set(f.id, (x) => ({
           ...x,
-          inputs: { ...x.inputs, extent: { kind: 'enum', value: extent } },
+          inputs: { ...x.inputs, direction: { kind: 'enum', value: direction } },
         }))
       );
     }
@@ -389,10 +378,7 @@ function edit(
       const features = [...doc.features];
       const at = Math.floor(rand() * (features.length + 1));
       if (back) features.splice(at, 0, back);
-      else
-        features.push(
-          ...plateFeatures(50 + history.length, 600 + 70 * history.length, '5 mm', !flat),
-        );
+      else features.push(...plateFeatures(50 + history.length, 600 + 70 * history.length, '5 mm'));
       return { ...doc, features, timelineMarker: features.length };
     }
     case 'undo':
@@ -434,14 +420,14 @@ async function differential(
     registry?: () => FeatureRegistry<KernelFeatureDefinition>;
     engine?: typeof RecomputeEngine;
     stopped?: readonly FeatureId[];
-    /** The design's bodies are flat: "through all" is one of its edits. */
-    flat?: boolean;
   } = {},
 ): Promise<Run> {
+  // The engine under test (with a fault, for the negative controls) and the reference, always the
+  // kernel's own engine and features with a cleared cache.
   const Make = options.engine ?? RecomputeEngine;
   const registry = options.registry ?? kernelFeatures;
   const cached = new Make(kernel, registry(), { strictLeaks: true });
-  const cleared = new Make(kernel, registry(), { strictLeaks: true });
+  const cleared = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
   const run: Run = {
     steps: 0,
     compared: 0,
@@ -458,9 +444,18 @@ async function differential(
     let current = doc;
     for (let step = 0; step <= steps; step++) {
       if (step > 0) {
-        const kind = (KINDS[step - 1] ?? KINDS[Math.floor(rand() * KINDS.length)]) as Kind;
-        const next = edit(kind, current, rand, history, deleted, options.flat ?? false);
-        if (!next) continue;
+        let kind = (KINDS[step - 1] ?? KINDS[Math.floor(rand() * KINDS.length)]) as Kind;
+        let next = edit(kind, current, rand, history, deleted);
+        // The first pass gives each kind a few tries (a random pick may find nothing to edit);
+        // after that, or when the design has nothing for it, another kind: every step edits.
+        for (let tries = 0; !next && step <= KINDS.length && tries < 5; tries++) {
+          next = edit(kind, current, rand, history, deleted);
+        }
+        for (let tries = 0; !next && tries < 20; tries++) {
+          kind = KINDS[Math.floor(rand() * KINDS.length)] as Kind;
+          next = edit(kind, current, rand, history, deleted);
+        }
+        if (!next) throw new Error(`step ${step}: no edit applies`);
         current = next;
         history.push(current);
         run.kinds.add(kind);
@@ -488,33 +483,35 @@ async function differential(
 
 // ------------------------------------------------------------------------------- the proof
 
-/**
- * A design, how to make it, the features stopped in it, the ones in error before any edit, and
- * whether its bodies are flat (then "through all" is one of its edits).
- */
-const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[], boolean][] = [
-  ['plates with a parameter', () => plates(5), [], [], false],
-  ['overlapping plates and a cut through them', () => platesCut(), [], [], false],
-  ['flat overlapping plates and a cut, "through all" edited', () => platesCut(false), [], [], true],
-  ['b2 storage box', () => fixture(b2), [], [], false],
-  ['b3 phone stand', () => fixture(b3), [], [], false],
-  ['b4 box with lid', () => fixture(b4), [], [], false],
-  ['the hinge (components)', () => fixture(hinge), [], [], false],
-  ['plates and an inserted design (an isolated expansion)', withInsert, [], [], false],
-  ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId], ['ex1', 'ex2'], false],
+/** A design, how to make it, the features stopped in it, and the ones in error before any edit. */
+const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[]][] = [
+  ['plates with a parameter', () => plates(5), [], []],
+  ['overlapping plates and a cut through them', () => platesCut(), [], []],
+  ['b2 storage box', () => fixture(b2), [], []],
+  ['b3 phone stand', () => fixture(b3), [], []],
+  ['b4 box with lid', () => fixture(b4), [], []],
+  ['the hinge (components)', () => fixture(hinge), [], []],
+  ['plates and an inserted design (an isolated expansion)', withInsert, [], []],
+  ['a failed feature and a stopped one', withFailures, ['ex2' as FeatureId], ['ex1', 'ex2']],
 ];
 
 describe('add access: the cached engine gives what a cleared one gives (ADR-0024, `add` access)', () => {
   it.each(DESIGNS)(
     '%s, 40 seeded edits',
     { timeout: 900_000 },
-    async (_n, make, stopped, errors, flat) => {
-      const run = await differential(make(), 40, 2511, { stopped, flat });
+    async (_n, make, stopped, errors) => {
+      const run = await differential(make(), 40, 2511, { stopped });
       expect(run.initialErrors.sort()).toEqual(errors);
       expect(run.problems).toEqual([]);
-      // Every kind of edit happened (those the design has something for), and the cache saved work.
-      expect(run.kinds.size).toBeGreaterThanOrEqual(KINDS.length - 1);
-      expect(run.compared).toBeGreaterThan(35);
+      // Every kind of edit happened: an extrude's operation and direction where the design has
+      // extrudes (b4 and the hinge get theirs only from inserted plates), a profile switched where
+      // a sketch has another region; and the cache saved work.
+      const own: Kind[] = ['operation', 'extent', 'profile'];
+      const extrudes = make().features.some((f) => f.type === 'extrude');
+      for (const kind of KINDS.filter((k) => !own.includes(k))) expect(run.kinds).toContain(kind);
+      if (extrudes)
+        for (const kind of ['operation', 'extent'] as const) expect(run.kinds).toContain(kind);
+      expect(run.compared).toBe(41);
       expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
     },
   );
@@ -538,14 +535,14 @@ function withExtrudeAccess(access: (inputs: ExtrudeInputs) => 'add' | 'write') {
 }
 
 /**
- * The engine with one deliberate fault: the body set's key not moved on after an `add`, so a
- * later feature that reads the bodies keeps its old key. Made from the engine's own source in a
- * temporary file (imports pointed back at the repository), so the engine has no switch for it.
+ * The engine with one deliberate fault: `fault` (a line of `engine.ts`) replaced by `by`. Made from
+ * the engine's own source in a temporary file (its imports pointed back at the repository), so the
+ * engine itself has no switch for it.
  */
-async function engineWithoutChain(): Promise<{
-  engine: typeof RecomputeEngine;
-  remove: () => void;
-}> {
+async function faultyEngine(
+  fault: string,
+  by: string,
+): Promise<{ engine: typeof RecomputeEngine; remove: () => void }> {
   // Node's own modules, untyped: this package's sources don't take Node's types.
   const load = (name: string) => import(/* @vite-ignore */ name);
   const fs = await load('node:fs');
@@ -554,9 +551,8 @@ async function engineWithoutChain(): Promise<{
   const url = await load('node:url');
   const here: string = path.dirname(url.fileURLToPath(import.meta.url));
   let source: string = fs.readFileSync(path.join(here, 'engine.ts'), 'utf8');
-  const chain = "bodiesKey = hashOf('add', bodiesKey, key);";
-  if (!source.includes(chain)) throw new Error('the chain line moved: update this control');
-  source = source.replace(chain, '// (chain left out)');
+  if (!source.includes(fault)) throw new Error(`"${fault}" moved: update this control`);
+  source = source.replace(fault, by);
   source = source.replace(
     /from '(\.\.?\/[^']+)'/g,
     (_m: string, to: string) => `from '${path.join(here, to)}'`,
@@ -564,7 +560,7 @@ async function engineWithoutChain(): Promise<{
   source = source.replace(/from '@extrudo\/([a-z]+)'/g, (_m: string, name: string) => {
     return `from '${path.join(here, '../../..', name, 'src/index.ts')}'`;
   });
-  const file: string = path.join(os.tmpdir(), `extrudo-engine-no-chain-${crypto.randomUUID()}.ts`);
+  const file: string = path.join(os.tmpdir(), `extrudo-engine-fault-${crypto.randomUUID()}.ts`);
   fs.writeFileSync(file, source);
   const module = (await import(/* @vite-ignore */ file)) as {
     RecomputeEngine: typeof RecomputeEngine;
@@ -573,39 +569,41 @@ async function engineWithoutChain(): Promise<{
 }
 
 describe('the comparison catches a wrong `add` (negative controls)', () => {
-  it('the extrude saying `add` for joins and cuts fails it', { timeout: 600_000 }, async () => {
-    const run = await differential(platesCut(false), 20, 7, {
-      flat: true,
-      registry: withExtrudeAccess((inputs) => {
-        const settings = (inputs as ExtrudeInputs).extent?.value ?? 'distance';
-        return settings === 'distance' ? 'add' : 'write';
-      }),
-    });
-    expect(run.problems.length).toBeGreaterThan(0);
-  });
-
-  it('the extrude saying `add` for "through all" fails it', { timeout: 600_000 }, async () => {
-    const run = await differential(platesCut(false), 20, 11, {
-      flat: true,
-      registry: withExtrudeAccess((inputs) => {
-        const operation = (inputs as ExtrudeInputs).operation?.value ?? 'new-body';
-        return operation === 'new-body' ? 'add' : 'write';
-      }),
-    });
-    expect(run.problems.length).toBeGreaterThan(0);
-  });
-
   it('the body set not chained after an `add` fails it', { timeout: 600_000 }, async () => {
-    const broken = await engineWithoutChain();
+    const broken = await faultyEngine(
+      "bodiesKey = hashOf('add', bodiesKey, key);",
+      '// (chain left out)',
+    );
     try {
-      const run = await differential(platesCut(false), 20, 3, {
-        engine: broken.engine,
-        flat: true,
-      });
+      const run = await differential(platesCut(), 20, 3, { engine: broken.engine });
       expect(run.problems.length).toBeGreaterThan(0);
     } finally {
       broken.remove();
     }
+  });
+
+  it('the extrude saying `add` for a join fails it', { timeout: 600_000 }, async () => {
+    // A join finds the bodies it touches by going through them all, which the fall-back doesn't
+    // notice (a look-up by ID it does, a counter below): the comparison must.
+    const doc = platesCut();
+    const joined = {
+      ...doc,
+      features: doc.features.map((f) =>
+        f.id === 'ex1'
+          ? {
+              ...f,
+              inputs: { ...f.inputs, operation: { kind: 'enum' as const, value: 'join' as const } },
+            }
+          : f,
+      ),
+    };
+    const run = await differential(joined, 10, 7, {
+      registry: withExtrudeAccess((inputs) => {
+        const operation = (inputs as ExtrudeInputs).operation?.value ?? 'new-body';
+        return operation === 'join' || operation === 'new-body' ? 'add' : 'write';
+      }),
+    });
+    expect(run.problems.length).toBeGreaterThan(0);
   });
 });
 
