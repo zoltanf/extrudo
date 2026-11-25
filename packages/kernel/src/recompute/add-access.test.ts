@@ -26,6 +26,7 @@ import {
   insertDesignPayload,
   loadDocument,
   originPlaneRef,
+  primitiveInputs,
   profileRefId,
   sketchInputs,
 } from '@extrudo/core';
@@ -214,6 +215,61 @@ function withFailures(): ExtrudoDocument {
   return { ...doc, features };
 }
 
+/** A torus (one toroidal face) on XY, centred at the origin: ring Ø40, tube Ø10. */
+function torusFeature(id: string): Feature {
+  return {
+    id: id as FeatureId,
+    type: 'torus',
+    name: `Torus ${id}`,
+    suppressed: false,
+    inputs: primitiveInputs('torus', {
+      numbers: { diameter: '40 mm', tube: '10 mm' },
+      plane: originPlaneRef('origin:xy'),
+    }),
+  };
+}
+
+/** A closed spline round (x…x+20, 0…20) extruded 10 mm: a B-spline side face and two flat caps. */
+function splineFeatures(id: string, x: number): Feature[] {
+  const b = new SketchBuilder();
+  b.spline([
+    [x, 0],
+    [x + 20, 0],
+    [x + 20, 20],
+    [x, 20],
+    [x, 0],
+  ]);
+  const [region] = detectProfiles(b.sketch);
+  const sketch = `s${id}` as FeatureId;
+  return [
+    sketchFeature(sketch, b.sketch),
+    extrudeFeature(
+      id,
+      extrudeInputs([{ kind: 'profile', id: profileRefId(sketch, region?.id ?? '') }], {
+        distance: '10 mm',
+      }),
+    ),
+  ];
+}
+
+/** A hole Ø`d` at (x, y) cut `distance` up from XY. */
+function holeFeatures(id: string, x: number, y: number, d: number, distance: string): Feature[] {
+  const b = new SketchBuilder();
+  b.circle(x, y, d / 2);
+  const [region] = detectProfiles(b.sketch);
+  const sketch = `s${id}` as FeatureId;
+  return [
+    sketchFeature(sketch, b.sketch),
+    extrudeFeature(
+      id,
+      extrudeInputs([{ kind: 'profile', id: profileRefId(sketch, region?.id ?? '') }], {
+        distance,
+        operation: 'cut',
+      }),
+    ),
+  ];
+}
+
 /**
  * The design with plates after it until it holds five extrudes that answer `add`: the edits that
  * take an extrude from `add` to `write` each need one (b4 and the hinge have no extrude at all).
@@ -321,6 +377,8 @@ function pair(options: PairOptions = {}) {
       cached.clear();
       cleared.clear();
     },
+    /** The engine under test, for a control that changes what its cache holds. */
+    cached: cached as RecomputeEngine,
   };
 }
 
@@ -959,6 +1017,69 @@ describe('the comparison catches a wrong `add` (negative controls)', () => {
 // ------------------------------------------------------------------------------- cases by name
 
 describe('add access: cases by name', () => {
+  it.each([
+    [
+      'a hole through a spline body clear of its B-spline side',
+      () => [...splineFeatures('spl', 40), ...holeFeatures('hs', 50, 10, 4, '10 mm')],
+      'hs',
+      '12 mm',
+    ],
+    [
+      'a hole in a plate joined to a torus, away from the torus',
+      () => [
+        torusFeature('tor'),
+        ...plateFeatures('j', 15, '3 mm', false).map((f) =>
+          f.type === 'extrude' ? { ...f, inputs: { ...f.inputs, operation: choice('join') } } : f,
+        ),
+        ...holeFeatures('hj', 60, 20, 6, '3 mm'),
+      ],
+      'hj',
+      '2 mm',
+    ],
+  ] as const)(
+    "%s: the cut over the cached, meshed body gives a cleared engine's mesh",
+    {
+      timeout: 120_000,
+    },
+    async (_name, make, cut, distance) => {
+      // The body under the cut comes from the cache with the triangulation its display mesh left;
+      // the cut keeps its untouched faces (the B-spline side, the toroidal pieces), and the
+      // result's mesh must be the one a cleared engine makes from nothing meshed.
+      const features = make();
+      const first = { ...plates(0), features, timelineMarker: features.length };
+      const edited = setInputs(first, cut, { distance: length(distance) });
+      const [a, b] = await sequence([first, edited]);
+      for (const step of [a, b]) {
+        for (const [id, status] of Object.entries(step?.result.features ?? {})) {
+          expect(status.status, id).toBe('ok');
+        }
+      }
+      expect(a?.problems).toEqual([]);
+      expect(b?.evaluated).toEqual([cut]);
+      expect(b?.problems).toEqual([]);
+    },
+  );
+
+  it('a finer triangulation left on the cached body shows in the cut (the comparison sees it)', {
+    timeout: 120_000,
+  }, async () => {
+    const features = [...splineFeatures('spl', 40), ...holeFeatures('hs', 50, 10, 4, '10 mm')];
+    const first = { ...plates(0), features, timelineMarker: features.length };
+    const edited = setInputs(first, 'hs', { distance: length('12 mm') });
+    const p = pair();
+    try {
+      expect((await p.step(first)).problems).toEqual([]);
+      // The cut's result shares its untouched faces (the B-spline side) with the cached spline
+      // body it was cut from: meshing it finer in place than the view does reaches that body.
+      const body = p.cached.latestBody('spl:0' as never);
+      expect(body).toBeDefined();
+      kernel.mesh(body as never, { linearDeflection: 0.005, angularDeflection: 0.1 });
+      expect((await p.step(edited)).problems).toEqual(['mesh spl:0']);
+    } finally {
+      p.close();
+    }
+  });
+
   it('a new body of several separate profiles (`<feature>:0`, `:1`), edited', {
     timeout: 120_000,
   }, async () => {
