@@ -18,6 +18,7 @@ import { loadOcct } from './occt/load';
 import { DEFAULT_TESSELLATION } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
 import { KernelService } from './service';
+import { measureStoredShape, storedShapeToStep } from './stored-shape';
 import { buildTestPart } from './test-part';
 
 let kernel: Kernel;
@@ -51,6 +52,44 @@ describe('measure (ADR-0035, 2026-11-24)', () => {
             before,
           );
         }
+        kernel.release(shape);
+      }
+    }
+  });
+
+  it('gives the same box for wires and free edges before and after meshing, fine or coarse', () => {
+    const helix = (
+      origin: [number, number, number],
+      radius: number,
+      pitch: number,
+      turns: number,
+    ) => kernel.helix({ origin, axis: [0, 0, 1], start: [1, 0, 0], radius, pitch, turns });
+    const shapes = {
+      'a helix wire': () => helix([0, 0, 0], 10, 4, 2.3),
+      'a free circle edge': () => {
+        const cylinder = kernel.cylinder(5, 10, [0, 0, 0]);
+        const edge = kernel.subShape(cylinder, 'edge', 0);
+        kernel.release(cylinder);
+        return edge;
+      },
+      'a box and a helix': () => {
+        const box = kernel.box([5, 5, 5]);
+        const wire = helix([20, 0, 0], 7, 3, 1.6);
+        const both = kernel.compound([box, wire]);
+        kernel.release(box);
+        kernel.release(wire);
+        return both;
+      },
+    };
+    for (const [name, make] of Object.entries(shapes)) {
+      for (const options of [
+        DEFAULT_TESSELLATION,
+        { linearDeflection: 0.5, angularDeflection: 0.5 },
+      ]) {
+        const shape = make();
+        const before = kernel.measure(shape).bbox;
+        kernel.mesh(shape, options);
+        expect(kernel.measure(shape).bbox, `${name}, ${options.linearDeflection}`).toEqual(before);
         kernel.release(shape);
       }
     }
@@ -148,5 +187,153 @@ describe('a through-all extrude over bodies already drawn', () => {
     const scratch = await meshes(fresh, design(true));
     const expected = scratch.bodies.find((b) => b.id === 'exd:0')?.mesh as BodyMesh;
     expect(sameMesh(disc, expected)).toBe(true);
+  });
+});
+
+/**
+ * A B-rep (OCCT's text format) of one triangle face with a triangulation and no surface, as a
+ * file without its geometry gives it: (0, 0, 0), (10, 0, 0), (0, 10, 5), moved by `z` when given.
+ */
+function surfacelessFace(z?: number): string {
+  const located = z !== undefined;
+  return `DBRep_DrawableShape
+
+CASCADE Topology V1, (c) Matra-Datavision
+Locations ${located ? 1 : 0}
+${located ? `1\n1 0 0 0\n0 1 0 0\n0 0 1 ${z}\n` : ''}Curve2ds 0
+Curves 0
+Polygon3D 0
+PolygonOnTriangulations 0
+Surfaces 0
+Triangulations 1
+3 1 0 0
+0 0 0 10 0 0 0 10 5
+1 2 3
+
+TShapes 1
+Fa
+0  1e-07 0 0
+2  1
+0101000
+*
+
++1 ${located ? 1 : 0} `;
+}
+
+describe('`properties` of faces without a surface (ADR-0035, 2026-11-25)', () => {
+  const box = (shape: ReturnType<Kernel['box']>) => {
+    const { min, max } = kernel.properties(shape).bbox;
+    return [...min, ...max].map((v) => Math.round(v * 1e9) / 1e9 + 0);
+  };
+
+  it('bounds a face with only a triangulation by its points', () => {
+    const face = kernel.readBrep(surfacelessFace());
+    expect(box(face)).toEqual([0, 0, 0, 10, 10, 5]);
+    // Where the file puts it.
+    const moved = kernel.readBrep(surfacelessFace(100));
+    expect(box(moved)).toEqual([0, 0, 100, 10, 10, 105]);
+    kernel.release(face);
+    kernel.release(moved);
+  });
+
+  it('gives the union for a shape with faces of both kinds', () => {
+    const face = kernel.readBrep(surfacelessFace());
+    const cube = kernel.box([4, 4, 20]);
+    const both = kernel.compound([face, cube]);
+    expect(box(both)).toEqual([0, 0, 0, 10, 10, 20]);
+    for (const shape of [face, cube, both]) kernel.release(shape);
+  });
+
+  it('leaves a shape without faces as it was: a free circle edge', () => {
+    const cylinder = kernel.cylinder(5, 10, [0, 0, 0]);
+    const edge = kernel.subShape(cylinder, 'edge', 0);
+    expect(box(edge)).toEqual([-5, -5, 10, 5, 5, 10]);
+    kernel.release(edge);
+    kernel.release(cylinder);
+  });
+});
+
+/** The same face in a shell: what a solid made of such faces holds. */
+function surfacelessShell(): string {
+  return surfacelessFace()
+    .replace('TShapes 1', 'TShapes 2')
+    .replace('0101000\n*\n\n+1 0 ', '0101000\n*\nSh\n\n0101100\n+2 0 *\n\n+1 0 ');
+}
+
+describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () => {
+  it('the B-rep reader refuses a shell with such a face, with a message', () => {
+    expect(() => kernel.readBrep(surfacelessShell())).toThrow(
+      'B-rep import failed: a face of a solid or shell is given as triangles, not as a surface.',
+    );
+    // The FreeCAD import's stored shapes come through it.
+    expect(() => measureStoredShape(kernel, surfacelessShell(), [])).toThrow(/given as triangles/);
+    expect(() => storedShapeToStep(kernel, surfacelessShell(), [])).toThrow(/given as triangles/);
+    expect(kernel.stats().liveShapes).toBe(0);
+  });
+
+  it('describes a lone such face as "other", with its area and centre', async () => {
+    // A kernel of its own, so its leak check counts only this test's shapes.
+    const own = new Kernel(await loadOcct());
+    const face = own.readBrep(surfacelessFace());
+    const [described] = own.describe(face).faces;
+    expect(described?.type).toBe('other');
+    expect(described?.area).toBeCloseTo(55.9016994375, 9);
+    expect(described?.centroid.map((v) => Math.round(v * 1e9) / 1e9)).toEqual([
+      3.333333333, 3.333333333, 1.666666667,
+    ]);
+    own.release(face);
+    expect(own.stats().liveShapes).toBe(0);
+  }, 30_000);
+
+  it('the calls that read one face give a clean error for such a face', async () => {
+    // A kernel of its own, so its leak check counts only this test's shapes; the face first in
+    // the compound, so it is face 0, then a box.
+    const occt = await loadOcct();
+    const own = new Kernel(occt);
+    {
+      using scope = own.scope();
+      const face = scope.track(own.readBrep(surfacelessFace()));
+      const cube = scope.track(own.box([4, 4, 20]));
+      const both = scope.track(own.compound([face, cube]));
+      const message = 'The face has no surface, only triangles.';
+      expect(() => own.surfaceGeometry(both, 0)).toThrow(message);
+      expect(() => own.faceSilhouettes(both, 0, [0, 0, 1])).toThrow(message);
+      // `Kernel.threadFace` and `coneFace` answer undefined for any face that isn't one; the
+      // facade's own message says why (the raw facade, as `mesh-to-solid.test.ts` reads it).
+      expect(own.threadFace(both, 0)).toBeUndefined();
+      expect(own.coneFace(both, 0)).toBeUndefined();
+      const raw = new occt.ExtrudoFacade();
+      const lone = raw.readBrep(surfacelessFace());
+      expect(lone).toBeGreaterThan(0);
+      expect(raw.threadFace(lone, 0)).toBe(-1);
+      expect(raw.lastError()).toBe(message);
+      expect(raw.coneFace(lone, 0)).toBe(-1);
+      expect(raw.lastError()).toBe(message);
+      raw.release(lone);
+      expect(raw.liveShapes()).toBe(0);
+      raw.delete();
+      expect(own.faceHit(both, 0, [1, 1, 10], [0, 0, -1])).toBeUndefined();
+      expect(() => own.faceSlab(both, 0, 1)).toThrow(
+        'Emboss failed: the face has no surface, only triangles.',
+      );
+      const top = scope.track(own.subShape(cube, 'face', 5));
+      expect(() => own.projectOnFace(top, both, 0, 1)).toThrow(
+        /Emboss failed: the face has no surface/,
+      );
+      // The box's faces still answer.
+      expect(own.surfaceGeometry(both, 1).type).toBe('plane');
+    }
+    expect(own.stats().liveShapes).toBe(0);
+  }, 30_000);
+
+  it('a STEP file written from a shape with a lone such face is refused (`storedShapeToStep`)', () => {
+    using scope = kernel.scope();
+    const face = scope.track(kernel.readBrep(surfacelessFace()));
+    const cube = scope.track(kernel.box([4, 4, 20]));
+    const both = scope.track(kernel.compound([cube, face]));
+    expect(() => {
+      const step = kernel.writeStep([{ shape: both, name: 'Shape' }]);
+      scope.track(kernel.readStep(step));
+    }).toThrow(/triangles/);
   });
 });

@@ -248,3 +248,98 @@ the three single-edge chamfers tried on a box.
   the exact extent (40.05 → 40, 15.01 → 15, 4.99 → 5, -0.02 → 0, a min of 12.9 → 13) and none
   outwards; no volume, area, count or name in them changed. Taken out, the measure-box tests fail
   on the old build, and the interference test with `measure`'s box.
+
+## Amendment (2026-11-25): faces given as triangles, and the tangent plane's mesh
+
+- **A STEP file is read by its exact geometry; faces given as triangles.** A face can hold a
+  triangulation and no surface (AP242 tessellated geometry in STEP; OCCT's B-rep text). The rule:
+  a STEP file is read by its exact geometry; a tessellated copy of a part that also has exact
+  geometry is ignored; a file with a part given only as triangles is refused with a message; no
+  body has a face without a surface.
+  - Every STEP read (`readStep` and the colour, name and hidden-solid readers, which read the same
+    way so their counts and order still match `readStep`'s solids) reads with OCCT's
+    `DESTEP_Parameters::ReadTessellated = RWMode_Tessellated_OnNoBRep` (`stepReadParameters`; the
+    rest as OCCT's `read.step.*` values give it) and, before the transfer, takes out of the file's
+    representations every tessellated item linked to the exact geometry it copies
+    (`dropTessellatedCopies`: a `TESSELLATED_SOLID` with its geometric link, a
+    `TESSELLATED_SHELL` with its topological link, a tessellated face with its geometric link, or a
+    tessellated solid or shell made only of such faces).
+  - What OCCT's three settings do, read in the OCCT sources of the build toolchain image this
+    repository builds with (`@libcascade/toolchain` 3.1.0; `STEPControl_ActorRead`,
+    `StepToTopoDS_TranslateSolid`/`Face`) and tried on hand-written files: `Off` leaves out a
+    tessellated shape representation (a part given only as triangles is left out without a word),
+    but still reads tessellated items among a B-rep representation's own items: a linked copy there
+    puts its triangles on the exact faces, and a lone triangulated face there is read as a face
+    without a surface. `On` (OCCT's default) puts a linked copy's triangles on the exact faces, and
+    reads a copy in a representation of its own as the part's solid once more (the part twice).
+    `OnNoBRep` leaves the exact faces without the file's triangles, but still reads a linked
+    tessellated solid as the solid it links to (the part twice again) and a copy the file lists
+    before its solid as faces without a surface. With the copies taken out first, the part is read
+    once, by its exact faces with no triangles from the file, in each of those layouts and orders.
+  - `readStep` then refuses a shape with any face without a surface, in a solid, a shell or on
+    its own (`hasSurfacelessFace`): "STEP import failed: the file gives at least one face as
+    triangles, not as a surface. Export the part again with its surfaces, or export it as STL or
+    3MF and import that as a mesh." The import feature shows it as its error, and the engine goes
+    on. Such a face is left only where a part is given as triangles alone, or by a copy with no
+    links (nothing in the file ties it to the part it copies).
+  - The import centres by what becomes bodies (`bodiesBox`, `features/import.ts`): the whole shape,
+    or with two or more solids (one body each, `splitSolids`, which leaves the rest out) the solids
+    alone, so a file's free faces, wires or points beside them don't move the bodies.
+  - `readBrep` (the FreeCAD import's stored shapes) refuses a solid or shell with such a face
+    (`hasTriangleFace`: "B-rep import failed: a face of a solid or shell is given as triangles,
+    not as a surface.") and reads a lone one. A stored shape becomes a body only through
+    `storedShapeToStep`, whose STEP `readStep` reads, and refuses when such a face is in it.
+  - A lone such face is measured by its triangles: `describe` gives it as `other`, with its area
+    and centre and no direction; `measure` bounds it by its triangulation; `properties` adds its
+    triangulation's points (`addSurfacelessFaces`; the test face 0 … 10 × 0 … 10 × 0 … 5, where the
+    file's location puts it), with faces that have a surface the union; a shape without faces and
+    a face with a surface are bounded as before. Every reader of the exact box goes through
+    `Kernel.properties` (the Measure tool, the status bar and print aids through `inspect`, parts
+    lists, the agent host's bodies, the interference result, the import's centring, the FreeCAD
+    import's stored-shape measures, the pivots of Move and Scale (`centreOf`) and Place on Bed).
+  - The facade calls that take one face by its index and build a surface adaptor on it
+    (`surfaceGeometry`, `faceSilhouettes`, `threadFace`, `coneFace`, `faceHit`, `faceSlab`,
+    `projectOnFace`) answer such a face with "The face has no surface, only triangles." (the
+    Emboss calls with "Emboss failed: " before it); `wholeFace` and `edgeNormal` already answer
+    false for it. The calls over a whole shape (booleans, fillets, meshing, sections, hidden
+    lines, `tangentFaces`) don't check: no body has such a face.
+  - Fixtures: `fixtures/imports/tessellated.step` (a tetrahedron given only as triangles),
+    `tessellated-mixed.step` (a box with surfaces beside such a part), `tessellated-copy.step` (a
+    red box named Box with surfaces and a `TESSELLATED_SOLID` copy linked to its solid and faces),
+    `tessellated-stray.step` (a box with surfaces and a lone `TRIANGULATED_FACE` in a part of its
+    own).
+- **The construction plane tangent to a free-form face meshes a copy** (`meshTangent`,
+  `features/construction.ts`): `Kernel.transform` by the identity rebuilds the body (same faces in
+  the same order, no triangulation), the copy is meshed at `MESH_NORMAL` and released. Meshing the
+  body itself left the 0.01 mm triangulation on it, which its next display mesh kept (the test
+  body drawn at the view's tessellation: 842 triangles, 3,870 after a tangent plane), and a
+  triangulation finer than 0.01 mm already on it (a headless session's `tessellation` draws at
+  that) was kept and changed the plane. Now the plane is the same, number for number, as before
+  on a body never drawn, and the same after the body was drawn coarse, at the view's tessellation
+  or finer; the body's triangulation is what it was drawn with. With that, no result reads a
+  triangulation left on a body (`hlrPolySpans` draws sheet views from one, as before).
+- **Checked:** compared once, outside the repository, main's code and build against this
+  amendment's: the 64 designs in `fixtures/` recomputed from scratch give the same bodies, versions,
+  statuses, reports, meshes bit for bit, and the same `inspect` of every body; none of them imports
+  a STEP file, so 66 STEP files (the two STEP fixtures, and each design's bodies exported with part
+  names, colours, a group and a hidden part; 61 with bodies, 85 bodies, 20 files with two or more)
+  imported as designs, placed as in the file and centred, give the same bodies, versions, meshes,
+  statuses, reports (names, colours, hidden) and `inspect`. The feature goldens are unchanged.
+  Tests: `import.test.ts` (refused with the message, no body, and the same engine computes the next
+  design: the tetrahedron, the box beside it, the box with a lone `TRIANGULATED_FACE`,
+  `TRIANGULATED_SURFACE_SET` or triangulated face among its own items, and two solids with a lone
+  face; the copy file and the same copy among the box's items import as the file without it, and the
+  colour, name and hidden readers agree; a copy with no links is refused; two solids and a free face
+  100 mm off are centred by the solids), `measure-box.test.ts` (the B-rep reader refuses a shell
+  with such a face, directly and through the FreeCAD import's stored-shape functions; a STEP file
+  written from a box and a lone such face is refused; the one-face calls answer such a face with the
+  message; `describe` of a lone such face; its box, placed or not; both kinds; a shape without
+  faces; wires and free edges keep their `measure` box after meshing, fine or coarse),
+  `construction-more.test.ts` (the plane before, number for number; after drawing coarse, at the
+  view's tessellation and finer; the body's triangle count). Taken out: with the build before this
+  round's facade change (`occt-998c7cd40597`) the refusal, copy, one-face and written-STEP tests
+  fail; with the build that has OnNoBRep but not `dropTessellatedCopies` (`occt-40ea4d52efaa`) the
+  copy test fails; the centring test with the whole shape's box; the box tests with the build before
+  this amendment; the fine-drawn and triangle-count tests with the body meshed in place; the wires
+  test with the build before the amendment of 2026-11-24 (`occt-8bd8ae5125b7`: a helix's box changed
+  after meshing).

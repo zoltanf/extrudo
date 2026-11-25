@@ -169,7 +169,7 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
       if (wantNames) reportNames = stepSolidNames(ctx, text, solids);
     }
   } finally {
-    ctx.kernel.release(...solids);
+    for (const solid of solids) ctx.kernel.release(solid);
   }
   if (solids.length === 0) {
     throw new KernelError(
@@ -184,8 +184,7 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   const placed =
     settings.position === 'centre'
       ? scope.track(
-          ctx.kernel.transform(turned, translation(toOrigin(ctx.kernel.properties(turned).bbox)))
-            .shape,
+          ctx.kernel.transform(turned, translation(toOrigin(bodiesBox(ctx, turned)))).shape,
         )
       : turned;
   const id = ctx.bodyId(0);
@@ -198,6 +197,31 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   return colors || reportNames || hidden
     ? { ...output, report: importReport(ctx, colors, reportNames, hidden, faceSolid, output) }
     : output;
+}
+
+/**
+ * The exact box (`properties`) of what becomes bodies of a read STEP shape: the whole shape, or,
+ * with two or more solids (one body each, `splitSolids`, which leaves the rest out), the solids
+ * alone. A file's free faces, wires or points beside them don't move the bodies.
+ */
+function bodiesBox(ctx: EvalContext, shape: ShapeHandle): { min: Vec3; max: Vec3 } {
+  const solids = ctx.kernel.solids(shape);
+  try {
+    if (solids.length < 2) return ctx.kernel.properties(shape).bbox;
+    // Loops, not spreads: a large assembly's solids overflow an argument list.
+    const min: [number, number, number] = [Infinity, Infinity, Infinity];
+    const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+    for (const solid of solids) {
+      const box = ctx.kernel.properties(solid).bbox;
+      for (const k of [0, 1, 2] as const) {
+        min[k] = Math.min(min[k], box.min[k]);
+        max[k] = Math.max(max[k], box.max[k]);
+      }
+    }
+    return { min, max };
+  } finally {
+    for (const solid of solids) ctx.kernel.release(solid);
+  }
 }
 
 /** The file's colours (P4-12, ADR-0034's amendment), per solid in `solids(read)` order. */
@@ -442,8 +466,10 @@ function meshBodies(
   // file's parts keep their places; after the ordering, so the bodies keep
   // the IDs they have at the file's coordinates.
   if (placement.position === 'centre') {
-    const min = (i: number) => Math.min(...pieces.map((p) => p.bbox.min[i] as number));
-    const max = (i: number) => Math.max(...pieces.map((p) => p.bbox.max[i] as number));
+    const min = (i: number) =>
+      pieces.reduce((m, p) => Math.min(m, p.bbox.min[i] as number), Infinity);
+    const max = (i: number) =>
+      pieces.reduce((m, p) => Math.max(m, p.bbox.max[i] as number), -Infinity);
     const move = translation(
       toOrigin({ min: [min(0), min(1), min(2)], max: [max(0), max(1), max(2)] }),
     );

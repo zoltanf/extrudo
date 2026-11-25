@@ -10,6 +10,10 @@ import {
 } from '@extrudo/core';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import step from '../../../../fixtures/imports/b3.step?url&inline';
+import tessellated from '../../../../fixtures/imports/tessellated.step?url&inline';
+import tessellatedCopy from '../../../../fixtures/imports/tessellated-copy.step?url&inline';
+import tessellatedMixed from '../../../../fixtures/imports/tessellated-mixed.step?url&inline';
+import tessellatedStray from '../../../../fixtures/imports/tessellated-stray.step?url&inline';
 import { Kernel } from '../kernel';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
@@ -41,6 +45,13 @@ afterEach(() => {
 function fixtureBytes(): Uint8Array {
   const binary = atob(step.slice(step.indexOf(',') + 1));
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+}
+
+/** A fixture's text, from its inlined data URL. */
+function textOf(url: string): string {
+  return new TextDecoder().decode(
+    Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), (c) => c.charCodeAt(0)),
+  );
 }
 
 /**
@@ -254,6 +265,151 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
         }
       }
     }
+  });
+
+  it('refuses a STEP file with a part given only as triangles, with what to do, and goes on', {
+    timeout: 120_000,
+  }, async () => {
+    const box = textOf(tessellatedStray).slice(0, textOf(tessellatedStray).indexOf('#9001='));
+    const twoBoxes = (() => {
+      using scope = kernel.scope();
+      const a = scope.track(kernel.box([20, 20, 20]));
+      const b = scope.track(kernel.box([20, 20, 20], [-40, 0, 0]));
+      return kernel.writeStep([
+        { shape: a, name: 'A' },
+        { shape: b, name: 'B' },
+      ]);
+    })();
+    const lone = textOf(tessellatedStray).slice(textOf(tessellatedStray).indexOf('#9001='));
+    for (const [name, text] of [
+      // Only triangles (a tetrahedron), and a box with surfaces beside one such part.
+      ['tessellated.step', textOf(tessellated)],
+      ['tessellated-mixed.step', textOf(tessellatedMixed)],
+      // A box with surfaces and a lone face given as triangles in a part of its own; the same face
+      // as a TRIANGULATED_SURFACE_SET; the face among the box's own items.
+      ['tessellated-stray.step', textOf(tessellatedStray)],
+      [
+        'surface set',
+        textOf(tessellatedStray).replace(
+          "TRIANGULATED_FACE('',#9018,3,(),$,(),((1,2,3)))",
+          "TRIANGULATED_SURFACE_SET('',#9018,3,(),(),((1,2,3)))",
+        ),
+      ],
+      [
+        'among the box items',
+        `${box.replace('(#11,#15),#345)', '(#11,#15,#9017),#345)')}#9017=TRIANGULATED_FACE('',#9018,3,(),$,(),((1,2,3)));\n#9018=COORDINATES_LIST('',3,((30.,0.,0.),(40.,0.,0.),(30.,10.,0.)));\nENDSEC;\nEND-ISO-10303-21;\n`,
+      ],
+      // Two solids with surfaces (so the import would split them) and the lone face.
+      ['two solids', twoBoxes.replace(/ENDSEC;\s*END-ISO-10303-21;\s*$/, lone)],
+    ] as const) {
+      expect(text, name).toMatch(/TRIANGULATED_|TESSELLATED_/);
+      engine?.clear();
+      const result = await recompute(
+        design({ bytes: new TextEncoder().encode(text), fileName: `${name}.step` }).doc,
+      );
+      expect(result.features[IMPORT_ID], name).toEqual({
+        status: 'error',
+        message:
+          'STEP import failed: the file gives at least one face as triangles, not as a surface. Export the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.',
+      });
+      expect(result.bodies, name).toEqual([]);
+      // The same engine and kernel compute the next design (the cache emptied before each design:
+      // this test's designs all name their file with one ID and hash).
+      engine?.clear();
+      const next = await recompute(design({}).doc);
+      expect(next.features[IMPORT_ID]?.status, name).toBe('ok');
+      expect(next.bodies.length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it('centres by what becomes bodies: a free face beside two solids leaves them in place', {
+    timeout: 60_000,
+  }, async () => {
+    // Two 10 mm boxes side by side and, 100 mm off, a free square face with a surface.
+    const text = (() => {
+      using scope = kernel.scope();
+      const a = scope.track(kernel.box([10, 10, 10]));
+      const b = scope.track(kernel.box([10, 10, 10], [20, 0, 0]));
+      const far = scope.track(kernel.box([10, 10, 10], [100, 0, 50]));
+      const patch = scope.track(kernel.subShape(far, 'face', 0));
+      return kernel.writeStep([
+        { shape: a, name: 'A' },
+        { shape: b, name: 'B' },
+        { shape: patch, name: 'Patch' },
+      ]);
+    })();
+    const read = kernel.readStep(text);
+    expect(kernel.count(read, 'face')).toBe(13);
+    kernel.release(read);
+    const result = await recompute(
+      design({ bytes: new TextEncoder().encode(text), position: 'centre' }).doc,
+    );
+    expect(result.features[IMPORT_ID]?.status).toBe('ok');
+    const [x, y, z] = around(boxes(result, engine as RecomputeEngine));
+    expect(result.bodies).toHaveLength(2);
+    expect(
+      [x?.min, x?.max, y?.min, y?.max, z?.min, z?.max].map((v) => Number(v?.toFixed(6)) + 0),
+    ).toEqual([-15, 15, -5, 5, 0, 10]);
+  });
+
+  it('reads a part by its exact geometry and leaves out a tessellated copy of it', {
+    timeout: 120_000,
+  }, async () => {
+    // A red box named Box with surfaces, and a TESSELLATED_SOLID linked to its solid and faces,
+    // in a representation of its own; the same copy among the box's items (where OCCT's writer
+    // puts one); the file without the copy.
+    const copied = textOf(tessellatedCopy);
+    const among = copied
+      .replace(/^#9009=SHAPE_DEFINITION_REPRESENTATION.*\n/m, '')
+      .replace(/^#9015=TESSELLATED_SHAPE_REPRESENTATION.*\n/m, '')
+      .replace('(#11,#15),#345)', '(#11,#15,#9016),#345)');
+    const plain = copied.replace(/^#90(09|15|16|3\d)=.*\n/gm, '');
+    expect(plain.slice(plain.indexOf('DATA;'))).not.toMatch(/TESSELLATED_|TRIANGULATED_/);
+    expect(among).not.toContain('TESSELLATED_SHAPE_REPRESENTATION');
+    const read = async (text: string) => {
+      engine?.clear();
+      const result = await recompute(design({ bytes: new TextEncoder().encode(text) }).doc);
+      expect(result.features[IMPORT_ID]?.status).toBe('ok');
+      const meshes = result.bodies.map(({ mesh }) => [...(mesh?.positions ?? [])]);
+      return {
+        bodies: bodies(result, engine as RecomputeEngine),
+        meshes,
+        report: result.reports[IMPORT_ID],
+        versions: result.bodies.map((b) => b.version),
+      };
+    };
+    const expected = await read(plain);
+    expect(expected.bodies.map((b) => [b.size, b.volume])).toEqual([
+      [[20, 20, 20], expect.closeTo(8000, 6)],
+    ]);
+    expect(expected.report).toMatchObject({ names: { [expected.bodies[0]?.id as string]: 'Box' } });
+    expect(Object.keys((expected.report as { colors: object }).colors)).toHaveLength(1);
+    expect(await read(copied)).toEqual(expected);
+    expect(await read(among)).toEqual(expected);
+    // The three readers the import uses for colours, names and hidden solids see its one solid.
+    const hidden = (text: string) =>
+      text.replace('ENDSEC;\nEND-ISO', '#9110=INVISIBILITY((#9108));\nENDSEC;\nEND-ISO');
+    for (const text of [copied, among]) {
+      expect(kernel.readStepColors(text)).toEqual(kernel.readStepColors(plain));
+      expect(kernel.readStepNames(text)).toEqual(['Box']);
+      expect(kernel.readStepHidden(hidden(text))).toEqual([true]);
+    }
+    // A copy with no links to the faces it copies is read as faces without a surface: refused.
+    const unlinked = copied
+      .replace(
+        '(#9031,#9032,#9033,#9034,#9035,#9036),#15)',
+        '(#9031,#9032,#9033,#9034,#9035,#9036),$)',
+      )
+      .replace(/(TRIANGULATED_FACE\('',#9030,8,\(\)),#\d+,/g, '$1,$,');
+    expect(unlinked).not.toMatch(/TRIANGULATED_FACE\('',#9030,8,\(\),#/);
+    engine?.clear();
+    const refused = await recompute(design({ bytes: new TextEncoder().encode(unlinked) }).doc);
+    expect(refused.features[IMPORT_ID]).toEqual({
+      status: 'error',
+      message:
+        'STEP import failed: the file gives at least one face as triangles, not as a surface. Export the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.',
+    });
+    expect(refused.bodies).toEqual([]);
   });
 
   it('ignores `units` for a STEP file: the file brings its own', { timeout: 60_000 }, async () => {

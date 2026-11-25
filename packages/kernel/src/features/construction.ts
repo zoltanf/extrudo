@@ -70,6 +70,8 @@ const MEET = 1e-3;
  * tessellation. Exported so a test can re-mesh the same triangles.
  */
 export const MESH_NORMAL: MeshOptions = { linearDeflection: 0.01, angularDeflection: 0.1 };
+/** The identity as `Kernel.transform`'s 3 × 4 matrix. */
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 /** Samples of a body edge that isn't a line, circle or ellipse when crossed with a plane (M2). */
 const POLYLINE_SAMPLES = 360;
 
@@ -201,7 +203,17 @@ function meshTangent(
   face: number,
   target: Vec3,
 ): ConstructionReport {
-  const mesh: BodyMesh = ctx.kernel.mesh(shape, MESH_NORMAL);
+  // A copy of the body, meshed and given back: meshing the body itself would leave the fine
+  // triangulation on it, which its next display mesh keeps, and a finer one already on it would
+  // be kept here. The identity transform rebuilds the shape (same faces, in the same order)
+  // without its triangulation.
+  const copy = ctx.kernel.transform(shape, IDENTITY).shape;
+  let mesh: BodyMesh;
+  try {
+    mesh = ctx.kernel.mesh(copy, MESH_NORMAL);
+  } finally {
+    ctx.kernel.release(copy);
+  }
   const first = mesh.faceRanges[2 * face] ?? 0;
   const count = mesh.faceRanges[2 * face + 1] ?? mesh.indices.length / 3;
   const inFace = (t: number) => t >= first && t < first + count;

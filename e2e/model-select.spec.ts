@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, mapping, projector, sketchOnXY } from './helpers';
+import { clicker, dragOnView, mapping, projector, sketchOnXY } from './helpers';
 
 // P2-03: model-mode selection (FR-VP-05). No feature makes bodies before
 // P2-06, so the B-rep tests run on the kernel debug page, which draws the
@@ -58,13 +58,9 @@ async function shiftClick(page: Page, p: { x: number; y: number }) {
   await page.keyboard.up('Shift');
 }
 
-async function box(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
-  await page.mouse.move(to.x, to.y, { steps: 4 });
-  await page.mouse.up();
-}
+/** A box drag from `from` to `to` (`dragOnView`: the first move leaves the click slop, a dropped drag is made again). */
+const box = (page: Page, from: { x: number; y: number }, to: { x: number; y: number }) =>
+  dragOnView(page, from, to);
 
 test('faces, edges and vertices pre-highlight and select on a real body', async ({ page }) => {
   const { viewport, at } = await testPart(page);
