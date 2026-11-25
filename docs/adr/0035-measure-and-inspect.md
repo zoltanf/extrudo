@@ -268,17 +268,32 @@ the three single-edge chamfers tried on a box.
   writes a vertex of the shape it is built on (`ChFi3d_IndexPointInDS`, `ChFi3d_Builder.cxx`);
   no test input was found that changes a value there.
 - **The change** (`extrudo_facade.cpp`): the plain boolean (`finishBoolean`, every fuse, cut,
-  common and split) runs on copies of its arguments, both made in one copy so that what they
-  share stays shared, meshes included, as the face merge already did; `sectionWithPlane` and
-  `facesMeetPlane` section copies; `fillet` and `chamfer` build on a copy of the body. The
-  copies have the inputs' geometry and sub-shape order, so results, histories and names are what
-  they were. Rejected: the builders' non-destructive mode, which keeps the arguments but leaves
-  the result's edges at their old tolerances (it skips `UpdateEdgeTolerance` for shapes that
-  aren't new), so results change; the facade dropped it before for that (a fillet after a cut ran
-  forever on two designs).
+  common and split) runs on copies of its arguments, both made in one copy (`copyTogether`) so
+  that what they share stays shared; `sectionWithPlane` and `facesMeetPlane` section copies;
+  `fillet` and `chamfer` build on a copy of the body. The copies are new sub-shapes (where
+  tolerances live) over the inputs' own curves, surfaces and meshes (`BRepBuilderAPI_Copy`
+  without copying the geometry), so results, histories and names are what they were. Copying the
+  geometry too gives every face its own copy of its surface (`BRepTools_CopyModification::
+  NewSurface`): two faces on one closed surface that meet at its seam (a thread's root pieces)
+  then stop sharing it, the edge between them no longer reads as closed (`BRep_Tool::IsClosed`,
+  ADR-0008 §8), and the view drew it: on the bottle cap benchmark 11 such edges at the threads'
+  root came out drawn and pickable, a stray line on each root band. With topology-only copies
+  the 64 designs in `fixtures/` give the same bodies, versions, statuses, reports, meshes (edge
+  flags included) and `inspect` of every body as main's build, bottle cap included. Rejected:
+  the builders' non-destructive mode, which keeps the arguments but leaves the result's edges at
+  their old tolerances (it skips `UpdateEdgeTolerance` for shapes that aren't new), so results
+  change; the facade dropped it before for that (a fillet after a cut ran forever on two designs).
+- **Cost:** none measured. Each feature of the 64 designs timed from scratch (the fastest of four
+  runs, main's build → this): the heaviest booleans, the bottle cap's two threads, 6,290 →
+  6,263 ms and 1,270 → 1,266 ms; the largest increase of any feature 1.9 ms (a loft, 140 →
+  142 ms); all 180 features 11,237 → 11,175 ms. The benchmarks recomputed from scratch and the
+  edits of `add-access.test.ts`'s designs are within ±3 % (the spool holder, 40 runs each:
+  median 94.8 → 94.0 ms).
 - **Not changed:** prisms and revolves add a p-curve of each profile edge on the side face they
   make to that edge (`BRepSweep_Translation.cxx`, `BRepSweep_Rotation.cxx`, at the default
-  tolerance); no box, description or result reads those, and they are not shown to change one.
+  tolerance), a sketch's cached profile face included. No result reads them: the same face
+  extruded fresh, or after a revolve and another prism used it, gives the same prism and the
+  same cut with it, bit for bit, boxes included (`arguments-unchanged.test.ts`).
   The offset, shell, draft and face-removal calls already worked on copies (OCCT repairs its
   input in place there).
 - **Tested:** `arguments-unchanged.test.ts`: every kernel call that takes a shape, on inputs that
@@ -287,4 +302,6 @@ the three single-edge chamfers tried on a box.
   booleans, the split and the two sections through a vertex fail. `cached-body-unchanged.test.ts`:
   a torus or a loft, a plate cut from it or intersected, then edited to a join, with a "through
   all" after: the engine that kept its cache gives a cleared engine's result, every mesh bit for
-  bit and every body's `measure` box; with main's build all four fail.
+  bit and every body's `measure` box; with main's build all four fail. `features/thread-seams.test.ts`: the
+  bottle cap's two threaded bodies keep their seam edges by name (no golden records edge flags);
+  it fails with the copies that copy the geometry.
