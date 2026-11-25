@@ -933,12 +933,9 @@ export class RecomputeEngine {
         evaluated.push(feature.id);
         made = true;
       }
-      // A view's result that would put a body over one outside the view can't be merged in place.
-      const strays = view !== undefined && strayBodies(bodies, view, entry.output?.bodies);
-      if (((seen instanceof NoBodies || seen instanceof BodyView) && seen.read) || strays) {
-        // It read a body after all (its `add` or `view` answer was wrong for these inputs), or its
-        // result doesn't fit its view. Its result goes, and it runs as `write`, now and whenever
-        // these inputs come again.
+      if ((seen instanceof NoBodies || seen instanceof BodyView) && seen.read) {
+        // It read a body after all: its `add` or `view` answer was wrong for these inputs. Its
+        // result goes, and it runs as `write`, now and whenever these inputs come again.
         this.#readsBodies.add(key);
         const max = this.#options.maxEntries ?? 256;
         for (const old of this.#readsBodies) {
@@ -1887,34 +1884,26 @@ class BodyView extends Map<BodyId, ShapeHandle> {
 
 /**
  * The design's bodies after a `view` feature: each body in order, a view body replaced by the
- * result's body of that ID or left out when the result has none, then the result's other bodies
- * in its order. What `new Map(bodies)` with `set` and `delete` gives (`strayBodies` first).
+ * result's body of that ID or left out when the result has none, a body outside the view replaced
+ * when the result has one of its ID, then the result's new bodies in its order: what
+ * `new Map(bodies)` with `set` and `delete` gives, but for a `delete` of a body outside the view
+ * (the evaluator's copy of the view has none to delete).
  */
 function mergeInPlace(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
   view: BodyView,
   made: ReadonlyMap<BodyId, ShapeHandle>,
 ): ReadonlyMap<BodyId, ShapeHandle> {
+  // A plain map: an evaluator may hand back the view itself, whose look-ups would be noticed.
+  const result = new Map(made);
   const out = new Map<BodyId, ShapeHandle>();
   for (const [id, shape] of bodies) {
-    if (!view.holds(id)) out.set(id, shape);
-    else {
-      const now = made.get(id);
-      if (now !== undefined) out.set(id, now);
-    }
+    const now = result.get(id);
+    if (now !== undefined) out.set(id, now);
+    else if (!view.holds(id)) out.set(id, shape);
   }
-  for (const [id, shape] of made) if (!view.holds(id)) out.set(id, shape);
+  for (const [id, shape] of result) if (!out.has(id)) out.set(id, shape);
   return out;
-}
-
-/** Whether a `view` result has a body with the ID of a body outside the view (it would replace it). */
-function strayBodies(
-  bodies: ReadonlyMap<BodyId, ShapeHandle>,
-  view: BodyView,
-  made: ReadonlyMap<BodyId, ShapeHandle> | undefined,
-): boolean {
-  for (const id of made?.keys() ?? []) if (!view.holds(id) && bodies.has(id)) return true;
-  return false;
 }
 
 /** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */

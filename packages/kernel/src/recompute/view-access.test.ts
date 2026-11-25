@@ -699,7 +699,6 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     ['`names` of another body', 'names'],
     ['a reference resolved in another body', 'resolve-other'],
     ['a reference no body has', 'resolve-lost'],
-    ['a result with a body outside the view', 'stray'],
   ])('%s: dropped, run as `write`, remembered', { timeout: 120_000 }, async (_n, mode) => {
     const doc = await probed(mode);
     const other = setInputs(doc, 'ex0', { distance: length('7 mm') });
@@ -718,6 +717,25 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
         // First the view's try and the `write` run; after an edit outside the view, `write` at once.
         expect(times, `step ${n}`).toBe(n === 0 ? 2 : 1);
       }
+    } finally {
+      viewEngine.clear();
+      writeEngine.clear();
+    }
+  });
+
+  it('a result that replaces a body outside the view by its ID takes its place, as `write` does', {
+    timeout: 120_000,
+  }, async () => {
+    // Not a read: the result doesn't depend on that body.
+    const [step] = await sequence([await probed('stray')], { registry: probeRegistry() });
+    expect(step?.result.stats.viewed).toContain('probe');
+    const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
+    const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
+    try {
+      const doc = await probed('stray');
+      const a = await client(viewEngine).run(doc);
+      const b = await client(writeEngine).run(doc);
+      expect(differences(a, b)).toEqual([]);
     } finally {
       viewEngine.clear();
       writeEngine.clear();
