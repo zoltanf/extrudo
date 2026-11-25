@@ -66,7 +66,7 @@ import {
   setInputs,
   sketchFeature,
   withAccess,
-} from './add-access-support';
+} from './add-access-test-support';
 import { RecomputeEngine } from './engine';
 
 let kernel: Kernel;

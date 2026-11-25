@@ -561,7 +561,7 @@ offset and remove faces, split body, scale and simplify for print change bodies.
 
 **The proof for them** (`recompute/add-access-features.test.ts`; real OCCT, a real manifold
 module and OpenSCAD's WASM in Node, `strictLeaks`, no clock; the helpers both proofs share are in
-`recompute/add-access-support.ts`). Six designs, each with a box B0 and a plate before the
+`recompute/add-access-test-support.ts`). Six designs, each with a box B0 and a plate before the
 feature's instances, a cut after them that splits several into pieces, and one instance after the
 cut: a box, cylinder, sphere and torus (one on a construction plane, one sized by a parameter);
 revolves about the X axis, a sketch line and a construction axis (one symmetric); coils on XY, a
@@ -611,15 +611,46 @@ the first recompute; without strict leaks the engine would warn of the leak and 
 predicate changed in the source changes the cleared engine too, so the differential sees such a
 fault through its other checks: without the primitives' picked-bodies term the fall-backs (36 in
 the primitives design: `explicitBodies`' look-up is noticed), without their operation term the
-flips (`operation: add→add`), without the revolve's extent term the fall-backs (a revolve to a
+flips (the edit to a join left the box `add`: `operation: add→add`), without the revolve's extent term the fall-backs (a revolve to a
 body looks it up). A negative control in the same file keeps the fault in the engine under test
 only, as the extrude's control (2) does: a box joined to a box it overlaps, said to be `add`,
 finds no body to join (the iteration isn't noticed, no fall-back) and makes a new one, so the
 bodies, statuses, reports and a mesh differ at once.
 
+**Measured.** Kernel time and meshes sent for an edit of the first, a middle and the last
+instance, incremental with `have`, in Node, two runs each, on this branch with the features above
+always `write` (main's behaviour; the extrude keeps `add`) → as it is. 50 boxes 20 × 20 × 10 mm
+apart on XY, the edit a height of 12 mm; 50 knobs, each a sketch on XZ revolved 360° about one of
+its own lines, the edit an angle of 300°; 20 plates (60 × 40 × 5 mm extrudes) with a STEP import
+(`fixtures/imports/b3.step`) after the eleventh, the edit a plate's distance of 6 mm.
+
+| Design | Edit | Evaluated | Meshes sent | ms |
+|---|---|--:|--:|--:|
+| 50 boxes | first | 50 → 1 | 50 → 1 | 199, 202 → 11, 11 |
+| | middle | 26 → 1 | 26 → 1 | 99, 100 → 8, 8 |
+| | last | 1 → 1 | 1 → 1 | 6, 6 → 10, 10 |
+| 50 knobs | first | 50 → 1 | 50 → 1 | 407, 406 → 17, 18 |
+| | middle | 26 → 1 | 26 → 1 | 213, 212 → 15, 16 |
+| | last | 1 → 1 | 1 → 1 | 17, 17 → 15, 15 |
+| 20 plates and an import | first | 2 → 1 | 3 → 1 | 36, 36 → 6, 6 |
+| | middle (before the import) | 2 → 1 | 3 → 1 | 34, 55 → 9, 7 |
+| | last | 1 → 1 | 1 → 1 | 7, 7 → 7, 7 |
+
+Before, the edited plate and the import ran (the plates are `add` on both); now the import is a
+cache hit and its file isn't read. The last box's edit is 6 → 10 ms in both runs; not looked
+into.
+
+In the app (the 30- and 100-plate designs above, production build, the same machine and setup,
+median of 4 interleaved runs, main → this): committing an edit of the first plate in its dialog
+191 → 184 ms (30 plates) and 260 → 262 ms (100 plates) until the model is ready, undoing it
+320 → 321 and 331 → 330 ms. The page's blocked time stays within its runs' spread for six of
+the seven actions; opening the 100-plate design gave 818–864 ms (main) and 865–926 ms (this),
+and opening the 30-plate one 571–582 and 448–595 ms. The plates are extrudes, which answered
+`add` before, so no change was expected there.
+
 **Not covered:** the features inside an inserted design (an import in one included); a sketch's
 geometry, constraints and dimensions; a construction plane or axis made from a body's face or edge
 under one of these features (it answers `read` and reaches them as an upstream key, as a sketch on
-a face does for the extrude); an import whose attachment record changes its file name (no command
-I found renames an attachment); an OpenSCAD import with no compiler; joints, annotations, sheets
+a face does for the extrude); an import whose attachment record changes its file name (the
+attachment commands add and remove a record, `addAttachment` refuses an ID in use); an OpenSCAD import with no compiler; joints, annotations, sheets
 and previews.
