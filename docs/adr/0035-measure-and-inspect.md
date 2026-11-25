@@ -349,8 +349,11 @@ the three single-edge chamfers tried on a box.
 - **The rule.** No kernel call changes a shape it is given: an edit hands the features bodies (and
   sketches' profile faces) from the recompute engine's cache, so a call that wrote to its
   arguments left the cache different from a recompute from scratch. One exception: `mesh` (and
-  the meshing inside a few calls) adds a triangulation to the faces, which no result reads since
-  the amendment of 2026-11-24 (every box comes from the geometry).
+  the meshing inside a few calls) adds a triangulation to the faces, or replaces one. No box
+  reads it since the amendment of 2026-11-24 (every box comes from the geometry); display meshes
+  and `hlrPolySpans` do, and a result inherits its inputs' triangulations (the copies share
+  them), which is why a body is never meshed in place for a result (the amendment above on the
+  tangent plane) and the view meshes every body at one tessellation.
 - **What wrote.** OCCT's boolean builders, in the mode the facade uses (the default, not the
   non-destructive one), raise an argument's vertex or edge tolerance in place where the other
   operand meets it within tolerance (`BOPAlgo_PaveFiller::UpdateVertex`, `UpdateEdgeTolerance`,
@@ -378,7 +381,9 @@ the three single-edge chamfers tried on a box.
   the builders' non-destructive mode, which keeps the arguments but leaves the result's edges at
   their old tolerances (it skips `UpdateEdgeTolerance` for shapes that aren't new), so results
   change; the facade dropped it before for that (a fillet after a cut ran forever on two designs).
-- **Cost:** none measured. Each feature of the 64 designs timed from scratch (the fastest of four
+- **Cost:** no time cost measured; memory was not measured (a boolean's result no longer shares
+  the sub-shapes of faces it left untouched with its input: it has the copy's, over the same
+  geometry and triangulations). Each feature of the 64 designs timed from scratch (the fastest of four
   runs, main's build → this): the heaviest booleans, the bottle cap's two threads, 6,290 →
   6,263 ms and 1,270 → 1,266 ms; the largest increase of any feature 1.9 ms (a loft, 140 →
   142 ms); all 180 features 11,237 → 11,175 ms. The benchmarks recomputed from scratch and the
@@ -389,12 +394,25 @@ the three single-edge chamfers tried on a box.
   tolerance), a sketch's cached profile face included. No result reads them: the same face
   extruded fresh, or after a revolve and another prism used it, gives the same prism and the
   same cut with it, bit for bit, boxes included (`arguments-unchanged.test.ts`).
-  The offset, shell, draft and face-removal calls already worked on copies (OCCT repairs its
-  input in place there).
-- **Tested:** `arguments-unchanged.test.ts`: every kernel call that takes a shape, on inputs that
-  make OCCT raise tolerances, leaves each input as it was (the box of every face, edge and vertex
+  They add up on a cached profile face used again and again until its sketch is recomputed;
+  that was not measured. The offset, shell, draft and face-removal calls, emboss, and the
+  simplifying booleans (every Join) already worked on copies (OCCT repairs its input in place
+  there); those copies copy the geometry too and were left as they are, so the seam finding
+  above was not checked for them.
+- **Open:** the calls the test below doesn't list were not checked: `loft`, `sweep`,
+  `threadSweep`, `wrapOnCylinder`, `wrapOnCone`, a tapered prism (its sweep and loft paths),
+  `filletVariable`, `shellFaces`, `offsetProbe`, `writeStepXde`, `writeStepAssembly`. A tapered
+  prism over an ellipse or spline profile lofts and sews the caller's profile without a copy.
+  Two bodies that shared a face (the halves of a split) no longer share it after a plain boolean
+  or a fillet on one of them; no fixture has a plain boolean between such bodies afterwards.
+- **Tested:** `arguments-unchanged.test.ts`: the kernel calls in its list (the booleans plain
+  and simplified, the splits, the sections, distance and proximity, the hidden-line calls,
+  `mesh`, `exportMesh`, `transform`, `scale`, `locate`, `writeStep`, the one-face and one-edge
+  queries, `fillet`, `chamfer`), on inputs that make OCCT's booleans raise tolerances, leave each
+  input as it was (the box of every face, edge and vertex
   alone, each enlarged by its own tolerance, and the description); with main's build the plain
-  booleans, the split and the two sections through a vertex fail. `cached-body-unchanged.test.ts`:
+  booleans, the split and the two sections through a vertex fail; the fillet and chamfer entries
+  pass on both builds, so their copies rest on OCCT's source alone. `cached-body-unchanged.test.ts`:
   a torus or a loft, a plate cut from it or intersected, then edited to a join, with a "through
   all" after: the engine that kept its cache gives a cleared engine's result, every mesh bit for
   bit and every body's `measure` box; with main's build all four fail. `features/thread-seams.test.ts`: the
