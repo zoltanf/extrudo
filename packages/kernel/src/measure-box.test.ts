@@ -29,19 +29,31 @@ beforeAll(async () => {
 describe('measure (ADR-0035, 2026-11-24)', () => {
   it('gives the same box before and after a shape is meshed, curved or flat', () => {
     const shapes = {
-      cylinder: kernel.cylinder(5, 10, [0, 0, 0]),
-      box: kernel.box([10, 20, 5]),
+      cylinder: () => kernel.cylinder(5, 10, [0, 0, 0]),
+      box: () => kernel.box([10, 20, 5]),
       // Fillets and a hole: torus and cylinder faces.
-      testPart: buildTestPart(kernel),
+      testPart: () => buildTestPart(kernel),
     };
-    for (const [name, shape] of Object.entries(shapes)) {
-      const before = kernel.measure(shape).bbox;
-      kernel.mesh(shape, DEFAULT_TESSELLATION);
-      expect(kernel.measure(shape).bbox, name).toEqual(before);
-      // A coarser meshing on top, as a sheet view's hidden-line pass may leave.
-      kernel.mesh(shape, { linearDeflection: 0.5, angularDeflection: 0.5 });
-      expect(kernel.measure(shape).bbox, name).toEqual(before);
-      kernel.release(shape);
+    const fine = DEFAULT_TESSELLATION;
+    // Coarser, as a sheet view's hidden-line pass may leave.
+    const coarse = { linearDeflection: 0.5, angularDeflection: 0.5 };
+    for (const [name, make] of Object.entries(shapes)) {
+      // Each order on a fresh shape: a coarse meshing on top of a fine one keeps the fine
+      // triangulation, a fine one on top of a coarse one replaces it.
+      for (const order of [
+        [fine, coarse],
+        [coarse, fine],
+      ]) {
+        const shape = make();
+        const before = kernel.measure(shape).bbox;
+        for (const options of order) {
+          kernel.mesh(shape, options);
+          expect(kernel.measure(shape).bbox, `${name}, ${options.linearDeflection}`).toEqual(
+            before,
+          );
+        }
+        kernel.release(shape);
+      }
     }
   });
 
