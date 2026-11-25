@@ -264,7 +264,7 @@ the three single-edge chamfers tried on a box.
   before. Every reader of the exact box gets it through `Kernel.properties` (the Measure tool,
   the status bar and print aids through `inspect`, parts lists, the agent host's bodies, the
   interference result, the import's centring, the FreeCAD import's stored-shape measures,
-  `centreOf` and Place on Bed). `measure` already bounded such a face by its triangulation.
+  the pivots of Move and Scale (`centreOf`) and Place on Bed). `measure` already bounded such a face by its triangulation.
 - **Not reached today through a STEP import:** the kernel's `describe` traps (a WASM "null
   function") on a face with no surface, and the engine describes every body, so importing
   `tessellated.step` crashes the kernel before any box is read; the same face read from a B-rep
@@ -287,5 +287,6 @@ the three single-edge chamfers tried on a box.
   both kinds; a shape without faces; the STEP reader's tessellated solid; wires and free edges
   keep their `measure` box after meshing, fine or coarse), `construction-more.test.ts` (the
   plane before, number for number; after drawing coarse, at the view's tessellation and finer;
-  the body's triangle count). Taken out: the box tests fail with the old build, and the
-  fine-drawn and triangle-count tests with the body meshed in place.
+  the body's triangle count). Taken out: the box tests fail with the old build, the fine-drawn
+  and triangle-count tests with the body meshed in place, and the wires test with the build
+  before the amendment of 2026-11-24 (`occt-8bd8ae5125b7`: a helix's box changed after meshing).
