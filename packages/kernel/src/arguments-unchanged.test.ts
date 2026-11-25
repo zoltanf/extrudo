@@ -293,3 +293,58 @@ describe('no kernel call changes the shapes it is given (ADR-0035, 2026-11-25)',
     }
   });
 });
+
+describe('a profile face used by prisms and revolves before (ADR-0035, 2026-11-25)', () => {
+  // A prism or a revolve adds a p-curve of each profile edge on the side face it makes to that
+  // edge (OCCT's BRepSweep), on a sketch's cached profile face too. No later result reads them:
+  // the same face extruded fresh, or after a revolve and another prism used it, gives the same
+  // prism and the same cut with it, bit for bit.
+  /** The top face of a cylinder Ø10 standing at (30, 15): a disc with one circle edge. */
+  const disc = () => {
+    const cylinder = kernel.cylinder(5, 4, [30, 15, -4]);
+    const face = kernel.subShape(cylinder, 'face', 1);
+    return { cylinder, face };
+  };
+  function cutWith(face: ShapeHandle) {
+    const prism = kernel.prism(face, [0, 0, 6]);
+    const plate = kernel.box([60, 40, 3], [0, 0, 0]);
+    const cut = kernel.cut(plate, prism.shape);
+    const out = {
+      prism: fingerprint(prism.shape),
+      cut: fingerprint(cut.shape),
+    };
+    kernel.release(prism.shape, plate, cut.shape);
+    return out;
+  }
+  function fingerprint(shape: ShapeHandle) {
+    const copy = kernel.transform(shape, IDENTITY).shape;
+    const mesh = kernel.mesh(copy, { linearDeflection: 0.05, angularDeflection: 0.3 });
+    kernel.release(copy);
+    return {
+      snapshot: snapshot(shape),
+      measure: kernel.measure(shape),
+      properties: kernel.properties(shape),
+      mesh: JSON.stringify(Object.values(mesh).map((v) => Array.from(v as ArrayLike<number>))),
+    };
+  }
+
+  it('gives the same prism and the same cut, fresh or after a revolve and a prism used it', {
+    timeout: 60_000,
+  }, () => {
+    const fresh = disc();
+    const used = disc();
+    try {
+      // The face's top is at z = 0; it lies off the revolve's axis (x = 0).
+      const revolved = kernel.revolve(
+        used.face,
+        { origin: [0, 0, 0], direction: [0, 1, 0] },
+        Math.PI / 2,
+      );
+      const prism = kernel.prism(used.face, [0, 0, 2]);
+      kernel.release(revolved.shape, prism.shape);
+      expect(cutWith(used.face)).toEqual(cutWith(fresh.face));
+    } finally {
+      kernel.release(fresh.face, fresh.cylinder, used.face, used.cylinder);
+    }
+  });
+});
