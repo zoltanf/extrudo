@@ -419,29 +419,31 @@ function edit(
 ): Edited | undefined {
   const pick = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
   const extrudes = doc.features.filter((f) => f.type === 'extrude');
-  // The extrude a term's edit changes: one that answers `add`, so the edit shows what the term does.
-  const adding = () => pick(extrudes.filter((f) => accessOf(f) === 'add'));
-  // Another extrude, before `f` where there is one: its cap is a face to extrude from or up to.
-  const other = (f: Feature) => {
-    const before = extrudes.slice(0, extrudes.indexOf(f));
-    return pick(before) ?? pick(extrudes.filter((x) => x !== f)) ?? f;
-  };
+  // The extrude a term's edit changes: one that answers `add`, so the edit shows what the term
+  // does; with `after`, one with such an extrude before it (whose cap or body it can refer to).
+  const isAdd = (x: Feature) => accessOf(x) === 'add' && !x.suppressed;
+  const before = (f: Feature) => extrudes.slice(0, extrudes.indexOf(f)).filter(isAdd);
+  const adding = (after = false) =>
+    pick(extrudes.filter((f) => isAdd(f) && (!after || before(f).length > 0))) ??
+    pick(extrudes.filter(isAdd));
+  // Another extrude, an earlier one that answers `add` where there is one.
+  const other = (f: Feature) => pick(before(f)) ?? pick(extrudes.filter((x) => x !== f)) ?? f;
   const change = (f: Feature | undefined, more: (f: Feature) => Feature['inputs']) =>
     f && { doc: setInputs(doc, f.id, more(f)), feature: f.id };
   switch (kind) {
     case 'through-all':
       return change(adding(), () => ({ extent: choice('through-all') }));
     case 'to-object':
-      return change(adding(), (f) => ({
+      return change(adding(true), (f) => ({
         extent: choice('to-object'),
         toObject: refs([
           rand() < 0.5 ? capOf(other(f).id) : { kind: 'body', id: `${other(f).id}:0` },
         ]),
       }));
     case 'face':
-      return change(adding(), (f) => ({ profiles: refs([capOf(other(f).id)]) }));
+      return change(adding(true), (f) => ({ profiles: refs([capOf(other(f).id)]) }));
     case 'bodies':
-      return change(adding(), (f) => ({
+      return change(adding(true), (f) => ({
         bodies: refs([{ kind: 'body', id: `${other(f).id}:0` }]),
       }));
     case 'two-sides':
@@ -449,6 +451,8 @@ function edit(
       return change(adding(), () => ({
         direction: choice('two-sides'),
         extent2: choice('through-all'),
+        // Side 2 up, where the bodies are.
+        flip: { kind: 'bool', value: true },
       }));
     case 'symmetric':
       return change(adding(), () => ({ direction: choice('symmetric') }));
@@ -511,7 +515,7 @@ function edit(
       const ref = (f.inputs as ExtrudeInputs).profiles?.refs[0];
       const sketchId = (ref?.id.split('/')[0] ?? '') as FeatureId;
       const sketch = doc.features.find((s) => s.id === sketchId);
-      const data = (sketch?.inputs.sketch as { data?: unknown } | undefined)?.data;
+      const data = (sketch?.inputs.sketch as { sketch?: unknown } | undefined)?.sketch;
       if (!data) return undefined;
       const regions = detectProfiles(data as never);
       const next = pick(regions.filter((r) => profileRefId(sketchId, r.id) !== ref?.id));
@@ -613,6 +617,8 @@ interface Run {
   kinds: Set<Kind>;
   /** `<kind>: <access before>→<access after>` of the extrude each input edit changed. */
   flips: Set<string>;
+  /** The kinds whose edited extrude then computed (status `ok`) at least once. */
+  computed: Set<Kind>;
 }
 
 /** `steps` edits of `doc` (each kind at least once), each checked against a cleared engine. */
@@ -631,12 +637,14 @@ async function differential(
     kinds: new Set(),
     initialErrors: [],
     flips: new Set(),
+    computed: new Set(),
   };
   const rand = random(seed);
   const history: ExtrudoDocument[] = [doc];
   const deleted: Feature[] = [];
   try {
     let current = doc;
+    let edited: [Kind, FeatureId] | undefined;
     for (let step = 0; step <= steps; step++) {
       if (step > 0) {
         let kind = (KINDS[step - 1] ?? KINDS[Math.floor(rand() * KINDS.length)]) as Kind;
@@ -651,6 +659,7 @@ async function differential(
           next = edit(kind, current, rand, history, deleted);
         }
         if (!next) throw new Error(`step ${step}: no edit applies`);
+        edited = next.feature === undefined ? undefined : [kind, next.feature];
         if (next.feature !== undefined) {
           const id = next.feature;
           const before = accessOf(current.features.find((f) => f.id === id));
@@ -662,6 +671,7 @@ async function differential(
         run.kinds.add(kind);
       }
       const { mine, fresh, problems } = await p.step(current);
+      if (edited && mine.result.features[edited[1]]?.status === 'ok') run.computed.add(edited[0]);
       if (step === 0) {
         run.initialErrors = Object.entries(mine.result.features)
           .filter(([, status]) => status.status === 'error')
@@ -699,6 +709,12 @@ const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[]][] = [
 ];
 
 describe('add access: the cached engine gives what a cleared one gives (ADR-0024, `add` access)', () => {
+  const computed = new Map<string, Set<Kind>>();
+  afterAll(() => {
+    if (computed.size < DESIGNS.length) return; // a filtered run
+    const any = new Set([...computed.values()].flatMap((kinds) => [...kinds]));
+    for (const [kind] of TERMS) expect(any, kind).toContain(kind);
+  });
   it.each(DESIGNS)(
     '%s, 40 seeded edits',
     { timeout: 900_000 },
@@ -711,6 +727,18 @@ describe('add access: the cached engine gives what a cleared one gives (ADR-0024
       for (const kind of KINDS) expect(run.kinds).toContain(kind);
       for (const [kind, access] of TERMS) expect(run.flips).toContain(`${kind}: add→${access}`);
       expect(run.flips).toContain('adds: write→add');
+      // The edited extrude computed, not only failed the same way in both engines: these in
+      // every design, every term in at least one (checked after the last design).
+      for (const kind of [
+        'through-all',
+        'two-sides',
+        'symmetric',
+        'taper',
+        'bodies',
+        'adds',
+      ] as const)
+        expect(run.computed).toContain(kind);
+      computed.set(_n, run.computed);
       expect(run.compared).toBe(41);
       expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
     },
