@@ -84,11 +84,12 @@ import type { ScadCompiler, ScadDefine, ScadRequest, ScadResult } from '@extrudo
 import { KernelError, MeshError, type ShapeHandle, type Vec3 } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { splitName } from '../naming/topo-id';
-import type {
-  EvalContext,
-  FeatureOutput,
-  KernelFeatureDefinition,
-  PrepareContext,
+import {
+  type EvalContext,
+  type FeatureOutput,
+  type KernelFeatureDefinition,
+  OutsideError,
+  type PrepareContext,
 } from '../recompute/types';
 import { standardStepReals } from '../step-reals';
 import { splitSolids } from './bodies';
@@ -584,7 +585,10 @@ async function prepareImport(ctx: PrepareContext<ImportInputs>): Promise<ScadCom
   const source = ctx.file(file);
   const { defines, warnings } = scadDefines(ctx, name, new TextDecoder().decode(source));
   const result = await compileOnce(ctx.openscad(), { fileName: name, source, defines });
-  if (!result.ok) throw new KernelError(result.error);
+  if (!result.ok) {
+    const retry = compileRetry(result.error);
+    throw retry ? new OutsideError(result.error, retry) : new KernelError(result.error);
+  }
   return { model: result.model, warnings: [...warnings, ...result.warnings] };
 }
 
@@ -657,10 +661,23 @@ function compileOnce(compiler: ScadCompiler, request: ScadRequest): Promise<Scad
   // A compile that was stopped (its time, a crash) or found no WASM (offline)
   // may do better another time.
   void result.then((r) => {
-    if (!r.ok && /stopped|isn't downloaded/.test(r.error)) kept.delete(key);
+    if (!r.ok && compileRetry(r.error)) kept.delete(key);
   });
   while (kept.size > COMPILES_KEPT) kept.delete(kept.keys().next().value as string);
   return result;
+}
+
+/**
+ * Whether a failed compile's cause was outside the file (ADR-0024's amendment on errors from
+ * outside the document), by the compiler's own words (`@extrudo/openscad`'s `offlineMessage` and
+ * its stopped compiles): OpenSCAD not downloaded yet is asked about again on the next recompute;
+ * a compile stopped by its time or memory limit, or by its worker dying, once the bodies before
+ * the import change (as when the import was `write`), since each try may take a minute.
+ */
+function compileRetry(error: string): OutsideError['retry'] | undefined {
+  if (/isn't downloaded/.test(error)) return 'next';
+  if (/stopped/.test(error)) return 'bodies';
+  return undefined;
 }
 
 /** A 64-bit FNV-1a of the bytes, as hex: enough to tell two sources apart. */
@@ -683,7 +700,9 @@ function evaluateScadImport(
 ): FeatureOutput {
   const compiled = ctx.prepared as ScadCompiled | undefined;
   const name = ctx.fileName(file);
-  if (!compiled) throw new KernelError(`${name} wasn't compiled: OpenSCAD isn't loaded here.`);
+  if (!compiled) {
+    throw new OutsideError(`${name} wasn't compiled: OpenSCAD isn't loaded here.`, 'next');
+  }
   const meshes = threeMfMeshes(read(read3mf, compiled.model, name), units, name);
   const output = meshBodies(ctx, name, meshes, placement);
   for (const warning of compiled.warnings) ctx.warn(warning);

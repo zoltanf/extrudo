@@ -679,10 +679,10 @@ describe('the comparison catches a wrong `add` (negative controls)', () => {
   it('the body set not chained after an `add`: right at first, wrong after edits', {
     timeout: 600_000,
   }, async () => {
-    const broken = await faultyEngine(
+    const broken = await faultyEngine([
       "bodiesKey = hashOf('add', bodiesKey, key);",
       '// (chain left out)',
-    );
+    ]);
     try {
       const run = await differential(platesCut(), 20, 3, { engine: broken.engine });
       // Nothing is cached yet at step 0: only a stale cache entry can make a difference.
@@ -713,7 +713,7 @@ describe('the comparison catches a wrong `add` (negative controls)', () => {
   }, async () => {
     // The engine hands `add` features the bodies (the evaluation is right) but still keys them
     // without: only the cache is wrong. After P1 grows, T's entry is found by its `add` key.
-    const broken = await faultyEngine('? new NoBodies()', '? bodies');
+    const broken = await faultyEngine(['? new NoBodies()', '? bodies']);
     try {
       const doc = plates(3, 45);
       const features = [...doc.features, ...discFeatures('T', 60)];
@@ -800,7 +800,7 @@ describe('add access: cases by name', () => {
       const cached = p.cached.latestBody('spl:0' as never);
       expect(cached).toBeDefined();
       kernel.mesh(cached as never, { linearDeflection: 0.005, angularDeflection: 0.1 });
-      expect((await p.step(edited)).problems).toEqual(['mesh spl:0']);
+      expect((await p.step(edited)).problems).toEqual(['mesh spl:0', 'write: mesh spl:0']);
     } finally {
       p.close();
     }
@@ -875,7 +875,7 @@ describe('add access: what an edit costs', () => {
   }, async () => {
     const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
     try {
-      const c = client(engine);
+      const c = client(kernel, engine);
       const doc = plates(6);
       await c.run(doc);
       const after = await c.run(setInputs(doc, 'ex0', { distance: length('9 mm') }));
@@ -891,7 +891,7 @@ describe('add access: what an edit costs', () => {
   }, async () => {
     const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
     try {
-      const c = client(engine);
+      const c = client(kernel, engine);
       // Four overlapping plates and a cut through them: the cut reads every body.
       const doc = platesCut();
       await c.run(doc);
@@ -935,17 +935,17 @@ describe('add access: what an edit costs', () => {
     const right = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
     try {
       const join = joinDoc();
-      const a = await client(wrong).run(join);
-      const b = await client(right).run(join);
+      const a = await client(kernel, wrong).run(join);
+      const b = await client(kernel, right).run(join);
       expect(differences(a, b)).toEqual([]);
       // ex1 was evaluated twice: once as `add` (it read a body), once as `write`.
       expect(a.result.stats.evaluated).toEqual(['sk0', 'ex0', 'sk1', 'ex1', 'ex1']);
       // The second time the same inputs come, it runs as `write` straight away (cache hit).
-      const again = await client(wrong).run(join);
+      const again = await client(kernel, wrong).run(join);
       expect(again.result.stats.evaluated).toEqual([]);
       // A cleared engine forgets that too: `add` is tried again.
       wrong.clear();
-      const cleared = await client(wrong).run(join);
+      const cleared = await client(kernel, wrong).run(join);
       expect(cleared.result.stats.evaluated).toEqual(['sk0', 'ex0', 'sk1', 'ex1', 'ex1']);
     } finally {
       wrong.clear();

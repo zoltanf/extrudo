@@ -88,6 +88,7 @@ import {
   type ImportedFile,
   type KernelFeatureDefinition,
   MissingFileError,
+  OutsideError,
   type PrepareContext,
   type PreviewRequest,
   type PreviewToolMesh,
@@ -161,6 +162,8 @@ interface Entry {
   output: FeatureOutput | undefined;
   /** Shapes this entry holds a reference to. */
   handles: ShapeHandle[];
+  /** Set when the feature failed for a cause outside the document (`OutsideError`). */
+  retry?: OutsideError['retry'];
 }
 
 /** What the walk knows about a feature it has passed. */
@@ -933,9 +936,13 @@ export class RecomputeEngine {
         evaluated.push(feature.id);
         made = true;
       }
-      if ((seen instanceof NoBodies || seen instanceof BodyView) && seen.read) {
+      if (
+        (seen instanceof NoBodies || seen instanceof BodyView) &&
+        (seen.read || entry.retry === 'bodies')
+      ) {
         // It read a body after all: its `add` or `view` answer was wrong for these inputs. Its
-        // result goes, and it runs as `write`, now and whenever these inputs come again.
+        // result goes, and it runs as `write`, now and whenever these inputs come again. So does
+        // an error to try again once the bodies before it change, as main's `write` key did.
         this.#readsBodies.add(key);
         const max = this.#options.maxEntries ?? 256;
         for (const old of this.#readsBodies) {
@@ -1348,6 +1355,7 @@ export class RecomputeEngine {
     const before = kernel.stats().liveShapes;
     let output: FeatureOutput | undefined;
     let status: FeatureStatus;
+    let retry: Entry['retry'];
     try {
       // What `prepare` failed with is the feature's error, as if thrown here.
       if (prepared && 'error' in prepared) throw prepared.error;
@@ -1361,6 +1369,7 @@ export class RecomputeEngine {
       if (error instanceof WebAssembly.RuntimeError) throw error;
       if (error instanceof LostReferenceError) note(error.ref, 'lost');
       if (!(error instanceof KernelError)) console.error(error);
+      if (error instanceof OutsideError) retry = error.retry;
       const message = error instanceof Error ? error.message : String(error);
       status = {
         status: 'error',
@@ -1392,8 +1401,9 @@ export class RecomputeEngine {
       this.#versions.set(h, hashOf(key, id));
       this.#makers.set(h, feature.id);
     }
-    const entry: Entry = { key, status, output, handles };
-    this.#entries.set(key, entry);
+    const entry: Entry = { key, status, output, handles, ...(retry && { retry }) };
+    // Not the document's answer (the bytes not there yet, say): the next recompute asks again.
+    if (retry !== 'next') this.#entries.set(key, entry);
     return entry;
   }
 
@@ -1655,8 +1665,9 @@ export class RecomputeEngine {
       openscad: () => {
         const compiler = this.#options.openscad?.();
         if (!compiler) {
-          throw new KernelError(
+          throw new OutsideError(
             "OpenSCAD isn't loaded in this kernel, so .scad files can't be compiled here.",
+            'next',
           );
         }
         return compiler;

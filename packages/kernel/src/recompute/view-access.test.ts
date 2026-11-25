@@ -714,11 +714,11 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
     const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
     try {
-      const mine = client(viewEngine);
+      const mine = client(kernel, viewEngine);
       for (const [n, d] of [doc, other].entries()) {
         const a = await mine.run(d);
         writeEngine.clear();
-        const b = await client(writeEngine).run(d);
+        const b = await client(kernel, writeEngine).run(d);
         expect(differences(a, b), `step ${n}`).toEqual([]);
         expect(a.result.stats.viewed ?? []).not.toContain('probe');
         const times = a.result.stats.evaluated.filter((id) => id === 'probe').length;
@@ -741,8 +741,8 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
     try {
       const doc = await probed('stray');
-      const a = await client(viewEngine).run(doc);
-      const b = await client(writeEngine).run(doc);
+      const a = await client(kernel, viewEngine).run(doc);
+      const b = await client(kernel, writeEngine).run(doc);
       expect(differences(a, b)).toEqual([]);
     } finally {
       viewEngine.clear();
@@ -764,8 +764,8 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
     const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
     try {
-      const a = await client(viewEngine).run(doc);
-      const b = await client(writeEngine).run(doc);
+      const a = await client(kernel, viewEngine).run(doc);
+      const b = await client(kernel, writeEngine).run(doc);
       expect(a.result.stats.viewed).toContain('probe');
       expect(differences(a, b)).toEqual(['mesh ex0:0', 'mesh ex2:0']);
     } finally {
@@ -854,10 +854,10 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
   it('the view’s versions left out of its key: right at first, stale after the plate changes', {
     timeout: 300_000,
   }, async () => {
-    const broken = await faultyEngine(
+    const broken = await faultyEngine([
       "const viewKey = looked && keyOf(hashOf('view', looked.versions));",
       "const viewKey = looked && keyOf(hashOf('view', looked.versions.map(([id]) => id)));",
-    );
+    ]);
     try {
       const doc = await platesWithFillets(3);
       const [a, b] = await sequence([doc, setInputs(doc, 'ex0', { distance: length('9 mm') })], {
@@ -875,10 +875,10 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
   it('a view missing one of its bodies: caught by the fall-back at once, the result right', {
     timeout: 120_000,
   }, async () => {
-    const broken = await faultyEngine(
+    const broken = await faultyEngine([
       '    if (ids.size === 0) return undefined;\n    const view = new BodyView();',
       '    if (ids.size === 0) return undefined;\n    ids.delete([...ids].at(-1) as BodyId);\n    const view = new BodyView();',
-    );
+    ]);
     try {
       const doc = await acrossTwo();
       const [a] = await sequence([doc], { engine: broken.engine, exact: false });
@@ -892,10 +892,10 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
   it('a view result appended instead of put in place: the body order differs at once', {
     timeout: 120_000,
   }, async () => {
-    const broken = await faultyEngine(
+    const broken = await faultyEngine([
       '? mergeInPlace(bodies, view, entry.output.bodies)',
       '? mergeBodies(bodies, new Map(view), entry.output.bodies)',
-    );
+    ]);
     try {
       // The fillet's bodies are not the last ones: in place they stay first.
       const doc = await acrossTwo();

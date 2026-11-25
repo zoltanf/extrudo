@@ -23,18 +23,36 @@ import type { CsgContext, CsgResult } from '../scad-export/context';
 import type { ScriptHost } from '../script-host';
 
 /**
+ * A feature's error whose cause is outside the document (ADR-0024's amendment on errors from
+ * outside the document): the same inputs may do better another time. `next`: cheap to ask again,
+ * so the engine keeps no entry and the next recompute tries again (a file whose bytes haven't
+ * arrived, OpenSCAD not loaded or not downloaded yet). `bodies`: costly to ask again, so it is
+ * kept like a `write` feature's result, keyed with the bodies before it, and an edit there tries
+ * again (a compile stopped by its time or memory limit, or by its worker dying).
+ */
+export class OutsideError extends KernelError {
+  override name = 'OutsideError';
+  readonly retry: 'next' | 'bodies';
+  constructor(message: string, retry: 'next' | 'bodies') {
+    super(message);
+    this.retry = retry;
+  }
+}
+
+/**
  * A file of the design that the worker doesn't have (P4-06, ADR-0066 §0): the
  * design names it but its bytes never arrived (an attachment record without
  * its file, or a file the app couldn't read). A `KernelError`, so the engine
- * makes it the feature's error and not an internal one.
+ * makes it the feature's error and not an internal one; from outside the
+ * document, so the next recompute asks for the bytes again.
  */
-export class MissingFileError extends KernelError {
-  override readonly name = 'MissingFileError';
+export class MissingFileError extends OutsideError {
+  override name = 'MissingFileError';
   // A field and not a constructor parameter, so Node can run this package's
   // TypeScript as it is (P5-03's CLI loads the kernel through it).
   readonly id: AttachmentId;
   constructor(id: AttachmentId, fileName: string) {
-    super(`The file ${fileName} is missing from this design.`);
+    super(`The file ${fileName} is missing from this design.`, 'next');
     this.id = id;
   }
 }

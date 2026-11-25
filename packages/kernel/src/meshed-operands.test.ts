@@ -70,8 +70,20 @@ beforeAll(async () => {
   built.torus = engine.latestBody('T:0' as never) as ShapeHandle;
   built.spline = engine.latestBody('E:0' as never) as ShapeHandle;
   built.part = buildTestPart(kernel);
-  // The engine's bodies were meshed for display, the test part not.
+  // The spline body's first face is its B-spline side.
   expect(kernel.surfaceGeometry(built.spline, 0).type).not.toBe('plane');
+  // The engine's bodies carry the view's triangulation (the recompute meshed them for display):
+  // a coarse mesh keeps that finer one, where a never-meshed copy gets a coarse one. The test
+  // part is never meshed (`buildTestPart` makes it here and nothing draws it).
+  for (const body of [built.torus, built.spline]) {
+    const fresh = copy(body);
+    try {
+      const coarse = kernel.mesh(fresh, COARSE).positions.length;
+      expect(kernel.mesh(body, COARSE).positions.length).toBeGreaterThan(coarse);
+    } finally {
+      kernel.release(fresh);
+    }
+  }
 });
 
 afterAll(() => {
