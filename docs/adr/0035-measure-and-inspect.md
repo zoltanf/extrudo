@@ -249,27 +249,25 @@ the three single-edge chamfers tried on a box.
   outwards; no volume, area, count or name in them changed. Taken out, the measure-box tests fail
   on the old build, and the interference test with `measure`'s box.
 
-## Amendment (2026-11-25): faces without a surface, and the tangent plane's mesh
+## Amendment (2026-11-25): faces given as triangles, and the tangent plane's mesh
 
-- **The exact box of faces without a surface.** A face can come with a triangulation and no
-  surface: OCCT's B-rep reader (the FreeCAD import's stored shapes) accepts one (`missingGeometry`
-  lets a face with a triangulation through), and OCCT's STEP reader makes one from AP242
-  tessellated geometry (`fixtures/imports/tessellated.step`: a tetrahedron given only as
-  triangles reads as one solid of one such face). `properties`' `AddOptimal(…, false, false)`
-  adds nothing for such a face, so a shape made only of them had a void box, which the facade
-  reports as all zeros. The facade's `properties` now adds the triangulation's points of every
-  face with no surface (`addSurfacelessFaces`): for the tetrahedron 0 … 10 × 0 … 10 × 0 … 5, for a
-  face of a file placed by a location, where the location puts it; a shape with faces of both
-  kinds gets the union; a shape without faces, and every face with a surface, are bounded as
-  before. Every reader of the exact box gets it through `Kernel.properties` (the Measure tool,
-  the status bar and print aids through `inspect`, parts lists, the agent host's bodies, the
-  interference result, the import's centring, the FreeCAD import's stored-shape measures,
-  the pivots of Move and Scale (`centreOf`) and Place on Bed). `measure` already bounded such a face by its triangulation.
-- **Not reached today through a STEP import:** the kernel's `describe` traps (a WASM "null
-  function") on a face with no surface, and the engine describes every body, so importing
-  `tessellated.step` crashes the kernel before any box is read; the same face read from a B-rep
-  traps there too. That is not changed here (an open item). The FreeCAD import's checks read
-  `properties` without `describe`, so they get the box.
+- **Faces given as triangles, not as surfaces.** A face can hold a triangulation and no surface
+  (AP242 tessellated geometry in STEP; OCCT's B-rep text). The STEP reader (`readStep`) and the
+  B-rep reader (`readBrep`, which reads the FreeCAD import's stored shapes) refuse a shape with
+  such a face in a solid or a shell (`hasTriangleFace`). The STEP reader's message, which the
+  import feature shows as its error: "STEP import failed: the file gives at least one face as
+  triangles, not as a surface. Export the part again with its surfaces, or export it as STL or
+  3MF and import that as a mesh." (`fixtures/imports/tessellated.step`, a tetrahedron given only
+  as triangles, and `tessellated-mixed.step`, a box with surfaces beside it). So no body has such a
+  face. A lone such face (in no solid or shell) is read and measured by its triangles: `describe`
+  gives it as `other`, with its area and centre and no direction; `measure` bounds it by its
+  triangulation; `properties` adds its triangulation's points (`addSurfacelessFaces`; the test
+  face 0 … 10 × 0 … 10 × 0 … 5, where the file's location puts it), with faces that have a surface
+  the union; a shape without faces and a face with a surface are bounded as before. Every reader
+  of the exact box goes through `Kernel.properties` (the Measure tool, the status bar and print
+  aids through `inspect`, parts lists, the agent host's bodies, the interference result, the
+  import's centring, the FreeCAD import's stored-shape measures, the pivots of Move and Scale
+  (`centreOf`) and Place on Bed).
 - **The construction plane tangent to a free-form face meshes a copy** (`meshTangent`,
   `features/construction.ts`): `Kernel.transform` by the identity rebuilds the body (same faces in
   the same order, no triangulation), the copy is meshed at `MESH_NORMAL` and released. Meshing the
@@ -283,10 +281,14 @@ the three single-edge chamfers tried on a box.
 - **Checked:** the 64 designs in `fixtures/` recomputed from scratch with the old and the new
   build give the same bodies, versions, statuses, reports, meshes bit for bit, and the same
   `inspect` of every body (once, outside the repository; the old build twice). The feature
-  goldens are unchanged. Tests: `measure-box.test.ts` (faces without a surface, placed or not;
-  both kinds; a shape without faces; the STEP reader's tessellated solid; wires and free edges
-  keep their `measure` box after meshing, fine or coarse), `construction-more.test.ts` (the
-  plane before, number for number; after drawing coarse, at the view's tessellation and finer;
-  the body's triangle count). Taken out: the box tests fail with the old build, the fine-drawn
-  and triangle-count tests with the body meshed in place, and the wires test with the build
-  before the amendment of 2026-11-24 (`occt-8bd8ae5125b7`: a helix's box changed after meshing).
+  goldens are unchanged. Tests: `import.test.ts` (both fixtures refused with the message, no
+  body, and the same engine computes the next design), `measure-box.test.ts` (the B-rep reader
+  refuses a shell with such a face, directly and through the FreeCAD import's stored-shape
+  functions; `describe` of a lone such face; its box, placed or not; both kinds; a shape without
+  faces; wires and free edges keep their `measure` box after meshing, fine or coarse),
+  `construction-more.test.ts` (the plane before, number for number; after drawing coarse, at the
+  view's tessellation and finer; the body's triangle count). Taken out: the refusal and
+  `describe` tests fail with the build without the readers' check and `describe`'s case, the box
+  tests with the build before this amendment, the fine-drawn and triangle-count tests with the
+  body meshed in place, and the wires test with the build before the amendment of 2026-11-24
+  (`occt-8bd8ae5125b7`: a helix's box changed after meshing).

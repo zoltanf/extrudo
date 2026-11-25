@@ -268,6 +268,7 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
       ['tessellated.step', tessellated],
       ['tessellated-mixed.step', tessellatedMixed],
     ] as const) {
+      engine?.clear();
       const result = await recompute(design({ bytes: bytesOf(url), fileName: name }).doc);
       expect(result.features[IMPORT_ID], name).toEqual({
         status: 'error',
@@ -275,7 +276,9 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
           'STEP import failed: the file gives at least one face as triangles, not as a surface. Export the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.',
       });
       expect(result.bodies, name).toEqual([]);
-      // The same engine computes the next design.
+      // The same engine and kernel compute the next design (the cache emptied before each design:
+      // this test's designs all name their file with one ID and hash).
+      engine?.clear();
       const next = await recompute(design({}).doc);
       expect(next.features[IMPORT_ID]?.status, name).toBe('ok');
       expect(next.bodies.length, name).toBeGreaterThan(0);
