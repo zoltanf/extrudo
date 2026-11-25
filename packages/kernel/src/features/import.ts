@@ -184,8 +184,7 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   const placed =
     settings.position === 'centre'
       ? scope.track(
-          ctx.kernel.transform(turned, translation(toOrigin(ctx.kernel.properties(turned).bbox)))
-            .shape,
+          ctx.kernel.transform(turned, translation(toOrigin(bodiesBox(ctx, turned)))).shape,
         )
       : turned;
   const id = ctx.bodyId(0);
@@ -198,6 +197,24 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   return colors || reportNames || hidden
     ? { ...output, report: importReport(ctx, colors, reportNames, hidden, faceSolid, output) }
     : output;
+}
+
+/**
+ * The exact box (`properties`) of what becomes bodies of a read STEP shape: the whole shape, or,
+ * with two or more solids (one body each, `splitSolids`, which leaves the rest out), the solids
+ * alone. A file's free faces, wires or points beside them don't move the bodies.
+ */
+function bodiesBox(ctx: EvalContext, shape: ShapeHandle): { min: Vec3; max: Vec3 } {
+  const solids = ctx.kernel.solids(shape);
+  try {
+    if (solids.length < 2) return ctx.kernel.properties(shape).bbox;
+    const boxes = solids.map((solid) => ctx.kernel.properties(solid).bbox);
+    const min = [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k] as number))) as Vec3;
+    const max = [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k] as number))) as Vec3;
+    return { min, max };
+  } finally {
+    ctx.kernel.release(...solids);
+  }
 }
 
 /** The file's colours (P4-12, ADR-0034's amendment), per solid in `solids(read)` order. */
