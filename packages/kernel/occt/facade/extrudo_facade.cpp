@@ -1885,6 +1885,10 @@ public:
         return -1;
       }
       TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      if (surfaceless(f)) {
+        fail("The face has no surface, only triangles.");
+        return -1;
+      }
       BRepAdaptor_Surface surface(f);
       const GeomAbs_SurfaceType type = surface.GetType();
       if (type == GeomAbs_Plane) return 0;
@@ -2751,6 +2755,7 @@ public:
       TopExp::MapShapes(*s, TopAbs_FACE, faces);
       if (face < 0 || face >= faces.Extent()) return fail("Face index out of range.");
       const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      if (surfaceless(f)) return fail("The face has no surface, only triangles.");
       BRepAdaptor_Surface surface(f);
       const GeomAbs_SurfaceType type = surface.GetType();
       geometry_.push_back(static_cast<double>(type));
@@ -2977,8 +2982,10 @@ public:
 
   /**
    * Reads STEP text into one shape (a compound of what the file's roots
-   * translate to). Used by the export tests; STEP import (FR-IO-05) will
-   * build on it. Returns a handle, or 0.
+   * translate to), by its exact geometry (stepReadParameters()). A shape
+   * with any face given only as triangles is refused, so no body has a face
+   * without a surface. Used by the STEP import (FR-IO-05) and the export
+   * tests. Returns a handle, or 0.
    */
   int readStep(const char* text) {
     beginOp();
@@ -2986,12 +2993,12 @@ public:
     try {
       std::istringstream in(text == nullptr ? "" : text);
       STEPControl_Reader reader;
-      if (reader.ReadStream("extrudo.step", in) != IFSelect_RetDone) {
+      if (reader.ReadStream("extrudo.step", stepReadParameters(), in) != IFSelect_RetDone) {
         return fail("STEP import failed: the file couldn't be read.");
       }
       if (reader.TransferRoots() <= 0) return fail("STEP import failed: the file has no shapes.");
       const TopoDS_Shape shape = reader.OneShape();
-      if (hasTriangleFace(shape)) {
+      if (hasSurfacelessFace(shape)) {
         return fail(
             "STEP import failed: the file gives at least one face as triangles, not as a surface. Export "
             "the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.");
@@ -3646,7 +3653,8 @@ public:
         reader.SetMatMode(false);
         reader.SetViewMode(false);
         std::istringstream in(text == nullptr ? "" : text);
-        if (reader.ReadStream("extrudo.step", in) == IFSelect_RetDone && reader.Transfer(doc)) {
+        if (reader.ChangeReader().ReadStream("extrudo.step", stepReadParameters(), in) == IFSelect_RetDone &&
+            reader.Transfer(doc)) {
           const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
           geometry_.push_back(0);
           NCollection_Sequence<TDF_Label> roots;
@@ -3719,7 +3727,8 @@ public:
         reader.SetMatMode(false);
         reader.SetViewMode(false);
         std::istringstream in(text == nullptr ? "" : text);
-        if (reader.ReadStream("extrudo.step", in) == IFSelect_RetDone && reader.Transfer(doc)) {
+        if (reader.ChangeReader().ReadStream("extrudo.step", stepReadParameters(), in) == IFSelect_RetDone &&
+            reader.Transfer(doc)) {
           const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
           NCollection_Sequence<TDF_Label> roots;
           shapes->GetFreeShapes(roots);
@@ -3773,7 +3782,7 @@ public:
       std::sort(ids.begin(), ids.end());
       std::istringstream in(text == nullptr ? "" : text);
       STEPControl_Reader reader;
-      if (reader.ReadStream("extrudo.step", in) != IFSelect_RetDone) {
+      if (reader.ReadStream("extrudo.step", stepReadParameters(), in) != IFSelect_RetDone) {
         fail("STEP import failed: the file couldn't be read.");
         return -1;
       }
@@ -4688,6 +4697,7 @@ public:
       TopExp::MapShapes(*s, TopAbs_FACE, faces);
       if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
       const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      if (surfaceless(f)) return failCurve("The face has no surface, only triangles.");
       BRepAdaptor_Surface surface(f);
       const GeomAbs_SurfaceType type = surface.GetType();
       if (type != GeomAbs_Cylinder && type != GeomAbs_Cone) return failCurve("The face isn't cylindrical or conical.");
@@ -4927,6 +4937,7 @@ public:
       TopExp::MapShapes(*s, TopAbs_FACE, faces);
       if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
       const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      if (surfaceless(f)) return failCurve("The face has no surface, only triangles.");
       BRepAdaptor_Surface surface(f);
       if (surface.GetType() != GeomAbs_Cone) return failCurve("The face isn't conical.");
       const gp_Cone cone = surface.Cone();
@@ -4993,6 +5004,7 @@ public:
       TopExp::MapShapes(*body, TopAbs_FACE, bodyFaces);
       if (face < 0 || face >= bodyFaces.Extent()) return fail("Emboss failed: face index out of range.");
       const TopoDS_Face target = TopoDS::Face(bodyFaces(face + 1));
+      if (surfaceless(target)) return fail("Emboss failed: the face has no surface, only triangles.");
       BRepAdaptor_Surface carried(profile);
       if (carried.GetType() != GeomAbs_Plane) return fail("Emboss failed: the profile isn't flat.");
       const gp_Dir n = carried.Plane().Axis().Direction();
@@ -5213,6 +5225,7 @@ public:
       TopExp::MapShapes(*s, TopAbs_FACE, faces);
       if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
       const TopoDS_Face target = TopoDS::Face(faces(face + 1));
+      if (surfaceless(target)) return failCurve("The face has no surface, only triangles.");
       const double tol = Precision::Confusion();
       IntCurvesFace_Intersector hits(target, tol);
       hits.Perform(gp_Lin(gp_Pnt(px, py, pz), gp_Dir(along)), -RealLast(), RealLast());
@@ -5258,6 +5271,7 @@ public:
       TopExp::MapShapes(*s, TopAbs_FACE, faces);
       if (face < 0 || face >= faces.Extent()) return fail("Emboss failed: face index out of range.");
       const TopoDS_Face target = TopoDS::Face(faces(face + 1));
+      if (surfaceless(target)) return fail("Emboss failed: the face has no surface, only triangles.");
       BRepBuilderAPI_Copy copy(target);
       const TopoDS_Face skin = TopoDS::Face(copy.Shape());
       TopoDS_Solid slab;
@@ -6444,6 +6458,25 @@ private:
   std::vector<double> exportPositions_;
   std::vector<uint32_t> exportIndices_;
   std::string exportText_;
+  /**
+   * The settings of every STEP read (readStep() and the colour, name and
+   * hidden-solid readers, so they all see the same solids in the same
+   * order): OCCT's own (read.step.* as set), with tessellated geometry read
+   * only where it has no exact geometry (RWMode_Tessellated_OnNoBRep). A
+   * tessellated copy linked to the faces it copies (its geometric links) is
+   * then left out, and the exact faces keep no triangles from the file
+   * (OCCT's default, On, attaches the copy's triangles to them). A copy
+   * without links, or one OCCT reads before the faces it links to, is read
+   * as faces without a surface, which readStep() refuses. Call it after a
+   * reader is made: that sets OCCT's read.step.* values.
+   */
+  static DESTEP_Parameters stepReadParameters() {
+    DESTEP_Parameters parameters;
+    parameters.InitFromStatic();
+    parameters.ReadTessellated = DESTEP_Parameters::RWMode_Tessellated_OnNoBRep;
+    return parameters;
+  }
+
   /** The settings of every STEP transfer: AP242, millimetres (P2-12). */
   static DESTEP_Parameters stepParameters() {
     DESTEP_Parameters parameters;
@@ -6613,22 +6646,6 @@ private:
    * which the first check or mesh of the shape dereferences (a WASM trap). A
    * face with only a triangulation may have no surface.
    */
-  /**
-   * Whether a solid or a shell of `shape` has a face with no surface, only a triangulation (STEP's
-   * tessellated geometry gives such faces): the readers refuse those, so no body has one.
-   */
-  static bool hasTriangleFace(const TopoDS_Shape& shape) {
-    for (const TopAbs_ShapeEnum kind : {TopAbs_SOLID, TopAbs_SHELL}) {
-      for (TopExp_Explorer part(shape, kind); part.More(); part.Next()) {
-        for (TopExp_Explorer it(part.Current(), TopAbs_FACE); it.More(); it.Next()) {
-          TopLoc_Location location;
-          if (BRep_Tool::Surface(TopoDS::Face(it.Current()), location).IsNull()) return true;
-        }
-      }
-    }
-    return false;
-  }
-
   static const char* missingGeometry(const TopoDS_Shape& shape) {
     const char* edgeMissing = "an edge lacks its curve.";
     const char* pcurveMissing = "an edge lacks its curve on a face.";
@@ -6675,6 +6692,37 @@ private:
       }
     }
     return nullptr;
+  }
+
+  /** Whether `face` has no surface, only a triangulation (what STEP's tessellated geometry gives). */
+  static bool surfaceless(const TopoDS_Face& face) {
+    TopLoc_Location location;
+    return BRep_Tool::Surface(face, location).IsNull();
+  }
+
+  /**
+   * Whether any face of `shape` (in a solid, a shell or on its own) has no surface: the STEP
+   * reader refuses such a shape, so no body has one.
+   */
+  static bool hasSurfacelessFace(const TopoDS_Shape& shape) {
+    for (TopExp_Explorer it(shape, TopAbs_FACE); it.More(); it.Next()) {
+      if (surfaceless(TopoDS::Face(it.Current()))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether a solid or a shell of `shape` has a face with no surface: the B-rep reader refuses
+   * those. A lone such face is read (the FreeCAD import's checks measure it by its triangles); a
+   * STEP file written from it is refused by readStep().
+   */
+  static bool hasTriangleFace(const TopoDS_Shape& shape) {
+    for (const TopAbs_ShapeEnum kind : {TopAbs_SOLID, TopAbs_SHELL}) {
+      for (TopExp_Explorer part(shape, kind); part.More(); part.Next()) {
+        if (hasSurfacelessFace(part.Current())) return true;
+      }
+    }
+    return false;
   }
 
   /** Whether stageStepColor() gave any staged part a colour. */
