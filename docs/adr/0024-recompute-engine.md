@@ -392,16 +392,28 @@ scaled, suppress, reorder and delete; "to object" up to a vertex or a plane; joi
 annotations, sheets and previews (a preview only in the reused count below); mesh bodies,
 imports, scripts and OpenSCAD features; the stopped list (fixed per design).
 
-**Assumed, not shown beyond these designs.** A cached body carries the triangulation the view's
-meshing left on its faces, where a body evaluated again has none. Two things could then differ
-between an edit and a recompute from scratch, without `add` too, but `add` keeps more bodies
-cached: (1) boxes OCCT builds inside its own algorithms (the distance check behind
-`bodiesTouch`, a boolean's pair search) may use a triangulation; they only prune, so results
-should not change. (2) A cut or a join keeps a body's untouched faces with their triangulation,
-and meshing the result keeps a triangulation that already meets the deflection, where from
-scratch those faces are meshed inside the result. The proof compares every mesh bit for bit
-after cuts and joins over cached bodies with planes, cylinders and the benchmarks' fillets, and
-finds no difference; free-form and toroidal faces under a cut are not among its designs.
+**What a cached body carries, and what the tests show.** A cached body carries the
+triangulation the view's meshing left on its faces, where a body evaluated again has none.
+- OCCT's booleans and its distance check (behind `bodiesTouch`) give the same result over
+  operands meshed coarse (0.5 mm), fine (0.005 mm) or not at all: the same description
+  (sub-shape counts, order, types, sizes), history, volume, and display mesh of a copy of the
+  result, bit for bit, for fuse, cut and common of a torus, a body with a B-spline face and a
+  filleted box with a hole, and the same distance (`meshed-operands.test.ts`; a result whose
+  operand moved by a nanometre compares as different).
+- A cut keeps a body's untouched faces with their triangulation. The result's mesh equals a
+  cleared engine's when that triangulation is the view's own (the view meshes every body at one
+  tessellation): a hole through a spline body clear of its B-spline side, and a hole in a plate
+  joined to a torus away from the torus (`add-access.test.ts`, cases by name). A finer
+  triangulation left on the cached body reaches the result's mesh (a control in the same file),
+  so the rule is: nothing but the view's meshing at the view's tessellation leaves a
+  triangulation on a cached body.
+- **Open (seen on main, with every feature `write`):** after a cut or an intersect over a cached
+  torus or loft, an edit that makes that feature a join gives a result whose `measure` box
+  (tolerances included) is about 1e-12 mm larger than a recompute from scratch gives; its
+  description and mesh are the same. A later "through all" measures that box, so its mesh differs
+  in the last bits. A spline extrude in the same place shows no difference. Not reproduced with
+  the kernel's boolean calls alone; the curved designs are not in the differential set until
+  this is settled.
 
 Cases by name: through all over cached bodies (P1–P3 lying cylinders, `add`; T a New Body disc
 "through all" both ways, `write`; P1's distance edited: exactly P1 and T evaluated, the same as a
