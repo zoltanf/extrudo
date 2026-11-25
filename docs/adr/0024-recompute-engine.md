@@ -407,13 +407,14 @@ triangulation the view's meshing left on its faces, where a body evaluated again
   triangulation left on the cached body reaches the result's mesh (a control in the same file),
   so the rule is: nothing but the view's meshing at the view's tessellation leaves a
   triangulation on a cached body.
-- **Open (seen on main, with every feature `write`):** after a cut or an intersect over a cached
-  torus or loft, an edit that makes that feature a join gives a result whose `measure` box
-  (tolerances included) is about 1e-12 mm larger than a recompute from scratch gives; its
-  description and mesh are the same. A later "through all" measures that box, so its mesh differs
-  in the last bits. A spline extrude in the same place shows no difference. Not reproduced with
-  the kernel's boolean calls alone; the curved designs are not in the differential set until
-  this is settled.
+- **Settled (ADR-0035's amendment "a kernel call never changes the shapes it is given"):** after
+  a cut or an intersect over a cached torus or loft, an edit that made that feature a join gave a
+  result whose `measure` box was about 1e-12 mm larger than from scratch. The cause was the
+  boolean raising a vertex tolerance of its tool in place, and the tool's bottom cap is its
+  sketch's cached profile face; booleans now work on copies. The differential set has the curved
+  design (a torus, a spline extrude and a smooth loft, with a plate joined to the torus, holes
+  and a plate over the others), clean over its 40 seeded edits; it differs with the build before
+  that amendment.
 
 Cases by name: through all over cached bodies (P1–P3 lying cylinders, `add`; T a New Body disc
 "through all" both ways, `write`; P1's distance edited: exactly P1 and T evaluated, the same as a

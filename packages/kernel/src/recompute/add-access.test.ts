@@ -14,6 +14,7 @@ import {
   type AttachmentId,
   applyCommand,
   type ComponentId,
+  constructionRef,
   createDocument,
   type ExtrudeInputs,
   type ExtrudoDocument,
@@ -25,6 +26,7 @@ import {
   insertDesign,
   insertDesignPayload,
   loadDocument,
+  loftInputs,
   originPlaneRef,
   primitiveInputs,
   profileRefId,
@@ -268,6 +270,80 @@ function holeFeatures(id: string, x: number, y: number, d: number, distance: str
       }),
     ),
   ];
+}
+
+/** A smooth loft from a 20 mm square on XY through a circle 10 mm up to a 10 mm square 20 mm up. */
+function loftFeatures(id: string, x: number): Feature[] {
+  const plane = (pid: string, distance: string): Feature => ({
+    id: pid as FeatureId,
+    type: 'offsetPlane',
+    name: `Plane ${pid}`,
+    suppressed: false,
+    inputs: { plane: refs([originPlaneRef('origin:xy')]), distance: length(distance) },
+  });
+  const onPlane = (sid: string, pid: string, draw: (b: SketchBuilder) => void): Feature => {
+    const b = new SketchBuilder();
+    draw(b);
+    return {
+      ...sketchFeature(sid, b.sketch),
+      inputs: sketchInputs(
+        constructionRef(features.find((f) => f.id === pid) as Feature) as GeomRef,
+        b.sketch,
+      ),
+    };
+  };
+  const square = (b: SketchBuilder, cx: number, cy: number, h: number) => {
+    b.line(cx - h, cy - h, cx + h, cy - h);
+    b.line(cx + h, cy - h, cx + h, cy + h);
+    b.line(cx + h, cy + h, cx - h, cy + h);
+    b.line(cx - h, cy + h, cx - h, cy - h);
+  };
+  const bottom = new SketchBuilder();
+  square(bottom, x, 10, 10);
+  const features: Feature[] = [sketchFeature(`${id}s1`, bottom.sketch), plane(`${id}p1`, '10 mm')];
+  features.push(onPlane(`${id}s2`, `${id}p1`, (b) => b.circle(x, 10, 6)));
+  features.push(plane(`${id}p2`, '20 mm'));
+  features.push(onPlane(`${id}s3`, `${id}p2`, (b) => square(b, x, 10, 5)));
+  const ref = (sid: string) => {
+    const f = features.find((g) => g.id === sid) as Feature;
+    const data = (f.inputs.sketch as { sketch: Parameters<typeof detectProfiles>[0] }).sketch;
+    const [region] = detectProfiles(data);
+    return { kind: 'profile', id: profileRefId(sid as FeatureId, region?.id ?? '') } as GeomRef;
+  };
+  features.push({
+    id: id as FeatureId,
+    type: 'loft',
+    name: `Loft ${id}`,
+    suppressed: false,
+    inputs: loftInputs([ref(`${id}s1`), ref(`${id}s2`), ref(`${id}s3`)]),
+  });
+  return features;
+}
+
+/**
+ * Curved bodies with cuts and joins over them: a torus, a spline extrude and a smooth loft
+ * (B-spline faces), a plate joined to the torus with a hole cut in the plate away from it, a hole
+ * through the spline body's caps clear of its side, and a plate over the spline body and the loft.
+ */
+function curved(): ExtrudoDocument {
+  const join = plateFeatures('j', 15, '3 mm', false);
+  const features: Feature[] = [
+    torusFeature('tor'),
+    ...splineFeatures('spl', 40),
+    ...loftFeatures('lof', 80),
+    ...join.map((f) =>
+      f.type === 'extrude' ? { ...f, inputs: { ...f.inputs, operation: choice('join') } } : f,
+    ),
+    ...holeFeatures('hj', 60, 20, 6, '3 mm'),
+    ...holeFeatures('hs', 50, 10, 4, '10 mm'),
+    ...plateFeatures('c', 35, '4 mm'),
+  ];
+  return {
+    ...createDocument({ name: 'curved' }),
+    parameters: [{ id: 'p-t', name: 't', expression: '4 mm', unit: 'length' }],
+    features,
+    timelineMarker: features.length,
+  } as ExtrudoDocument;
 }
 
 /**
@@ -758,6 +834,7 @@ const DESIGNS: [string, () => ExtrudoDocument, FeatureId[], string[]][] = [
   ['b4 box with lid', () => withPlates(fixture(b4)), [], []],
   ['the hinge (components)', () => withPlates(fixture(hinge)), [], []],
   ['plates and an inserted design (an isolated expansion)', () => withPlates(withInsert()), [], []],
+  ['curved bodies with cuts and joins over them', () => withPlates(curved()), [], []],
   [
     'a failed feature and a stopped one',
     () => withPlates(withFailures()),
