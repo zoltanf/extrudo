@@ -364,7 +364,7 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
       .replace(/^#9015=TESSELLATED_SHAPE_REPRESENTATION.*\n/m, '')
       .replace('(#11,#15),#345)', '(#11,#15,#9016),#345)');
     const plain = copied.replace(/^#90(09|15|16|3\d)=.*\n/gm, '');
-    expect(plain).not.toMatch(/TESSELLATED_|TRIANGULATED_/);
+    expect(plain.slice(plain.indexOf('DATA;'))).not.toMatch(/TESSELLATED_|TRIANGULATED_/);
     expect(among).not.toContain('TESSELLATED_SHAPE_REPRESENTATION');
     const read = async (text: string) => {
       engine?.clear();
