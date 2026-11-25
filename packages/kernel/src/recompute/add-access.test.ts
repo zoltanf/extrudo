@@ -8,7 +8,7 @@
 // The edits take every term of the extrude's predicate (`addsOnly`) both ways, "through all" and
 // "to object" included. That holds because the boxes features read don't depend on whether a body
 // was meshed (ADR-0035's amendment of 2026-11-24): the cached engine's bodies have been meshed for
-// the meshes it sent, a cleared engine's haven't. `through all over cached plates` below is that
+// the meshes it sent, a cleared engine's haven't. `through all over cached bodies` below is that
 // case by name.
 import {
   type AttachmentId,
@@ -328,10 +328,10 @@ function pair(options: PairOptions = {}) {
 async function sequence(docs: readonly ExtrudoDocument[], options: PairOptions = {}) {
   const p = pair(options);
   try {
-    const out: { problems: string[]; evaluated: string[] }[] = [];
+    const out: { problems: string[]; evaluated: string[]; result: Done }[] = [];
     for (const doc of docs) {
       const { mine, problems } = await p.step(doc);
-      out.push({ problems, evaluated: [...mine.result.stats.evaluated] });
+      out.push({ problems, evaluated: [...mine.result.stats.evaluated], result: mine.result });
     }
     return out;
   } finally {
@@ -744,14 +744,37 @@ describe('add access: the cached engine gives what a cleared one gives (ADR-0024
     },
   );
 
-  it('through all over cached plates: a write after adds, an earlier plate edited', {
+  it('through all over cached bodies: a write after adds, an earlier body edited', {
     timeout: 120_000,
   }, async () => {
-    // Plates P1–P3 (`add`), then a New Body disc "through all" over them (T, a `write`). Editing
-    // P1 keeps P2 and P3 cached, and meshed for the meshes sent; T runs again and measures them.
-    const doc = plates(3, 45);
-    const features = [...doc.features, ...discFeatures('T', 60)];
-    const first = { ...doc, features, timelineMarker: features.length };
+    // P1–P3: New Body extrudes (`add`) of circles on the XZ plane, so cylinders lying along y with
+    // curved tops; then T, a New Body disc "through all" up and down over them (a `write`).
+    // Editing P1 keeps P2 and P3 cached, and meshed for the meshes sent; T runs again and its
+    // length comes from their boxes. With boxes from triangulations (before ADR-0035's amendment
+    // of 2026-11-24) T differs from a cleared engine's here.
+    const lying = (i: number): Feature[] => {
+      const b = new SketchBuilder();
+      b.circle(i * 25, 10, 8);
+      const [region] = detectProfiles(b.sketch);
+      const sketch = `sk${i}` as FeatureId;
+      return [
+        {
+          ...sketchFeature(sketch, b.sketch),
+          inputs: sketchInputs(originPlaneRef('origin:xz'), b.sketch),
+        },
+        extrudeFeature(
+          `ex${i}`,
+          extrudeInputs([{ kind: 'profile', id: profileRefId(sketch, region?.id ?? '') }], {
+            distance: `${20 + 5 * i} mm`,
+          }),
+        ),
+      ];
+    };
+    const features = [
+      ...[0, 1, 2].flatMap(lying),
+      ...discFeatures('T', 25, { direction: 'symmetric' }),
+    ];
+    const first = { ...plates(0), features, timelineMarker: features.length };
     const edited = setInputs(first, 'ex0', { distance: length('9 mm') });
     expect(features.map(accessOf)).toEqual([
       'other',
@@ -764,6 +787,11 @@ describe('add access: the cached engine gives what a cleared one gives (ADR-0024
       'write',
     ]);
     const [a, b] = await sequence([first, edited]);
+    for (const step of [a, b]) {
+      expect(Object.values(step?.result.features ?? {}).map((f) => f.status)).toEqual(
+        Array(8).fill('ok'),
+      );
+    }
     expect(a?.problems).toEqual([]);
     expect(b?.evaluated).toEqual(['ex0', 'T']);
     expect(b?.problems).toEqual([]);
