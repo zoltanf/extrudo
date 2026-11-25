@@ -18,7 +18,7 @@ import type { PlanarCurve } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
-import { circle, planarFace, planeFrame, upright } from './primitives';
+import { circle, placedAddsOnly, planarFace, planeFrame, upright } from './primitives';
 import { sweepTool } from './sweep';
 import { add, cross, scale, unit } from './vec';
 
@@ -108,7 +108,7 @@ export function helixSweep(ctx: EvalContext, scope: ShapeScope, spec: HelixSweep
  */
 export const kernelCoil: KernelFeatureDefinition<CoilInputs> = {
   ...coilFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => (coilAddsOnly(inputs) ? 'add' : 'write'),
   evaluate(ctx): FeatureOutput {
     const settings = coilSettings(ctx.inputs);
     const n = numbersOf(ctx, settings);
@@ -169,6 +169,14 @@ export const kernelCoil: KernelFeatureDefinition<CoilInputs> = {
     return { ...result, data, ...(warnings.length ? { warnings } : {}) };
   },
 };
+
+/**
+ * Whether a coil only adds bodies and reads none before it (`add`, ADR-0024's amendment on `add`
+ * access): placed like a primitive (`placedAddsOnly`: a new body, no picked bodies, on a plane).
+ */
+export function coilAddsOnly(inputs: CoilInputs): boolean {
+  return placedAddsOnly(coilSettings(inputs));
+}
 
 const round = (value: number) => Math.round(value * 100) / 100;
 

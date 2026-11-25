@@ -1,0 +1,1 @@
+- 2026-11-25 · **Quicker edits before primitives, revolves, coils, sweeps, lofts and imports**: changing an earlier part no longer rebuilds a box, cylinder, sphere, torus, revolve, coil, sweep or loft made after it as a new body from sketches or planes, and no longer reads an imported STEP, mesh or OpenSCAD file again.

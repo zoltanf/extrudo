@@ -75,10 +75,31 @@ const WORDS: OperationWords = { noun: 'revolve', check: 'Check its axis and angl
  */
 export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
   ...revolveFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => (revolveAddsOnly(inputs) ? 'add' : 'write'),
   evaluate: evaluateRevolve,
   csg: revolveCsg,
 };
+
+/**
+ * Whether a revolve only adds bodies and reads none before it (`add`, ADR-0024's amendment on
+ * `add` access): a new body (a join, cut or intersect finds or takes the bodies it meets), no
+ * picked bodies (`explicitBodies` looks them up, for a new body too), turned by angles (a revolve
+ * to an object sizes its target from every body, `sweepToObject`, and resolves the object among
+ * them), about an origin or construction axis or a sketch line (an edge is resolved among the
+ * bodies), and every profile a sketch's profile or text (a face profile is resolved among them).
+ * A construction axis or a sketch on a face keys the bodies itself and reaches the revolve as its
+ * upstream key.
+ */
+export function revolveAddsOnly(inputs: RevolveInputs): boolean {
+  const settings = revolveSettings(inputs);
+  return (
+    settings.operation === 'new-body' &&
+    settings.bodies.length === 0 &&
+    settings.extent === 'angle' &&
+    (settings.axis?.kind === 'axis' || settings.axis?.kind === 'sketchEntity') &&
+    settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity')
+  );
+}
 
 /**
  * A revolve in OpenSCAD (ADR-0088 §7): the picked profiles as 2D nodes in

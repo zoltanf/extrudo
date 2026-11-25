@@ -34,9 +34,28 @@ type Section = (SweepSource & { plane: Plane }) | { point: Vec3 };
  */
 export const kernelLoft: KernelFeatureDefinition<LoftInputs> = {
   ...loftFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => (loftAddsOnly(inputs) ? 'add' : 'write'),
   evaluate: evaluateLoft,
 };
+
+/**
+ * Whether a loft only adds bodies and reads none before it (`add`, ADR-0024's amendment on `add`
+ * access): a new body (a join, cut or intersect finds or takes the bodies it meets), no picked
+ * bodies (`explicitBodies` looks them up, for a new body too), and every section a sketch's
+ * profile, a sketch point, or the origin or a construction point (a face or a vertex is resolved
+ * among the bodies). A sketch on a face, or a construction point on a body, keys the bodies
+ * itself and reaches the loft as its upstream key.
+ */
+export function loftAddsOnly(inputs: LoftInputs): boolean {
+  const settings = loftSettings(inputs);
+  return (
+    settings.operation === 'new-body' &&
+    settings.bodies.length === 0 &&
+    settings.sections.every(
+      (ref) => ref.kind === 'profile' || ref.kind === 'point' || ref.kind === 'sketchEntity',
+    )
+  );
+}
 
 function evaluateLoft(ctx: EvalContext<LoftInputs>): FeatureOutput {
   const settings = loftSettings(ctx.inputs);

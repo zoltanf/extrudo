@@ -36,6 +36,9 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names' | '
   const { kernel } = ctx;
   if (!output.bodies || !output.names) return output;
   const before = new Set(ctx.bodies.values());
+  // The IDs before it, by iterating: a feature that only adds bodies (`add`, ADR-0024's amendment)
+  // is given none, and a look-up (`has`) in that empty map would count as reading a body.
+  const earlier = new Set(ctx.bodies.keys());
   const pieces = new Map<BodyId, { id: BodyId; shape: ShapeHandle; names: TopoNames }[]>();
   // Where a piece came from (P6-05, ADR-0081 §2): only a fresh piece of a body
   // that existed before this feature gets an origin; a copy or a new body does
@@ -82,7 +85,7 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names' | '
         // A piece of a body that existed before this feature keeps its source
         // (P6-05, ADR-0081 §2); the largest keeps the body's own ID, so only
         // the fresh pieces are recorded.
-        if (i > 0 && ctx.bodies.has(id)) origins.set(pieceId, id);
+        if (i > 0 && earlier.has(id)) origins.set(pieceId, id);
         return {
           id: pieceId,
           shape: scope.keep(solid),

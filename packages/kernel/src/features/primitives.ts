@@ -107,7 +107,7 @@ function primitive<I extends PrimitiveInputs>(
   };
   return {
     ...feature,
-    bodyAccess: () => 'write',
+    bodyAccess: (inputs) => (primitiveAddsOnly(inputs) ? 'add' : 'write'),
     evaluate(ctx): FeatureOutput {
       const settings = primitiveSettings(ctx.inputs);
       const numbers = numbersOf(ctx, type, settings);
@@ -126,6 +126,33 @@ function primitive<I extends PrimitiveInputs>(
     },
     csg: (ctx) => primitiveCsg(ctx, solid),
   };
+}
+
+/**
+ * Whether a primitive only adds bodies and reads none before it (`add`, ADR-0024's amendment on
+ * `add` access): `placedAddsOnly` of its settings.
+ */
+export function primitiveAddsOnly(inputs: PrimitiveInputs): boolean {
+  return placedAddsOnly(primitiveSettings(inputs));
+}
+
+/**
+ * Whether a feature placed like a primitive (a primitive, a coil) only adds bodies and reads none
+ * before it: a new body (a join, cut or intersect finds or takes the bodies it meets), no picked
+ * bodies (`explicitBodies` looks them up, for a new body too), and placed on a plane (an origin
+ * plane, or a construction plane, whose key is upstream); on a face, `planeFrame` resolves the
+ * face among the bodies.
+ */
+export function placedAddsOnly(settings: {
+  plane: GeomRef;
+  operation: string;
+  bodies: readonly string[];
+}): boolean {
+  return (
+    settings.operation === 'new-body' &&
+    settings.bodies.length === 0 &&
+    settings.plane.kind === 'plane'
+  );
 }
 
 /**

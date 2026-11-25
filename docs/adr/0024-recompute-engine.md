@@ -453,3 +453,107 @@ checks each term's access after its edit). Control (3) without its fault (the ri
 that predicate) differs at step 0 already, as (2) does: T sees no bodies.
 `recomputer-keep.test.ts`'s six-mesh case now edits grooved plates (a cut reads every plate), and
 a new case shows one mesh for separate plates.
+
+**More features answer `add` (2026-11-25).** The primitives, the revolve, the coil, the sweep, the
+loft and the import answer `add` too, each for the inputs its predicate allows; everything else is
+`write` as before. The predicates use the parsed inputs' settings (`primitiveSettings`,
+`revolveSettings`, …), as `addsOnly` does.
+
+- **Box, cylinder, sphere, torus** (`primitiveAddsOnly`, `features/primitives.ts`; there is no
+  other primitive type, `KERNEL_PRIMITIVES`) and **the coil** (`coilAddsOnly`, `features/coil.ts`),
+  both through `placedAddsOnly`: New Body, no picked bodies, placed on a plane (the default XY, an
+  origin plane or a construction plane). `write` for a face placement, join, cut and intersect,
+  and picked bodies.
+- **The revolve** (`revolveAddsOnly`, `features/revolve.ts`): New Body, no picked bodies, extent
+  `angle`, the axis an origin or construction axis or a sketch line (`axis` or `sketchEntity`),
+  every profile a sketch's profile or text. `write` for a face profile, an edge axis, no axis,
+  "to object" whatever the object (a plane too: see below), join, cut, intersect, picked bodies.
+- **The sweep** (`sweepAddsOnly`, `features/sweep.ts`): New Body, no picked bodies, every profile
+  a sketch's profile, every piece of the path a sketch curve. `write` for a face profile, an edge
+  in the path, join, cut, intersect, picked bodies.
+- **The loft** (`loftAddsOnly`, `features/loft.ts`): New Body, no picked bodies, every section a
+  sketch's profile, a sketch point, or the origin or a construction point (`profile`, `sketchEntity`,
+  `point`). `write` for a face or a vertex section, join, cut, intersect, picked bodies.
+- **The import** (`features/import.ts`): `add` for every input. It has no reference input, so no
+  picked body, no operation and no upstream feature. It reads the bodies before it only by
+  iterating, to skip IDs under its own prefix, which the own-prefix check leaves none of.
+  `splitSolids` (`features/bodies.ts`) used to look an ID up (`ctx.bodies.has`) for each fresh
+  piece of a body with two or more solids, which every STEP file of several solids reaches (a
+  FreeCAD or f3d design's stored shapes are plain STEP or STL imports, with no feature type of
+  their own): it now collects the IDs before it by iterating (`earlier`), the same set under
+  `write`. Without that change the import stays right but falls back on every such file, parsing
+  it twice.
+
+**What they read under those predicates** (audited on this branch; file:line; `features/` unless
+said; the shared helpers as listed for the extrude: `explicitBodies` `operation.ts:91` returns at
+once for no picked bodies, `operate` → `newBodies` `operation.ts:333` iterates the empty map and
+names bodies with `ctx.bodyId` (:341, :356), `splitSolids` `bodies.ts:38`/:41 iterates, and its
+look-up `earlier.has` (:88) is the local set):
+
+- Primitives (`primitives.ts`, one evaluator `primitive()` for all four): `primitiveSettings`
+  (:112) and `numbersOf` (:113: `ctx.value` or the core's constant); `placement` (:114) →
+  `planeFrame` (:273): `ref.kind === 'face'` resolves among the bodies (:275, not reached),
+  `originPlane` (:287, a constant table) or `planeOf` → `constructionOf` → `ctx.output` of the
+  construction plane (`references.ts:55`: an upstream key; a construction plane on a body face is
+  `read`, `construction.ts:85`); `build` (:116): `planarFace` (:301, own curves), `namedPrism`
+  (:447) or `namedRevolve` (:463), which take the kernel only; `explicitBodies` (:117, reached for
+  New Body too: picked bodies left from a join are looked up and fail if gone); `operate` (:122);
+  `splitSolids` (:119). Body IDs `<feature>:0`.
+- Coil (`coil.ts`): `coilSettings` (:113), `numbersOf` (:114), `placement` (:148 → `planeFrame`
+  :201, as above), `helixSweep` (:151 → :81 `planarFace`, :83 `kernel.helix`, :94 `sweepTool`):
+  own geometry; `explicitBodies` (:161), `operate` (:166), `splitSolids` (:163). IDs
+  `<feature>:<n>`.
+- Revolve (`revolve.ts`): `revolveSettings` (:220); `partsOf` (:226 → `sources.ts`
+  `profilePart` :86 / `textParts` :113, sketch outputs; `facePart` :152 not reached);
+  `uniteParts` (:227, own faces); `axisOf` (:228 → :263): `originAxis` (:266, constant),
+  `lineOf` → `constructionOf` (:269, upstream), `sketchLineAxis` (:273 → :299 `ctx.output`,
+  upstream), the edge branch (:275 `ctx.resolve`) not reached; `oneSide` (:234 → :331, :363):
+  the parts' own faces and a half plane; `anglesOf` (:239 → :406, `ctx.value`); `sweep` (:241,
+  `namedRevolve` :478); `centroidOf` (:244, own face); `explicitBodies` (:250), `operate` (:255),
+  `splitSolids` (:252). `sweepToObject` (:242) is not reached: it **iterates and measures every
+  body** (`for (const body of ctx.bodies.values())`, :522) to size its target, for every kind of
+  object, before `trimTarget` (`to-object.ts:49`, `ctx.bodies.get` :60, `ctx.resolve` :71) looks
+  at it; that iteration isn't noticed, so the extent term is `extent === 'angle'`, not "the object
+  is a plane". IDs `<feature>:0…n-1` (several separate profiles make several bodies).
+- Sweep (`sweep.ts`): `sweepSettings` (:76), `ctx.value` of twist and scale (:83, :84); `baseOf`
+  (:92 → `partsOf`: `profilePart`; `facePart` not reached; the schema allows no text in a sweep);
+  `pathOf` (:93 → `pieceOf`: the edge branch :220 not reached, a sketch curve's exact geometry and
+  frame from `ctx.output` :230, upstream; `kernel.path` :207 of those pieces); `sweepTool` (:94 →
+  `namedSweep` :267, kernel only); `explicitBodies` (:99); `placementReport` (:101 → `kernel.properties`
+  :132, :181 of the profile face and the own path); `operate` (:105), `splitSolids` (:102). IDs
+  `<feature>:<n>`.
+- Loft (`loft.ts`): `loftSettings` (:61); `sectionOf` (:71): a profile → `partsOf` (:107,
+  `profilePart`; a face → `facePart`, not reached), a point → `pointOf` (:119 →
+  `references.ts:162`: the origin point or `constructionOf`, upstream; a vertex → `ctx.resolve`
+  `references.ts:157`, not reached), a sketch point → `sketchPoint` (:120 → :129 `ctx.output`,
+  upstream); the coplanarity check (:80, own planes); `loftTool` (:87 → `namedLoft` :156);
+  `explicitBodies` (:88), `operate` (:93), `splitSolids` (:90). IDs `<feature>:<n>`.
+- Import (`import.ts`): `ctx.fileType` (:142) picks the branch. STEP: `ctx.file` (:155),
+  `readStep` (:157) and the XDE reads of colours, names and hidden solids, all of the file;
+  `new Map(ctx.bodies)` (:195, iterates), `ctx.bodyId(0)` (:194), `importNames` (:198, own shape),
+  `splitSolids` (:200; fresh IDs from `ctx.bodyId`), `importReport` (:338, the output's own naming
+  tables). Mesh files and OpenSCAD: `readMeshFile` (:512) or the 3MF `prepare` compiled
+  (`ctx.prepared` :684), `meshBodies` (:400, :688): `new Set(ctx.bodies.keys())` (:484) and
+  `new Map(ctx.bodies)` (:485) iterate, `used.has` (:490) is the local set. `prepareImport`
+  (:580) has no bodies at all (`PrepareContext`). No `names`, `resolve` or measure of an earlier
+  body. Body IDs `<feature>:<n>`; `import:<feature>:face:<n>` and `mesh:<feature>` are face names.
+- The engine around them: as for the extrude. `#checkSound` with `keepsBrokenBodies` (the import)
+  only warns; `#checkNames` iterates the bodies before it only when a table doesn't match.
+- No global state but the core's constant tables (origin planes and axes, the primitives' and
+  coil's default numbers) and the OpenSCAD compiles a compiler keeps (`compiles`, :642, keyed by
+  file name, source digest and definitions). File bytes come through `options.files` and are not
+  in the key (their bytes never change under their IDs); the attachment ID is.
+
+**What changes for an import.** Its key no longer holds the bodies before it, so an edit before
+it is a cache hit: `prepare` and `evaluate` don't run, the file isn't read, parsed or compiled
+again, and its bodies keep their versions (no mesh is sent). The cache entry is still dropped as
+any other: inside an inserted design, after a body with its own ID prefix, and when evicted.
+
+**Left `write`**, New Body features looked at (file:line, the read that keeps each there):
+thread (`thread.ts:180` resolves the face to thread, :214 copies every body for its cut, :220 the
+cut), emboss (`emboss.ts:151` and :269 resolve the face, :153 and :276 `ctx.bodies.get`), rib
+(`rib.ts:113` `ctx.bodies.size`, :118, :228, :241 iterate the bodies, :146 a join), hole
+(`hole.ts:121` and :277 iterate the bodies, :141 a cut), mesh to solid (`mesh-to-solid.ts:56`
+`ctx.bodies.get` of the body it converts). Script, plugin and insert-design are expansions;
+combine, the moves and mirrors, patterns, place on bed, remove, fillet, chamfer, shell, draft,
+offset and remove faces, split body, scale and simplify for print change bodies.

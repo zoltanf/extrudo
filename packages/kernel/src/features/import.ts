@@ -112,7 +112,11 @@ const THREE_MF_UNITS: Readonly<Record<string, number>> = {
 
 export const kernelImport: KernelFeatureDefinition<ImportInputs> = {
   ...importFeature,
-  bodyAccess: () => 'write',
+  // Only adds bodies (ADR-0024's amendment on `add` access): it has no reference input, and reads
+  // the bodies before it only by iterating (`new Map(ctx.bodies)`, `ctx.bodies.keys()`, the IDs
+  // `splitSolids` collects), to skip IDs under its own `<feature>:` prefix; the engine treats it
+  // as `write` when an earlier body has that prefix.
+  bodyAccess: () => 'add',
   // A file's body is kept as it is, sound or not (ADR-0051, 2026-10-29).
   keepsBrokenBodies: true,
   prepare: prepareImport,
@@ -628,10 +632,12 @@ function assigns(source: string, variable: string): boolean {
 }
 
 /**
- * The compiles a compiler has done lately, by file and definitions, so that
- * moving an import in the timeline, or a preview and a recompute of the same
- * values, compile once (the engine's cache key also has the bodies before the
- * feature in it). A few, since a result is a small 3MF.
+ * The compiles a compiler has done lately, by file and definitions, so that a
+ * preview and a recompute of the same values compile once, and so does an
+ * import whose cache entry the engine can't use: inside an inserted design, or
+ * after a body with its own ID prefix (there its key has the bodies before it
+ * in it, ADR-0024's amendment on `add` access), or once the entry was evicted.
+ * A few, since a result is a small 3MF.
  */
 const compiles = new WeakMap<ScadCompiler, Map<string, Promise<ScadResult>>>();
 const COMPILES_KEPT = 16;

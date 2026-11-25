@@ -21,11 +21,9 @@ import {
   extrudeInputs,
   type Feature,
   type FeatureId,
-  FeatureRegistry,
   type GeomRef,
   insertDesign,
   insertDesignPayload,
-  loadDocument,
   loftInputs,
   originPlaneRef,
   primitiveInputs,
@@ -36,7 +34,6 @@ import { BUNDLED_FONTS, DEFAULT_FONT } from '@extrudo/fonts';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { loadFont } from '@extrudo/sketch/text';
-import { strFromU8, unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import b2 from '../../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
@@ -46,13 +43,31 @@ import interRegular from '../../../fonts/fonts/inter-regular.ttf?url&inline';
 import { addsOnly } from '../features/extrude';
 import { kernelFeatures } from '../features/index';
 import { Kernel } from '../kernel';
-import { type BodyMesh, sameMesh } from '../mesh';
 import { loadOcct } from '../occt/load';
+import {
+  bytesOf,
+  choice,
+  client,
+  type Done,
+  differences,
+  differential as differentialOf,
+  type Edited,
+  extrudeFeature,
+  fixture,
+  type GenericKind,
+  genericEdit,
+  length,
+  type PairOptions,
+  pair as pairOf,
+  plateFeatures,
+  plates,
+  refs,
+  sequence as sequenceOf,
+  setInputs,
+  sketchFeature,
+  withAccess,
+} from './add-access-support';
 import { RecomputeEngine } from './engine';
-import type { KernelFeatureDefinition, RecomputeRequest, RecomputeResult } from './types';
-
-type Done = Extract<RecomputeResult, { status: 'done' }>;
-type Engine = Pick<RecomputeEngine, 'recompute' | 'clear'>;
 
 let kernel: Kernel;
 beforeAll(async () => {
@@ -65,75 +80,6 @@ afterAll(() => {
 });
 
 // ------------------------------------------------------------------------------- designs
-
-function bytesOf(dataUrl: string): Uint8Array {
-  const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
-}
-
-function fixture(dataUrl: string): ExtrudoDocument {
-  const files = unzipSync(bytesOf(dataUrl));
-  const json = files['document.json'];
-  if (!json) throw new Error('no document.json');
-  return loadDocument(JSON.parse(strFromU8(json))).doc;
-}
-
-/** A 60 × 40 mm plate at `x`, with two holes (curved walls) or none. */
-function plateSketch(x: number, holes = true) {
-  const y = 0;
-  const b = new SketchBuilder();
-  b.line(x, y, x + 60, y);
-  b.line(x + 60, y, x + 60, y + 40);
-  b.line(x + 60, y + 40, x, y + 40);
-  b.line(x, y + 40, x, y);
-  if (holes) {
-    b.circle(x + 15, y + 20, 5);
-    b.circle(x + 45, y + 20, 5);
-  }
-  return b.sketch;
-}
-
-function sketchFeature(id: string, data: ReturnType<typeof plateSketch>): Feature {
-  return {
-    id: id as FeatureId,
-    type: 'sketch',
-    name: `Sketch ${id}`,
-    suppressed: false,
-    inputs: sketchInputs(originPlaneRef('origin:xy'), data),
-  };
-}
-
-function extrudeFeature(id: string, inputs: ExtrudeInputs): Feature {
-  return { id: id as FeatureId, type: 'extrude', name: `Extrude ${id}`, suppressed: false, inputs };
-}
-
-/** A plate's sketch `sk<i>` and its New Body extrude `ex<i>` (the plate's region, with its holes). */
-function plateFeatures(i: number | string, x: number, distance: string, holes = true): Feature[] {
-  const data = plateSketch(x, holes);
-  const regions = detectProfiles(data);
-  const outer = regions.reduce((a, r) => ((r.holes?.length ?? 0) > (a.holes?.length ?? 0) ? r : a));
-  const sketch = `sk${i}` as FeatureId;
-  return [
-    sketchFeature(sketch, data),
-    extrudeFeature(
-      `ex${i}`,
-      extrudeInputs([{ kind: 'profile', id: profileRefId(sketch, outer.id) }], { distance }),
-    ),
-  ];
-}
-
-/** `n` plates side by side (`gap` apart; under 60 they overlap), some lengths from a parameter. */
-function plates(n: number, gap = 80, holes = true): ExtrudoDocument {
-  const features = Array.from({ length: n }, (_, i) =>
-    plateFeatures(i, i * gap, i % 2 ? 't' : `${3 + i} mm`, holes),
-  ).flat();
-  return {
-    ...createDocument({ name: `plates ${n}` }),
-    parameters: [{ id: 'p-t', name: 't', expression: '4 mm', unit: 'length' }],
-    features,
-    timelineMarker: features.length,
-  } as ExtrudoDocument;
-}
 
 /** A disc's sketch and a New Body extrude of it, "through all" by default (a `write`). */
 function discFeatures(id: string, x: number, options: Parameters<typeof extrudeInputs>[1] = {}) {
@@ -386,119 +332,11 @@ const capOf = (id: string): GeomRef => ({ kind: 'face', id: `extrude:${id}:cap:e
 
 // ------------------------------------------------------------------------------- comparison
 
-/** An engine with the meshes it was sent, held by version like the Recomputer holds them. */
-function client(engine: Engine, stopped: readonly FeatureId[] = []) {
-  let held = new Map<string, { version: string; mesh: BodyMesh }>();
-  return {
-    async run(doc: ExtrudoDocument) {
-      const have = Object.fromEntries([...held].map(([id, h]) => [id, h.version]));
-      const request: RecomputeRequest = { doc, have, ...(stopped.length > 0 && { stopped }) };
-      const result = await engine.recompute(request);
-      if (result.status !== 'done') throw new Error(result.status);
-      const now = new Map<string, { version: string; mesh: BodyMesh }>();
-      for (const body of result.bodies) {
-        const kept = held.get(body.id);
-        const mesh = body.mesh ?? (kept?.version === body.version ? kept.mesh : undefined);
-        // The engine left out a mesh the caller doesn't hold: `have` and the versions disagree.
-        if (!mesh) throw new Error(`no mesh for ${body.id}`);
-        now.set(body.id, { version: body.version, mesh });
-      }
-      held = now;
-      return { result, held: now, sent: result.bodies.filter((b) => b.mesh).length };
-    },
-  };
-}
-
-/** What differs between a result and the one from a cleared engine. */
-function differences(
-  a: { result: Done; held: Map<string, { mesh: BodyMesh }> },
-  b: { result: Done; held: Map<string, { mesh: BodyMesh }> },
-): string[] {
-  const out: string[] = [];
-  if (JSON.stringify(a.result.features) !== JSON.stringify(b.result.features)) out.push('statuses');
-  if (JSON.stringify(a.result.origins) !== JSON.stringify(b.result.origins)) out.push('origins');
-  if (JSON.stringify(a.result.reports) !== JSON.stringify(b.result.reports)) out.push('reports');
-  const ids = (r: Done) => r.bodies.map((x) => x.id).join(',');
-  if (ids(a.result) !== ids(b.result)) out.push(`bodies ${ids(a.result)} vs ${ids(b.result)}`);
-  for (const [id, { mesh }] of b.held) {
-    const mine = a.held.get(id)?.mesh;
-    if (mine && !sameMesh(mine, mesh)) out.push(`mesh ${id}`);
-  }
-  return out;
-}
-
-interface PairOptions {
-  registry?: () => FeatureRegistry<KernelFeatureDefinition>;
-  engine?: typeof RecomputeEngine;
-  stopped?: readonly FeatureId[];
-}
-
-/**
- * The engine under test, keeping its cache (with a fault for the negative controls), and the
- * reference: always the kernel's own engine and features, cleared before every step.
- */
-function pair(options: PairOptions = {}) {
-  const Make = options.engine ?? RecomputeEngine;
-  const cached = new Make(kernel, (options.registry ?? kernelFeatures)(), { strictLeaks: true });
-  const cleared = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
-  const a = client(cached, options.stopped);
-  return {
-    async step(doc: ExtrudoDocument) {
-      const mine = await a.run(doc);
-      cleared.clear();
-      const fresh = await client(cleared, options.stopped).run(doc);
-      return { mine, fresh, problems: differences(mine, fresh) };
-    },
-    close() {
-      cached.clear();
-      cleared.clear();
-    },
-    /** The engine under test, for a control that changes what its cache holds. */
-    cached: cached as RecomputeEngine,
-  };
-}
-
-/** Each document in turn through `pair`: the differences and the features evaluated per step. */
-async function sequence(docs: readonly ExtrudoDocument[], options: PairOptions = {}) {
-  const p = pair(options);
-  try {
-    const out: { problems: string[]; evaluated: string[]; result: Done }[] = [];
-    for (const doc of docs) {
-      const { mine, problems } = await p.step(doc);
-      out.push({ problems, evaluated: [...mine.result.stats.evaluated], result: mine.result });
-    }
-    return out;
-  } finally {
-    p.close();
-  }
-}
-
-/** `doc` with one feature's inputs changed. */
-function setInputs(doc: ExtrudoDocument, id: string, more: Feature['inputs']): ExtrudoDocument {
-  return {
-    ...doc,
-    features: doc.features.map((f) =>
-      f.id === id ? { ...f, inputs: { ...f.inputs, ...more } } : f,
-    ),
-  };
-}
-
-const length = (expr: string) => ({ kind: 'expr' as const, expr, unit: 'length' as const });
-const choice = <T extends string>(value: T) => ({ kind: 'enum' as const, value });
-const refs = (list: GeomRef[]) => ({ kind: 'ref' as const, refs: list });
+const pair = (options: PairOptions = {}) => pairOf(kernel, options);
+const sequence = (docs: readonly ExtrudoDocument[], options: PairOptions = {}) =>
+  sequenceOf(kernel, docs, options);
 
 // ------------------------------------------------------------------------------- edits
-
-/** A seeded generator (mulberry32). */
-function random(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // The first pass takes them in this order: `insert` first (b4 and the hinge get an extrude), then
 // one edit per term of the extrude's predicate, each on an extrude that answers `add`.
@@ -536,12 +374,6 @@ const TERMS: [Kind, 'add' | 'write'][] = [
   ['taper', 'add'],
   ['text', 'add'],
 ];
-
-interface Edited {
-  doc: ExtrudoDocument;
-  /** The extrude an edit of one of its inputs changed, for the access before and after. */
-  feature?: FeatureId;
-}
 
 /** One edit of `kind` to `doc`, or undefined when the design has nothing it applies to. */
 function edit(
@@ -658,81 +490,8 @@ function edit(
         profiles: refs([{ kind: 'profile', id: profileRefId(sketchId, next.id) }]),
       }));
     }
-    case 'length': {
-      const f = pick(
-        doc.features.filter((x) =>
-          Object.values(x.inputs).some((v) => v?.kind === 'expr' && v.unit === 'length'),
-        ),
-      );
-      if (!f) return undefined;
-      const [name, input] = Object.entries(f.inputs).find(
-        ([, v]) => v?.kind === 'expr' && v.unit === 'length',
-      ) as [string, { kind: 'expr'; expr: string; unit: 'length' }];
-      const factor = pick([0.8, 1.1, 1.25, 0.95]);
-      return {
-        doc: setInputs(doc, f.id, { [name]: { ...input, expr: `(${input.expr}) * ${factor}` } }),
-      };
-    }
-    case 'suppress': {
-      const f = pick(doc.features);
-      return (
-        f && {
-          doc: {
-            ...doc,
-            features: doc.features.map((x) => (x === f ? { ...x, suppressed: !x.suppressed } : x)),
-          },
-        }
-      );
-    }
-    case 'marker':
-      return { doc: { ...doc, timelineMarker: 1 + Math.floor(rand() * doc.features.length) } };
-    case 'reorder': {
-      const at = Math.floor(rand() * doc.features.length);
-      const to = Math.floor(rand() * doc.features.length);
-      const features = doc.features.filter((_, i) => i !== at);
-      features.splice(to, 0, doc.features[at] as Feature);
-      return { doc: { ...doc, features } };
-    }
-    case 'delete': {
-      const at = Math.floor(rand() * doc.features.length);
-      const gone = doc.features[at];
-      if (!gone || doc.features.length < 3) return undefined;
-      deleted.push(gone);
-      const features = doc.features.filter((_, i) => i !== at);
-      return {
-        doc: { ...doc, features, timelineMarker: Math.min(doc.timelineMarker, features.length) },
-      };
-    }
-    case 'insert': {
-      const back = deleted.pop();
-      const features = [...doc.features];
-      const at = Math.floor(rand() * (features.length + 1));
-      if (back) features.splice(at, 0, back);
-      else features.push(...plateFeatures(50 + history.length, 600 + 70 * history.length, '5 mm'));
-      return { doc: { ...doc, features, timelineMarker: features.length } };
-    }
-    case 'undo': {
-      const back = history.length > 1 ? pick(history.slice(0, -1)) : undefined;
-      return back && { doc: back };
-    }
-    case 'parameter': {
-      if (!doc.parameters?.length) {
-        return {
-          doc: {
-            ...doc,
-            parameters: [{ id: 'p-t', name: 't', expression: '4 mm', unit: 'length' }],
-          } as ExtrudoDocument,
-        };
-      }
-      return {
-        doc: {
-          ...doc,
-          parameters: doc.parameters.map((p, i) =>
-            i === 0 ? { ...p, expression: `(${p.expression}) * ${pick([0.9, 1.2])}` } : p,
-          ),
-        },
-      };
-    }
+    default:
+      return genericEdit(kind as GenericKind, doc, rand, history, deleted);
   }
 }
 
@@ -740,87 +499,19 @@ function hasFaceProfile(f: Feature): boolean {
   return (f.inputs as ExtrudeInputs).profiles?.refs.some((r) => r.kind === 'face') ?? false;
 }
 
-interface Run {
-  steps: number;
-  compared: number;
-  problems: string[];
-  /** Feature evaluations of the cached engine, and of the cleared one. */
-  evaluated: [number, number];
-  /** The features in error before any edit (a design meant to compute has none). */
-  initialErrors: string[];
-  kinds: Set<Kind>;
-  /** `<kind>: <access before>→<access after>` of the extrude each input edit changed. */
-  flips: Set<string>;
-  /** The kinds whose edited extrude then computed (status `ok`) at least once. */
-  computed: Set<Kind>;
-}
-
 /** `steps` edits of `doc` (each kind at least once), each checked against a cleared engine. */
-async function differential(
+function differential(
   doc: ExtrudoDocument,
   steps: number,
   seed: number,
   options: PairOptions = {},
-): Promise<Run> {
-  const p = pair(options);
-  const run: Run = {
-    steps: 0,
-    compared: 0,
-    problems: [],
-    evaluated: [0, 0],
-    kinds: new Set(),
-    initialErrors: [],
-    flips: new Set(),
-    computed: new Set(),
-  };
-  const rand = random(seed);
-  const history: ExtrudoDocument[] = [doc];
-  const deleted: Feature[] = [];
-  try {
-    let current = doc;
-    let edited: [Kind, FeatureId] | undefined;
-    for (let step = 0; step <= steps; step++) {
-      if (step > 0) {
-        let kind = (KINDS[step - 1] ?? KINDS[Math.floor(rand() * KINDS.length)]) as Kind;
-        let next = edit(kind, current, rand, history, deleted);
-        // The first pass gives each kind a few tries (a random pick may find nothing to edit);
-        // after that, or when the design has nothing for it, another kind: every step edits.
-        for (let tries = 0; !next && step <= KINDS.length && tries < 5; tries++) {
-          next = edit(kind, current, rand, history, deleted);
-        }
-        for (let tries = 0; !next && tries < 20; tries++) {
-          kind = KINDS[Math.floor(rand() * KINDS.length)] as Kind;
-          next = edit(kind, current, rand, history, deleted);
-        }
-        if (!next) throw new Error(`step ${step}: no edit applies`);
-        edited = next.feature === undefined ? undefined : [kind, next.feature];
-        if (next.feature !== undefined) {
-          const id = next.feature;
-          const before = accessOf(current.features.find((f) => f.id === id));
-          const after = accessOf(next.doc.features.find((f) => f.id === id));
-          run.flips.add(`${kind}: ${before}→${after}`);
-        }
-        current = next.doc;
-        history.push(current);
-        run.kinds.add(kind);
-      }
-      const { mine, fresh, problems } = await p.step(current);
-      if (edited && mine.result.features[edited[1]]?.status === 'ok') run.computed.add(edited[0]);
-      if (step === 0) {
-        run.initialErrors = Object.entries(mine.result.features)
-          .filter(([, status]) => status.status === 'error')
-          .map(([id]) => id);
-      }
-      run.evaluated[0] += mine.result.stats.evaluated.length;
-      run.evaluated[1] += fresh.result.stats.evaluated.length;
-      for (const d of problems) run.problems.push(`step ${step}: ${d}`);
-      run.compared++;
-      run.steps = step;
-    }
-  } finally {
-    p.close();
-  }
-  return run;
+) {
+  return differentialOf(kernel, doc, steps, seed, {
+    ...options,
+    kinds: KINDS,
+    edit,
+    access: accessOf,
+  });
 }
 
 // ------------------------------------------------------------------------------- the proof
@@ -857,6 +548,8 @@ describe('add access: the cached engine gives what a cleared one gives (ADR-0024
       const run = await differential(make(), 40, 2511, { stopped });
       expect(run.initialErrors.sort()).toEqual(errors);
       expect(run.problems).toEqual([]);
+      // No `add` evaluation read a body (none ran again as `write`).
+      expect(run.fallbacks).toEqual([]);
       // Every kind of edit happened, and each term of the predicate did what it must to an
       // extrude that answered `add`; an extrude came back to `add`; the cache saved work.
       for (const kind of KINDS) expect(run.kinds).toContain(kind);
@@ -977,19 +670,8 @@ describe("the extrude's predicate, term by term", () => {
 // ------------------------------------------------------------------------------- negative controls
 
 /** The kernel's features, with the extrude's `bodyAccess` replaced. */
-function withExtrudeAccess(access: (inputs: ExtrudeInputs) => 'add' | 'write') {
-  return () => {
-    const registry = new FeatureRegistry<KernelFeatureDefinition>();
-    for (const definition of kernelFeatures().list()) {
-      registry.register(
-        definition.type === 'extrude'
-          ? ({ ...definition, bodyAccess: access } as unknown as KernelFeatureDefinition)
-          : definition,
-      );
-    }
-    return registry;
-  };
-}
+const withExtrudeAccess = (access: (inputs: ExtrudeInputs) => 'add' | 'write') =>
+  withAccess('extrude', access as (inputs: never) => 'add' | 'write');
 
 /**
  * The engine with one deliberate fault: `fault` (a line of `engine.ts`) replaced by `by`. Made from
