@@ -20,6 +20,7 @@ import {
   importInputs,
   loftInputs,
   originPlaneRef,
+  type PrimitiveInputs,
   type PrimitiveType,
   primitiveInputs,
   profileRefId,
@@ -62,6 +63,7 @@ import {
   sequence,
   setInputs,
   sketchFeature,
+  withAccess,
 } from './add-access-support';
 import { RecomputeEngine } from './engine';
 import type { ImportedFile, KernelFeatureDefinition } from './types';
@@ -386,6 +388,9 @@ function profileOf(sketch: Feature): GeomRef {
   return { kind: 'profile', id: profileRefId(sketch.id, region?.id ?? '') };
 }
 
+/** The lofts of `loftDesign`, in the order of their tips (sketch points `tips/p0`…`p4`). */
+const TIPS = ['lo1', 'lo2', 'lo3', 'lo4', 'lo5'];
+
 /** A loft `<id>` at x: a 20 mm square on XY, a circle on `lp1` (10 mm up), a square on `lp2`. */
 function loftFeatures(id: string, x: number, options: Parameters<typeof loftInputs>[1] = {}) {
   const bottom = new SketchBuilder();
@@ -410,6 +415,7 @@ function loftFeatures(id: string, x: number, options: Parameters<typeof loftInpu
 function loftDesign(): ExtrudoDocument {
   const tips = new SketchBuilder();
   for (const x of [0, 30, 60, 90, 130]) tips.point(x, 10);
+  if (TIPS.length !== 5) throw new Error('a tip for each loft');
   return doc('lofts', [
     ...base(),
     offsetPlane('lp1', '10 mm'),
@@ -417,7 +423,7 @@ function loftDesign(): ExtrudoDocument {
     offsetPlane('lp3', '30 mm'),
     { ...sketchFeature('tips', tips.sketch), inputs: sketchInputs(planeRef('lp3'), tips.sketch) },
     feature('cp', 'constructionPoint', {
-      x: length('45 mm'),
+      x: length('0 mm'),
       y: length('10 mm'),
       z: length('35 mm'),
     }),
@@ -786,14 +792,14 @@ const LOFTS: Family = {
       },
     },
     {
-      // A tip: the construction point, or a sketch point 30 mm up.
+      // A tip over the loft: the construction point for lo1, a sketch point 30 mm up for the others.
       kind: 'point',
       access: 'add',
-      change: (f, _o, pick) => {
-        const tip = pick<GeomRef>([
-          { kind: 'point', id: 'cp' },
-          { kind: 'sketchEntity', id: `tips/p${pick([0, 1, 2, 3, 4])}` },
-        ]) as GeomRef;
+      change: (f) => {
+        const tip: GeomRef =
+          f.id === 'lo1'
+            ? { kind: 'point', id: 'cp' }
+            : { kind: 'sketchEntity', id: `tips/p${TIPS.indexOf(f.id)}` };
         return { sections: refs([...(f.inputs.sections as { refs: GeomRef[] }).refs, tip]) };
       },
     },
@@ -914,10 +920,15 @@ const DESIGNS: [string, () => ExtrudoDocument, Family, string[]][] = [
     PRIMITIVES,
     ['bodies', 'face', 'plane', 'offset', 'shape', 'adds'],
   ],
-  ['revolves', revolveDesign, REVOLVES, ['bodies', 'axis', 'text', 'angles', 'adds']],
+  [
+    'revolves',
+    revolveDesign,
+    REVOLVES,
+    ['bodies', 'face', 'edge', 'axis', 'text', 'angles', 'adds'],
+  ],
   ['coils', coilDesign, COILS, ['bodies', 'face', 'plane', 'offset', 'shape', 'adds']],
   ['sweeps', sweepDesign, SWEEPS, ['bodies', 'path', 'twist', 'adds']],
-  ['lofts', loftDesign, LOFTS, ['bodies', 'point', 'ruled', 'adds']],
+  ['lofts', loftDesign, LOFTS, ['bodies', 'face', 'point', 'adds']],
   ['imports (STEP, STL, 3MF, OpenSCAD)', importDesign, IMPORTS, ['up', 'position', 'units']],
 ];
 
@@ -1313,5 +1324,30 @@ describe('add access beyond the extrude: what an edit costs', () => {
     } finally {
       engine.clear();
     }
+  });
+});
+
+// ------------------------------------------------------------------------------- negative control
+
+describe('the comparison catches a wrong `add` here too (negative control)', () => {
+  it('a box joined to the box it overlaps, said to be `add`, gives other bodies at once', {
+    timeout: 120_000,
+  }, async () => {
+    // A join finds the bodies it touches by going through them all, which the fall-back doesn't
+    // notice: under `add` it finds none and makes a new body. Only the cached engine has the fault.
+    const d = doc('join', [
+      primitive('box', 'a', {}),
+      feature('j', 'box', primitiveInputs('box', { numbers: { x: '10 mm' }, operation: 'join' })),
+    ]);
+    const [step] = await sequence(kernel, [d], {
+      registry: withAccess('box', (inputs: PrimitiveInputs) =>
+        (inputs.operation?.value ?? 'new-body') === 'join' || primitiveAddsOnly(inputs)
+          ? 'add'
+          : 'write',
+      ),
+    });
+    expect(step?.result.bodies.map((b) => b.id)).toEqual(['a:0', 'j:0']);
+    expect(step?.problems).toEqual(['statuses', 'reports', 'bodies a:0,j:0 vs a:0', 'mesh a:0']);
+    expect(fallbacks(step?.result as never)).toEqual([]);
   });
 });

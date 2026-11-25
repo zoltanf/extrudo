@@ -557,3 +557,65 @@ cut), emboss (`emboss.ts:151` and :269 resolve the face, :153 and :276 `ctx.bodi
 `ctx.bodies.get` of the body it converts). Script, plugin and insert-design are expansions;
 combine, the moves and mirrors, patterns, place on bed, remove, fillet, chamfer, shell, draft,
 offset and remove faces, split body, scale and simplify for print change bodies.
+
+**The proof for them** (`recompute/add-access-features.test.ts`; real OCCT, a real manifold
+module and OpenSCAD's WASM in Node, `strictLeaks`, no clock; the helpers both proofs share are in
+`recompute/add-access-support.ts`). Six designs, each with a box B0 and a plate before the
+feature's instances, a cut after them that splits several into pieces, and one instance after the
+cut: a box, cylinder, sphere and torus (one on a construction plane, one sized by a parameter);
+revolves about the X axis, a sketch line and a construction axis (one symmetric); coils on XY, a
+construction plane and XZ; sweeps along two sketch lines (one twisted, one scaled); lofts through
+profiles on construction planes (one ruled); imports of a STEP file of three solids (named, two
+coloured, one hidden), an STL, a 3MF of two parts and an OpenSCAD file of two blocks whose size
+follows a parameter. 40 seeded edits each: every term of the feature's predicate, made to an
+instance that answers `add`, which must leave it `write` (join, cut or intersect; a picked body; a
+face to sit on, or as a profile or section; an edge as axis or path; a vertex as a loft's tip;
+"to object" up to a plane or a body) or `add` (another plane or an offset; a box turned, a torus
+on its side; a coil's section or hand; another axis, text, angles and directions; a path's first
+curve, twist, scale, a fixed orientation; a point as a tip, ruled; an import's up axis, position
+and units); one that takes an instance back to `add` (its own inputs again); and the generic edits
+(an insert, a length scaled, suppress, the marker, a reorder, a delete, undo, a parameter). After
+every step the cached engine gives what a cleared engine gives, compared as for the extrude, and
+no recompute of either evaluates a feature twice (no fall-back). The edited instance computed at
+least once after: a picked body and the way back in every design but the imports, a face to sit
+on, a plane, an offset and the shape for the primitives and coils, an axis, text and angles for
+the revolves, and there a face profile and an edge axis too, the path and twist for the sweeps, a
+face section and a point for the lofts (the toggle to ruled didn't compute in this seed's runs; the
+design's own ruled loft does from the start), every edit for the imports.
+
+Counters: an edit of the first of four separate instances (each primitive type, revolves, coils,
+sweeps, lofts; an STL import before a 3MF, the STEP and the OpenSCAD import) evaluates that
+feature alone and sends one mesh; in each design, every term made to the first instance (an engine
+of its own per term) evaluates exactly that instance and the cut, also when the instance then
+fails (its body is gone, so the cut reads another body set); an import after a box `i0:a` (whose
+body `i0:a:0` has the import's prefix) runs as `write`, and an edit of the box evaluates both;
+an edit of a plate before four imports (the STEP file of three solids, the STL, the 3MF, the
+OpenSCAD file) evaluates the plate alone and sends one mesh, and the import's `prepare` and
+`evaluate` don't run, `options.files` isn't asked for a file and nothing is compiled (a wrapped
+registry and compiler count them). The predicates term by term (`primitiveAddsOnly` for each type,
+`coilAddsOnly`, `revolveAddsOnly`, `sweepAddsOnly`, `loftAddsOnly`, the import's answer).
+
+Each was checked to fail with its change taken out (the file changed, the filtered test run, the
+file restored): each feature's `bodyAccess` back to `() => 'write'` (the first-of-four counter of
+that feature: all four primitives, the coil, revolve, sweep and loft; for the import also the
+file-read counter and its predicate test); each predicate without one of its terms (operation,
+picked bodies, plane; the revolve's extent, axis and profile terms; the sweep's profile and path
+terms; the loft's section term: the predicate's own test); and `splitSolids` with `ctx.bodies.has`
+again (the file-read counter and the imports' first-of-four counter). With that look-up the
+STEP import's `add` evaluation also left two shapes behind: the look-up throws after the piece
+before it was kept (`scope.keep`), so the strict leak check failed the first recompute; without
+strict leaks the engine would warn of the leak and fall back. A predicate changed in the source changes the
+cleared engine too, so the differential sees such a fault through its other checks: without the
+primitives' picked-bodies term the fall-backs (36 in the primitives design: `explicitBodies`'
+look-up is noticed), without their operation term the flips (`operation: add→add`), without the
+revolve's extent term the fall-backs. A negative control in the same file keeps the fault in the
+engine under test only, as the extrude's control (2) does: a box joined to a box it overlaps,
+said to be `add`, finds no body to join (the iteration isn't noticed, no fall-back) and makes a
+new one, so the bodies, statuses, reports and a mesh differ at once.
+
+**Not covered:** the features inside an inserted design (an import in one included); a sketch's
+geometry, constraints and dimensions; a construction plane or axis made from a body's face or edge
+under one of these features (it answers `read` and reaches them as an upstream key, as a sketch on
+a face does for the extrude); an import whose attachment record changes its file name (no command
+I found renames an attachment); an OpenSCAD import with no compiler; joints, annotations, sheets
+and previews.
