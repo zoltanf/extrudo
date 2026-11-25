@@ -12,6 +12,7 @@ import {
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
+import tessellated from '../../../fixtures/imports/tessellated.step?url&inline';
 import { Kernel } from './kernel';
 import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
@@ -174,5 +175,79 @@ describe('a through-all extrude over bodies already drawn', () => {
     const scratch = await meshes(fresh, design(true));
     const expected = scratch.bodies.find((b) => b.id === 'exd:0')?.mesh as BodyMesh;
     expect(sameMesh(disc, expected)).toBe(true);
+  });
+});
+
+/**
+ * A B-rep (OCCT's text format) of one triangle face with a triangulation and no surface, as a
+ * file without its geometry gives it: (0, 0, 0), (10, 0, 0), (0, 10, 5), moved by `z` when given.
+ */
+function surfacelessFace(z?: number): string {
+  const located = z !== undefined;
+  return `DBRep_DrawableShape
+
+CASCADE Topology V1, (c) Matra-Datavision
+Locations ${located ? 1 : 0}
+${located ? `1\n1 0 0 0\n0 1 0 0\n0 0 1 ${z}\n` : ''}Curve2ds 0
+Curves 0
+Polygon3D 0
+PolygonOnTriangulations 0
+Surfaces 0
+Triangulations 1
+3 1 0 0
+0 0 0 10 0 0 0 10 5
+1 2 3
+
+TShapes 1
+Fa
+0  1e-07 0 0
+2  1
+0101000
+*
+
++1 ${located ? 1 : 0} `;
+}
+
+describe('`properties` of faces without a surface (ADR-0035, 2026-11-25)', () => {
+  const box = (shape: ReturnType<Kernel['box']>) => {
+    const { min, max } = kernel.properties(shape).bbox;
+    return [...min, ...max].map((v) => Math.round(v * 1e9) / 1e9 + 0);
+  };
+
+  it('bounds a face with only a triangulation by its points', () => {
+    const face = kernel.readBrep(surfacelessFace());
+    expect(box(face)).toEqual([0, 0, 0, 10, 10, 5]);
+    // Where the file puts it.
+    const moved = kernel.readBrep(surfacelessFace(100));
+    expect(box(moved)).toEqual([0, 0, 100, 10, 10, 105]);
+    kernel.release(face);
+    kernel.release(moved);
+  });
+
+  it('gives the union for a shape with faces of both kinds', () => {
+    const face = kernel.readBrep(surfacelessFace());
+    const cube = kernel.box([4, 4, 20]);
+    const both = kernel.compound([face, cube]);
+    expect(box(both)).toEqual([0, 0, 0, 10, 10, 20]);
+    for (const shape of [face, cube, both]) kernel.release(shape);
+  });
+
+  it("bounds the STEP reader's solid of triangles only (AP242 tessellated geometry)", () => {
+    // A tetrahedron 10 × 10 × 5: one solid of one face with a triangulation and no surface.
+    const text = atob(tessellated.slice(tessellated.indexOf(',') + 1));
+    const read = kernel.readStep(text);
+    const solids = kernel.solids(read);
+    expect([solids.length, kernel.count(read, 'face')]).toEqual([1, 1]);
+    expect(kernel.surfaceGeometry(read, 0).type).toBe('other');
+    expect(box(read)).toEqual([0, 0, 0, 10, 10, 5]);
+    kernel.release(...solids, read);
+  });
+
+  it('leaves a shape without faces as it was: a free circle edge', () => {
+    const cylinder = kernel.cylinder(5, 10, [0, 0, 0]);
+    const edge = kernel.subShape(cylinder, 'edge', 0);
+    expect(box(edge)).toEqual([-5, -5, 10, 5, 5, 10]);
+    kernel.release(edge);
+    kernel.release(cylinder);
   });
 });
