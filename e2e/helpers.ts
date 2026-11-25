@@ -428,3 +428,53 @@ export async function addUserParameter(
     dialog.getByRole('textbox', { name: `Expression of ${name}`, exact: true }),
   ).toHaveValue(expression);
 }
+
+/** Resolves when the page has idle time (nothing it was busy with is still pending), or after 1 s. */
+export const idle = (page: Page) =>
+  page.evaluate('new Promise((done) => requestIdleCallback(() => done(), { timeout: 1000 }))');
+
+/**
+ * A left-button drag on the model view from `from` to `to` (page px), for a box selection or the
+ * Slicer preset's orbit. The view takes a press held still for `LONG_PRESS_MS` (500 ms) as a long
+ * press ("Select other…") and drops the drag, and a busy page can keep Playwright's next move from
+ * it that long. So the first move leaves the click slop at once (a smaller one only asks for a
+ * hover pick: more work before the drag starts), and once the page is idle the drag must have
+ * started (`started`: by default the selection box is drawn); if it hasn't, the press is let go
+ * of, a "Select other" menu it opened is closed, and the drag is made again, three times at most.
+ * With `release: false` the button stays down for the caller's own checks.
+ */
+export async function dragOnView(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  options: { steps?: number; started?: () => Promise<boolean>; release?: boolean } = {},
+) {
+  const view = page.getByRole('region', { name: 'Viewport' });
+  const menu = page.getByRole('menu', { name: 'Select other' });
+  const started =
+    options.started ?? (async () => (await view.locator('[data-selection-box]').count()) > 0);
+  const steps = Math.max(2, options.steps ?? 4);
+  // The first move: a step of the way, at least 10 px (the slop is 5).
+  const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  const first = Math.min(length, Math.max(length / steps, 10));
+  const via = {
+    x: from.x + ((to.x - from.x) * first) / length,
+    y: from.y + ((to.y - from.y) * first) / length,
+  };
+  for (let attempt = 1; ; attempt++) {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(via.x, via.y);
+    await page.mouse.move(to.x, to.y, { steps: steps - 1 });
+    await idle(page);
+    if (attempt === 3 || (await started())) {
+      if (options.release !== false) await page.mouse.up();
+      return;
+    }
+    await page.mouse.up();
+    if ((await menu.count()) > 0) {
+      await page.keyboard.press('Escape');
+      await expect(menu).toHaveCount(0);
+    }
+  }
+}
