@@ -50,6 +50,14 @@ const plate = () => kernel.box([60, 40, 3], [15, 0, 0]);
 /** A cylinder Ø10 × 10 standing in the plate's corner. */
 const post = () => kernel.cylinder(5, 10, [15, 0, -2]);
 
+/** Where vertex `index` of `shape` is. */
+function vertexOf(shape: ShapeHandle, index: number): [number, number, number] {
+  const vertex = kernel.subShape(shape, 'vertex', index);
+  const { min, max } = kernel.measure(vertex).bbox;
+  kernel.release(vertex);
+  return [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+}
+
 /** What a shape is: the box of each face, edge and vertex alone, and its description. */
 function snapshot(shape: ShapeHandle): string[] {
   const out = [JSON.stringify(kernel.describe(shape))];
@@ -123,6 +131,26 @@ const CALLS: [string, () => ShapeHandle[], (s: ShapeHandle[]) => Out][] = [
     'sectionWithPlane',
     () => [torus()],
     ([a]) => kernel.sectionWithPlane(a as ShapeHandle, [0, 0, 0], [0, 1, 0]),
+  ],
+  [
+    'sectionWithPlane, through a vertex',
+    () => [buildTestPart(kernel)],
+    ([a]) => kernel.sectionWithPlane(a as ShapeHandle, vertexOf(a as ShapeHandle, 0), [1, 0, 0]),
+  ],
+  [
+    'facesMeetPlane, through a vertex',
+    () => [buildTestPart(kernel)],
+    ([a]) => {
+      const face = kernel.subShape(a as ShapeHandle, 'face', 0);
+      try {
+        return kernel.facesMeetPlane(face, null, {
+          origin: vertexOf(a as ShapeHandle, 0),
+          normal: [1, 0, 0],
+        });
+      } finally {
+        kernel.release(face);
+      }
+    },
   ],
   [
     'facesMeetPlane',
