@@ -205,7 +205,11 @@ export class RecomputeEngine {
   readonly #refs = new Map<ShapeHandle, number>();
   /** Version of each body shape the cache holds (see BodyResult.version). */
   readonly #versions = new Map<ShapeHandle, string>();
-  /** `add` keys whose evaluation read a body: those features run as `write` (ADR-0024, `add` access). */
+  /**
+   * `add` keys whose evaluation read a body: those features run as `write` (ADR-0024, `add`
+   * access). In least-recently-used order and at most `maxEntries` long: a key it forgets costs one
+   * more `add` evaluation that falls back again, never a different result.
+   */
   readonly #readsBodies = new Set<string>();
   /** Which feature made each body shape, for mesh errors. */
   readonly #makers = new Map<ShapeHandle, FeatureId>();
@@ -660,6 +664,7 @@ export class RecomputeEngine {
   clear(): void {
     for (const entry of this.#entries.values()) this.#drop(entry);
     this.#entries.clear();
+    this.#readsBodies.clear();
     this.#runs.clear();
     this.#latest = new Map();
     this.#atMarker = undefined;
@@ -861,7 +866,7 @@ export class RecomputeEngine {
       let adds =
         addKey !== undefined &&
         scope === undefined &&
-        !this.#readsBodies.has(addKey) &&
+        !this.#readBodies(addKey) &&
         !hasOwnBodies(bodies, feature.id);
       const seen = adds
         ? new NoBodies()
@@ -889,10 +894,15 @@ export class RecomputeEngine {
         if (cancelled()) return { status: 'cancelled' };
         entry = this.#entries.get(key);
       }
-      if (entry) {
+      // A cache hit: counted, and moved to the most recently used end.
+      const hit = (found: Entry): Entry => {
         reused++;
-        this.#entries.delete(key);
-        this.#entries.set(key, entry);
+        this.#entries.delete(found.key);
+        this.#entries.set(found.key, found);
+        return found;
+      };
+      if (entry) {
+        hit(entry);
       } else {
         // A crash in a script's feature is the script's (the app keys crashes by stored features).
         if (!prepared) onFeature?.(script ?? feature.id);
@@ -914,12 +924,18 @@ export class RecomputeEngine {
           // It read a body after all: its `add` answer was wrong for these inputs. Its result
           // goes, and it runs as `write`, now and whenever these inputs come again.
           this.#readsBodies.add(key);
+          const max = this.#options.maxEntries ?? 256;
+          for (const old of this.#readsBodies) {
+            if (this.#readsBodies.size <= max) break;
+            this.#readsBodies.delete(old);
+          }
           this.#entries.delete(key);
           this.#drop(entry);
           const writeKey = keyOf(bodiesKey);
           const cached = this.#entries.get(writeKey);
           if (cached) {
-            entry = cached;
+            // Another walk (a preview) evaluated it as `write` meanwhile.
+            entry = hit(cached);
           } else {
             entry = this.#evaluate(
               definition,
@@ -1676,6 +1692,13 @@ export class RecomputeEngine {
     }
   }
 
+  /** Whether an `add` key's evaluation read a body; a key found moves to the recently used end. */
+  #readBodies(key: string): boolean {
+    if (!this.#readsBodies.delete(key)) return false;
+    this.#readsBodies.add(key);
+    return true;
+  }
+
   #drop(entry: Entry): void {
     for (const h of entry.handles) this.#unref(h);
   }
@@ -1724,10 +1747,6 @@ function ownBodies(
 }
 
 /**
- * The design's bodies after an isolated feature: every body it didn't see, in
- * order, then what it made of those it saw.
- */
-/**
  * The bodies an `add` evaluator is given (ADR-0024's amendment on `add` access): none. Looking one
  * up (`get`, `has`, `size`, or through the context's `names` and `resolve`) is noticed and fails
  * the evaluation, and the engine then evaluates the feature as `write`. Iterating over it (an
@@ -1757,6 +1776,10 @@ function hasOwnBodies(bodies: ReadonlyMap<BodyId, ShapeHandle>, feature: Feature
   return false;
 }
 
+/**
+ * The design's bodies after an isolated feature: every body it didn't see, in
+ * order, then what it made of those it saw.
+ */
 function mergeBodies(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
   seen: ReadonlyMap<BodyId, ShapeHandle>,
