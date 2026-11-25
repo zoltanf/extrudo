@@ -248,3 +248,43 @@ the three single-edge chamfers tried on a box.
   the exact extent (40.05 → 40, 15.01 → 15, 4.99 → 5, -0.02 → 0, a min of 12.9 → 13) and none
   outwards; no volume, area, count or name in them changed. Taken out, the measure-box tests fail
   on the old build, and the interference test with `measure`'s box.
+
+## Amendment (2026-11-25): a kernel call never changes the shapes it is given
+
+- **The rule.** No kernel call changes a shape it is given: an edit hands the features bodies (and
+  sketches' profile faces) from the recompute engine's cache, so a call that wrote to its
+  arguments left the cache different from a recompute from scratch. One exception: `mesh` (and
+  the meshing inside a few calls) adds a triangulation to the faces, which no result reads since
+  the amendment of 2026-11-24 (every box comes from the geometry).
+- **What wrote.** OCCT's boolean builders, in the mode the facade uses (the default, not the
+  non-destructive one), raise an argument's vertex or edge tolerance in place where the other
+  operand meets it within tolerance (`BOPAlgo_PaveFiller::UpdateVertex`, `UpdateEdgeTolerance`,
+  OCCT 8.0.1 `BOPAlgo_PaveFiller_10.cxx`). Seen: a plate whose corner lies on a torus's inner
+  equator, cut from it, left the plate's corner vertex with a tolerance of 1.000001e-6 (it was
+  1e-7); the plate's bottom cap is its sketch's profile face, which the engine keeps, so the next
+  edit's prism started from the raised vertex and a join over the torus gave a body 1e-12 mm
+  larger in `measure` than a recompute from scratch. The same mode is in OCCT's section, so a
+  section through a body's vertex raised the body's tolerances. OCCT's fillet and chamfer builder
+  writes a vertex of the shape it is built on (`ChFi3d_IndexPointInDS`, `ChFi3d_Builder.cxx`);
+  no test input was found that changes a value there.
+- **The change** (`extrudo_facade.cpp`): the plain boolean (`finishBoolean`, every fuse, cut,
+  common and split) runs on copies of its arguments, both made in one copy so that what they
+  share stays shared, meshes included, as the face merge already did; `sectionWithPlane` and
+  `facesMeetPlane` section copies; `fillet` and `chamfer` build on a copy of the body. The
+  copies have the inputs' geometry and sub-shape order, so results, histories and names are what
+  they were. Rejected: the builders' non-destructive mode, which keeps the arguments but leaves
+  the result's edges at their old tolerances (it skips `UpdateEdgeTolerance` for shapes that
+  aren't new), so results change; the facade dropped it before for that (a fillet after a cut ran
+  forever on two designs).
+- **Not changed:** prisms and revolves add a p-curve of each profile edge on the side face they
+  make to that edge (`BRepSweep_Translation.cxx`, `BRepSweep_Rotation.cxx`, at the default
+  tolerance); no box, description or result reads those, and they are not shown to change one.
+  The offset, shell, draft and face-removal calls already worked on copies (OCCT repairs its
+  input in place there).
+- **Tested:** `arguments-unchanged.test.ts`: every kernel call that takes a shape, on inputs that
+  make OCCT raise tolerances, leaves each input as it was (the box of every face, edge and vertex
+  alone, each enlarged by its own tolerance, and the description); with main's build the plain
+  booleans, the split and the two sections through a vertex fail. `cached-body-unchanged.test.ts`:
+  a torus or a loft, a plate cut from it or intersected, then edited to a join, with a "through
+  all" after: the engine that kept its cache gives a cleared engine's result, every mesh bit for
+  bit and every body's `measure` box; with main's build all four fail.
