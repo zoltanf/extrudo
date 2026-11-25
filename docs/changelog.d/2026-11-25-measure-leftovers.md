@@ -1,0 +1,1 @@
+- 2026-11-25 · **A shape read without its surface geometry is measured by its real size**: faces a file gives only as triangles count for the shown size instead of leaving it at zero (the FreeCAD import's checks of a stored shape use it); and **a tangent plane on a free-form face no longer changes how its body is drawn**.
