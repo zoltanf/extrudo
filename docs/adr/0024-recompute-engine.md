@@ -372,7 +372,8 @@ with New Body extrudes; plates with a failed and a stopped feature), each with p
 until it holds five extrudes that answer `add`, and 40 seeded edits each. After every step the
 engine that kept its cache, holding the meshes it was sent like the `Recomputer`, gives what a
 cleared engine gives for the same document: statuses and errors, origins, reports, body IDs and
-order, every mesh array bit for bit and every name; a mesh left out under `have` must be one it
+order, every mesh array bit for bit and every name, and every body's measured box; and so does an
+all-`write` engine (see "Two references" below); a mesh left out under `have` must be one it
 holds. Each design starts with no errors but the ones it is built with.
 
 The edits, each kind at least once in every design: an insert; one edit per term of the
@@ -545,10 +546,58 @@ look-up `earlier.has` (:88) is the local set):
   file name, source digest and definitions). File bytes come through `options.files` and are not
   in the key (their bytes never change under their IDs); the attachment ID is.
 
-**What changes for an import.** Its key no longer holds the bodies before it, so an edit before
-it is a cache hit: `prepare` and `evaluate` don't run, the file isn't read, parsed or compiled
-again, and its bodies keep their versions (no mesh is sent). The cache entry is still dropped as
-any other: inside an inserted design, after a body with its own ID prefix, and when evicted.
+**What changes for an import.**
+- Its key no longer holds the bodies before it, so an edit before it is a cache hit: `prepare`
+  and `evaluate` don't run, the file isn't read, parsed or compiled again, and its bodies keep
+  their versions (no mesh is sent).
+- The cache entry is still dropped as any other: inside an inserted design, after a body with its
+  own ID prefix, and when evicted.
+- An error is cached like any other result. One whose cause was outside the document (the file's
+  bytes not there yet, say) would then no longer be tried again after an edit before the import,
+  as it was on main. The rule below tries those again at least as often as main did.
+
+**Errors from outside the document (2026-11-25).** An error can say its cause is outside the
+document, so that the same inputs may do better another time: the evaluator throws an
+`OutsideError` (`recompute/types.ts`, a `KernelError`) with one of two answers.
+- `next`, cheap to ask again: the engine keeps no entry, so the next recompute (any, an edit
+  after the import too) tries again. `MissingFileError` (the bytes haven't reached the worker),
+  "OpenSCAD isn't loaded in this kernel" (`#prepare`'s `openscad()`) and the compiler's "OpenSCAD
+  isn't downloaded yet" (offline).
+- `bodies`, costly to ask again: the compile was stopped by its time (60 s) or memory limit, or
+  its worker died. Trying it on every recompute could cost a minute each time, so it is kept as
+  main's `write` key kept it: an `add` evaluation that fails this way falls back to `write` for
+  these inputs as one that read a body does (`#readsBodies`, then the entry under the key with
+  the bodies before it; the fall-back's evaluation reuses what `prepare` gave, so nothing is
+  compiled twice), and an edit before the import tries again. Once it computes, it stays `write`
+  for these inputs until the engine forgets the key (`#readsBodies` keeps at most `maxEntries`).
+
+When was a failed import tried again? Main (the import `write`) tried it when its key moved: its
+own inputs or values, a feature it refers to, any body before it; and after eviction or a worker
+restart (an empty engine). Without the rule its key holds no bodies, so only its own edit did.
+
+| Cause | Main | Before the rule | Now |
+|---|---|---|---|
+| The bytes not there yet | an edit before it | its own edit | the next recompute |
+| OpenSCAD not loaded | an edit before it | its own edit | the next recompute |
+| OpenSCAD not downloaded (offline) | an edit before it | its own edit | the next recompute |
+| A compile stopped (time, memory, its worker) | an edit before it | its own edit | an edit before it |
+
+The import's `compileRetry` (`features/import.ts`) reads the compiler's own words ("isn't
+downloaded", "stopped"), as `compileOnce` already did to forget such a compile. An import's own
+error (a file that isn't an STL, an OpenSCAD syntax error) is a plain `KernelError` and stays
+cached: evaluated, and compiled, once. No other feature throws an `OutsideError`: the import is
+the only evaluator that reads a file (`ctx.file`), and the plugin feature, whose expansion reads
+its plugin file, words a missing one as a plain `KernelError`, and an expansion's failed run isn't
+kept anyway unless the code itself failed (`#expand`). In the engine: the entry's `retry`, no
+entry kept for `next`, and the fall-back's condition (a few lines).
+
+Tests (`recompute/outside-errors.test.ts`; real OCCT and manifold, the compiler a stand-in that
+answers in the real compiler's words): each cause fails first, then the same document is
+recomputed once the cause is gone, then an edit before the import, on three engines: main's
+(`allWrite`, and the engine's own source with the rule's lines taken out), this branch's without
+the rule, and this one. They assert the table (and count the compiles). A file that isn't an STL
+is evaluated once over the same document and an edit before it; an OpenSCAD syntax error is
+compiled once.
 
 **Left `write`**, New Body features looked at (file:line, the read that keeps each there):
 thread (`thread.ts:180` resolves the face to thread, :214 copies every body for its cut, :220 the
@@ -569,22 +618,48 @@ construction plane and XZ; sweeps along two sketch lines (one twisted, one scale
 profiles on construction planes (one ruled); imports of a STEP file of three solids (named, two
 coloured, one hidden), an STL, a 3MF of two parts and an OpenSCAD file of two blocks whose size
 follows a parameter. 40 seeded edits each: every term of the feature's predicate, made to an
-instance that answers `add`, which must leave it `write` (join, cut or intersect; a picked body; a
-face to sit on, or as a profile or section; an edge as axis or path; a vertex as a loft's tip;
-"to object" up to a plane or a body) or `add` (another plane or an offset; a box turned, a torus
+instance that answers `add`, which must leave it `write` (join, cut or intersect, the instance
+moved onto B0 for it; a picked body; a face to sit on, or as a profile or section; an edge as axis
+or path; a vertex as a loft's tip; "to object" up to XZ) or `add` (another plane or an offset; a box turned, a torus
 on its side; a coil's section or hand; another axis, text, angles and directions; a path's first
 curve, twist, scale, a fixed orientation; a point as a tip, ruled; an import's up axis, position
 and units); one that takes an instance back to `add` (its own inputs again); and the generic edits
 (an insert, a length scaled, suppress, the marker, a reorder, a delete, undo, a parameter). After
 every step the cached engine gives what a cleared engine gives, compared as for the extrude, and
-no recompute of either evaluates a feature more often than the document holds it (no fall-back;
-a seeded insert can put back a feature an undo already restored, so an ID can be there twice).
-The extrude's proof now checks the same for its nine designs. The edited instance computed at
-least once after: a picked body and the way back in every design but the imports, a face to sit
-on, a plane, an offset and the shape for the primitives and coils, an axis, text and angles for
-the revolves, and there a face profile and an edge axis too, the path and twist for the sweeps, a
-face section and a point for the lofts (the toggle to ruled didn't compute in this seed's runs; the
-design's own ruled loft does from the start), and every term's edit for the imports.
+no recompute of either evaluates a feature twice (no fall-back). The extrude's proof now checks the
+same for its nine designs. The edited instance computed (status `ok`) at least once after: the
+operation (a real join, cut or intersect with B0) for the primitives, revolves, sweeps and lofts,
+a picked body and the way back in every design but the imports, a face to sit on, a plane, an
+offset and the shape for the primitives and coils, a face profile, an edge axis, "to object", an
+axis, text and angles for the revolves, a face profile (a cylinder's top along a path from its
+centre), an edge path (with a profile at its foot), the path and twist for the sweeps, a face
+section, a vertex tip (a small box over each loft), a point and ruled for the lofts, and every
+term's edit for the imports. The coils' operation is the one write term that doesn't compute: the
+coil moved onto B0 kept one evaluation in the seeded run busy for over 25 minutes (not looked
+into), so its edit leaves the coil where it is, overlapping nothing.
+
+**Two references (2026-11-25).** A cleared engine with the same features can't see a predicate
+that admits inputs whose evaluator only iterates the bodies: under `add` both engines hand it the
+same empty `NoBodies`, so both make the same wrong result and nothing falls back. So both proofs
+compare the engine under test with a second reference too, cleared each step: the kernel's
+features with every `add` answer turned into `write` (`allWrite` in
+`recompute/add-access-test-support.ts`, main's engine before `add`), on everything but versions
+and keys: statuses and errors, origins, reports, body IDs and their order, every mesh (names
+included) bit for bit, and every body's `measure` box (both references compare boxes now). The
+proof in both files is clean against it. A control shows what it adds: the revolve's predicate
+without its `extent === 'angle'` term, in the engine under test and in the cleared reference alike
+(as if the kernel had the fault), and a revolve "to object" up to XZ at x 150: the plane is sized
+from the bodies the evaluator iterates, so under `add` it is too small and the revolve fails, the
+same way in both engines and without a fall-back. The comparison with the cleared engine is clean
+at both steps, the one with the all-`write` engine differs at the edit (statuses), and with the
+kernel's own predicate both are clean. The proofs take longer: both files 295 s → 496 s here
+(4 cores, one run each; the coils' differential 106 s → 197 s, the lofts' 87 s → 194 s; every
+differential keeps its 900 s timeout).
+
+**No fall-back, counted exactly.** `fallbacks` counts a feature evaluated twice in one recompute.
+It used to allow as many evaluations as the document held the ID, since the seeded insert could
+put back a deleted feature that an undo had already restored; the insert now puts one back only
+while its ID is free, and `fallbacks` refuses a document that holds an ID twice.
 
 Counters: an edit of the first of four separate instances (each primitive type, revolves, coils,
 sweeps, lofts; an STL import before a 3MF, the STEP and the OpenSCAD import) evaluates that
@@ -615,7 +690,8 @@ flips (the edit to a join left the box `add`: `operation: add→add`), without t
 body looks it up). A negative control in the same file keeps the fault in the engine under test
 only, as the extrude's control (2) does: a box joined to a box it overlaps, said to be `add`,
 finds no body to join (the iteration isn't noticed, no fall-back) and makes a new one, so the
-bodies, statuses, reports and a mesh differ at once.
+bodies, statuses, reports, a mesh and a box differ at once, against both references. The revolve
+control of "Two references" keeps the fault in both engines.
 
 **Measured.** Kernel time and meshes sent for an edit of the first, a middle and the last
 instance, incremental with `have`, in Node, two runs each, on this branch with the features above
@@ -666,5 +742,5 @@ between batches of runs. The plates are extrudes, which answered
 geometry, constraints and dimensions; a construction plane or axis made from a body's face or edge
 under one of these features (it answers `read` and reaches them as an upstream key, as a sketch on
 a face does for the extrude); an import whose attachment record changes its file name (the
-attachment commands add and remove a record, `addAttachment` refuses an ID in use); an OpenSCAD import with no compiler; joints, annotations, sheets
+attachment commands add and remove a record, `addAttachment` refuses an ID in use); joints, annotations, sheets
 and previews.
