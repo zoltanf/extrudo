@@ -16331,6 +16331,19 @@ private:
     builder.Build();
   }
 
+  /** Copies of `a` and `b` (meshes included) made in one copy, so sub-shapes they share stay shared. */
+  static void copyTogether(const TopoDS_Shape& a, const TopoDS_Shape& b, TopoDS_Shape& outA, TopoDS_Shape& outB) {
+    BRep_Builder builder;
+    TopoDS_Compound both;
+    builder.MakeCompound(both);
+    builder.Add(both, a);
+    builder.Add(both, b);
+    TopoDS_Iterator it(BRepBuilderAPI_Copy(both, true, true).Shape());
+    outA = it.Value();
+    it.Next();
+    outB = it.Value();
+  }
+
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
     // Set the arguments here, not in the builder's constructor: the
@@ -16347,8 +16360,20 @@ private:
     // their display mesh as before. The boolean itself stays in its default
     // mode: its non-destructive mode changes the result's tolerances enough
     // that a fillet after a cut ran forever on two designs of the corpus.
-    const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, true).Shape() : a;
-    const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, true).Shape() : b;
+    //
+    // Nor does the boolean change its arguments (ADR-0035, 2026-11-26): in its default mode OCCT
+    // raises an argument's vertex or edge tolerance in place where the other operand meets it
+    // (BOPAlgo_PaveFiller::UpdateVertex, UpdateEdgeTolerance), and an argument can be a body the
+    // recompute engine keeps, or a sketch's profile face a prism took as its cap. So the plain
+    // boolean works on copies too, both in one copy so that what they share stays shared.
+    TopoDS_Shape inA;
+    TopoDS_Shape inB;
+    if (simplify) {
+      inA = BRepBuilderAPI_Copy(a, true, true).Shape();
+      inB = BRepBuilderAPI_Copy(b, true, true).Shape();
+    } else {
+      copyTogether(a, b, inA, inB);
+    }
     buildBoolean(builder, inA, inB, 0);
     if (!builder.IsDone() || builder.HasErrors()) {
       return fail("Boolean failed: OCCT could not combine these shapes.");
