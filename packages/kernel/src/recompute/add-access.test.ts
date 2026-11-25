@@ -822,17 +822,19 @@ describe('add access: cases by name', () => {
   it('a finer triangulation left on the cached body shows in the cut (the comparison sees it)', {
     timeout: 120_000,
   }, async () => {
-    const features = [...splineFeatures('spl', 40), ...holeFeatures('hs', 50, 10, 4, '10 mm')];
-    const first = { ...plates(0), features, timelineMarker: features.length };
-    const edited = setInputs(first, 'hs', { distance: length('12 mm') });
+    // First the spline body alone: the cached body is the body shown, so it can be meshed in
+    // place; then a hole is cut through it, over that cached body.
+    const body = splineFeatures('spl', 40);
+    const first = { ...plates(0), features: body, timelineMarker: body.length };
+    const features = [...body, ...holeFeatures('hs', 50, 10, 4, '10 mm')];
+    const edited = { ...plates(0), features, timelineMarker: features.length };
     const p = pair();
     try {
       expect((await p.step(first)).problems).toEqual([]);
-      // The cut's result shares its untouched faces (the B-spline side) with the cached spline
-      // body it was cut from: meshing it finer in place than the view does reaches that body.
-      const body = p.cached.latestBody('spl:0' as never);
-      expect(body).toBeDefined();
-      kernel.mesh(body as never, { linearDeflection: 0.005, angularDeflection: 0.1 });
+      // Finer than the view meshes it: the cut keeps the B-spline side with that triangulation.
+      const cached = p.cached.latestBody('spl:0' as never);
+      expect(cached).toBeDefined();
+      kernel.mesh(cached as never, { linearDeflection: 0.005, angularDeflection: 0.1 });
       expect((await p.step(edited)).problems).toEqual(['mesh spl:0']);
     } finally {
       p.close();
