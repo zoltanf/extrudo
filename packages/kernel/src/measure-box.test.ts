@@ -272,7 +272,7 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
   });
 
   it('describes a lone such face as "other", with its area and centre', async () => {
-    // A kernel of its own.
+    // A kernel of its own, so its leak check counts only this test's shapes.
     const own = new Kernel(await loadOcct());
     const face = own.readBrep(surfacelessFace());
     const [described] = own.describe(face).faces;
@@ -286,8 +286,10 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
   }, 30_000);
 
   it('the calls that read one face give a clean error for such a face', async () => {
-    // A kernel of its own; the face first in the compound, so it is face 0, then a box.
-    const own = new Kernel(await loadOcct());
+    // A kernel of its own, so its leak check counts only this test's shapes; the face first in
+    // the compound, so it is face 0, then a box.
+    const occt = await loadOcct();
+    const own = new Kernel(occt);
     {
       using scope = own.scope();
       const face = scope.track(own.readBrep(surfacelessFace()));
@@ -296,8 +298,20 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
       const message = 'The face has no surface, only triangles.';
       expect(() => own.surfaceGeometry(both, 0)).toThrow(message);
       expect(() => own.faceSilhouettes(both, 0, [0, 0, 1])).toThrow(message);
+      // `Kernel.threadFace` and `coneFace` answer undefined for any face that isn't one; the
+      // facade's own message says why (the raw facade, as `mesh-to-solid.test.ts` reads it).
       expect(own.threadFace(both, 0)).toBeUndefined();
       expect(own.coneFace(both, 0)).toBeUndefined();
+      const raw = new occt.ExtrudoFacade();
+      const lone = raw.readBrep(surfacelessFace());
+      expect(lone).toBeGreaterThan(0);
+      expect(raw.threadFace(lone, 0)).toBe(-1);
+      expect(raw.lastError()).toBe(message);
+      expect(raw.coneFace(lone, 0)).toBe(-1);
+      expect(raw.lastError()).toBe(message);
+      raw.release(lone);
+      expect(raw.liveShapes()).toBe(0);
+      raw.delete();
       expect(own.faceHit(both, 0, [1, 1, 10], [0, 0, -1])).toBeUndefined();
       expect(() => own.faceSlab(both, 0, 1)).toThrow(
         'Emboss failed: the face has no surface, only triangles.',

@@ -264,18 +264,18 @@ the three single-edge chamfers tried on a box.
     (`dropTessellatedCopies`: a `TESSELLATED_SOLID` with its geometric link, a
     `TESSELLATED_SHELL` with its topological link, a tessellated face with its geometric link, or a
     tessellated solid or shell made only of such faces).
-  - What OCCT's three settings do, read in the OCCT sources of the toolchain this repository
-    builds with (3.1.0; `STEPControl_ActorRead`, `StepToTopoDS_TranslateSolid`/`Face`) and tried on
-    hand-written files: `Off` leaves out a tessellated shape representation (a part given only
-    as triangles is left out without a word), but still reads tessellated items among a B-rep
-    representation's own items: a linked copy there puts its triangles on the exact faces, and a
-    lone triangulated face there is read as a face without a surface. `On` (OCCT's default, which the readers used before) puts a linked copy's triangles on
-    the exact faces, and reads a copy in a representation of its own as the part's solid once
-    more (the part twice). `OnNoBRep` leaves the exact faces without the file's triangles, but
-    still reads a linked tessellated solid as the solid it links to (the part twice again) and a
-    copy the file lists before its solid as faces without a surface. With the copies taken out
-    first, the part is read once, by its exact faces with no triangles from the file, in each of
-    those layouts and orders.
+  - What OCCT's three settings do, read in the OCCT sources of the build toolchain image this
+    repository builds with (`@libcascade/toolchain` 3.1.0; `STEPControl_ActorRead`,
+    `StepToTopoDS_TranslateSolid`/`Face`) and tried on hand-written files: `Off` leaves out a
+    tessellated shape representation (a part given only as triangles is left out without a word),
+    but still reads tessellated items among a B-rep representation's own items: a linked copy there
+    puts its triangles on the exact faces, and a lone triangulated face there is read as a face
+    without a surface. `On` (OCCT's default) puts a linked copy's triangles on the exact faces, and
+    reads a copy in a representation of its own as the part's solid once more (the part twice).
+    `OnNoBRep` leaves the exact faces without the file's triangles, but still reads a linked
+    tessellated solid as the solid it links to (the part twice again) and a copy the file lists
+    before its solid as faces without a surface. With the copies taken out first, the part is read
+    once, by its exact faces with no triangles from the file, in each of those layouts and orders.
   - `readStep` then refuses a shape with any face without a surface, in a solid, a shell or on
     its own (`hasSurfacelessFace`): "STEP import failed: the file gives at least one face as
     triangles, not as a surface. Export the part again with its surfaces, or export it as STL or
@@ -319,29 +319,27 @@ the three single-edge chamfers tried on a box.
   or finer; the body's triangulation is what it was drawn with. With that, no result reads a
   triangulation left on a body (`hlrPolySpans` draws sheet views from one, as before).
 - **Checked:** compared once, outside the repository, main's code and build against this
-  amendment's: the 64 designs in `fixtures/` recomputed from scratch give the same bodies,
-  versions, statuses, reports, meshes bit for bit, and the same `inspect` of every body; none of
-  them imports a STEP file, so 66 STEP files (the two STEP fixtures, and each design's bodies
-  exported with part names, colours, a group and a hidden part; 61 with bodies, 85 bodies, 20
-  files with two or more) imported as designs, placed as in the file and centred, give the same
-  bodies, versions, meshes, statuses, reports (names, colours, hidden) and `inspect`. The
-  feature goldens are unchanged. Tests: `import.test.ts` (refused with the message, no body, and
-  the same engine computes the next design: the tetrahedron, the box beside it, the box with a
-  lone `TRIANGULATED_FACE`, `TRIANGULATED_SURFACE_SET` or triangulated face among its own items,
-  and two solids with a lone face; the copy file and the same copy among the box's items import
-  as the file without it, and the colour, name and hidden readers agree; a copy with no links is
-  refused; two solids and a free face 100 mm off are centred by the solids), `measure-box.test.ts`
-  (the B-rep reader refuses a shell with such a face, directly and through the FreeCAD import's
-  stored-shape functions; a STEP file written from a box and a lone such face is refused; the
-  one-face calls answer such a face with the message; `describe` of a lone such face; its box,
-  placed or not; both kinds; a shape without faces; wires and free edges keep their `measure`
-  box after meshing, fine or coarse), `construction-more.test.ts` (the plane before, number for
-  number; after drawing coarse, at the view's tessellation and finer; the body's triangle count).
-  Taken out: with the build before this round's facade change (`occt-998c7cd40597`: solids and
-  shells checked only, OCCT's default setting) the refusal, copy, one-face and written-STEP tests
-  fail, each as a failed test; with the build that has OnNoBRep but not `dropTessellatedCopies`
-  (`occt-40ea4d52efaa`) the copy test fails (the box read twice, 16,000 mm³, and no report); the
-  centring test with the whole shape's box; the box tests with the build before this amendment;
-  the fine-drawn and triangle-count tests with the body meshed in place; the wires test with the
-  build before the amendment of 2026-11-24 (`occt-8bd8ae5125b7`: a helix's box changed after
-  meshing).
+  amendment's: the 64 designs in `fixtures/` recomputed from scratch give the same bodies, versions,
+  statuses, reports, meshes bit for bit, and the same `inspect` of every body; none of them imports
+  a STEP file, so 66 STEP files (the two STEP fixtures, and each design's bodies exported with part
+  names, colours, a group and a hidden part; 61 with bodies, 85 bodies, 20 files with two or more)
+  imported as designs, placed as in the file and centred, give the same bodies, versions, meshes,
+  statuses, reports (names, colours, hidden) and `inspect`. The feature goldens are unchanged.
+  Tests: `import.test.ts` (refused with the message, no body, and the same engine computes the next
+  design: the tetrahedron, the box beside it, the box with a lone `TRIANGULATED_FACE`,
+  `TRIANGULATED_SURFACE_SET` or triangulated face among its own items, and two solids with a lone
+  face; the copy file and the same copy among the box's items import as the file without it, and the
+  colour, name and hidden readers agree; a copy with no links is refused; two solids and a free face
+  100 mm off are centred by the solids), `measure-box.test.ts` (the B-rep reader refuses a shell
+  with such a face, directly and through the FreeCAD import's stored-shape functions; a STEP file
+  written from a box and a lone such face is refused; the one-face calls answer such a face with the
+  message; `describe` of a lone such face; its box, placed or not; both kinds; a shape without
+  faces; wires and free edges keep their `measure` box after meshing, fine or coarse),
+  `construction-more.test.ts` (the plane before, number for number; after drawing coarse, at the
+  view's tessellation and finer; the body's triangle count). Taken out: with the build before this
+  round's facade change (`occt-998c7cd40597`) the refusal, copy, one-face and written-STEP tests
+  fail; with the build that has OnNoBRep but not `dropTessellatedCopies` (`occt-40ea4d52efaa`) the
+  copy test fails; the centring test with the whole shape's box; the box tests with the build before
+  this amendment; the fine-drawn and triangle-count tests with the body meshed in place; the wires
+  test with the build before the amendment of 2026-11-24 (`occt-8bd8ae5125b7`: a helix's box changed
+  after meshing).

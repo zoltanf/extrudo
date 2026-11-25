@@ -404,7 +404,11 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
     expect(unlinked).not.toMatch(/TRIANGULATED_FACE\('',#9030,8,\(\),#/);
     engine?.clear();
     const refused = await recompute(design({ bytes: new TextEncoder().encode(unlinked) }).doc);
-    expect(refused.features[IMPORT_ID]?.status).toBe('error');
+    expect(refused.features[IMPORT_ID]).toEqual({
+      status: 'error',
+      message:
+        'STEP import failed: the file gives at least one face as triangles, not as a surface. Export the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.',
+    });
     expect(refused.bodies).toEqual([]);
   });
 
