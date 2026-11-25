@@ -2990,7 +2990,13 @@ public:
         return fail("STEP import failed: the file couldn't be read.");
       }
       if (reader.TransferRoots() <= 0) return fail("STEP import failed: the file has no shapes.");
-      return store(reader.OneShape());
+      const TopoDS_Shape shape = reader.OneShape();
+      if (hasTriangleFace(shape)) {
+        return fail(
+            "STEP import failed: the file gives at least one face as triangles, not as a surface. Export "
+            "the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.");
+      }
+      return store(shape);
     } catch (...) {
       return failFromException("STEP import failed");
     }
@@ -3036,6 +3042,9 @@ public:
       if (shape.IsNull()) return fail("B-rep import failed: the text has no shape.");
       if (const char* missing = missingGeometry(shape)) {
         return fail((std::string("B-rep import failed: ") + missing).c_str());
+      }
+      if (hasTriangleFace(shape)) {
+        return fail("B-rep import failed: a face of a solid or shell is given as triangles, not as a surface.");
       }
       return store(shape);
     } catch (const std::ios_base::failure&) {
@@ -6604,6 +6613,22 @@ private:
    * which the first check or mesh of the shape dereferences (a WASM trap). A
    * face with only a triangulation may have no surface.
    */
+  /**
+   * Whether a solid or a shell of `shape` has a face with no surface, only a triangulation (STEP's
+   * tessellated geometry gives such faces): the readers refuse those, so no body has one.
+   */
+  static bool hasTriangleFace(const TopoDS_Shape& shape) {
+    for (const TopAbs_ShapeEnum kind : {TopAbs_SOLID, TopAbs_SHELL}) {
+      for (TopExp_Explorer part(shape, kind); part.More(); part.Next()) {
+        for (TopExp_Explorer it(part.Current(), TopAbs_FACE); it.More(); it.Next()) {
+          TopLoc_Location location;
+          if (BRep_Tool::Surface(TopoDS::Face(it.Current()), location).IsNull()) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   static const char* missingGeometry(const TopoDS_Shape& shape) {
     const char* edgeMissing = "an edge lacks its curve.";
     const char* pcurveMissing = "an edge lacks its curve on a face.";
@@ -17130,6 +17155,13 @@ private:
   void describeFace(const TopoDS_Face& face) {
     GProp_GProps props;
     BRepGProp::SurfaceProperties(face, props);
+    TopLoc_Location location;
+    if (BRep_Tool::Surface(face, location).IsNull()) {
+      // Only a triangulation: "other", its area and centre from the triangles, no direction.
+      describeInts_.push_back(static_cast<int32_t>(GeomAbs_OtherSurface));
+      pushNumbers(props.Mass(), props.CentreOfMass(), nullptr);
+      return;
+    }
     BRepAdaptor_Surface surface(face);
     const GeomAbs_SurfaceType type = surface.GetType();
     describeInts_.push_back(static_cast<int32_t>(type));
