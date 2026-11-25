@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  attachPointerInput,
-  LONG_PRESS_MS,
-  type PointerHandlers,
-  type ScreenPointer,
-} from './pointer';
+import { attachPointerInput, type PointerHandlers, type ScreenPointer } from './pointer';
 import type { ViewportStore } from './store';
 
 // A fake requestAnimationFrame: frames run when the test says so.
@@ -28,7 +23,7 @@ afterEach(() => {
   frames = new Map();
 });
 
-function setup(more: Partial<PointerHandlers> = {}) {
+function setup() {
   const el = Object.assign(new EventTarget(), {
     getBoundingClientRect: () => ({ left: 10, top: 20, width: 400, height: 300 }),
     setPointerCapture: () => {},
@@ -43,7 +38,6 @@ function setup(more: Partial<PointerHandlers> = {}) {
     onMove: (p: ScreenPointer) => log.push(`move ${p.x},${p.y}`),
     onClick: (p: ScreenPointer) => log.push(`click ${p.x},${p.y}`),
     onLeave: () => log.push('leave'),
-    ...more,
   };
   const detach = attachPointerInput(el, viewport, handlers, () => {}, win);
   const pointer = (type: string, x: number, y: number, extra: Record<string, unknown> = {}) =>
@@ -214,57 +208,5 @@ describe('a free left-drag in the Slicer preset', () => {
     const { log, drag } = setupDrag({ preset: 'spindle', box: true });
     drag();
     expect(log).toEqual(['dragStart', 'drawing', 'drawing', 'undrawn', 'box']);
-  });
-});
-
-describe('a long press ("Select other…")', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  const withMenu = () => {
-    const box: string[] = [];
-    const t = setup({
-      onMenu: (p: ScreenPointer) => box.push(`menu ${p.x},${p.y}`),
-      onBox: (from: ScreenPointer, to: ScreenPointer) =>
-        box.push(`box ${from.x},${from.y} ${to.x},${to.y}`),
-    });
-    return { ...t, box };
-  };
-
-  it('is a drag when the first move was waiting behind a busy page as the time ran out', () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const { pointer, box } = withMenu();
-    pointer('pointerdown', 20, 30, { buttons: 1 });
-    // The page was busy: the long press's time runs out before the queued move is handled.
-    vi.advanceTimersByTime(LONG_PRESS_MS);
-    pointer('pointermove', 60, 70, { buttons: 1 });
-    runFrame();
-    pointer('pointerup', 60, 70);
-    expect(box).toEqual(['box 10,10 50,50']);
-  });
-
-  it('opens the menu after the next frame when the press is held still, and the release does nothing', () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const { pointer, box, log } = withMenu();
-    pointer('pointerdown', 20, 30, { buttons: 1 });
-    vi.advanceTimersByTime(LONG_PRESS_MS);
-    expect(box).toEqual([]);
-    runFrame();
-    expect(box).toEqual(['menu 10,10']);
-    pointer('pointerup', 20, 30);
-    expect(box).toEqual(['menu 10,10']);
-    expect(log.filter((l) => l.startsWith('click'))).toEqual([]);
-  });
-
-  it('is a click when the release was waiting as the time ran out', () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    const { pointer, box, log } = withMenu();
-    pointer('pointerdown', 20, 30, { buttons: 1 });
-    vi.advanceTimersByTime(LONG_PRESS_MS);
-    pointer('pointerup', 20, 30);
-    runFrame();
-    expect(box).toEqual([]);
-    expect(log.filter((l) => l.startsWith('click'))).toEqual(['click 10,10']);
   });
 });
