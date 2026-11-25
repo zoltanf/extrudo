@@ -272,7 +272,7 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
   });
 
   it('describes a lone such face as "other", with its area and centre', async () => {
-    // A kernel of its own, so nothing else in this file runs on one this test broke.
+    // A kernel of its own.
     const own = new Kernel(await loadOcct());
     const face = own.readBrep(surfacelessFace());
     const [described] = own.describe(face).faces;
