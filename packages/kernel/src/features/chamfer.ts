@@ -55,7 +55,10 @@ import {
  */
 export const kernelChamfer: KernelFeatureDefinition<ChamferInputs> = {
   ...chamferFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only the bodies of its edges and the reference face (ADR-0024's amendment on `view`
+  // access): it resolves its references, looks those bodies up and copies the map it is given; the
+  // engine works out which bodies hold them, or runs it as `write`.
+  bodyAccess: () => 'view',
   evaluate: evaluateChamfer,
 };
 
