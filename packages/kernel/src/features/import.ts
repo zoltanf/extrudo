@@ -209,9 +209,9 @@ function bodiesBox(ctx: EvalContext, shape: ShapeHandle): { min: Vec3; max: Vec3
   try {
     if (solids.length < 2) return ctx.kernel.properties(shape).bbox;
     const boxes = solids.map((solid) => ctx.kernel.properties(solid).bbox);
-    const min = [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k] as number))) as Vec3;
-    const max = [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k] as number))) as Vec3;
-    return { min, max };
+    const lo = (k: number) => Math.min(...boxes.map((b) => b.min[k] as number));
+    const hi = (k: number) => Math.max(...boxes.map((b) => b.max[k] as number));
+    return { min: [lo(0), lo(1), lo(2)], max: [hi(0), hi(1), hi(2)] };
   } finally {
     ctx.kernel.release(...solids);
   }
