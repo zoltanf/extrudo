@@ -1182,7 +1182,7 @@ describe('add access beyond the extrude: what an edit costs', () => {
         const c = client(engine);
         const d = make();
         const before = await c.run(d);
-        expect(fallbacks(before.result)).toEqual([]);
+        expect(fallbacks(before.result, d)).toEqual([]);
         for (const [id, status] of Object.entries(before.result.features))
           expect(status, id).toMatchObject({ status: 'ok' });
         const after = await c.run(setInputs(d, first, more));
@@ -1311,7 +1311,7 @@ describe('add access beyond the extrude: what an edit costs', () => {
         'i4:0',
         'i4:1',
       ]);
-      expect(fallbacks(first.result)).toEqual([]);
+      expect(fallbacks(first.result, d)).toEqual([]);
       expect(counts.evaluate).toBe(4);
       expect(counts.prepare).toBe(4);
       expect(counts.files).toBeGreaterThan(0);
@@ -1348,6 +1348,6 @@ describe('the comparison catches a wrong `add` here too (negative control)', () 
     });
     expect(step?.result.bodies.map((b) => b.id)).toEqual(['a:0', 'j:0']);
     expect(step?.problems).toEqual(['statuses', 'reports', 'bodies a:0,j:0 vs a:0', 'mesh a:0']);
-    expect(fallbacks(step?.result as never)).toEqual([]);
+    expect(fallbacks(step?.result as never, d)).toEqual([]);
   });
 });

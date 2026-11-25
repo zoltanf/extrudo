@@ -183,17 +183,22 @@ export function differences(
 }
 
 /**
- * The features one recompute evaluated twice: an `add` evaluation that read a body and ran
- * again as `write` (the fall-back). A right predicate makes none.
+ * The features one recompute evaluated more often than `doc` holds them (an expansion's feature,
+ * which the document doesn't hold, once): an `add` evaluation that read a body and ran again as
+ * `write` (the fall-back). A right predicate makes none. (A seeded insert can put a feature back
+ * while an undo already brought it back, so a document may hold one ID twice.)
  */
-export function fallbacks(result: Done): string[] {
-  const seen = new Set<string>();
-  const twice: string[] = [];
+export function fallbacks(result: Done, doc: ExtrudoDocument): string[] {
+  const held = new Map<string, number>();
+  for (const f of doc.features) held.set(f.id, (held.get(f.id) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const extra: string[] = [];
   for (const id of result.stats.evaluated) {
-    if (seen.has(id)) twice.push(id);
-    seen.add(id);
+    const n = (seen.get(id) ?? 0) + 1;
+    seen.set(id, n);
+    if (n > Math.max(1, held.get(id) ?? 0)) extra.push(id);
   }
-  return twice;
+  return extra;
 }
 
 export interface PairOptions {
@@ -382,7 +387,7 @@ export interface Run<K extends string = string> {
   problems: string[];
   /** Feature evaluations of the cached engine, and of the cleared one. */
   evaluated: [number, number];
-  /** `step <n>: <feature>` for every feature a recompute evaluated twice (`fallbacks`). */
+  /** `step <n>: <feature>` for every fall-back of either engine (`fallbacks`). */
   fallbacks: string[];
   /** The features in error before any edit (a design meant to compute has none). */
   initialErrors: string[];
@@ -469,7 +474,7 @@ export async function differential<K extends string>(
       }
       run.evaluated[0] += mine.result.stats.evaluated.length;
       run.evaluated[1] += fresh.result.stats.evaluated.length;
-      for (const id of [...fallbacks(mine.result), ...fallbacks(fresh.result)]) {
+      for (const id of [...fallbacks(mine.result, current), ...fallbacks(fresh.result, current)]) {
         run.fallbacks.push(`step ${step}: ${id}`);
       }
       for (const d of problems) run.problems.push(`step ${step}: ${d}`);

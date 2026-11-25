@@ -481,8 +481,9 @@ loft and the import answer `add` too, each for the inputs its predicate allows; 
   piece of a body with two or more solids, which every STEP file of several solids reaches (a
   FreeCAD or f3d design's stored shapes are plain STEP or STL imports, with no feature type of
   their own): it now collects the IDs before it by iterating (`earlier`), the same set under
-  `write`. Without that change the import stays right but falls back on every such file, parsing
-  it twice.
+  `write`. Without that change the look-up failed the `add` evaluation of every such file inside
+  `splitSolids`, after a piece was kept, so it left shapes behind (see the checks below) and the
+  file would be parsed again as `write`.
 
 **What they read under those predicates** (audited on this branch; file:line; `features/` unless
 said; the shared helpers as listed for the extrude: `explicitBodies` `operation.ts:91` returns at
@@ -576,12 +577,14 @@ curve, twist, scale, a fixed orientation; a point as a tip, ruled; an import's u
 and units); one that takes an instance back to `add` (its own inputs again); and the generic edits
 (an insert, a length scaled, suppress, the marker, a reorder, a delete, undo, a parameter). After
 every step the cached engine gives what a cleared engine gives, compared as for the extrude, and
-no recompute of either evaluates a feature twice (no fall-back). The edited instance computed at
+no recompute of either evaluates a feature more often than the document holds it (no fall-back;
+a seeded insert can put back a feature an undo already restored, so an ID can be there twice).
+The extrude's proof now checks the same for its nine designs. The edited instance computed at
 least once after: a picked body and the way back in every design but the imports, a face to sit
 on, a plane, an offset and the shape for the primitives and coils, an axis, text and angles for
 the revolves, and there a face profile and an edge axis too, the path and twist for the sweeps, a
 face section and a point for the lofts (the toggle to ruled didn't compute in this seed's runs; the
-design's own ruled loft does from the start), every edit for the imports.
+design's own ruled loft does from the start), and every term's edit for the imports.
 
 Counters: an edit of the first of four separate instances (each primitive type, revolves, coils,
 sweeps, lofts; an STL import before a 3MF, the STEP and the OpenSCAD import) evaluates that
@@ -598,20 +601,21 @@ registry and compiler count them). The predicates term by term (`primitiveAddsOn
 Each was checked to fail with its change taken out (the file changed, the filtered test run, the
 file restored): each feature's `bodyAccess` back to `() => 'write'` (the first-of-four counter of
 that feature: all four primitives, the coil, revolve, sweep and loft; for the import also the
-file-read counter and its predicate test); each predicate without one of its terms (operation,
-picked bodies, plane; the revolve's extent, axis and profile terms; the sweep's profile and path
-terms; the loft's section term: the predicate's own test); and `splitSolids` with `ctx.bodies.has`
-again (the file-read counter and the imports' first-of-four counter). With that look-up the
-STEP import's `add` evaluation also left two shapes behind: the look-up throws after the piece
-before it was kept (`scope.keep`), so the strict leak check failed the first recompute; without
-strict leaks the engine would warn of the leak and fall back. A predicate changed in the source changes the
-cleared engine too, so the differential sees such a fault through its other checks: without the
-primitives' picked-bodies term the fall-backs (36 in the primitives design: `explicitBodies`'
-look-up is noticed), without their operation term the flips (`operation: add→add`), without the
-revolve's extent term the fall-backs. A negative control in the same file keeps the fault in the
-engine under test only, as the extrude's control (2) does: a box joined to a box it overlaps,
-said to be `add`, finds no body to join (the iteration isn't noticed, no fall-back) and makes a
-new one, so the bodies, statuses, reports and a mesh differ at once.
+file-read counter and its predicate test); each predicate without one of its terms (the
+predicate's own test: operation and picked bodies for each, the primitives' plane, the revolve's
+extent, axis and profile terms, the sweep's profile and path terms, the loft's section term); and
+`splitSolids` with `ctx.bodies.has` again (the file-read counter and the imports' first-of-four
+counter). With that look-up the STEP import's `add` evaluation also left two shapes behind: the
+look-up throws after the piece before it was kept (`scope.keep`), so the strict leak check failed
+the first recompute; without strict leaks the engine would warn of the leak and fall back. A
+predicate changed in the source changes the cleared engine too, so the differential sees such a
+fault through its other checks: without the primitives' picked-bodies term the fall-backs (36 in
+the primitives design: `explicitBodies`' look-up is noticed), without their operation term the
+flips (`operation: add→add`), without the revolve's extent term the fall-backs (a revolve to a
+body looks it up). A negative control in the same file keeps the fault in the engine under test
+only, as the extrude's control (2) does: a box joined to a box it overlaps, said to be `add`,
+finds no body to join (the iteration isn't noticed, no fall-back) and makes a new one, so the
+bodies, statuses, reports and a mesh differ at once.
 
 **Not covered:** the features inside an inserted design (an import in one included); a sketch's
 geometry, constraints and dimensions; a construction plane or axis made from a body's face or edge
