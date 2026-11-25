@@ -1966,6 +1966,14 @@ export class Kernel {
     return this.#facade.isValid(shape);
   }
 
+  /**
+   * Volume, area and a loose box, for features and the kernel's own checks (ADR-0035's amendment
+   * of 2026-11-24): the box is bounded from the faces' geometry with their tolerances, never from
+   * a triangulation meshing left on them, so it is the same whether or not the shape was drawn
+   * and what a recompute from scratch gets. A curved face's box can be loose (a torus's reaches
+   * past it). A box shown to a person, or recorded as a body's size, comes from `properties`
+   * (exact, from the geometry without tolerances).
+   */
   measure(shape: ShapeHandle): Measurements {
     if (this.isMesh(shape)) {
       const manifold = this.#manifoldOf(shape);
