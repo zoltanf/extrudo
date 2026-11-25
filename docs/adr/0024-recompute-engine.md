@@ -637,15 +637,29 @@ its own lines, the edit an angle of 300°; 20 plates (60 × 40 × 5 mm extrudes)
 | | last | 1 → 1 | 1 → 1 | 7, 7 → 7, 7 |
 
 Before, the edited plate and the import ran (the plates are `add` on both); now the import is a
-cache hit and its file isn't read. The last box's edit is 6 → 10 ms in both runs; not looked
-into.
+cache hit and its file isn't read. The last box's edit, 6 → 10 ms in these two runs, is
+6.4 → 6.8 ms as the median of 20 edits (each a new height; the box's evaluate 1.8 ms and its mesh 1.0 ms on both).
+The difference is the engine's walk, and it grows with the number of bodies faster than they do:
+with 500 boxes the last box's edit takes 20.0 → 32.0 ms (20 edits, two runs: 19.9–20.0 and
+31.7–32.0 ms). A CPU profile puts it in `mergeBodies`, which copies the bodies before an `add`
+feature to append its own (about 7.5 ms of a walk of 500 boxes), and in `hasOwnBodies`' scan of
+their IDs (about 2 ms): both scale with the bodies before each `add` feature, so a walk of N such
+features costs on the order of N² map entries. Not changed: appending in place would have to
+keep the snapshots a walk hands out (`ScadStep.before` and `after`, a preview's base) unchanged.
 
 In the app (the 30- and 100-plate designs above, production build, the same machine and setup,
 median of 4 interleaved runs, main → this): committing an edit of the first plate in its dialog
 191 → 184 ms (30 plates) and 260 → 262 ms (100 plates) until the model is ready, undoing it
 320 → 321 and 331 → 330 ms. The page's blocked time stays within its runs' spread for six of
 the seven actions; opening the 100-plate design gave 818–864 ms (main) and 865–926 ms (this),
-and opening the 30-plate one 571–582 and 448–595 ms. The plates are extrudes, which answered
+and opening the 30-plate one 571–582 and 448–595 ms. Opening the 100-plate design again, quiet
+machine, interleaved: 4 more runs of all the actions gave 1,022–1,050 and 1,045–1,194 ms (this
+higher in all 8 pairs, by 44 ms as the median difference); 8 runs of opening alone 1,047–1,150
+and 991–1,139 ms (medians 1,092 and 1,097); 4 profiled runs 1,027–1,212 and 998–1,094 ms (this
+lower in 3 of the 4 pairs), their blocked time split by kind (React render and commit, three.js, sketch
+drawing, garbage collection, worker messages) with no kind higher here beyond its spread. Not
+a difference of this change, then, as far as these runs tell; the level moves by about 200 ms
+between batches of runs. The plates are extrudes, which answered
 `add` before, so no change was expected there.
 
 **Not covered:** the features inside an inserted design (an import in one included); a sketch's
