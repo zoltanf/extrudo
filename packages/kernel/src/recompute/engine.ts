@@ -934,7 +934,8 @@ export class RecomputeEngine {
           const writeKey = keyOf(bodiesKey);
           const cached = this.#entries.get(writeKey);
           if (cached) {
-            // Another walk (a preview) evaluated it as `write` meanwhile.
+            // Evaluated as `write` by another walk meanwhile (a preview), or before this key was
+            // forgotten.
             entry = hit(cached);
           } else {
             entry = this.#evaluate(
