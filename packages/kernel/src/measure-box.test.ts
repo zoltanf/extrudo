@@ -44,6 +44,44 @@ describe('measure (ADR-0035, 2026-11-24)', () => {
     }
   });
 
+  it('gives the same box for wires and free edges before and after meshing, fine or coarse', () => {
+    const helix = (
+      origin: [number, number, number],
+      radius: number,
+      pitch: number,
+      turns: number,
+    ) => kernel.helix({ origin, axis: [0, 0, 1], start: [1, 0, 0], radius, pitch, turns });
+    const shapes = {
+      'a helix wire': () => helix([0, 0, 0], 10, 4, 2.3),
+      'a free circle edge': () => {
+        const cylinder = kernel.cylinder(5, 10, [0, 0, 0]);
+        const edge = kernel.subShape(cylinder, 'edge', 0);
+        kernel.release(cylinder);
+        return edge;
+      },
+      'a box and a helix': () => {
+        const box = kernel.box([5, 5, 5]);
+        const wire = helix([20, 0, 0], 7, 3, 1.6);
+        const both = kernel.compound([box, wire]);
+        kernel.release(box);
+        kernel.release(wire);
+        return both;
+      },
+    };
+    for (const [name, make] of Object.entries(shapes)) {
+      for (const options of [
+        DEFAULT_TESSELLATION,
+        { linearDeflection: 0.5, angularDeflection: 0.5 },
+      ]) {
+        const shape = make();
+        const before = kernel.measure(shape).bbox;
+        kernel.mesh(shape, options);
+        expect(kernel.measure(shape).bbox, `${name}, ${options.linearDeflection}`).toEqual(before);
+        kernel.release(shape);
+      }
+    }
+  });
+
   it('`properties` gives the exact box, before and after meshing: what a person is shown', () => {
     const shapes: [string, ReturnType<Kernel['box']>, number[]][] = [
       ['cylinder r 5', kernel.cylinder(5, 10, [0, 0, 0]), [-5, -5, 0, 5, 5, 10]],
