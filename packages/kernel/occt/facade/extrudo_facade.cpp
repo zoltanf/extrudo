@@ -221,10 +221,19 @@
 #include <XCAFDoc_ShapeTool.hxx>
 #include <StepBasic_Product.hxx>
 #include <StepData_StepModel.hxx>
+#include <StepRepr_Representation.hxx>
+#include <StepRepr_RepresentationItem.hxx>
+#include <StepShape_ConnectedFaceSet.hxx>
+#include <StepShape_ManifoldSolidBrep.hxx>
+#include <StepVisual_FaceOrSurface.hxx>
 #include <StepVisual_LayeredItem.hxx>
 #include <StepVisual_PresentationLayerAssignment.hxx>
 #include <StepVisual_StyledItem.hxx>
 #include <StepVisual_StyledItemTarget.hxx>
+#include <StepVisual_TessellatedFace.hxx>
+#include <StepVisual_TessellatedShell.hxx>
+#include <StepVisual_TessellatedSolid.hxx>
+#include <StepVisual_TessellatedStructuredItem.hxx>
 #include <TransferBRep.hxx>
 #include <Transfer_TransientProcess.hxx>
 #include <XSControl_TransferReader.hxx>
@@ -2982,10 +2991,11 @@ public:
 
   /**
    * Reads STEP text into one shape (a compound of what the file's roots
-   * translate to), by its exact geometry (stepReadParameters()). A shape
-   * with any face given only as triangles is refused, so no body has a face
-   * without a surface. Used by the STEP import (FR-IO-05) and the export
-   * tests. Returns a handle, or 0.
+   * translate to), by its exact geometry: a tessellated copy of a part that
+   * also has exact geometry is left out (stepReadParameters(),
+   * dropTessellatedCopies()). A shape with any face given only as triangles
+   * is refused, so no body has a face without a surface. Used by the STEP
+   * import (FR-IO-05) and the export tests. Returns a handle, or 0.
    */
   int readStep(const char* text) {
     beginOp();
@@ -2996,6 +3006,7 @@ public:
       if (reader.ReadStream("extrudo.step", stepReadParameters(), in) != IFSelect_RetDone) {
         return fail("STEP import failed: the file couldn't be read.");
       }
+      dropTessellatedCopies(reader.StepModel());
       if (reader.TransferRoots() <= 0) return fail("STEP import failed: the file has no shapes.");
       const TopoDS_Shape shape = reader.OneShape();
       if (hasSurfacelessFace(shape)) {
@@ -3653,8 +3664,9 @@ public:
         reader.SetMatMode(false);
         reader.SetViewMode(false);
         std::istringstream in(text == nullptr ? "" : text);
-        if (reader.ChangeReader().ReadStream("extrudo.step", stepReadParameters(), in) == IFSelect_RetDone &&
-            reader.Transfer(doc)) {
+        const bool read = reader.ChangeReader().ReadStream("extrudo.step", stepReadParameters(), in) == IFSelect_RetDone;
+        if (read) dropTessellatedCopies(reader.ChangeReader().StepModel());
+        if (read && reader.Transfer(doc)) {
           const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
           geometry_.push_back(0);
           NCollection_Sequence<TDF_Label> roots;
@@ -3727,8 +3739,9 @@ public:
         reader.SetMatMode(false);
         reader.SetViewMode(false);
         std::istringstream in(text == nullptr ? "" : text);
-        if (reader.ChangeReader().ReadStream("extrudo.step", stepReadParameters(), in) == IFSelect_RetDone &&
-            reader.Transfer(doc)) {
+        const bool read = reader.ChangeReader().ReadStream("extrudo.step", stepReadParameters(), in) == IFSelect_RetDone;
+        if (read) dropTessellatedCopies(reader.ChangeReader().StepModel());
+        if (read && reader.Transfer(doc)) {
           const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
           NCollection_Sequence<TDF_Label> roots;
           shapes->GetFreeShapes(roots);
@@ -3786,6 +3799,7 @@ public:
         fail("STEP import failed: the file couldn't be read.");
         return -1;
       }
+      dropTessellatedCopies(reader.StepModel());
       if (reader.TransferRoots() <= 0) {
         fail("STEP import failed: the file has no shapes.");
         return -1;
@@ -6460,21 +6474,76 @@ private:
   std::string exportText_;
   /**
    * The settings of every STEP read (readStep() and the colour, name and
-   * hidden-solid readers, so they all see the same solids in the same
-   * order): OCCT's own (read.step.* as set), with tessellated geometry read
-   * only where it has no exact geometry (RWMode_Tessellated_OnNoBRep). A
-   * tessellated copy linked to the faces it copies (its geometric links) is
-   * then left out, and the exact faces keep no triangles from the file
-   * (OCCT's default, On, attaches the copy's triangles to them). A copy
-   * without links, or one OCCT reads before the faces it links to, is read
-   * as faces without a surface, which readStep() refuses. Call it after a
-   * reader is made: that sets OCCT's read.step.* values.
+   * hidden-solid readers, which read the same way so they all see the same
+   * solids in the same order): OCCT's own (read.step.* as set), with
+   * tessellated geometry read only where there is no exact geometry
+   * (RWMode_Tessellated_OnNoBRep): a tessellated face linked to an exact face
+   * is skipped, and the exact faces keep no triangles from the file (OCCT's
+   * default, On, attaches a linked copy's triangles to them). Call it after a
+   * reader is made: that sets OCCT's read.step.* values. Each read then calls
+   * dropTessellatedCopies() before its transfer.
    */
   static DESTEP_Parameters stepReadParameters() {
     DESTEP_Parameters parameters;
     parameters.InitFromStatic();
     parameters.ReadTessellated = DESTEP_Parameters::RWMode_Tessellated_OnNoBRep;
     return parameters;
+  }
+
+  /** Whether `item` is a tessellated face linked to the exact face (or surface) it copies. */
+  static bool linkedTessellatedFace(const Handle(Standard_Transient)& item) {
+    const Handle(StepVisual_TessellatedFace) face = Handle(StepVisual_TessellatedFace)::DownCast(item);
+    return !face.IsNull() && face->HasGeometricLink() && !face->GeometricLink().Value().IsNull();
+  }
+
+  /**
+   * Whether `item` is a tessellated copy of exact geometry: a tessellated
+   * solid linked to its solid, a tessellated shell linked to its shell, a
+   * tessellated face linked to its face, or a tessellated solid or shell all
+   * of whose faces are such faces.
+   */
+  static bool tessellatedCopy(const Handle(Standard_Transient)& item) {
+    if (linkedTessellatedFace(item)) return true;
+    Handle(NCollection_HArray1<Handle(StepVisual_TessellatedStructuredItem)>) faces;
+    if (const Handle(StepVisual_TessellatedSolid) solid = Handle(StepVisual_TessellatedSolid)::DownCast(item)) {
+      if (solid->HasGeometricLink() && !solid->GeometricLink().IsNull()) return true;
+      faces = solid->Items();
+    } else if (const Handle(StepVisual_TessellatedShell) shell = Handle(StepVisual_TessellatedShell)::DownCast(item)) {
+      if (shell->HasTopologicalLink() && !shell->TopologicalLink().IsNull()) return true;
+      faces = shell->Items();
+    }
+    if (faces.IsNull() || faces->Length() == 0) return false;
+    for (int i = faces->Lower(); i <= faces->Upper(); ++i) {
+      if (!linkedTessellatedFace(faces->Value(i))) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Takes every tessellated copy of exact geometry (tessellatedCopy()) out of
+   * the representations of a STEP file just read, before its transfer, so the
+   * part is read by its exact geometry alone. OnNoBRep isn't enough: it reads
+   * a linked tessellated solid as the solid it links to, so a part whose copy
+   * sits in a representation of its own comes out twice, and it reads a copy
+   * that comes before the solid it links to as faces without a surface. A
+   * copy without links stays, as faces without a surface (readStep() refuses
+   * those).
+   */
+  static void dropTessellatedCopies(const Handle(StepData_StepModel)& model) {
+    if (model.IsNull()) return;
+    for (int i = 1; i <= model->NbEntities(); ++i) {
+      const Handle(StepRepr_Representation) rep = Handle(StepRepr_Representation)::DownCast(model->Value(i));
+      if (rep.IsNull() || rep->Items().IsNull()) continue;
+      std::vector<Handle(StepRepr_RepresentationItem)> kept;
+      for (int k = 1; k <= rep->NbItems(); ++k) {
+        if (!tessellatedCopy(rep->ItemsValue(k))) kept.push_back(rep->ItemsValue(k));
+      }
+      if (static_cast<int>(kept.size()) == rep->NbItems()) continue;
+      Handle(NCollection_HArray1<Handle(StepRepr_RepresentationItem)>) items =
+          new NCollection_HArray1<Handle(StepRepr_RepresentationItem)>(1, static_cast<int>(kept.size()));
+      for (size_t k = 0; k < kept.size(); ++k) items->SetValue(static_cast<int>(k) + 1, kept[k]);
+      rep->SetItems(items);
+    }
   }
 
   /** The settings of every STEP transfer: AP242, millimetres (P2-12). */
