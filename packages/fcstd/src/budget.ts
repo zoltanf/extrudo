@@ -44,6 +44,7 @@ export const KERNEL_REFUSALS: ReadonlySet<string> = new Set([
   'ScriptRunError',
   'LostReferenceError',
   'MissingFileError',
+  'OutsideError',
   'Unavailable',
 ]);
 
