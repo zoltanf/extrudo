@@ -2635,8 +2635,9 @@ public:
       // From the faces' geometry, never their triangulation (useTriangulation false): meshing a
       // shape for display or a sheet view leaves a triangulation on its faces, and a box from it
       // is larger, so the same shape measured before and after drawing it gave two boxes
-      // (ADR-0035's amendment of 2026-11-24). A face with no surface (a mesh body) still uses its
-      // triangulation, as before. Every BRepBndLib::Add here passes false for the same reason.
+      // (ADR-0035's amendment of 2026-11-24). A face with no surface (a face read from a file
+      // without its geometry) still uses its triangulation, as before. Every BRepBndLib::Add here
+      // passes false for the same reason.
       Bnd_Box box;
       BRepBndLib::Add(*s, box, false);
       measured_[0] = volume.Mass();
@@ -2698,6 +2699,7 @@ public:
       measured_[11] = centre.Z();
       Bnd_Box box;
       BRepBndLib::AddOptimal(*s, box, false, false);
+      addSurfacelessFaces(*s, box);
       if (!box.IsVoid()) {
         box.Get(measured_[2], measured_[3], measured_[4], measured_[5], measured_[6], measured_[7]);
       }
@@ -2705,6 +2707,24 @@ public:
     } catch (...) {
       failFromException("Measure failed");
       return false;
+    }
+  }
+
+  /**
+   * Adds the triangulation's points of every face with no surface (a face read from a file
+   * without its geometry, ADR-0035's amendment of 2026-11-25): AddOptimal without triangulations
+   * adds nothing for such a face, so a body made only of them had a void box. The points are the
+   * face's exact extent.
+   */
+  static void addSurfacelessFaces(const TopoDS_Shape& shape, Bnd_Box& box) {
+    for (TopExp_Explorer it(shape, TopAbs_FACE); it.More(); it.Next()) {
+      const TopoDS_Face& face = TopoDS::Face(it.Current());
+      TopLoc_Location location;
+      if (!BRep_Tool::Surface(face, location).IsNull()) continue;
+      const Handle(Poly_Triangulation) triangulation = BRep_Tool::Triangulation(face, location);
+      if (triangulation.IsNull()) continue;
+      const gp_Trsf transform = location.Transformation();
+      for (int n = 1; n <= triangulation->NbNodes(); ++n) box.Add(triangulation->Node(n).Transformed(transform));
     }
   }
 
