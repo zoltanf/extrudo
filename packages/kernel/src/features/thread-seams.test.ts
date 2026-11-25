@@ -36,7 +36,7 @@ it("pins the seam edges of the bottle cap's threaded bodies", { timeout: 120_000
         b.id,
         [...(b.mesh?.edgeFlags ?? [])]
           .map((flag, e) =>
-            (flag & EDGE_SEAM) !== 0 ? (b.mesh?.edgeIds[e] ?? `#${e}`) : undefined,
+            (flag & EDGE_SEAM) !== 0 ? (b.mesh?.edgeIds?.[e] ?? `#${e}`) : undefined,
           )
           .filter((name) => name !== undefined)
           .sort(),
