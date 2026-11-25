@@ -100,6 +100,33 @@ function plates(n: number): ExtrudoDocument {
   return testDocument(features);
 }
 
+/** `plates(n)` and a groove cut into every plate: the cut reads every body, so it runs again. */
+function grooved(n: number): ExtrudoDocument {
+  const doc = plates(n);
+  const b = new SketchBuilder();
+  b.line(-5, 4, n * 30, 4);
+  b.line(n * 30, 4, n * 30, 6);
+  b.line(n * 30, 6, -5, 6);
+  b.line(-5, 6, -5, 4);
+  const [region] = detectProfiles(b.sketch);
+  const features: Feature[] = [
+    ...doc.features,
+    {
+      ...testFeature('slot-sketch', 'sketch'),
+      inputs: sketchInputs(originPlaneRef('origin:xy'), b.sketch),
+    },
+    {
+      ...testFeature('slot', 'extrude'),
+      // A groove 1 mm deep in every plate's bottom: each plate stays one body.
+      inputs: extrudeInputs([{ kind: 'profile', id: `slot-sketch/${region?.id}` }], {
+        distance: '1 mm',
+        operation: 'cut',
+      }),
+    },
+  ];
+  return { ...doc, features, timelineMarker: features.length };
+}
+
 const distance = (doc: ExtrudoDocument, id: string, mm: number): ExtrudoDocument => ({
   ...doc,
   features: doc.features.map((f) =>
@@ -142,11 +169,11 @@ async function rebuilt(doc: ExtrudoDocument): Promise<Record<string, BodyMesh>> 
 }
 
 describe('unchanged bodies keep their mesh objects (ADR-0024, 2026-11-24)', () => {
-  it('an edit of the first of six plates: the kernel sends all six, one gets a new object', {
+  it('an edit of the first of six grooved plates: the kernel sends all six, one gets a new object', {
     timeout: 60_000,
   }, async () => {
     const kernel = realKernel();
-    const { document, model } = start(plates(6), kernel.api);
+    const { document, model } = start(grooved(6), kernel.api);
     await settled(model, () => kernel.sent.recomputes, 1);
     const before = model.getState().bodies;
     expect(Object.keys(before)).toHaveLength(6);
@@ -154,7 +181,7 @@ describe('unchanged bodies keep their mesh objects (ADR-0024, 2026-11-24)', () =
     document.setState({ doc: distance(document.getState().doc, 'ex0', 9) });
     await settled(model, () => kernel.sent.recomputes, 2);
     const after = model.getState().bodies;
-    // Every later extrude's cache key takes in the first one's: all six come again.
+    // The groove's cut reads every plate, so it runs again and makes all six again.
     expect(kernel.sent.meshes).toBe(6);
     const kept = Object.keys(after).filter((id) => after[id as BodyId] === before[id as BodyId]);
     expect(kept).toEqual(['ex1:0', 'ex2:0', 'ex3:0', 'ex4:0', 'ex5:0']);
@@ -162,6 +189,24 @@ describe('unchanged bodies keep their mesh objects (ADR-0024, 2026-11-24)', () =
     const full = await rebuilt(document.getState().doc);
     for (const [id, mesh] of Object.entries(after))
       expect(sameMesh(mesh, full[id] as BodyMesh)).toBe(true);
+  });
+
+  it('an edit of the first of six separate plates: the kernel sends one mesh', {
+    timeout: 60_000,
+  }, async () => {
+    // A New Body extrude of a sketch's profile only adds a body (ADR-0024's amendment on
+    // `add` access): the later plates keep their versions and aren't sent again.
+    const kernel = realKernel();
+    const { document, model } = start(plates(6), kernel.api);
+    await settled(model, () => kernel.sent.recomputes, 1);
+    const before = model.getState().bodies;
+    kernel.sent.meshes = 0;
+    document.setState({ doc: distance(document.getState().doc, 'ex0', 9) });
+    await settled(model, () => kernel.sent.recomputes, 2);
+    const after = model.getState().bodies;
+    expect(kernel.sent.meshes).toBe(1);
+    const kept = Object.keys(after).filter((id) => after[id as BodyId] === before[id as BodyId]);
+    expect(kept).toEqual(['ex1:0', 'ex2:0', 'ex3:0', 'ex4:0', 'ex5:0']);
   });
 
   it('a seeded run of edits: a body keeps its object exactly when its mesh is the same', {
@@ -289,7 +334,7 @@ describe('unchanged bodies keep their mesh objects (ADR-0024, 2026-11-24)', () =
     timeout: 60_000,
   }, async () => {
     const kernel = realKernel();
-    const { document, model } = start(plates(4), kernel.api);
+    const { document, model } = start(grooved(4), kernel.api);
     await settled(model, () => kernel.sent.recomputes, 1);
     const before = model.getState().bodies;
     const r = recomputer as Recomputer;
