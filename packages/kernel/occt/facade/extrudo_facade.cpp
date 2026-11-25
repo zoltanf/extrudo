@@ -16353,7 +16353,9 @@ private:
     builder.MakeCompound(both);
     builder.Add(both, a);
     builder.Add(both, b);
-    TopoDS_Iterator it(BRepBuilderAPI_Copy(both, true, true).Shape());
+    // Held here: the iterator walks the compound, which must outlive it.
+    const TopoDS_Shape copied = BRepBuilderAPI_Copy(both, true, true).Shape();
+    TopoDS_Iterator it(copied);
     outA = it.Value();
     it.Next();
     outB = it.Value();
