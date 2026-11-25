@@ -622,12 +622,16 @@ public:
       return fail("Chamfer failed: pick edges and give each its distances.");
     }
     try {
+      // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
+      // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
+      // (ADR-0035, 2026-11-26). The copy's sub-shapes are the input's, in the same order.
+      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, true, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
-      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
-      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      TopExp::MapShapes(body, TopAbs_EDGE, edges);
+      TopExp::MapShapes(body, TopAbs_FACE, faces);
       NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
-      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
       const std::vector<int> staged = args_;
       const std::vector<double> spec = numbers_;
       for (size_t i = 0; i < staged.size(); ++i) {
@@ -642,7 +646,7 @@ public:
           return fail("Chamfer failed: the angle must be between 0 and 90 degrees.");
         }
       }
-      BRepFilletAPI_MakeChamfer builder(*input);
+      BRepFilletAPI_MakeChamfer builder(body);
       std::vector<int> contourOf;
       std::vector<int> bad;
       const int added = addChamfers(builder, edges, faces, edgeFaces, staged, spec, contourOf, bad);
@@ -680,10 +684,10 @@ public:
         result.Nullify();
       }
       if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
-        recordHistory(builder, *input, 0, result);
+        recordHistory(builder, body, 0, result);
         return store(result);
       }
-      return explainChamfer(*input, edges, faces, edgeFaces, staged, spec, contourOf, chains);
+      return explainChamfer(body, edges, faces, edgeFaces, staged, spec, contourOf, chains);
     } catch (...) {
       geometry_.clear();
       geometry_.push_back(5);
@@ -1922,7 +1926,9 @@ public:
         return -1;
       }
       const gp_Pln plane(gp_Pnt(ox, oy, oz), gp_Dir(normal));
-      BRepAlgoAPI_Section section(*s, plane, false);
+      // A copy: the section raises the shape's tolerances where the plane passes near them, in
+      // place (OCCT's default mode), and the shape can be a cached body (ADR-0035, 2026-11-26).
+      BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*s, true, false).Shape(), plane, false);
       section.Approximation(false);
       section.ComputePCurveOn1(false);
       section.Build();
@@ -1988,7 +1994,12 @@ public:
           fail("Unknown shape.");
           return -1;
         }
-        BRepAlgoAPI_Section section(*a, *b, false);
+        // Copies (made together: an edge the two faces share stays shared): the section raises
+        // the faces' tolerances in place, and they can be a cached body's (ADR-0035, 2026-11-26).
+        TopoDS_Shape copyA;
+        TopoDS_Shape copyB;
+        copyTogether(*a, *b, copyA, copyB);
+        BRepAlgoAPI_Section section(copyA, copyB, false);
         section.Approximation(false);
         section.ComputePCurveOn1(false);
         section.ComputePCurveOn2(false);
@@ -1999,7 +2010,7 @@ public:
         }
         curve = section.Shape();
       } else {
-        BRepAlgoAPI_Section section(*a, planeA, false);
+        BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*a, true, false).Shape(), planeA, false);
         section.Approximation(false);
         section.ComputePCurveOn1(false);
         section.Build();
@@ -14085,8 +14096,12 @@ private:
                            : "Fillet failed: pick edges and give each a radius.");
     }
     try {
+      // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
+      // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
+      // (ADR-0035, 2026-11-26). The copy's sub-shapes are the input's, in the same order.
+      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, true, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
-      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
+      TopExp::MapShapes(body, TopAbs_EDGE, edges);
       for (size_t i = 0; i < args_.size(); ++i) {
         if (args_[i] < 0 || args_[i] >= edges.Extent()) return fail("Fillet failed: edge index out of range.");
         for (int k = 0; k < perEdge; ++k) {
@@ -14096,8 +14111,8 @@ private:
       const std::vector<int> staged = args_;
       const std::vector<double> radii = numbers_;
       EdgeFaceMap edgeFaces;
-      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
-      BRepFilletAPI_MakeFillet builder(*input);
+      TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      BRepFilletAPI_MakeFillet builder(body);
       std::vector<int> contourOf;
       std::vector<int> bad;
       const int added = addFillets(builder, edges, edgeFaces, staged, radii, perEdge, contourOf, bad);
@@ -14130,7 +14145,7 @@ private:
       }
       // A radius that rolls off a flat face goes straight to the diagnosis: OCCT can trap there.
       if (added == 3) {
-        return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
+        return explainFillet(body, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
       }
       TopoDS_Shape result;
       try {
@@ -14140,10 +14155,10 @@ private:
         result.Nullify();
       }
       if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
-        recordHistory(builder, *input, 0, result);
+        recordHistory(builder, body, 0, result);
         return store(result);
       }
-      return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
+      return explainFillet(body, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
     } catch (...) {
       geometry_.clear();
       geometry_.push_back(5);
