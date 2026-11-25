@@ -624,8 +624,9 @@ public:
     try {
       // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
       // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
-      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order.
-      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, true, true).Shape();
+      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order, over the
+      // same geometry and meshes (see copyTogether).
+      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, false, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
       TopExp::MapShapes(body, TopAbs_EDGE, edges);
@@ -1928,7 +1929,7 @@ public:
       const gp_Pln plane(gp_Pnt(ox, oy, oz), gp_Dir(normal));
       // A copy: the section raises the shape's tolerances where the plane passes near them, in
       // place (OCCT's default mode), and the shape can be a cached body (ADR-0035, 2026-11-25).
-      BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*s, true, false).Shape(), plane, false);
+      BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*s, false, false).Shape(), plane, false);
       section.Approximation(false);
       section.ComputePCurveOn1(false);
       section.Build();
@@ -2010,7 +2011,7 @@ public:
         }
         curve = section.Shape();
       } else {
-        BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*a, true, false).Shape(), planeA, false);
+        BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*a, false, false).Shape(), planeA, false);
         section.Approximation(false);
         section.ComputePCurveOn1(false);
         section.Build();
@@ -14098,8 +14099,9 @@ private:
     try {
       // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
       // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
-      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order.
-      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, true, true).Shape();
+      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order, over the
+      // same geometry and meshes (see copyTogether).
+      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, false, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
       TopExp::MapShapes(body, TopAbs_EDGE, edges);
       for (size_t i = 0; i < args_.size(); ++i) {
@@ -16346,7 +16348,13 @@ private:
     builder.Build();
   }
 
-  /** Copies of `a` and `b` (meshes included) made in one copy, so sub-shapes they share stay shared. */
+  /**
+   * Copies of `a` and `b` made in one copy, so sub-shapes they share stay shared. New sub-shapes
+   * (where tolerances live) over the same curves, surfaces and meshes: copying the geometry gives
+   * every face its own copy of its surface (BRepTools_CopyModification::NewSurface), and an edge
+   * between two faces on one closed surface, at its seam (a thread's root pieces), then no longer
+   * reads as closed (BRep_Tool::IsClosed), so the view drew it.
+   */
   static void copyTogether(const TopoDS_Shape& a, const TopoDS_Shape& b, TopoDS_Shape& outA, TopoDS_Shape& outB) {
     BRep_Builder builder;
     TopoDS_Compound both;
@@ -16354,7 +16362,7 @@ private:
     builder.Add(both, a);
     builder.Add(both, b);
     // Held here: the iterator walks the compound, which must outlive it.
-    const TopoDS_Shape copied = BRepBuilderAPI_Copy(both, true, true).Shape();
+    const TopoDS_Shape copied = BRepBuilderAPI_Copy(both, false, true).Shape();
     TopoDS_Iterator it(copied);
     outA = it.Value();
     it.Next();
