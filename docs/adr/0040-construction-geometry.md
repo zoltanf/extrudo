@@ -400,3 +400,16 @@ faces and a plane meet. This is the amendment's first **facade change**.
   before.
 - **A point where two curved faces and a plane meet is no longer open.**
 
+
+## Amendment, 2026-11-25 — a free-form tangent plane meshes a copy
+
+The free-form fallback of decision 5 (the nearest point of a 0.01 mm mesh of the face) meshed the
+body itself. That left the fine triangulation on the body, so the view drew it finer from then
+on, and a finer triangulation already on it was kept and moved the plane. `meshTangent` now
+meshes a copy made by `Kernel.transform` with the identity (same faces, same order, no
+triangulation) and releases it. The plane on a body never drawn is the same as before, number
+for number (ADR-0035's amendment of 2026-11-25 has the tests). The whole body is copied, not only
+the face: the copy has the body's faces and geometry, so it is meshed as the body never drawn was
+before. A copy of the face alone (`subShape`, then the transform) gave the same plane on the test
+body too, but a face alone has no neighbours sharing its edges' points, and no other body was
+checked. The copy's cost was not measured.
