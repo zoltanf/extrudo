@@ -392,6 +392,17 @@ scaled, suppress, reorder and delete; "to object" up to a vertex or a plane; joi
 annotations, sheets and previews (a preview only in the reused count below); mesh bodies,
 imports, scripts and OpenSCAD features; the stopped list (fixed per design).
 
+**Assumed, not shown beyond these designs.** A cached body carries the triangulation the view's
+meshing left on its faces, where a body evaluated again has none. Two things could then differ
+between an edit and a recompute from scratch, without `add` too, but `add` keeps more bodies
+cached: (1) boxes OCCT builds inside its own algorithms (the distance check behind
+`bodiesTouch`, a boolean's pair search) may use a triangulation; they only prune, so results
+should not change. (2) A cut or a join keeps a body's untouched faces with their triangulation,
+and meshing the result keeps a triangulation that already meets the deflection, where from
+scratch those faces are meshed inside the result. The proof compares every mesh bit for bit
+after cuts and joins over cached bodies with planes, cylinders and the benchmarks' fillets, and
+finds no difference; free-form and toroidal faces under a cut are not among its designs.
+
 Cases by name: through all over cached bodies (P1–P3 lying cylinders, `add`; T a New Body disc
 "through all" both ways, `write`; P1's distance edited: exactly P1 and T evaluated, the same as a
 cleared engine; see What changes); a New Body extrude of two separate profiles (`M:0`, `M:1`),
