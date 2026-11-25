@@ -27,7 +27,7 @@ import type { SubShapeKind } from '../history';
 import { Kernel, type ShapeHandle } from '../kernel';
 import type { BodyMesh } from '../mesh';
 import { loadOcct } from '../occt/load';
-import { RecomputeEngine } from '../recompute/engine';
+import { DEFAULT_TESSELLATION, RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
 import type { KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 import { MESH_NORMAL } from './construction';
@@ -998,5 +998,105 @@ describe('a point where curved faces and a plane meet (P4-12)', { timeout: 120_0
     // XZ's anchor is the world origin: (−5, 0, 0) is nearer than (15, 0, 0).
     const p = report('X', 'point').point;
     expect(near(p, -5, 0, 0, 1e-3)).toBe(true);
+  });
+});
+
+// --------------------------------------------------- a tangent plane meshes a copy
+
+describe("a free-form tangent plane leaves its body's triangulation alone", {
+  timeout: 120_000,
+}, () => {
+  // A spline extruded 10 mm (body `E:0`), and a plane tangent to its free-form side nearest to
+  // (30, 10, 6): the plane comes from the nearest triangle of a 0.01 mm mesh (MESH_NORMAL).
+  const b = new SketchBuilder();
+  b.spline([
+    [0, 0],
+    [20, 0],
+    [20, 20],
+    [0, 20],
+    [0, 0],
+  ]);
+  const body = (): Feature[] => [
+    sketch('S', b.sketch),
+    {
+      ...testFeature('E', 'extrude'),
+      inputs: extrudeInputs([profileOf('S', b.sketch)], { distance: '10 mm' }),
+    },
+  ];
+  const target = feature('P', 'constructionPoint', {
+    x: length('30 mm'),
+    y: length('10 mm'),
+    z: length('6 mm'),
+  });
+  const withPlane = async (): Promise<Feature[]> => {
+    const picked = await withShapes(body());
+    const free = pick(picked, 'E:0', 'face', (i, shape) => {
+      return kernel.surfaceGeometry(shape, i).type !== 'plane';
+    });
+    return [
+      ...body(),
+      target,
+      feature('TP', 'tangentPlane', {
+        face: refs([free]),
+        point: refs([constructionRef(target) as GeomRef]),
+      }),
+    ];
+  };
+  /** The plane's report, the body drawn first at `tessellation` (or never). */
+  async function planeAfter(tessellation?: {
+    linearDeflection: number;
+    angularDeflection: number;
+  }) {
+    const features = await withPlane();
+    engine.clear();
+    seen.clear();
+    const request = (doc: ExtrudoDocument) => ({ doc, ...(tessellation && { tessellation }) });
+    let drawn: number | undefined;
+    if (tessellation) {
+      // The body alone first, meshed for the view at that tessellation and kept in the cache.
+      const first = await engine.recompute(request(testDocument(features.slice(0, 2))));
+      if (first.status !== 'done') throw new Error('cancelled');
+      drawn = (first.bodies[0]?.mesh?.indices.length ?? 0) / 3;
+    }
+    ok((await engine.recompute(request(testDocument(features)))) as Done);
+    return { plane: report('TP', 'plane'), drawn };
+  }
+
+  // What the plane was before this change, on a body never drawn (the body meshed in place then).
+  const NEVER_DRAWN = {
+    kind: 'plane',
+    anchor: [23.113206781, 10.310777171, 6.026147647],
+    basis: 'mesh',
+    frame: {
+      origin: [22.578732161, -1.018900131, -0.085726505],
+      x: [0.045080665, 0.99898335, 0],
+      y: [0.003789038, -0.000170986, 0.999992807],
+      normal: [0.998976164, -0.045080341, -0.003792894],
+    },
+  };
+  const COARSE = { linearDeflection: 0.5, angularDeflection: 0.5 };
+  // Finer than the plane's own mesh: a headless session's `tessellation` can draw at that.
+  const FINE = { linearDeflection: 0.002, angularDeflection: 0.05 };
+
+  it('gives the plane it gave before, number for number, on a body never drawn', async () => {
+    expect((await planeAfter()).plane).toEqual(NEVER_DRAWN);
+  });
+
+  it.each([
+    ["at the view's tessellation", DEFAULT_TESSELLATION],
+    ['coarse', COARSE],
+    ["finer than the plane's mesh", FINE],
+  ])('gives the same plane when the body was drawn %s before', async (_name, tessellation) => {
+    expect((await planeAfter(tessellation)).plane).toEqual(NEVER_DRAWN);
+  });
+
+  it.each([
+    ["at the view's tessellation", DEFAULT_TESSELLATION],
+    ['coarse', COARSE],
+  ])('leaves the body meshed as it was drawn %s', async (_name, tessellation) => {
+    const { drawn } = await planeAfter(tessellation);
+    const shape = engine.latestBody('E:0' as never) as ShapeHandle;
+    // Meshing again at the same tessellation keeps the triangulation the face has.
+    expect(kernel.mesh(shape, tessellation).indices.length / 3).toBe(drawn);
   });
 });

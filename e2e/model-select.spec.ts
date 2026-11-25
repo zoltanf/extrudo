@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, mapping, projector, sketchOnXY } from './helpers';
+import { clicker, dragOnView, mapping, projector, sketchOnXY } from './helpers';
 
 // P2-03: model-mode selection (FR-VP-05). No feature makes bodies before
 // P2-06, so the B-rep tests run on the kernel debug page, which draws the
@@ -58,32 +58,9 @@ async function shiftClick(page: Page, p: { x: number; y: number }) {
   await page.keyboard.up('Shift');
 }
 
-/** Resolves when the page has idle time (nothing it was busy with is still pending), or after 1 s. */
-const idle = (page: Page) =>
-  page.evaluate('new Promise((done) => requestIdleCallback(() => done(), { timeout: 1000 }))');
-
-/**
- * A box drag from `from` to `to`. The view takes a press held still for `LONG_PRESS_MS` (500 ms)
- * as a long press ("Select other…") and drops its release, and a busy page can keep Playwright's
- * next move from it that long. So the first move leaves the click slop at once (a smaller one
- * only asks for a hover pick, more work before the drag starts), and a press the view took for a
- * long press anyway (its menu open once the page is idle again) is let go of and dragged again,
- * at most three times.
- */
-async function box(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
-  const menu = page.getByRole('menu', { name: 'Select other' });
-  for (let attempt = 1; ; attempt++) {
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2);
-    await page.mouse.move(to.x, to.y, { steps: 4 });
-    await page.mouse.up();
-    await idle(page);
-    if (attempt === 3 || (await menu.count()) === 0) return;
-    await page.keyboard.press('Escape');
-    await expect(menu).toHaveCount(0);
-  }
-}
+/** A box drag from `from` to `to` (`dragOnView`: the first move leaves the click slop, a dropped drag is made again). */
+const box = (page: Page, from: { x: number; y: number }, to: { x: number; y: number }) =>
+  dragOnView(page, from, to);
 
 test('faces, edges and vertices pre-highlight and select on a real body', async ({ page }) => {
   const { viewport, at } = await testPart(page);

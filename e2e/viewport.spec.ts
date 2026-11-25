@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, openAppMenu, openProject, pickPreset, pickTool, sketchOnXY } from './helpers';
+import {
+  clicker,
+  dragOnView,
+  openAppMenu,
+  openProject,
+  pickPreset,
+  pickTool,
+  sketchOnXY,
+} from './helpers';
 
 // P0-05: the viewport. The camera state is mirrored on the viewport element
 // as data attributes (direction, up, target, size), so these tests check
@@ -170,10 +178,7 @@ test('Spindle mouse: middle-drag orbits, right-drag pans, left-drag does neither
 
   // A left-drag in the empty view is a selection box: the camera stays.
   const target = await attr(viewport, 'data-camera-target');
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 80, y + 60, { steps: 4 });
-  await page.mouse.up();
+  await dragOnView(page, { x, y }, { x: x + 80, y: y + 60 });
   await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
   await expect(viewport).toHaveAttribute('data-camera-target', target);
 
@@ -242,9 +247,16 @@ test('Slicer mouse: left-drag orbits, right-drag pans, Shift+left-drag selects',
   const direction = await attr(viewport, 'data-camera-direction');
 
   // Orbit with the left button: the direction changes, the target stays; the cursor says so.
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 100, y + 40, { steps: 6 });
+  await dragOnView(
+    page,
+    { x, y },
+    { x: x + 100, y: y + 40 },
+    {
+      steps: 6,
+      started: async () => (await attr(viewport, 'data-camera-direction')) !== direction,
+      release: false,
+    },
+  );
   await expect(viewport.locator('div.touch-none')).toHaveAttribute('data-cursor', 'orbit');
   await page.mouse.up();
   await expect(viewport.locator('div.touch-none')).not.toHaveAttribute('data-cursor');
@@ -272,9 +284,7 @@ test('Slicer mouse: left-drag orbits, right-drag pans, Shift+left-drag selects',
   // Shift+left-drag draws the selection box instead: the camera stays.
   const panned = await attr(viewport, 'data-camera-target');
   await page.keyboard.down('Shift');
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 80, y + 60, { steps: 4 });
+  await dragOnView(page, { x, y }, { x: x + 80, y: y + 60 }, { release: false });
   await expect(viewport.locator('[data-selection-box]')).toHaveAttribute(
     'data-selection-box',
     'window',
@@ -310,10 +320,7 @@ test('the nav-bar Orbit tool orbits with the left button until Esc', async ({ pa
 
   // Without the tool, a left-drag doesn't move the camera.
   const direction = await attr(viewport, 'data-camera-direction');
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 80, y, { steps: 4 });
-  await page.mouse.up();
+  await dragOnView(page, { x, y }, { x: x + 80, y });
   await expect(viewport).toHaveAttribute('data-camera-direction', direction);
 
   await orbit.click();
