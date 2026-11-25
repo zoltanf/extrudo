@@ -11,7 +11,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Kernel, KernelError, type ShapeHandle, type WrapFrame } from './kernel';
 import { loadOcct } from './occt/load';
 import type { PlanarCurve, PlanarFrame, Vec2 } from './planar';
-import { RecomputeEngine } from './recompute/engine';
+import { type BodyMesh, sameMesh } from './mesh';
+import { DEFAULT_TESSELLATION, RecomputeEngine } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
 import { buildTestPart } from './test-part';
 
@@ -824,6 +825,67 @@ describe('a profile, path or body used by a call gives later results as a fresh 
       expect(fromBody(used)).toEqual(fromBody(fresh));
     } finally {
       kernel.release(fresh, used);
+    }
+  });
+});
+
+describe('hlrPolySpans meshes a body that has no triangulation (ADR-0035, 2026-11-25)', () => {
+  const VIEW = DEFAULT_TESSELLATION;
+  const same = (a: BodyMesh, b: BodyMesh) => sameMesh(a, b);
+
+  it('in place, at its own angle, which a later display mesh keeps (so callers mesh first)', {
+    timeout: 60_000,
+  }, () => {
+    // The quick drawing view's mesher: the linear deflection asked for, an angle of 0.5 rad, on
+    // faces without a triangulation. The view's display mesh (0.3 rad) then keeps that coarser
+    // one. Meshed first at the view's own tessellation, the body keeps its display mesh.
+    const fresh = buildTestPart(kernel);
+    const unmeshed = buildTestPart(kernel);
+    const meshed = buildTestPart(kernel);
+    try {
+      const display = kernel.mesh(meshed, VIEW);
+      kernel.hlrPolySpans(unmeshed, [0, -1, 0], VIEW.linearDeflection);
+      kernel.hlrPolySpans(meshed, [0, -1, 0], VIEW.linearDeflection);
+      expect(same(kernel.mesh(unmeshed, VIEW), kernel.mesh(fresh, VIEW))).toBe(false);
+      expect(same(kernel.mesh(meshed, VIEW), display)).toBe(true);
+    } finally {
+      kernel.release(fresh, unmeshed, meshed);
+    }
+  });
+
+  it("the engine's quick view leaves a body it never meshed with the display mesh from scratch", {
+    timeout: 60_000,
+  }, async () => {
+    // A recompute that holds the body's mesh already (`have`) doesn't mesh it, so its cached torus
+    // has no triangulation when the quick view draws it. The engine meshes it at the view's
+    // tessellation first (`sheetView`): the next display mesh equals a fresh engine's.
+    const doc = testDocument([
+      {
+        ...testFeature('T', 'torus'),
+        inputs: primitiveInputs('torus', {
+          numbers: { diameter: '40 mm', tube: '10 mm' },
+          plane: originPlaneRef('origin:xy'),
+        }),
+      },
+    ]);
+    const fresh = new RecomputeEngine(kernel, testFeatures().registry, { strictLeaks: true });
+    const viewed = new RecomputeEngine(kernel, testFeatures().registry, { strictLeaks: true });
+    try {
+      const first = await fresh.recompute({ doc });
+      if (first.status !== 'done') throw new Error(first.status);
+      const body = first.bodies[0];
+      if (!body?.mesh) throw new Error('no mesh');
+      const held = await viewed.recompute({ doc, have: { [body.id]: body.version } });
+      if (held.status !== 'done') throw new Error(held.status);
+      expect(held.bodies[0]?.mesh).toBeUndefined();
+      const view = viewed.sheetView({ id: 'v', direction: [0, 1, 0], up: [0, 0, 1], quick: true });
+      expect('geometry' in view).toBe(true);
+      const again = await viewed.recompute({ doc });
+      if (again.status !== 'done') throw new Error(again.status);
+      expect(same(again.bodies[0]?.mesh as BodyMesh, body.mesh)).toBe(true);
+    } finally {
+      fresh.clear();
+      viewed.clear();
     }
   });
 });
