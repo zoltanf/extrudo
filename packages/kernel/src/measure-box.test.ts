@@ -284,4 +284,42 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
     own.release(face);
     expect(own.stats().liveShapes).toBe(0);
   }, 30_000);
+
+  it('the calls that read one face give a clean error for such a face', async () => {
+    // A kernel of its own; the face first in the compound, so it is face 0, then a box.
+    const own = new Kernel(await loadOcct());
+    {
+      using scope = own.scope();
+      const face = scope.track(own.readBrep(surfacelessFace()));
+      const cube = scope.track(own.box([4, 4, 20]));
+      const both = scope.track(own.compound([face, cube]));
+      const message = 'The face has no surface, only triangles.';
+      expect(() => own.surfaceGeometry(both, 0)).toThrow(message);
+      expect(() => own.faceSilhouettes(both, 0, [0, 0, 1])).toThrow(message);
+      expect(own.threadFace(both, 0)).toBeUndefined();
+      expect(own.coneFace(both, 0)).toBeUndefined();
+      expect(own.faceHit(both, 0, [1, 1, 10], [0, 0, -1])).toBeUndefined();
+      expect(() => own.faceSlab(both, 0, 1)).toThrow(
+        'Emboss failed: the face has no surface, only triangles.',
+      );
+      const top = scope.track(own.subShape(cube, 'face', 5));
+      expect(() => own.projectOnFace(top, both, 0, 1)).toThrow(
+        /Emboss failed: the face has no surface/,
+      );
+      // The box's faces still answer.
+      expect(own.surfaceGeometry(both, 1).type).toBe('plane');
+    }
+    expect(own.stats().liveShapes).toBe(0);
+  }, 30_000);
+
+  it('a STEP file written from a shape with a lone such face is refused (`storedShapeToStep`)', () => {
+    using scope = kernel.scope();
+    const face = scope.track(kernel.readBrep(surfacelessFace()));
+    const cube = scope.track(kernel.box([4, 4, 20]));
+    const both = scope.track(kernel.compound([cube, face]));
+    expect(() => {
+      const step = kernel.writeStep([{ shape: both, name: 'Shape' }]);
+      scope.track(kernel.readStep(step));
+    }).toThrow(/triangles/);
+  });
 });
