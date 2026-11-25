@@ -631,12 +631,17 @@ public:
       return fail("Chamfer failed: pick edges and give each its distances.");
     }
     try {
+      // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
+      // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
+      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order, over the
+      // same geometry and meshes (see copyTogether).
+      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, false, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
-      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
-      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      TopExp::MapShapes(body, TopAbs_EDGE, edges);
+      TopExp::MapShapes(body, TopAbs_FACE, faces);
       NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
-      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
       const std::vector<int> staged = args_;
       const std::vector<double> spec = numbers_;
       for (size_t i = 0; i < staged.size(); ++i) {
@@ -651,7 +656,7 @@ public:
           return fail("Chamfer failed: the angle must be between 0 and 90 degrees.");
         }
       }
-      BRepFilletAPI_MakeChamfer builder(*input);
+      BRepFilletAPI_MakeChamfer builder(body);
       std::vector<int> contourOf;
       std::vector<int> bad;
       const int added = addChamfers(builder, edges, faces, edgeFaces, staged, spec, contourOf, bad);
@@ -689,10 +694,10 @@ public:
         result.Nullify();
       }
       if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
-        recordHistory(builder, *input, 0, result);
+        recordHistory(builder, body, 0, result);
         return store(result);
       }
-      return explainChamfer(*input, edges, faces, edgeFaces, staged, spec, contourOf, chains);
+      return explainChamfer(body, edges, faces, edgeFaces, staged, spec, contourOf, chains);
     } catch (...) {
       geometry_.clear();
       geometry_.push_back(5);
@@ -1935,7 +1940,9 @@ public:
         return -1;
       }
       const gp_Pln plane(gp_Pnt(ox, oy, oz), gp_Dir(normal));
-      BRepAlgoAPI_Section section(*s, plane, false);
+      // A copy: the section raises the shape's tolerances where the plane passes near them, in
+      // place (OCCT's default mode), and the shape can be a cached body (ADR-0035, 2026-11-25).
+      BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*s, false, false).Shape(), plane, false);
       section.Approximation(false);
       section.ComputePCurveOn1(false);
       section.Build();
@@ -2001,7 +2008,12 @@ public:
           fail("Unknown shape.");
           return -1;
         }
-        BRepAlgoAPI_Section section(*a, *b, false);
+        // Copies (made together: an edge the two faces share stays shared): the section raises
+        // the faces' tolerances in place, and they can be a cached body's (ADR-0035, 2026-11-25).
+        TopoDS_Shape copyA;
+        TopoDS_Shape copyB;
+        copyTogether(*a, *b, copyA, copyB);
+        BRepAlgoAPI_Section section(copyA, copyB, false);
         section.Approximation(false);
         section.ComputePCurveOn1(false);
         section.ComputePCurveOn2(false);
@@ -2012,7 +2024,7 @@ public:
         }
         curve = section.Shape();
       } else {
-        BRepAlgoAPI_Section section(*a, planeA, false);
+        BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*a, false, false).Shape(), planeA, false);
         section.Approximation(false);
         section.ComputePCurveOn1(false);
         section.Build();
@@ -14247,8 +14259,13 @@ private:
                            : "Fillet failed: pick edges and give each a radius.");
     }
     try {
+      // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
+      // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
+      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order, over the
+      // same geometry and meshes (see copyTogether).
+      const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, false, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
-      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
+      TopExp::MapShapes(body, TopAbs_EDGE, edges);
       for (size_t i = 0; i < args_.size(); ++i) {
         if (args_[i] < 0 || args_[i] >= edges.Extent()) return fail("Fillet failed: edge index out of range.");
         for (int k = 0; k < perEdge; ++k) {
@@ -14258,8 +14275,8 @@ private:
       const std::vector<int> staged = args_;
       const std::vector<double> radii = numbers_;
       EdgeFaceMap edgeFaces;
-      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
-      BRepFilletAPI_MakeFillet builder(*input);
+      TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      BRepFilletAPI_MakeFillet builder(body);
       std::vector<int> contourOf;
       std::vector<int> bad;
       const int added = addFillets(builder, edges, edgeFaces, staged, radii, perEdge, contourOf, bad);
@@ -14292,7 +14309,7 @@ private:
       }
       // A radius that rolls off a flat face goes straight to the diagnosis: OCCT can trap there.
       if (added == 3) {
-        return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
+        return explainFillet(body, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
       }
       TopoDS_Shape result;
       try {
@@ -14302,10 +14319,10 @@ private:
         result.Nullify();
       }
       if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
-        recordHistory(builder, *input, 0, result);
+        recordHistory(builder, body, 0, result);
         return store(result);
       }
-      return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
+      return explainFillet(body, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
     } catch (...) {
       geometry_.clear();
       geometry_.push_back(5);
@@ -16493,6 +16510,27 @@ private:
     builder.Build();
   }
 
+  /**
+   * Copies of `a` and `b` made in one copy, so sub-shapes they share stay shared. New sub-shapes
+   * (where tolerances live) over the same curves, surfaces and meshes: copying the geometry gives
+   * every face its own copy of its surface (BRepTools_CopyModification::NewSurface), and an edge
+   * between two faces on one closed surface, at its seam (a thread's root pieces), then no longer
+   * reads as closed (BRep_Tool::IsClosed), so the view drew it.
+   */
+  static void copyTogether(const TopoDS_Shape& a, const TopoDS_Shape& b, TopoDS_Shape& outA, TopoDS_Shape& outB) {
+    BRep_Builder builder;
+    TopoDS_Compound both;
+    builder.MakeCompound(both);
+    builder.Add(both, a);
+    builder.Add(both, b);
+    // Held here: the iterator walks the compound, which must outlive it.
+    const TopoDS_Shape copied = BRepBuilderAPI_Copy(both, false, true).Shape();
+    TopoDS_Iterator it(copied);
+    outA = it.Value();
+    it.Next();
+    outB = it.Value();
+  }
+
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
     // Set the arguments here, not in the builder's constructor: the
@@ -16509,8 +16547,20 @@ private:
     // their display mesh as before. The boolean itself stays in its default
     // mode: its non-destructive mode changes the result's tolerances enough
     // that a fillet after a cut ran forever on two designs of the corpus.
-    const TopoDS_Shape inA = simplify ? BRepBuilderAPI_Copy(a, true, true).Shape() : a;
-    const TopoDS_Shape inB = simplify ? BRepBuilderAPI_Copy(b, true, true).Shape() : b;
+    //
+    // Nor does the boolean change its arguments (ADR-0035, 2026-11-25): in its default mode OCCT
+    // raises an argument's vertex or edge tolerance in place where the other operand meets it
+    // (BOPAlgo_PaveFiller::UpdateVertex, UpdateEdgeTolerance), and an argument can be a body the
+    // recompute engine keeps, or a sketch's profile face a prism took as its cap. So the plain
+    // boolean works on copies too, both in one copy so that what they share stays shared.
+    TopoDS_Shape inA;
+    TopoDS_Shape inB;
+    if (simplify) {
+      inA = BRepBuilderAPI_Copy(a, true, true).Shape();
+      inB = BRepBuilderAPI_Copy(b, true, true).Shape();
+    } else {
+      copyTogether(a, b, inA, inB);
+    }
     buildBoolean(builder, inA, inB, 0);
     if (!builder.IsDone() || builder.HasErrors()) {
       return fail("Boolean failed: OCCT could not combine these shapes.");
