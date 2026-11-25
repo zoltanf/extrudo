@@ -25,7 +25,12 @@ import { kernelFeatures } from '../features/index';
 import type { Kernel } from '../kernel';
 import { type BodyMesh, sameMesh } from '../mesh';
 import { type EngineOptions, RecomputeEngine } from './engine';
-import type { KernelFeatureDefinition, RecomputeRequest, RecomputeResult } from './types';
+import type {
+  BodyAccess,
+  KernelFeatureDefinition,
+  RecomputeRequest,
+  RecomputeResult,
+} from './types';
 
 export type Done = Extract<RecomputeResult, { status: 'done' }>;
 type Engine = Pick<RecomputeEngine, 'recompute' | 'clear'>;
@@ -125,7 +130,7 @@ export const choice = <T extends string>(value: T) => ({ kind: 'enum' as const, 
 export const refs = <T>(list: T[]) => ({ kind: 'ref' as const, refs: list });
 
 /** The kernel's features, with one feature type's `bodyAccess` replaced. */
-export function withAccess(type: string, access: (inputs: never) => 'add' | 'write') {
+export function withAccess(type: string, access: (inputs: never) => BodyAccess) {
   return () => {
     const registry = new FeatureRegistry<KernelFeatureDefinition>();
     for (const definition of kernelFeatures().list()) {
@@ -203,6 +208,11 @@ export function fallbacks(result: Done, doc: ExtrudoDocument): string[] {
 
 export interface PairOptions {
   registry?: () => FeatureRegistry<KernelFeatureDefinition>;
+  /**
+   * Compare the bodies' versions and their `measure` boxes too (`view` access, ADR-0024: a
+   * version is a `view` feature's key).
+   */
+  exact?: boolean;
   engine?: typeof RecomputeEngine;
   stopped?: readonly FeatureId[];
   /** More engine options for both engines (files, the OpenSCAD compiler). */
@@ -227,7 +237,18 @@ export function pair(kernel: Kernel, options: PairOptions = {}) {
       const mine = await a.run(doc);
       cleared.clear();
       const fresh = await client(cleared, options.stopped).run(doc);
-      return { mine, fresh, problems: differences(mine, fresh) };
+      const problems = differences(mine, fresh);
+      if (options.exact) {
+        for (const body of fresh.result.bodies) {
+          const other = mine.result.bodies.find((x) => x.id === body.id);
+          if (other && other.version !== body.version) problems.push(`version ${body.id}`);
+          const x = cached.latestBody(body.id);
+          const y = cleared.latestBody(body.id);
+          const box = (h: typeof x) => (h === undefined ? undefined : kernel.measure(h).bbox);
+          if (JSON.stringify(box(x)) !== JSON.stringify(box(y))) problems.push(`box ${body.id}`);
+        }
+      }
+      return { mine, fresh, problems };
     },
     close() {
       cached.clear();
@@ -396,6 +417,11 @@ export interface Run<K extends string = string> {
   flips: Set<string>;
   /** The kinds whose edited feature then computed (status `ok`) at least once. */
   computed: Set<K>;
+  /**
+   * `<kind>: <before>→<after>` of the feature each input edit changed, by how the cached engine
+   * took its result: `view` (listed in `stats.viewed`), `write` otherwise, `none` when inactive.
+   */
+  views: Set<string>;
 }
 
 export interface DifferentialOptions<K extends string> extends PairOptions {
@@ -433,7 +459,11 @@ export async function differential<K extends string>(
     initialErrors: [],
     flips: new Set(),
     computed: new Set(),
+    views: new Set(),
   };
+  const how = (result: Done | undefined, id: FeatureId) =>
+    result?.stats.viewed?.includes(id) ? 'view' : result?.features[id] ? 'write' : 'none';
+  let last: Done | undefined;
   const rand = random(seed);
   const history: ExtrudoDocument[] = [doc];
   const deleted: Feature[] = [];
@@ -467,6 +497,10 @@ export async function differential<K extends string>(
       }
       const { mine, fresh, problems } = await p.step(current);
       if (edited && mine.result.features[edited[1]]?.status === 'ok') run.computed.add(edited[0]);
+      if (edited) {
+        run.views.add(`${edited[0]}: ${how(last, edited[1])}→${how(mine.result, edited[1])}`);
+      }
+      last = mine.result;
       if (step === 0) {
         run.initialErrors = Object.entries(mine.result.features)
           .filter(([, status]) => status.status === 'error')
@@ -486,3 +520,42 @@ export async function differential<K extends string>(
   }
   return run;
 }
+
+// ------------------------------------------------------------------------------- faults
+
+/**
+ * The engine with one deliberate fault: `fault` (a line of `engine.ts`) replaced by `by`. Made from
+ * the engine's own source in a temporary file (its imports pointed back at the repository), so the
+ * engine itself has no switch for it.
+ */
+export async function faultyEngine(
+  fault: string,
+  by: string,
+): Promise<{ engine: typeof RecomputeEngine; remove: () => void }> {
+  // Node's own modules, untyped: this package's sources don't take Node's types.
+  const load = (name: string) => import(/* @vite-ignore */ name);
+  const fs = await load('node:fs');
+  const os = await load('node:os');
+  const path = await load('node:path');
+  const url = await load('node:url');
+  const here: string = path.dirname(url.fileURLToPath(import.meta.url));
+  let source: string = fs.readFileSync(path.join(here, 'engine.ts'), 'utf8');
+  if (!source.includes(fault)) throw new Error(`"${fault}" moved: update this control`);
+  source = source.replace(fault, by);
+  source = source.replace(
+    /from '(\.\.?\/[^']+)'/g,
+    (_m: string, to: string) => `from '${path.join(here, to)}'`,
+  );
+  source = source.replace(/from '@extrudo\/([a-z]+)'/g, (_m: string, name: string) => {
+    return `from '${path.join(here, '../../..', name, 'src/index.ts')}'`;
+  });
+  const file: string = path.join(os.tmpdir(), `extrudo-engine-fault-${crypto.randomUUID()}.ts`);
+  fs.writeFileSync(file, source);
+  const module = (await import(/* @vite-ignore */ file)) as {
+    RecomputeEngine: typeof RecomputeEngine;
+  };
+  return { engine: module.RecomputeEngine, remove: () => fs.rmSync(file, { force: true }) };
+}
+
+export const atStep = (problems: readonly string[], step: number) =>
+  problems.filter((p) => p.startsWith(`step ${step}:`));

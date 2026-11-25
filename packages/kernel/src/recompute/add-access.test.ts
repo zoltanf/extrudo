@@ -45,6 +45,7 @@ import { kernelFeatures } from '../features/index';
 import { Kernel } from '../kernel';
 import { loadOcct } from '../occt/load';
 import {
+  atStep,
   bytesOf,
   choice,
   client,
@@ -53,6 +54,7 @@ import {
   differential as differentialOf,
   type Edited,
   extrudeFeature,
+  faultyEngine,
   fixture,
   type GenericKind,
   genericEdit,
@@ -672,43 +674,6 @@ describe("the extrude's predicate, term by term", () => {
 /** The kernel's features, with the extrude's `bodyAccess` replaced. */
 const withExtrudeAccess = (access: (inputs: ExtrudeInputs) => 'add' | 'write') =>
   withAccess('extrude', access as (inputs: never) => 'add' | 'write');
-
-/**
- * The engine with one deliberate fault: `fault` (a line of `engine.ts`) replaced by `by`. Made from
- * the engine's own source in a temporary file (its imports pointed back at the repository), so the
- * engine itself has no switch for it.
- */
-async function faultyEngine(
-  fault: string,
-  by: string,
-): Promise<{ engine: typeof RecomputeEngine; remove: () => void }> {
-  // Node's own modules, untyped: this package's sources don't take Node's types.
-  const load = (name: string) => import(/* @vite-ignore */ name);
-  const fs = await load('node:fs');
-  const os = await load('node:os');
-  const path = await load('node:path');
-  const url = await load('node:url');
-  const here: string = path.dirname(url.fileURLToPath(import.meta.url));
-  let source: string = fs.readFileSync(path.join(here, 'engine.ts'), 'utf8');
-  if (!source.includes(fault)) throw new Error(`"${fault}" moved: update this control`);
-  source = source.replace(fault, by);
-  source = source.replace(
-    /from '(\.\.?\/[^']+)'/g,
-    (_m: string, to: string) => `from '${path.join(here, to)}'`,
-  );
-  source = source.replace(/from '@extrudo\/([a-z]+)'/g, (_m: string, name: string) => {
-    return `from '${path.join(here, '../../..', name, 'src/index.ts')}'`;
-  });
-  const file: string = path.join(os.tmpdir(), `extrudo-engine-fault-${crypto.randomUUID()}.ts`);
-  fs.writeFileSync(file, source);
-  const module = (await import(/* @vite-ignore */ file)) as {
-    RecomputeEngine: typeof RecomputeEngine;
-  };
-  return { engine: module.RecomputeEngine, remove: () => fs.rmSync(file, { force: true }) };
-}
-
-const atStep = (problems: readonly string[], step: number) =>
-  problems.filter((p) => p.startsWith(`step ${step}:`));
 
 describe('the comparison catches a wrong `add` (negative controls)', () => {
   it('the body set not chained after an `add`: right at first, wrong after edits', {
