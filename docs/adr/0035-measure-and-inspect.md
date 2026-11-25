@@ -188,8 +188,9 @@ the three single-edge chamfers tried on a box.
     bounded from the faces' geometry with their tolerances whatever was meshed
     (`useTriangulation = false` on every `BRepBndLib::Add` in the facade). In OCCT 8.0.1 that is
     the path a face without a triangulation always took, so a recompute from scratch is unchanged
-    and an edit now gives the same result. A face with no surface (a mesh body's) still uses its
-    triangulation.
+    and an edit now gives the same result. A face with no surface (one read from a file without its
+    geometry) still uses its triangulation; a mesh body is measured by its own path and never
+    gets here.
   - **Boxes a person sees, or that describe a body,** take `properties`'s box:
     `BRepBndLib::AddOptimal(shape, box, false, false)`, the exact extents from the geometry,
     without triangulations or tolerances (the torus ±25, a 40 mm box 40). It never depended on
@@ -226,8 +227,8 @@ the three single-edge chamfers tried on a box.
   Feature results computed from scratch don't change: the 64 designs in `fixtures/` give the same
   bodies, versions, statuses, reports and meshes bit for bit with the old and the new build
   (compared once, outside the repository). An edit over bodies already drawn now gives that same
-  result. The OpenSCAD export meshes every body itself before it measures, so its "through all"
-  numbers came from triangulations and now come from the geometry: for a slot cut through all of
+  result. In the OpenSCAD export the bodies were already meshed when it measured them, drawn or not,
+  so its "through all" numbers came from triangulations and now come from the geometry: for a slot cut through all of
   the chain-link benchmark, 71.5111553974 → 71.4000001063, the length the kernel's own cut uses;
   never drawn and drawn give the same export in both builds.
 - **Cost:** `properties` costs about what `measure` does: over the 80 bodies of the fixtures, median
@@ -235,8 +236,10 @@ the three single-edge chamfers tried on a box.
   a sweep 62 against 12 ms. It runs on a person's request (an inspection, an interference check),
   not on every edit.
 - **Left as they are (they use triangulations on purpose):** `hlrPolySpans` draws a sheet view from
-  whatever triangulation a body's faces have, and `mesh` keeps a finer triangulation than asked;
-  neither feeds a feature's result.
+  whatever triangulation a body's faces have, and `mesh` keeps a finer triangulation than asked.
+  `hlrPolySpans` feeds no feature's result. `mesh` does in one place, not changed here: a
+  construction plane tangent to a free-form face meshes that body in place (`construction.ts`,
+  `meshTangent`), so its result can depend on a triangulation already on the faces.
 - **Tested:** `measure-box.test.ts` (`measure` the same before and after meshing, a cylinder, a box
   and the test part; a New Body extrude "through all" over plates that were meshed equals a kernel
   that never meshed them; `properties` exact before and after meshing); `interference.test.ts` (a
