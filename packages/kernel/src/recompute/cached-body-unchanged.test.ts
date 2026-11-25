@@ -1,5 +1,5 @@
 // A body the engine keeps in its cache is never changed by a later step (ADR-0035's amendment of
-// 2026-11-26). A plate whose corner sits on a curved body is cut from it (or intersected), then
+// 2026-11-25). A plate whose corner sits on a curved body is cut from it (or intersected), then
 // edited to join it, with a New Body "through all" after: the engine that kept its cache gives
 // what a cleared engine gives, bit for bit: every mesh, every body's `measure` box (tolerances
 // included) and the statuses. The plate's sketch is in the cache too: its profile face is the
@@ -153,7 +153,7 @@ async function run(engine: RecomputeEngine, doc: ExtrudoDocument): Promise<Done>
   return result;
 }
 
-describe('a cached body is never changed by a later step (ADR-0035, 2026-11-26)', () => {
+describe('a cached body is never changed by a later step (ADR-0035, 2026-11-25)', () => {
   it.each([
     ['a torus', 'cut', torus],
     ['a torus', 'intersect', torus],

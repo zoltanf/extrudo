@@ -1,4 +1,4 @@
-// No kernel call changes the shapes it is given (ADR-0035's amendment of 2026-11-26): a body in
+// No kernel call changes the shapes it is given (ADR-0035's amendment of 2026-11-25): a body in
 // the recompute engine's cache is handed to the next edit's features as it is, so a call that
 // wrote to its arguments (a tolerance raised, a curve added) would leave the cache different
 // from a recompute from scratch. Every call that takes a shape runs on fresh inputs that make
@@ -275,7 +275,7 @@ const CALLS: [string, () => ShapeHandle[], (s: ShapeHandle[]) => Out][] = [
   ],
 ];
 
-describe('no kernel call changes the shapes it is given (ADR-0035, 2026-11-26)', () => {
+describe('no kernel call changes the shapes it is given (ADR-0035, 2026-11-25)', () => {
   it.each(CALLS)('%s', { timeout: 60_000 }, (_name, inputs, call) => {
     const shapes = inputs();
     try {

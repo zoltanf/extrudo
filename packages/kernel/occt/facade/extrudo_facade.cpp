@@ -624,7 +624,7 @@ public:
     try {
       // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
       // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
-      // (ADR-0035, 2026-11-26). The copy's sub-shapes are the input's, in the same order.
+      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order.
       const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, true, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
@@ -1927,7 +1927,7 @@ public:
       }
       const gp_Pln plane(gp_Pnt(ox, oy, oz), gp_Dir(normal));
       // A copy: the section raises the shape's tolerances where the plane passes near them, in
-      // place (OCCT's default mode), and the shape can be a cached body (ADR-0035, 2026-11-26).
+      // place (OCCT's default mode), and the shape can be a cached body (ADR-0035, 2026-11-25).
       BRepAlgoAPI_Section section(BRepBuilderAPI_Copy(*s, true, false).Shape(), plane, false);
       section.Approximation(false);
       section.ComputePCurveOn1(false);
@@ -1995,7 +1995,7 @@ public:
           return -1;
         }
         // Copies (made together: an edge the two faces share stays shared): the section raises
-        // the faces' tolerances in place, and they can be a cached body's (ADR-0035, 2026-11-26).
+        // the faces' tolerances in place, and they can be a cached body's (ADR-0035, 2026-11-25).
         TopoDS_Shape copyA;
         TopoDS_Shape copyB;
         copyTogether(*a, *b, copyA, copyB);
@@ -14098,7 +14098,7 @@ private:
     try {
       // On a copy, meshes included: OCCT's fillets and chamfers raise or move a vertex of the shape
       // they are built on in place (ChFi3d_IndexPointInDS), and the input can be a cached body
-      // (ADR-0035, 2026-11-26). The copy's sub-shapes are the input's, in the same order.
+      // (ADR-0035, 2026-11-25). The copy's sub-shapes are the input's, in the same order.
       const TopoDS_Shape body = BRepBuilderAPI_Copy(*input, true, true).Shape();
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
       TopExp::MapShapes(body, TopAbs_EDGE, edges);
@@ -16378,7 +16378,7 @@ private:
     // mode: its non-destructive mode changes the result's tolerances enough
     // that a fillet after a cut ran forever on two designs of the corpus.
     //
-    // Nor does the boolean change its arguments (ADR-0035, 2026-11-26): in its default mode OCCT
+    // Nor does the boolean change its arguments (ADR-0035, 2026-11-25): in its default mode OCCT
     // raises an argument's vertex or edge tolerance in place where the other operand meets it
     // (BOPAlgo_PaveFiller::UpdateVertex, UpdateEdgeTolerance), and an argument can be a body the
     // recompute engine keeps, or a sketch's profile face a prism took as its cap. So the plain
