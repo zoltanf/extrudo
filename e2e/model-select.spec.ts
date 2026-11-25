@@ -60,9 +60,7 @@ async function shiftClick(page: Page, p: { x: number; y: number }) {
 
 /** Resolves when the page has idle time (nothing it was busy with is still pending), or after 1 s. */
 const idle = (page: Page) =>
-  page.evaluate(
-    () => new Promise<void>((done) => requestIdleCallback(() => done(), { timeout: 1000 })),
-  );
+  page.evaluate('new Promise((done) => requestIdleCallback(() => done(), { timeout: 1000 }))');
 
 /**
  * A box drag from `from` to `to`. The view takes a press held still for `LONG_PRESS_MS` (500 ms)
