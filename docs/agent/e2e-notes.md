@@ -1724,11 +1724,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   (top, bottom, wall), 8 px inside the hole nothing, across the left side (`at([0, 15, 20])`)
   faces 0, 1 and 4.
 - **A press the view holds still for `LONG_PRESS_MS` (500 ms) is a long press** ("Select other…";
-  its release does nothing). Playwright waits for the page to take each event, so on a busy
-  machine a press and a first move within the click slop (which only asks for a hover pick) can
-  look held still that long: the box is dropped and the menu opens. The spec's `box` leaves the
-  slop with its first move and drags again (at most three times) when the menu is open once the
-  page is idle. A new drag helper on the model view needs the same.
+  the drag is dropped, over empty space without a menu). Playwright waits for the page to take
+  each event, so on a busy machine a press and a first move within the click slop (which only
+  asks for a hover pick) can look held still that long. **Make every left-button drag on the
+  model view with `dragOnView` (`e2e/helpers.ts`)**: its first move leaves the slop, and once
+  the page is idle the drag must have started (the selection box drawn, or the caller's
+  `started`), else it is made again. Overlay handles (dialog, section, annotation, joint), other
+  buttons, nav tools and sketch mode don't meet it.
 
 ### `e2e/move-mirror.spec.ts`
 

@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import { clickEdge, clickWhere, primitive } from './benchmark-helpers';
 import {
   clicker,
+  dragOnView,
   kernelReady,
   mapping,
   newSketchOnXY,
@@ -442,9 +443,6 @@ test('a box selection takes a construction plane', async ({ page }) => {
   const span = halfPlane * 1.2;
   const from = at([-span, -span, 30]);
   const to = at([span, span, 30]);
-  await page.mouse.move(from.x, from.y);
-  await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 8 });
-  await page.mouse.up();
+  await dragOnView(page, from, to, { steps: 8 });
   await expect(viewport).toHaveAttribute('data-model-selection', new RegExp(`plane:${id}`));
 });
