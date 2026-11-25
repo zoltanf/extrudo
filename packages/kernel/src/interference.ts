@@ -13,7 +13,7 @@ export interface Interference {
   b: BodyId;
   /** mm³ */
   volume: number;
-  /** mm */
+  /** mm: the shared volume's exact box (`properties`), as shown to a person. */
   box: { min: Vec3; max: Vec3 };
 }
 
@@ -39,8 +39,11 @@ export function interferences(
       if (!boxesMeet(boxes[i] as never, boxes[j] as never)) continue;
       using scope = kernel.scope();
       const common = scope.track(kernel.common(a.shape, b.shape)).shape;
-      const { volume, bbox } = kernel.measure(common);
-      if (volume > INTERFERENCE_VOLUME) found.push({ a: a.id, b: b.id, volume, box: bbox });
+      const { volume } = kernel.measure(common);
+      if (volume > INTERFERENCE_VOLUME) {
+        // The box a person is shown: exact, not `measure`'s loose one (ADR-0035, 2026-11-24).
+        found.push({ a: a.id, b: b.id, volume, box: kernel.properties(common).bbox });
+      }
     }
   }
   return found;

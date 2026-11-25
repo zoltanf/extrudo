@@ -173,3 +173,78 @@ the three single-edge chamfers tried on a box.
   chamfered face reverses its direction.
 - **Rejected:** fixing each caller in TypeScript from `describe`'s direction:
   it left the facade's own uses wrong and every new caller exposed.
+
+## Amendment (2026-11-24): one box for features, the exact box for people
+
+- **Context:** `measure`'s box came from `BRepBndLib::Add(shape, box)`, which bounds a face by its
+  triangulation when it has one. Meshing a body for display (`mesh`) or for a sheet view
+  (`hlrPolySpans`) leaves a triangulation on its faces, so the same body measured before and after
+  it was drawn gave two boxes, and "through all" lengths and the box filters that find touching
+  bodies, which read those boxes, made an edit's result differ from the same design just opened.
+  A torus of outer radius 25 measured ±27.06 not drawn and about ±25.01–25.04 drawn; the filleted
+  test part 40 not drawn and 40.011 drawn.
+- **Decision: two kinds of callers, two boxes.**
+  - **Boxes that feed a feature's result or an export's geometry** take `measure`'s box, now
+    bounded from the faces' geometry with their tolerances whatever was meshed
+    (`useTriangulation = false` on every `BRepBndLib::Add` in the facade). In OCCT 8.0.1 that is
+    the path a face without a triangulation always took, so a recompute from scratch is unchanged
+    and an edit now gives the same result. A face with no surface (one read from a file without its
+    geometry) still uses its triangulation; a mesh body is measured by its own path and never
+    gets here.
+  - **Boxes a person sees, or that describe a body,** take `properties`'s box:
+    `BRepBndLib::AddOptimal(shape, box, false, false)`, the exact extents from the geometry,
+    without triangulations or tolerances (the torus ±25, a 40 mm box 40). It never depended on
+    meshing and is never looser than a drawn `measure` box.
+- **The facade's eleven `BRepBndLib::Add` calls, all A (a feature's or the kernel's own work):**
+
+  | Facade call (`extrudo_facade.cpp`) | Reached from TypeScript |
+  |---|---|
+  | `measure` (:2641) | `Kernel.measure`, whose callers choose (below) |
+  | `sweep`'s profile reach (:4205) | `Kernel.sweep` (the Sweep feature, through `namedSweep`) |
+  | `projectOnFace` (:5054, :5055) | `Kernel.projectOnFace` (Emboss and Deboss on a face) |
+  | `wrapOn` (:5556) | `Kernel.wrapOnCylinder`, `wrapOnCone` (Emboss wrapped) |
+  | `rebuildPrismatic` (:11406, :11444, :11632) | Mesh to Solid's rebuild |
+  | `rebuildHybrid` (:13308) | Mesh to Solid's rebuild |
+  | `strandedTools` (:16307, :16312) | every boolean (`finishBoolean`: fuse, cut, common) |
+
+- **`Kernel.measure`'s callers:**
+  - A (keep `measure`): the features (their through-all lengths, touching-body filters, tool
+    placement and ordering), the OpenSCAD export's "through all" (`scad-export/versions.ts`), the
+    interference check's box filter (`interference.ts`: it only skips pairs whose boxes don't meet,
+    and both boxes hold their bodies), the joint check's box filter (`joints/check.ts`, the same),
+    the test features (`recompute/testing.ts`), and the test part (`test-part.ts`, built and
+    measured before it is meshed; the debug page shows its volume).
+  - B (now `properties`): the interference check's result box, which the agent's `interference`
+    tool returns; the agent tests' stand-in host (`agent/kernelTesting.ts`), whose bodies' boxes
+    now match the app's host, which already used `inspect`; and the feature tests that record a
+    body's size (extrude, revolve, primitives, offset face).
+  - Already B and unchanged: the Measure tool and the status bar's size (`inspect`), print aids'
+    sizes (`inspect`), the agent host's bodies (`inspect`), parts lists (`properties`),
+    `measureBodies` and the FreeCAD import's measures (`properties`). The view's own sizes
+    (`data-bodies`, the fit and the camera bounds) come from the meshes, not the kernel.
+- **What changes for users:** the agent's `interference` tool reports the exact box of an overlap
+  (a torus inside a box: ±25, not ±27.06 or ±25.04). Nothing else a person is shown changes.
+  Feature results computed from scratch don't change: the 64 designs in `fixtures/` give the same
+  bodies, versions, statuses, reports and meshes bit for bit with the old and the new build
+  (compared once, outside the repository). An edit over bodies already drawn now gives that same
+  result. In the OpenSCAD export the bodies were already meshed when it measured them, drawn or not,
+  so its "through all" numbers came from triangulations and now come from the geometry: for a slot cut through all of
+  the chain-link benchmark, 71.5111553974 → 71.4000001063, the length the kernel's own cut uses;
+  never drawn and drawn give the same export in both builds.
+- **Cost:** `properties` costs about what `measure` does: over the 80 bodies of the fixtures, median
+  0.60 against 0.61 ms, the slowest body (the coil benchmark's post, 27 faces) 212 against 196 ms,
+  a sweep 62 against 12 ms. It runs on a person's request (an inspection, an interference check),
+  not on every edit.
+- **Left as they are (they use triangulations on purpose):** `hlrPolySpans` draws a sheet view from
+  whatever triangulation a body's faces have, and `mesh` keeps a finer triangulation than asked.
+  `hlrPolySpans` feeds no feature's result. `mesh` does in one place, not changed here: a
+  construction plane tangent to a free-form face meshes that body in place (`construction.ts`,
+  `meshTangent`), so its result can depend on a triangulation already on the faces.
+- **Tested:** `measure-box.test.ts` (`measure` the same before and after meshing, a cylinder, a box
+  and the test part; a New Body extrude "through all" over plates that were meshed equals a kernel
+  that never meshed them; `properties` exact before and after meshing); `interference.test.ts` (a
+  torus inside a box: the box reported is ±25); the feature goldens' boxes now exact: 689 numbers
+  in four tables (extrude 498, revolve 165, primitives 16, offset face 10), each moved inwards to
+  the exact extent (40.05 → 40, 15.01 → 15, 4.99 → 5, -0.02 → 0, a min of 12.9 → 13) and none
+  outwards; no volume, area, count or name in them changed. Taken out, the measure-box tests fail
+  on the old build, and the interference test with `measure`'s box.

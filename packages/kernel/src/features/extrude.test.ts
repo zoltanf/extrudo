@@ -141,7 +141,9 @@ function measure(result: Done, body: string) {
   return {
     volume: m.volume,
     area: m.area,
-    bbox: m.bbox,
+    // The tight box a person is shown (`properties`, ADR-0035's amendment of 2026-11-24), not
+    // `measure`'s loose one, which features use.
+    bbox: kernel.properties(shape).bbox,
     faces: kernel.count(shape, 'face'),
     edges: kernel.count(shape, 'edge'),
     vertices: kernel.count(shape, 'vertex'),

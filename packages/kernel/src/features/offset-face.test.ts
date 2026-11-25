@@ -145,7 +145,9 @@ async function runWithShapes(doc: ExtrudoDocument): Promise<Done> {
 
 function measure(body: string) {
   const shape = bodyShapes.get(body) as ShapeHandle;
-  const { volume, bbox } = kernel.measure(shape);
+  const { volume } = kernel.measure(shape);
+  // The tight box a person is shown (`properties`, ADR-0035's amendment of 2026-11-24).
+  const { bbox } = kernel.properties(shape);
   return {
     volume,
     bbox: [...bbox.min, ...bbox.max].map((x) => round(x, 2)),
