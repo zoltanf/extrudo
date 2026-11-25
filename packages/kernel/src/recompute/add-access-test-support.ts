@@ -28,7 +28,14 @@ import { type EngineOptions, RecomputeEngine } from './engine';
 import type { KernelFeatureDefinition, RecomputeRequest, RecomputeResult } from './types';
 
 export type Done = Extract<RecomputeResult, { status: 'done' }>;
-type Engine = Pick<RecomputeEngine, 'recompute' | 'clear'>;
+type Engine = Pick<RecomputeEngine, 'recompute' | 'clear' | 'latestBody'>;
+/** What one engine's recompute gave: the result, the meshes held, every body's measured box. */
+export interface Seen {
+  result: Done;
+  held: Map<string, { version: string; mesh: BodyMesh }>;
+  boxes: Map<string, string>;
+  sent: number;
+}
 
 // ------------------------------------------------------------------------------- designs
 
@@ -124,6 +131,35 @@ export const length = (expr: string) => ({ kind: 'expr' as const, expr, unit: 'l
 export const choice = <T extends string>(value: T) => ({ kind: 'enum' as const, value });
 export const refs = <T>(list: T[]) => ({ kind: 'ref' as const, refs: list });
 
+/**
+ * The features of `registry` with every `add` answer turned into `write`: main's engine before
+ * `add` existed (ADR-0024's amendment on `add` access), the reference that sees what a cleared
+ * engine with the same predicates can't (an `add` evaluation that only iterates the bodies sees
+ * none in both).
+ */
+export function allWrite(
+  registry: () => FeatureRegistry<KernelFeatureDefinition> = kernelFeatures,
+): () => FeatureRegistry<KernelFeatureDefinition> {
+  return () => {
+    const out = new FeatureRegistry<KernelFeatureDefinition>();
+    for (const definition of registry().list()) {
+      const access = definition.bodyAccess;
+      out.register(
+        access === undefined
+          ? definition
+          : ({
+              ...definition,
+              bodyAccess: (inputs: never) => {
+                const answer = access.call(definition, inputs);
+                return answer === 'add' ? 'write' : answer;
+              },
+            } as KernelFeatureDefinition),
+      );
+    }
+    return out;
+  };
+}
+
 /** The kernel's features, with one feature type's `bodyAccess` replaced. */
 export function withAccess(type: string, access: (inputs: never) => 'add' | 'write') {
   return () => {
@@ -142,10 +178,10 @@ export function withAccess(type: string, access: (inputs: never) => 'add' | 'wri
 // ------------------------------------------------------------------------------- comparison
 
 /** An engine with the meshes it was sent, held by version like the Recomputer holds them. */
-export function client(engine: Engine, stopped: readonly FeatureId[] = []) {
+export function client(kernel: Kernel, engine: Engine, stopped: readonly FeatureId[] = []) {
   let held = new Map<string, { version: string; mesh: BodyMesh }>();
   return {
-    async run(doc: ExtrudoDocument) {
+    async run(doc: ExtrudoDocument): Promise<Seen> {
       const have = Object.fromEntries([...held].map(([id, h]) => [id, h.version]));
       const request: RecomputeRequest = { doc, have, ...(stopped.length > 0 && { stopped }) };
       const result = await engine.recompute(request);
@@ -159,15 +195,28 @@ export function client(engine: Engine, stopped: readonly FeatureId[] = []) {
         now.set(body.id, { version: body.version, mesh });
       }
       held = now;
-      return { result, held: now, sent: result.bodies.filter((b) => b.mesh).length };
+      // The exact box of every body (`measure`), read before anything else runs on this engine.
+      const boxes = new Map<string, string>();
+      for (const body of result.bodies) {
+        const shape = engine.latestBody(body.id);
+        boxes.set(
+          body.id,
+          shape === undefined ? 'none' : JSON.stringify(kernel.measure(shape).bbox),
+        );
+      }
+      return { result, held: now, boxes, sent: result.bodies.filter((b) => b.mesh).length };
     },
   };
 }
 
-/** What differs between a result and the one from a cleared engine. */
+/**
+ * What differs between a result and a reference's: statuses, origins, reports, the bodies' IDs in
+ * order, every mesh (names included) bit for bit and every body's measured box. Never versions or
+ * keys (they say how the result was reached).
+ */
 export function differences(
-  a: { result: Done; held: Map<string, { mesh: BodyMesh }> },
-  b: { result: Done; held: Map<string, { mesh: BodyMesh }> },
+  a: Pick<Seen, 'result' | 'held'> & { boxes?: Map<string, string> },
+  b: Pick<Seen, 'result' | 'held'> & { boxes?: Map<string, string> },
 ): string[] {
   const out: string[] = [];
   if (JSON.stringify(a.result.features) !== JSON.stringify(b.result.features)) out.push('statuses');
@@ -179,30 +228,38 @@ export function differences(
     const mine = a.held.get(id)?.mesh;
     if (mine && !sameMesh(mine, mesh)) out.push(`mesh ${id}`);
   }
+  for (const [id, box] of b.boxes ?? []) {
+    const mine = a.boxes?.get(id);
+    if (mine !== undefined && mine !== box) out.push(`box ${id}`);
+  }
   return out;
 }
 
 /**
- * The features one recompute evaluated more often than `doc` holds them (an expansion's feature,
- * which the document doesn't hold, once): an `add` evaluation that read a body and ran again as
- * `write` (the fall-back). A right predicate makes none. (A seeded insert can put a feature back
- * while an undo already brought it back, so a document may hold one ID twice.)
+ * The features one recompute evaluated more than once: an `add` evaluation that read a body and
+ * ran again as `write` (the fall-back). A right predicate makes none. Exact, since no edit here
+ * makes a document hold an ID twice (`insert` puts a deleted feature back only while its ID is
+ * free), and an expansion's features are evaluated once each like the document's.
  */
 export function fallbacks(result: Done, doc: ExtrudoDocument): string[] {
-  const held = new Map<string, number>();
-  for (const f of doc.features) held.set(f.id, (held.get(f.id) ?? 0) + 1);
-  const seen = new Map<string, number>();
+  const ids = doc.features.map((f) => f.id);
+  if (new Set(ids).size !== ids.length) throw new Error('a document holds an ID twice');
+  const seen = new Set<string>();
   const extra: string[] = [];
   for (const id of result.stats.evaluated) {
-    const n = (seen.get(id) ?? 0) + 1;
-    seen.set(id, n);
-    if (n > Math.max(1, held.get(id) ?? 0)) extra.push(id);
+    if (seen.has(id)) extra.push(id);
+    seen.add(id);
   }
   return extra;
 }
 
 export interface PairOptions {
   registry?: () => FeatureRegistry<KernelFeatureDefinition>;
+  /**
+   * The features of the cleared reference (default the kernel's): a control that puts a wrong
+   * predicate in both engines, as if the kernel had it, which only the all-`write` engine sees.
+   */
+  reference?: () => FeatureRegistry<KernelFeatureDefinition>;
   engine?: typeof RecomputeEngine;
   stopped?: readonly FeatureId[];
   /** More engine options for both engines (files, the OpenSCAD compiler). */
@@ -210,28 +267,45 @@ export interface PairOptions {
 }
 
 /**
- * The engine under test, keeping its cache (with a fault for the negative controls), and the
- * reference: always the kernel's own engine and features, cleared before every step.
+ * The engine under test, keeping its cache (with a fault for the negative controls), and two
+ * references, both the kernel's own engine cleared before every step: one with the same features
+ * (the kernel's), and one where every feature that answers `add` answers `write` (`allWrite`).
+ * The first sees a stale cache entry; the second also sees an `add` predicate that admits inputs
+ * whose evaluation reads the bodies without the engine noticing (it only iterates them), which
+ * gives the same wrong result with any `add` engine. `problems` lists both, the second's as
+ * `write: …`.
  */
 export function pair(kernel: Kernel, options: PairOptions = {}) {
   const Make = options.engine ?? RecomputeEngine;
   const more = options.options ?? {};
+  const reference = options.reference ?? kernelFeatures;
   const cached = new Make(kernel, (options.registry ?? kernelFeatures)(), {
     ...more,
     strictLeaks: true,
   });
-  const cleared = new RecomputeEngine(kernel, kernelFeatures(), { ...more, strictLeaks: true });
-  const a = client(cached, options.stopped);
+  const cleared = new RecomputeEngine(kernel, reference(), { ...more, strictLeaks: true });
+  const written = new RecomputeEngine(kernel, allWrite(reference)(), {
+    ...more,
+    strictLeaks: true,
+  });
+  const a = client(kernel, cached, options.stopped);
   return {
     async step(doc: ExtrudoDocument) {
       const mine = await a.run(doc);
       cleared.clear();
-      const fresh = await client(cleared, options.stopped).run(doc);
-      return { mine, fresh, problems: differences(mine, fresh) };
+      const fresh = await client(kernel, cleared, options.stopped).run(doc);
+      written.clear();
+      const write = await client(kernel, written, options.stopped).run(doc);
+      const problems = [
+        ...differences(mine, fresh),
+        ...differences(mine, write).map((d) => `write: ${d}`),
+      ];
+      return { mine, fresh, write, problems };
     },
     close() {
       cached.clear();
       cleared.clear();
+      written.clear();
     },
     /** The engine under test, for a control that changes what its cache holds. */
     cached: cached as RecomputeEngine,
@@ -255,6 +329,41 @@ export async function sequence(
   } finally {
     p.close();
   }
+}
+
+/**
+ * The engine with deliberate faults: each `fault` (a line of `engine.ts`) replaced by its `by`. Made from
+ * the engine's own source in a temporary file (its imports pointed back at the repository), so the
+ * engine itself has no switch for it.
+ */
+export async function faultyEngine(
+  ...faults: readonly (readonly [fault: string, by: string])[]
+): Promise<{ engine: typeof RecomputeEngine; remove: () => void }> {
+  // Node's own modules, untyped: this package's sources don't take Node's types.
+  const load = (name: string) => import(/* @vite-ignore */ name);
+  const fs = await load('node:fs');
+  const os = await load('node:os');
+  const path = await load('node:path');
+  const url = await load('node:url');
+  const here: string = path.dirname(url.fileURLToPath(import.meta.url));
+  let source: string = fs.readFileSync(path.join(here, 'engine.ts'), 'utf8');
+  for (const [fault, by] of faults) {
+    if (!source.includes(fault)) throw new Error(`"${fault}" moved: update this control`);
+    source = source.replace(fault, by);
+  }
+  source = source.replace(
+    /from '(\.\.?\/[^']+)'/g,
+    (_m: string, to: string) => `from '${path.join(here, to)}'`,
+  );
+  source = source.replace(/from '@extrudo\/([a-z]+)'/g, (_m: string, name: string) => {
+    return `from '${path.join(here, '../../..', name, 'src/index.ts')}'`;
+  });
+  const file: string = path.join(os.tmpdir(), `extrudo-engine-fault-${crypto.randomUUID()}.ts`);
+  fs.writeFileSync(file, source);
+  const module = (await import(/* @vite-ignore */ file)) as {
+    RecomputeEngine: typeof RecomputeEngine;
+  };
+  return { engine: module.RecomputeEngine, remove: () => fs.rmSync(file, { force: true }) };
 }
 
 // ------------------------------------------------------------------------------- edits
@@ -291,7 +400,7 @@ export type GenericKind = (typeof GENERIC_KINDS)[number];
 
 /**
  * One edit of a generic kind, or undefined when the design has nothing it applies to. `insert`
- * puts back the last feature deleted, or adds what `make(n, x)` makes (by default a plate).
+ * puts back the last feature deleted whose ID is free, or adds what `make(n, x)` makes (by default a plate).
  */
 export function genericEdit(
   kind: GenericKind,
@@ -349,7 +458,9 @@ export function genericEdit(
       };
     }
     case 'insert': {
-      const back = deleted.pop();
+      // A feature deleted earlier, unless an undo already brought its ID back.
+      let back = deleted.pop();
+      while (back && doc.features.some((f) => f.id === back?.id)) back = deleted.pop();
       const features = [...doc.features];
       const at = Math.floor(rand() * (features.length + 1));
       if (back) features.splice(at, 0, back);
@@ -396,6 +507,8 @@ export interface Run<K extends string = string> {
   flips: Set<string>;
   /** The kinds whose edited feature then computed (status `ok`) at least once. */
   computed: Set<K>;
+  /** What the edited feature said after each edit of a kind (`ok`, or the status and message). */
+  outcomes: Map<K, string[]>;
 }
 
 export interface DifferentialOptions<K extends string> extends PairOptions {
@@ -433,6 +546,7 @@ export async function differential<K extends string>(
     initialErrors: [],
     flips: new Set(),
     computed: new Set(),
+    outcomes: new Map(),
   };
   const rand = random(seed);
   const history: ExtrudoDocument[] = [doc];
@@ -466,7 +580,17 @@ export async function differential<K extends string>(
         run.kinds.add(kind);
       }
       const { mine, fresh, problems } = await p.step(current);
-      if (edited && mine.result.features[edited[1]]?.status === 'ok') run.computed.add(edited[0]);
+      if (edited) {
+        const status = mine.result.features[edited[1]];
+        if (status?.status === 'ok') run.computed.add(edited[0]);
+        const said = run.outcomes.get(edited[0]) ?? [];
+        said.push(
+          status?.status === 'ok' || status === undefined
+            ? `${edited[1]} ${status?.status ?? 'absent'}`
+            : `${edited[1]} ${status.status}: ${'message' in status ? status.message : ''}`,
+        );
+        run.outcomes.set(edited[0], said);
+      }
       if (step === 0) {
         run.initialErrors = Object.entries(mine.result.features)
           .filter(([, status]) => status.status === 'error')

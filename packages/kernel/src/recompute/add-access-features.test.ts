@@ -24,7 +24,9 @@ import {
   type PrimitiveType,
   primitiveInputs,
   profileRefId,
+  type RevolveInputs,
   revolveInputs,
+  revolveSettings,
   sketchInputs,
   sweepInputs,
 } from '@extrudo/core';
@@ -274,6 +276,8 @@ function revolveDesign(): ExtrudoDocument {
   const along = axisSketch.line(-300, 0, 700, 0, true);
   return doc('revolves', [
     ...base(),
+    // The sketch the operation term turns, over B0 (its revolve left out).
+    ...revolveFeatures('ov', -70, X_AXIS).slice(0, 1),
     sketchFeature('sax', axisSketch.sketch),
     feature('ax', 'axisAlongEdge', {
       edge: refs([{ kind: 'sketchEntity', id: `sax/${along.id}` }]),
@@ -363,6 +367,10 @@ function sweepFeatures(id: string, x: number, options: Parameters<typeof sweepIn
 function sweepDesign(): ExtrudoDocument {
   return doc('sweeps', [
     ...base(),
+    // What the operation, face and edge terms sweep (`OVER_B0`, `cySweep`, `edgeProfile`).
+    ...sweepFeatures('ov', -60).slice(0, 2),
+    ...cySweep().features,
+    edgeProfile().feature,
     offsetPlane('pl', '8.5 mm'),
     ...sweepFeatures('w1', 0),
     ...sweepFeatures('w2', 30, { twist: '30 deg' }),
@@ -427,6 +435,23 @@ function loftDesign(): ExtrudoDocument {
       y: length('10 mm'),
       z: length('35 mm'),
     }),
+    // The sections the operation term lofts, over B0 (their loft left out).
+    ...loftFeatures('ov', -60).slice(0, 3),
+    // A small box over each loft, clear of the slot: the vertex term's tips.
+    ...TIPS.map((_, i) =>
+      primitive(
+        'box',
+        `tb${i}`,
+        {
+          length: '2 mm',
+          width: '2 mm',
+          height: '2 mm',
+          x: `${[0, 30, 60, 90, 130][i]} mm`,
+          y: '7 mm',
+        },
+        planeRef('lp3'),
+      ),
+    ),
     ...loftFeatures('lo1', 0),
     ...loftFeatures('lo2', 30, { ruled: true }),
     ...loftFeatures('lo3', 60),
@@ -512,6 +537,52 @@ function importDesign(): ExtrudoDocument {
   );
 }
 
+/**
+ * For the sweeps' face term: a cylinder `cy` (Ø6, 5 mm high, at x −100 on XY) and a path `wqcy`
+ * on XZ from its top's centre up.
+ */
+function cySweep(): { features: Feature[]; path: GeomRef[] } {
+  const path = new SketchBuilder();
+  const up = path.line(-100, 5, -100, 12);
+  return {
+    features: [
+      primitive('cylinder', 'cy', { diameter: '6 mm', height: '5 mm', x: '-100 mm' }),
+      {
+        ...sketchFeature('wqcy', path.sketch),
+        inputs: sketchInputs(originPlaneRef('origin:xz'), path.sketch),
+      },
+    ],
+    path: [{ kind: 'sketchEntity', id: `wqcy/${up.id}` }],
+  };
+}
+const SWEEP_FROM_CY = cySweep().path;
+
+/** For the sweeps' edge term: a circle r 2 at (−45, 0) on XY (`wpe`), at the foot of B0's edge. */
+function edgeProfile(): { feature: Feature; profile: GeomRef } {
+  const b = new SketchBuilder();
+  b.circle(-45, 0, 2);
+  const [region] = detectProfiles(b.sketch);
+  return {
+    feature: sketchFeature('wpe', b.sketch),
+    profile: { kind: 'profile', id: profileRefId('wpe' as FeatureId, region?.id ?? '') },
+  };
+}
+const SWEEP_AT_EDGE = edgeProfile().profile;
+
+/** What the operation term moves a revolve, sweep or loft onto: their `ov` sketches, over B0. */
+const OVER_B0 = (() => {
+  const sweep = sweepFeatures('ov', -60)[2] as Feature;
+  return {
+    revolve: (revolveFeatures('ov', -70, X_AXIS)[1] as Feature).inputs
+      .profiles as FeatureInputs[string],
+    sweep: {
+      profiles: sweep.inputs.profiles as FeatureInputs[string],
+      path: sweep.inputs.path as FeatureInputs[string],
+    },
+    loft: (loftFeatures('ov', -60)[3] as Feature).inputs.sections as FeatureInputs[string],
+  };
+})();
+
 // ------------------------------------------------------------------------------- the families
 
 type Access = 'add' | 'write' | 'other';
@@ -530,8 +601,13 @@ interface Term {
   kind: string;
   /** The access the edit must leave a feature that answered `add` with. */
   access: 'add' | 'write';
-  /** The features whose body (`<id>:0`) or faces the edit refers to; one before the edited one. */
+  /**
+   * The features whose body (`<id>:0`) or faces the edit refers to, by type or ID; one before the
+   * edited one.
+   */
   refer?: readonly string[];
+  /** The instances the edit may take (by default any that answers `add`). */
+  only?: readonly string[];
   change(
     f: Feature,
     other: Feature | undefined,
@@ -554,13 +630,18 @@ const capOf = (f: Feature): GeomRef => ({ kind: 'face', id: `${f.type}:${f.id}:c
 const bodyOf = (f: Feature): GeomRef => ({ kind: 'body', id: `${f.id}:0` });
 const box = (f: Feature, face: string) => `box:${f.id}:${face}`;
 
-const operationTerm: Term = {
+/**
+ * A join, cut or intersect, with the instance moved by `onto` so that it overlaps B0 (x −75…−45,
+ * y 0…10, z 0…5): the operation then has a body to work on and computes.
+ */
+const operationTerm = (onto: (f: Feature) => FeatureInputs): Term => ({
   kind: 'operation',
   access: 'write',
-  change: (_f, _o, pick) => ({
+  change: (f, _o, pick) => ({
+    ...onto(f),
     operation: choice(pick(['join', 'cut', 'intersect'] as const) ?? 'join'),
   }),
-};
+});
 const bodiesTerm: Term = {
   kind: 'bodies',
   access: 'write',
@@ -568,8 +649,8 @@ const bodiesTerm: Term = {
   change: (_f, other) => ({ bodies: refs([bodyOf(other as Feature)]) }),
 };
 
-const PLACED_TERMS: readonly Term[] = [
-  operationTerm,
+/** The primitives' and coils' terms but the operation (`placedTerms`). */
+const PLACED_REST: readonly Term[] = [
   bodiesTerm,
   {
     kind: 'face',
@@ -597,7 +678,14 @@ const PLACED_TERMS: readonly Term[] = [
 const PRIMITIVES: Family = {
   types: ['box', 'cylinder', 'sphere', 'torus'],
   terms: [
-    ...PLACED_TERMS,
+    // On XY at B0's middle.
+    operationTerm(() => ({
+      plane: refs([originPlaneRef('origin:xy')]),
+      offset: length('0 mm'),
+      x: length('-60 mm'),
+      y: length('5 mm'),
+    })),
+    ...PLACED_REST,
     {
       kind: 'shape',
       access: 'add',
@@ -617,7 +705,11 @@ const PRIMITIVES: Family = {
 const COILS: Family = {
   types: ['coil'],
   terms: [
-    ...PLACED_TERMS,
+    // Where the coil is: it overlaps nothing, so the operation doesn't compute. With the coil
+    // moved onto B0 (XY, x −60, y 5) one evaluation in the seeded run didn't return in 25 minutes
+    // (not looked into); the primitives' operation term computes over B0 instead.
+    operationTerm(() => ({})),
+    ...PLACED_REST,
     {
       kind: 'shape',
       access: 'add',
@@ -633,7 +725,8 @@ const LABEL = labelSketch();
 const REVOLVES: Family = {
   types: ['revolve'],
   terms: [
-    operationTerm,
+    // The ring of `rsov` (x −70…−60) about the X axis, through B0.
+    operationTerm(() => ({ profiles: OVER_B0.revolve, axis: refs([X_AXIS]) })),
     bodiesTerm,
     {
       // The box's bottom face, in XY beside the X axis.
@@ -659,13 +752,15 @@ const REVOLVES: Family = {
       }),
     },
     {
+      // Up to XZ (y = 0), which every ring crosses a quarter turn on. Only the design's own
+      // revolves: an inserted one is too far along X for the plane, which is sized by the bodies.
       kind: 'to-object',
       access: 'write',
-      refer: BODY_TYPES,
-      change: (_f, other, pick) => ({
+      only: ['r1', 'r2', 'r3', 'r4', 'r5'],
+      change: () => ({
         direction: choice('one-side'),
         extent: choice('to-object'),
-        toObject: refs([pick([originPlaneRef('origin:xz'), bodyOf(other as Feature)]) as GeomRef]),
+        toObject: refs([originPlaneRef('origin:xz')]),
       }),
     },
     {
@@ -715,20 +810,26 @@ const REVOLVES: Family = {
 const SWEEPS: Family = {
   types: ['sweep'],
   terms: [
-    operationTerm,
+    // The circle of `wpov` at (−60, 0) up the lines of `wqov`, through B0.
+    operationTerm(() => ({ profiles: OVER_B0.sweep.profiles, path: OVER_B0.sweep.path })),
     bodiesTerm,
     {
+      // The cylinder `cy`'s top as the profile, up the lines of `wqcy` from its centre.
       kind: 'face',
       access: 'write',
-      refer: FLAT_CAPS,
-      change: (_f, other) => ({ profiles: refs([capOf(other as Feature)]) }),
+      refer: ['cy'],
+      change: () => ({
+        profiles: refs([{ kind: 'face', id: 'cylinder:cy:cap:end' }]),
+        path: refs(SWEEP_FROM_CY),
+      }),
     },
     {
-      // The box's front right edge, upright.
+      // The box's front right edge, upright, with the circle of `wpe` at its foot.
       kind: 'edge',
       access: 'write',
       refer: ['box'],
       change: (_f, other) => ({
+        profiles: refs([SWEEP_AT_EDGE]),
         path: refs([
           {
             kind: 'edge',
@@ -763,25 +864,27 @@ const SWEEPS: Family = {
 const LOFTS: Family = {
   types: ['loft'],
   terms: [
-    operationTerm,
+    // The sections of `ova`…`ovc` at (−60, 10), through B0.
+    operationTerm(() => ({ sections: OVER_B0.loft })),
     bodiesTerm,
     {
-      // The first section: a flat cap 4 or 5 mm up.
+      // The first section: a flat cap 4 or 5 mm up (B0's or the plate's, not a tip box's).
       kind: 'face',
       access: 'write',
-      refer: FLAT_CAPS,
+      refer: ['B0', 'ex0'],
       change: (f, other) => {
         const [, ...rest] = (f.inputs.sections as { refs: GeomRef[] }).refs;
         return { sections: refs([capOf(other as Feature), ...rest]) };
       },
     },
     {
-      // A tip at the box's top front right corner.
+      // A tip at the top front right corner of the box `tb<i>` over the loft.
       kind: 'vertex',
       access: 'write',
       refer: ['box'],
-      change: (f, other) => {
-        const o = other as Feature;
+      only: TIPS,
+      change: (f) => {
+        const o = { id: `tb${Math.max(0, TIPS.indexOf(f.id))}`, type: 'box' } as Feature;
         const tip = vertexName([box(o, 'cap:end'), box(o, 'side:front'), box(o, 'side:right')]);
         return {
           sections: refs([
@@ -795,6 +898,7 @@ const LOFTS: Family = {
       // A tip over the loft: the construction point for lo1, a sketch point 30 mm up for the others.
       kind: 'point',
       access: 'add',
+      only: TIPS,
       change: (f) => {
         const tip: GeomRef =
           f.id === 'lo1'
@@ -900,9 +1004,12 @@ function familyEdit(family: Family, start: ExtrudoDocument) {
     const earlier = (f: Feature) =>
       d.features
         .slice(0, d.features.indexOf(f))
-        .filter((x) => !x.suppressed && (term.refer ?? []).includes(x.type));
+        .filter((x) => !x.suppressed && (term.refer ?? []).some((r) => r === x.type || r === x.id));
     const adding = members.filter(
-      (x) => accessOf(x) === 'add' && (!term.refer || earlier(x).length > 0),
+      (x) =>
+        accessOf(x) === 'add' &&
+        (!term.only || term.only.includes(x.id)) &&
+        (!term.refer || earlier(x).length > 0),
     );
     const f = pick(adding);
     if (!f) return undefined;
@@ -918,17 +1025,17 @@ const DESIGNS: [string, () => ExtrudoDocument, Family, string[]][] = [
     'primitives (box, cylinder, sphere, torus)',
     primitivesDesign,
     PRIMITIVES,
-    ['bodies', 'face', 'plane', 'offset', 'shape', 'adds'],
+    ['operation', 'bodies', 'face', 'plane', 'offset', 'shape', 'adds'],
   ],
   [
     'revolves',
     revolveDesign,
     REVOLVES,
-    ['bodies', 'face', 'edge', 'axis', 'text', 'angles', 'adds'],
+    ['operation', 'bodies', 'face', 'edge', 'to-object', 'axis', 'text', 'angles', 'adds'],
   ],
   ['coils', coilDesign, COILS, ['bodies', 'face', 'plane', 'offset', 'shape', 'adds']],
-  ['sweeps', sweepDesign, SWEEPS, ['bodies', 'path', 'twist', 'adds']],
-  ['lofts', loftDesign, LOFTS, ['bodies', 'face', 'point', 'adds']],
+  ['sweeps', sweepDesign, SWEEPS, ['operation', 'bodies', 'face', 'edge', 'path', 'twist', 'adds']],
+  ['lofts', loftDesign, LOFTS, ['operation', 'bodies', 'face', 'vertex', 'point', 'ruled', 'adds']],
   ['imports (STEP, STL, 3MF, OpenSCAD)', importDesign, IMPORTS, ['up', 'position', 'units']],
 ];
 
@@ -954,7 +1061,10 @@ describe('add access beyond the extrude: the cached engine gives what a cleared 
       for (const term of family.terms)
         expect(run.flips).toContain(`${term.kind}: add→${term.access}`);
       if (kinds.includes('adds')) expect(run.flips).toContain('adds: write→add');
-      for (const kind of computes) expect(run.computed).toContain(kind);
+      // What the edited feature said after each such edit, if it never computed.
+      for (const kind of computes) {
+        expect(run.computed, `${kind}: ${run.outcomes.get(kind)?.join('; ')}`).toContain(kind);
+      }
       expect(run.compared).toBe(41);
       expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
       // The design starts with features that answer `add`.
@@ -1179,7 +1289,7 @@ describe('add access beyond the extrude: what an edit costs', () => {
         strictLeaks: true,
       });
       try {
-        const c = client(engine);
+        const c = client(kernel, engine);
         const d = make();
         const before = await c.run(d);
         expect(fallbacks(before.result, d)).toEqual([]);
@@ -1214,7 +1324,7 @@ describe('add access beyond the extrude: what an edit costs', () => {
           strictLeaks: true,
         });
         try {
-          const c = client(engine);
+          const c = client(kernel, engine);
           await c.run(d);
           const changed = setInputs(d, member.id, term.change(member, b0, pick));
           const r = await c.run(term.doc ? term.doc(changed) : changed);
@@ -1284,7 +1394,7 @@ describe('add access beyond the extrude: what an edit costs', () => {
       openscad: () => compiler,
     });
     try {
-      const c = client(engine);
+      const c = client(kernel, engine);
       const d = withFiles(
         doc('imports', [
           ...plateFeatures(0, -200, '4 mm'),
@@ -1347,7 +1457,48 @@ describe('the comparison catches a wrong `add` here too (negative control)', () 
       ),
     });
     expect(step?.result.bodies.map((b) => b.id)).toEqual(['a:0', 'j:0']);
-    expect(step?.problems).toEqual(['statuses', 'reports', 'bodies a:0,j:0 vs a:0', 'mesh a:0']);
+    // Against both references alike: the box's own fault isn't in either.
+    const seen = ['statuses', 'reports', 'bodies a:0,j:0 vs a:0', 'mesh a:0', 'box a:0'];
+    expect(step?.problems).toEqual([...seen, ...seen.map((p) => `write: ${p}`)]);
     expect(fallbacks(step?.result as never, d)).toEqual([]);
+  });
+
+  it('a revolve to a plane said to be `add` in both engines: only the all-`write` engine sees it', {
+    timeout: 300_000,
+  }, async () => {
+    // The revolve's predicate without its `extent === 'angle'` term, in the engine under test and
+    // in the cleared reference alike (as if the kernel had the fault). A revolve to a plane sizes
+    // the plane from every body it iterates, which the fall-back doesn't notice: under `add` it
+    // sees none, so the plane is too small to reach r5 (at x 150) and the revolve fails, in both
+    // engines the same way and without a fall-back. Main's engine (every `add` a `write`) sees
+    // the bodies and makes the revolve.
+    const wrong = withAccess('revolve', (inputs: RevolveInputs) => {
+      const s = revolveSettings(inputs);
+      return s.operation === 'new-body' &&
+        s.bodies.length === 0 &&
+        (s.axis?.kind === 'axis' || s.axis?.kind === 'sketchEntity') &&
+        s.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity')
+        ? 'add'
+        : 'write';
+    });
+    const d = revolveDesign();
+    const edited = setInputs(d, 'r5', {
+      direction: choice('one-side'),
+      extent: choice('to-object'),
+      toObject: refs([originPlaneRef('origin:xz')]),
+    });
+    const faulty = await sequence(kernel, [d, edited], {
+      registry: wrong,
+      reference: wrong,
+      options: ENGINE,
+    });
+    expect(faulty.map((s) => s.problems.filter((p) => !p.startsWith('write: ')))).toEqual([[], []]);
+    expect(faulty[0]?.problems).toEqual([]);
+    expect(faulty[1]?.problems).toContain('write: statuses');
+    expect(fallbacks(faulty[1]?.result as never, edited)).toEqual([]);
+    // With the kernel's own predicate (a revolve to an object is `write`), clean against both.
+    const right = await sequence(kernel, [d, edited], { options: ENGINE });
+    expect(right.map((s) => s.problems)).toEqual([[], []]);
+    expect(right[1]?.result.features['r5' as FeatureId]?.status).toBe('ok');
   });
 });
