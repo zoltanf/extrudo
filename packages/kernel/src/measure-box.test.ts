@@ -12,13 +12,13 @@ import {
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
-import tessellated from '../../../fixtures/imports/tessellated.step?url&inline';
 import { Kernel } from './kernel';
 import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
 import { DEFAULT_TESSELLATION } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
 import { KernelService } from './service';
+import { measureStoredShape, storedShapeToStep } from './stored-shape';
 import { buildTestPart } from './test-part';
 
 let kernel: Kernel;
@@ -244,17 +244,6 @@ describe('`properties` of faces without a surface (ADR-0035, 2026-11-25)', () =>
     for (const shape of [face, cube, both]) kernel.release(shape);
   });
 
-  it("bounds the STEP reader's solid of triangles only (AP242 tessellated geometry)", () => {
-    // A tetrahedron 10 × 10 × 5: one solid of one face with a triangulation and no surface.
-    const text = atob(tessellated.slice(tessellated.indexOf(',') + 1));
-    const read = kernel.readStep(text);
-    const solids = kernel.solids(read);
-    expect([solids.length, kernel.count(read, 'face')]).toEqual([1, 1]);
-    expect(kernel.surfaceGeometry(read, 0).type).toBe('other');
-    expect(box(read)).toEqual([0, 0, 0, 10, 10, 5]);
-    kernel.release(...solids, read);
-  });
-
   it('leaves a shape without faces as it was: a free circle edge', () => {
     const cylinder = kernel.cylinder(5, 10, [0, 0, 0]);
     const edge = kernel.subShape(cylinder, 'edge', 0);
@@ -262,4 +251,37 @@ describe('`properties` of faces without a surface (ADR-0035, 2026-11-25)', () =>
     kernel.release(edge);
     kernel.release(cylinder);
   });
+});
+
+/** The same face in a shell: what a solid made of such faces holds. */
+function surfacelessShell(): string {
+  return surfacelessFace()
+    .replace('TShapes 1', 'TShapes 2')
+    .replace('0101000\n*\n\n+1 0 ', '0101000\n*\nSh\n\n0101100\n+2 0 *\n\n+1 0 ');
+}
+
+describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () => {
+  it('the B-rep reader refuses a shell with such a face, with a message', () => {
+    expect(() => kernel.readBrep(surfacelessShell())).toThrow(
+      'B-rep import failed: a face of a solid or shell is given as triangles, not as a surface.',
+    );
+    // The FreeCAD import's stored shapes come through it.
+    expect(() => measureStoredShape(kernel, surfacelessShell(), [])).toThrow(/given as triangles/);
+    expect(() => storedShapeToStep(kernel, surfacelessShell(), [])).toThrow(/given as triangles/);
+    expect(kernel.stats().liveShapes).toBe(0);
+  });
+
+  it('describes a lone such face as "other", with its area and centre', async () => {
+    // A kernel of its own, so nothing else in this file runs on one this test broke.
+    const own = new Kernel(await loadOcct());
+    const face = own.readBrep(surfacelessFace());
+    const [described] = own.describe(face).faces;
+    expect(described?.type).toBe('other');
+    expect(described?.area).toBeCloseTo(55.9016994375, 9);
+    expect(described?.centroid.map((v) => Math.round(v * 1e9) / 1e9)).toEqual([
+      3.333333333, 3.333333333, 1.666666667,
+    ]);
+    own.release(face);
+    expect(own.stats().liveShapes).toBe(0);
+  }, 30_000);
 });

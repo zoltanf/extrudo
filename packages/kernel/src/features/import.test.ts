@@ -10,6 +10,8 @@ import {
 } from '@extrudo/core';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import step from '../../../../fixtures/imports/b3.step?url&inline';
+import tessellated from '../../../../fixtures/imports/tessellated.step?url&inline';
+import tessellatedMixed from '../../../../fixtures/imports/tessellated-mixed.step?url&inline';
 import { Kernel } from '../kernel';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
@@ -253,6 +255,30 @@ describe('the import feature (P4-06, ADR-0066 §2)', () => {
           expect(box.min[k]).toBeCloseTo((filed[i]?.min[k] as number) + (by[k] as number), 6);
         }
       }
+    }
+  });
+
+  it('refuses a STEP file that gives a face as triangles, with what to do, and goes on', {
+    timeout: 60_000,
+  }, async () => {
+    const bytesOf = (url: string) =>
+      Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+    // Only triangles (a tetrahedron), and a box with surfaces beside one such part.
+    for (const [name, url] of [
+      ['tessellated.step', tessellated],
+      ['tessellated-mixed.step', tessellatedMixed],
+    ] as const) {
+      const result = await recompute(design({ bytes: bytesOf(url), fileName: name }).doc);
+      expect(result.features[IMPORT_ID], name).toEqual({
+        status: 'error',
+        message:
+          'STEP import failed: the file gives at least one face as triangles, not as a surface. Export the part again with its surfaces, or export it as STL or 3MF and import that as a mesh.',
+      });
+      expect(result.bodies, name).toEqual([]);
+      // The same engine computes the next design.
+      const next = await recompute(design({}).doc);
+      expect(next.features[IMPORT_ID]?.status, name).toBe('ok');
+      expect(next.bodies.length, name).toBeGreaterThan(0);
     }
   });
 
