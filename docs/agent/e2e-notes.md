@@ -1723,6 +1723,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   right-to-left boxes 12 px across the hole's rim (`at([24, 15, 20])`) take faces 1, 4 and 10
   (top, bottom, wall), 8 px inside the hole nothing, across the left side (`at([0, 15, 20])`)
   faces 0, 1 and 4.
+- **A press the view holds still for `LONG_PRESS_MS` (500 ms) is a long press** ("Select other…";
+  its release does nothing). Playwright waits for the page to take each event, so on a busy
+  machine a press and a first move within the click slop (which only asks for a hover pick) can
+  look held still that long: the box is dropped and the menu opens. The spec's `box` leaves the
+  slop with its first move and drags again (at most three times) when the menu is open once the
+  page is idle. A new drag helper on the model view needs the same.
 
 ### `e2e/move-mirror.spec.ts`
 
