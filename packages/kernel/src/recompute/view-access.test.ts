@@ -616,6 +616,7 @@ function probeRegistry() {
         mode: EnumInputSchema,
         other: EnumInputSchema,
         otherEdge: EnumInputSchema,
+        guess: EnumInputSchema,
       }),
       bodyAccess: () => 'view',
       evaluate(ctx: EvalContext) {
@@ -642,6 +643,9 @@ function probeRegistry() {
           case 'resolve-lost':
             ctx.resolve(LOST);
             break;
+          case 'resolve-guess':
+            ctx.resolve(JSON.parse(value('guess')) as GeomRef);
+            break;
           case 'stray':
             out.set(other, ctx.kernel.box([1, 1, 1], [0, 0, 50]));
             break;
@@ -667,6 +671,8 @@ async function probed(mode: string): Promise<ExtrudoDocument> {
     await engine.recompute({ doc });
     const edge = engine.reference('ex1:0' as BodyId, 'edge', 0) as GeomRef;
     const otherEdge = (engine.reference('ex2:0' as BodyId, 'edge', 0) as GeomRef).id;
+    // An edge of the middle plate by its fingerprint only (its name gone): found by geometry.
+    const guess = { ...(engine.reference('ex1:0' as BodyId, 'edge', 1) as GeomRef), id: 'e[gone]' };
     const features: Feature[] = [
       ...doc.features,
       {
@@ -679,6 +685,7 @@ async function probed(mode: string): Promise<ExtrudoDocument> {
           mode: choice(mode),
           other: choice('ex2:0'),
           otherEdge: choice(otherEdge),
+          guess: choice(JSON.stringify(guess)),
         },
       },
     ];
@@ -699,6 +706,7 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     ['`names` of another body', 'names'],
     ['a reference resolved in another body', 'resolve-other'],
     ['a reference no body has', 'resolve-lost'],
+    ['a reference found by its fingerprint only (in the view)', 'resolve-guess'],
   ])('%s: dropped, run as `write`, remembered', { timeout: 120_000 }, async (_n, mode) => {
     const doc = await probed(mode);
     const other = setInputs(doc, 'ex0', { distance: length('7 mm') });

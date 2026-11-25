@@ -776,7 +776,18 @@ also compare versions and every body's `measure` box when asked, `exact`):
   fillet across two plates evaluated twice), the result right; the result appended after the
   other bodies instead of in place: the body order differs at step 0.
 - **Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
-  MUTATIONS
+  the fillet's `bodyAccess` back to `write` (the six-plates counters, the later cut's counter and
+  the counter across two plates fail); the chamfer's (the chamfer design's differential: no flip
+  to `view`); each of the `BodyView`'s traps (`get`: its probe and the `names` one, which looks
+  the body up; `has`; `size`); a non-exact resolution accepted (the fingerprint probe); a lost
+  reference not noticed (the probes of a reference in another body and of one no body has); the
+  memory not asked (six probes: they evaluate twice again after the edit); the chain after a
+  view left out (the later cut's counter); the isolated term (the inserted-design test); a
+  reference no body has by its name taken as nowhere instead of `write` (nine of the eleven
+  differentials: fall-backs); the no-reference term (all eleven: the flip to `write` missing);
+  the result appended instead of put in place (`view` = `write`). The differential runs both
+  engines from the same source, so a fault in the source alone shows only through its other
+  checks (the flips, the fall-backs) and the comparison with `write`.
 - The prototype's four differences on its overlapping-fillets design (section 4.7 of the plan:
   "through all" over meshed plates) are gone: its seeded differential on that design and five
   others gives 0 differences in 246 comparisons with today's engine, and with views.
