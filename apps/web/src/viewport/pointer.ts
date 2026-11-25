@@ -254,9 +254,13 @@ export function attachPointerInput(
     if (handlers.onMenu) {
       const { infer, toggle } = modifiers(e);
       current.timer = setTimeout(() => {
-        if (press !== current || current.dragging) return;
-        current.menu = true;
-        handlers.onMenu?.(at(current.x, current.y, infer, toggle));
+        // The press was held still as far as the events handled so far say; a move or release
+        // the page was too busy to handle yet comes before the next frame, so decide then.
+        requestAnimationFrame(() => {
+          if (press !== current || current.dragging) return;
+          current.menu = true;
+          handlers.onMenu?.(at(current.x, current.y, infer, toggle));
+        });
       }, LONG_PRESS_MS);
     }
     press = current;
