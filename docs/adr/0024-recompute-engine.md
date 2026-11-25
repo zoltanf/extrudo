@@ -357,11 +357,13 @@ the extrude always `write` (main's behaviour) → as it is:
 The cut reads every plate, so it runs again and sends the pieces it makes; a fillet keys the body
 set, so every later fillet and its body still run (`view` access, later, is for those). In the
 app (30 and 100 plates with 30 holes each, production build, Chrome with a GPU, 1280 × 800, quiet
-machine, median of 4 runs), committing an edit of the first plate's extrude in its dialog takes
-1,376 → 192 ms (30 plates) and 4,468 → 265 ms (100 plates) until the model is ready, and undoing it
-321 → 320 ms and 1,808 → 330 ms. The page's blocked time (tasks of 50 ms or more) stays within its
-runs' spread for all seven measured actions; components rendered on the commit 7,067 → 3,886 and
-21,244 → 10,116, on the 100-plate undo 5,972 → 641.
+machine, median of 4 runs, main → this), committing an edit of the first plate's extrude in its
+dialog takes 1,408 → 184 ms (30 plates) and 4,414 → 266 ms (100 plates) until the model is ready,
+and undoing it 320 → 320 ms and 1,775 → 330 ms. The page's blocked time (tasks of 50 ms or more)
+stays within its runs' spread for six of the seven measured actions; opening the 30-plate design
+gave 432–604 ms (main) and 436–659 ms (this), two clusters in both (about 440 ms, and 600–660 ms)
+with the medians in different ones. Components rendered on the commit 7,080 → 3,886 and 21,261 →
+10,129, on the 100-plate undo 5,975 → 641.
 
 **The proof** (`recompute/add-access.test.ts`, real OCCT, `strictLeaks`, no clock): eight designs
 (plates with a parameter; overlapping plates and a cut through them; the b2, b3 and b4
@@ -423,6 +425,7 @@ the file restored): `clear()` keeping the keys, no bound, the fall-back's hit no
 own-prefix check, the extrude always `write` (the six-plate counter, the overlapping-plates
 counter, the two-profile case and the "through all" case), and the predicate without its picked
 bodies, extent, face or text term (the predicate's own test and the proof's plates design, which
-checks each term's access after its edit); control (3) without its fault finds no difference.
+checks each term's access after its edit). Control (3) without its fault (the right engine with
+that predicate) differs at step 0 already, as (2) does: T sees no bodies.
 `recomputer-keep.test.ts`'s six-mesh case now edits grooved plates (a cut reads every plate), and
 a new case shows one mesh for separate plates.
