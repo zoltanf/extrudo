@@ -87,13 +87,15 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
     return bodyEntries(store.getState().doc, state.bodies, state.origins).map((entry) => {
       const shape = engine.latestBody(entry.id);
       const measured = shape ? kernel.measure(shape) : undefined;
+      // The box as the app's host gives it (`inspect`, exact), not `measure`'s loose one.
+      const box = shape ? kernel.properties(shape).bbox : undefined;
       return {
         id: entry.id,
         name: entry.meta.name,
         ...(entry.meta.color !== undefined && { color: entry.meta.color }),
         ...(entry.meta.opacity !== undefined && { opacity: entry.meta.opacity }),
         volume: measured ? Math.round(measured.volume * 1000) / 1000 : Number.NaN,
-        box: measured ? { min: measured.bbox.min, max: measured.bbox.max } : undefined,
+        box: box ? { min: [...box.min], max: [...box.max] } : undefined,
         visible: entry.display !== 'hidden',
       };
     });

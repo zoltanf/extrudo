@@ -43,6 +43,24 @@ describe('measure (ADR-0035, 2026-11-24)', () => {
       kernel.release(shape);
     }
   });
+
+  it('`properties` gives the exact box, before and after meshing: what a person is shown', () => {
+    const shapes: [string, ReturnType<Kernel['box']>, number[]][] = [
+      ['cylinder r 5', kernel.cylinder(5, 10, [0, 0, 0]), [-5, -5, 0, 5, 5, 10]],
+      ['box', kernel.box([10, 20, 5]), [0, 0, 0, 10, 20, 5]],
+      ['test part (fillets, a hole)', buildTestPart(kernel), [0, 0, 0, 40, 30, 20]],
+    ];
+    const exact = (shape: ReturnType<Kernel['box']>) => {
+      const { min, max } = kernel.properties(shape).bbox;
+      return [...min, ...max].map((v) => Math.round(v * 1e6) / 1e6 + 0);
+    };
+    for (const [name, shape, box] of shapes) {
+      expect(exact(shape), name).toEqual(box);
+      kernel.mesh(shape, DEFAULT_TESSELLATION);
+      expect(exact(shape), name).toEqual(box);
+      kernel.release(shape);
+    }
+  });
 });
 
 function plate(x: number) {
