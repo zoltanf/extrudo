@@ -384,6 +384,13 @@ public:
    */
   static constexpr double CENTRE_AGREEMENT = 1e-9;
 
+  /**
+   * The relative error bound of gaussKronrodCentre's integrals (the centre of a
+   * shape whose curved faces disagree): looser than MASS_EPS, which the volume
+   * keeps; the centre only is taken from that pass.
+   */
+  static constexpr double CENTRE_EPS = 1e-5;
+
   /** One face's mass and centre (relative to the face's apex) in a volume sum. */
   struct FaceShare {
     double mass;
@@ -518,7 +525,7 @@ public:
 
   /**
    * The centre of mass of a shape with a rational edge by Gauss–Kronrod with the
-   * centre flag, every face about one apex moved off `apex` by the shape's box
+   * centre flag to CENTRE_EPS, every face about one apex moved off `apex` by the shape's box
    * diagonal (along an uneven direction), planar faces' cones exact as in
    * rationalVolume. False when an integral fails.
    */
@@ -553,10 +560,10 @@ public:
       face.Load(current);
       double error;
       if (current.NbChildren() == 0) {
-        error = curved.Perform(face, MASS_EPS, true, false);
+        error = curved.Perform(face, CENTRE_EPS, true, false);
       } else {
         domain.Init(current);
-        error = curved.Perform(face, domain, MASS_EPS, true, false);
+        error = curved.Perform(face, domain, CENTRE_EPS, true, false);
       }
       if (error < 0.) return false;
       sum.Add(curved);

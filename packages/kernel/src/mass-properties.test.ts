@@ -221,10 +221,10 @@ const pappus = (turns: number) => Math.PI * 0.75 ** 2 * 2 * Math.PI * 6 * turns;
  * A conic profile (rho 0.4) closed by its chord, extruded 5 mm along its plane's normal. A face from
  * planarFaces carries its plane's frame as a location, so a prism in a moved frame has located caps.
  */
-const prism = (frame: PlanarFrame): ShapeHandle => {
+const prism = (frame: PlanarFrame, rho = 0.4): ShapeHandle => {
   const { faces } = kernel.planarFaces(
     [
-      { kind: 'conic', start: [0, 0], shoulder: [15, 20], end: [30, 0], rho: 0.4 },
+      { kind: 'conic', start: [0, 0], shoulder: [15, 20], end: [30, 0], rho },
       { kind: 'line', a: [30, 0], b: [0, 0] },
     ],
     frame,
@@ -337,22 +337,7 @@ describe('the centre of mass of a body with a rational edge', () => {
   });
 
   it("is the profile's area centroid for a conic prism, moved, turned or mirrored", () => {
-    // The region under the conic, sampled densely: its area centroid, at half the prism's height.
-    const outline: Vec2[] = [];
-    for (let i = 0; i <= 20000; i++)
-      outline.push(conicPoint([0, 0], [15, 20], [30, 0], 0.4, i / 20000));
-    let area = 0;
-    let mx = 0;
-    let my = 0;
-    for (let i = 0; i < outline.length; i++) {
-      const a = outline[i] as Vec2;
-      const b = outline[(i + 1) % outline.length] as Vec2;
-      const cross = a[0] * b[1] - b[0] * a[1];
-      area += cross / 2;
-      mx += ((a[0] + b[0]) * cross) / 6;
-      my += ((a[1] + b[1]) * cross) / 6;
-    }
-    const local: Vec3 = [mx / area, my / area, 2.5];
+    const local = prismCentre(0.4);
     const shapes = [prism(XY), prism(TURNED)];
     shapes.push(kernel.transform(shapes[1] as ShapeHandle, MIRROR).shape);
     try {
@@ -374,6 +359,19 @@ describe('the centre of mass of a body with a rational edge', () => {
       kernel.release(...shapes);
     }
   });
+
+  it('is the area centroid for a conic prism of rho 0.95', () => {
+    // A flatter shoulder: the fixed-order integral of this wall is off by about 1e-4 of the
+    // volume, so the centre comes from the Gauss–Kronrod pass (the fixed-order one is 5e-3 mm out).
+    const shape = prism(XY, 0.95);
+    try {
+      const { centroid, volume } = kernel.properties(shape);
+      expectNear(centroid, prismCentre(0.95), 1e-6);
+      expect(volume).toBe(kernel.measure(shape).volume);
+    } finally {
+      kernel.release(shape);
+    }
+  });
 });
 
 const cross3 = (a: readonly number[], b: readonly number[]): Vec3 => [
@@ -390,4 +388,23 @@ function expectNear(actual: Vec3, expected: readonly number[], tolerance: number
       `coordinate ${k}`,
     ).toBeLessThan(tolerance);
   }
+}
+
+/** The area centroid of the region under the prism's conic (sampled densely), at half its height. */
+function prismCentre(rho: number): Vec3 {
+  const outline: Vec2[] = [];
+  for (let i = 0; i <= 20000; i++)
+    outline.push(conicPoint([0, 0], [15, 20], [30, 0], rho, i / 20000));
+  let area = 0;
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < outline.length; i++) {
+    const a = outline[i] as Vec2;
+    const b = outline[(i + 1) % outline.length] as Vec2;
+    const cross = a[0] * b[1] - b[0] * a[1];
+    area += cross / 2;
+    mx += ((a[0] + b[0]) * cross) / 6;
+    my += ((a[1] + b[1]) * cross) / 6;
+  }
+  return [mx / area, my / area, 2.5];
 }
