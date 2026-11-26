@@ -1424,13 +1424,13 @@ every change failed at least one test):
 | the view's order checked | the `reorder` probe |
 | the mesh fall-back (never `write`) | the mesh split |
 | the mesh term (any piece of the last view body with a body outside the view after it: `write`) | the seeded splits and Combine cuts, and their placements |
-| the `origins` term (pieces of the last view body at the end) | the seeded splits and Combine cuts, their placements, the order |
-| pieces after their body (dropped) | the seeded splits and Combine cuts, their placements, the order |
+| the `origins` term (pieces of the last view body at the end) | the seeded splits and Combine cuts, their placements, the order, the mesh split |
+| pieces after their body (dropped) | the seeded splits and Combine cuts, their placements, the order, the mesh split |
 | Move's copy as `write` | the seeded copies, their placements, the counters |
 | Scale's copy as `write` | the copies' placements, the collision control, the counters |
-| Mirror's copy as `write` | the copies' placements, the collision control, the counters |
+| Mirror's copy as `write` | the copies' placements, the collision control, the counters, the answers for features |
 | Mirror's `objects` term (features as `view`) | the answers for features |
-| the patterns' opt-in (`write`) | the seeded patterns, their placements |
+| the patterns' opt-in (`write`) | the seeded patterns, their placements, the answers for features |
 | the patterns' `objects` term (features as `view`) | the answers for features |
 | Split Body's opt-in (`write`) | the seeded splits, their placements, the mesh split |
 
