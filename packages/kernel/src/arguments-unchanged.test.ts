@@ -8,9 +8,11 @@
 // triangulation, which no box or description reads (ADR-0035's amendment of 2026-11-24).
 import { originPlaneRef, primitiveInputs } from '@extrudo/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { Kernel, type ShapeHandle } from './kernel';
+import { Kernel, KernelError, type ShapeHandle, type WrapFrame } from './kernel';
+import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
-import { RecomputeEngine } from './recompute/engine';
+import type { PlanarCurve, PlanarFrame, Vec2 } from './planar';
+import { DEFAULT_TESSELLATION, RecomputeEngine } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
 import { buildTestPart } from './test-part';
 
@@ -49,6 +51,99 @@ const torus = () => kernel.transform(torusBase, IDENTITY).shape;
 const plate = () => kernel.box([60, 40, 3], [15, 0, 0]);
 /** A cylinder Ø10 × 10 standing in the plate's corner. */
 const post = () => kernel.cylinder(5, 10, [15, 0, -2]);
+
+// ------------------------------------------------------------------------------- profiles
+
+type Vec3 = [number, number, number];
+const XY: PlanarFrame = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] };
+/** XZ, its `y` along world +Z. */
+const XZ: PlanarFrame = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, -1, 0] };
+
+const lines = (...corners: Vec2[]): PlanarCurve[] =>
+  corners.map((a, i) => ({ kind: 'line', a, b: corners[(i + 1) % corners.length] as Vec2 }));
+const circle = (center: Vec2, radius: number): PlanarCurve => ({
+  kind: 'arc',
+  center,
+  radius,
+  from: 0,
+  sweep: 2 * Math.PI,
+});
+const ellipse = (center: Vec2, a: number, b: number): PlanarCurve => ({
+  kind: 'ellipse',
+  center,
+  a,
+  b,
+  rotation: 0,
+});
+/** A closed cubic B-spline round `center`: a wavy ring, the way a letter's outline comes in. */
+function ring(center: Vec2, radius: number): PlanarCurve {
+  const steps = 12;
+  const poles: Vec2[] = Array.from({ length: steps + 1 }, (_, i) => {
+    const angle = (2 * Math.PI * i) / steps;
+    const r = radius + 0.8 * Math.sin(3 * angle);
+    return [center[0] + r * Math.cos(angle), center[1] + r * Math.sin(angle)];
+  });
+  const knots = [0, 0, 0, 0];
+  for (let i = 1; i <= steps - 3; i++) knots.push(i / (steps - 2));
+  knots.push(1, 1, 1, 1);
+  return { kind: 'spline', degree: 3, poles, knots };
+}
+
+/** A disc of radius `r` round (cx, cy) with a hole of radius `hole`: one face with a hole. */
+function annulus(cx: number, cy: number, r: number, hole: number): ShapeHandle {
+  const { faces } = kernel.planarFaces([circle([cx, cy], r), circle([cx, cy], hole)], XY, 1e-6);
+  const face = faces.find((f) => f.holes === 1);
+  kernel.release(...faces.filter((f) => f !== face).map((f) => f.shape));
+  if (!face) throw new Error('no face with a hole');
+  return face.shape;
+}
+
+/** The plane through the Z axis at `angle` (radians), its `x` pointing away from the axis. */
+const aroundZ = (angle: number): PlanarFrame => ({
+  origin: [0, 0, 0],
+  x: [Math.cos(angle), Math.sin(angle), 0],
+  normal: [-Math.sin(angle), Math.cos(angle), 0],
+});
+/** Three circles r 4 at 20 mm from the Z axis, a third of a turn apart: a closed loft's ring. */
+const RING = [0, 1, 2].map((k) => aroundZ((2 * Math.PI * k) / 3));
+const ringSection = (frame: PlanarFrame) => profile([circle([20, 0], 4)], frame);
+
+/** A sketch line on XZ from (15, 0, 3) up to (15, 0, 10): it meets the plate's edge at its top. */
+const lineOnPlate = () => path(XZ, [15, 3], [15, 10]);
+
+/** The largest face between `curves` in `frame`: a sketch's profile face, fresh. */
+function profile(curves: PlanarCurve[], frame: PlanarFrame = XY): ShapeHandle {
+  const { faces } = kernel.planarFaces(curves, frame, 1e-6);
+  const sorted = [...faces].sort((a, b) => b.area - a.area);
+  const face = sorted[0];
+  if (!face) throw new Error('the curves made no face');
+  kernel.release(...sorted.slice(1).map((f) => f.shape));
+  return face.shape;
+}
+
+/** A path of sketch lines in `frame` (a wire, fresh). */
+const path = (frame: PlanarFrame, ...points: Vec2[]) =>
+  kernel.path(
+    points.slice(1).map((b, i) => ({
+      kind: 'curve' as const,
+      curve: { kind: 'line' as const, a: points[i] as Vec2, b },
+      frame,
+    })),
+  );
+
+const R = 20;
+/** The sketch plane x = R, its `x` along world +Y and its `y` along world +Z (ADR-0060). */
+const WRAP_PLANE: PlanarFrame = { origin: [R, 0, 0], x: [0, 1, 0], normal: [1, 0, 0] };
+const CYLINDER: WrapFrame = {
+  origin: [0, 0, 0],
+  axis: [0, 0, 1],
+  reference: [1, 0, 0],
+  radius: R,
+  corner: [R, 0, 0],
+  across: [0, 1, 0],
+};
+/** A cone of half angle 0.2 rad, radius R at z = 0 (its sketch plane is the cylinder's). */
+const CONE: WrapFrame = { ...CYLINDER, halfAngle: 0.2 };
 
 /** Where vertex `index` of `shape` is. */
 function vertexOf(shape: ShapeHandle, index: number): [number, number, number] {
@@ -275,6 +370,179 @@ const CALLS: [string, () => ShapeHandle[], (s: ShapeHandle[]) => Out][] = [
   ],
 ];
 
+/** The edge of `shape` that runs from `a` to `b` (either way), by its box. */
+function edgeBetween(shape: ShapeHandle, a: Vec3, b: Vec3): number {
+  for (let i = 0; i < kernel.count(shape, 'edge'); i++) {
+    const edge = kernel.subShape(shape, 'edge', i);
+    const { min, max } = kernel.measure(edge).bbox;
+    kernel.release(edge);
+    const near = (p: readonly number[], q: readonly number[]) =>
+      p.every((v, k) => Math.abs(v - (q[k] as number)) < 1e-3);
+    const lo: Vec3 = [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.min(a[2], b[2])];
+    const hi: Vec3 = [Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.max(a[2], b[2])];
+    if (near(min, lo) && near(max, hi)) return i;
+  }
+  throw new Error('no such edge');
+}
+
+/** A rectangle's corners. */
+const rect = (x0: number, y0: number, x1: number, y1: number) =>
+  lines([x0, y0], [x1, y0], [x1, y1], [x0, y1]);
+const XY_HIGH: PlanarFrame = { origin: [0, 0, 20], x: [1, 0, 0], normal: [0, 0, 1] };
+
+/**
+ * The calls ADR-0035's amendment listed as not checked yet, and revolve: each must compute with
+ * these inputs (a refusal would say nothing). Their profiles are sketch faces (`planarFaces`),
+ * as a sketch's cached profile face reaches them, and paths sketch wires or a body's edge.
+ */
+const MORE_CALLS: [string, () => ShapeHandle[], (s: ShapeHandle[]) => Out][] = [
+  [
+    'revolve',
+    () => [profile(rect(10, 0, 20, 5))],
+    ([a]) => kernel.revolve(a as ShapeHandle, { origin: [0, 0, 0], direction: [0, 1, 0] }, 1.5),
+  ],
+  [
+    'prism, tapered (lines: the draft path)',
+    () => [profile(rect(-10, -5, 10, 5))],
+    ([a]) => kernel.prism(a as ShapeHandle, [0, 0, 10], [0, 0, 0], 0.1),
+  ],
+  [
+    'prism, tapered (an ellipse: the loft path)',
+    () => [profile([ellipse([0, 0], 10, 5)])],
+    ([a]) => kernel.prism(a as ShapeHandle, [0, 0, 10], [0, 0, 0], 0.1),
+  ],
+  [
+    'prism, tapered (a spline: the loft path)',
+    () => [profile([ring([0, 0], 8)])],
+    ([a]) => kernel.prism(a as ShapeHandle, [0, 0, 10], [0, 0, 0], 0.1),
+  ],
+  [
+    'loft',
+    () => [profile([circle([0, 0], 8)]), profile([circle([0, 0], 5)], XY_HIGH)],
+    ([a, b]) => kernel.loft([a as ShapeHandle, b as ShapeHandle]),
+  ],
+  [
+    'loft, ruled',
+    () => [profile(rect(-8, -8, 8, 8)), profile([circle([0, 0], 5)], XY_HIGH)],
+    ([a, b]) => kernel.loft([a as ShapeHandle, b as ShapeHandle], { ruled: true }),
+  ],
+  [
+    'loft to a point',
+    () => [profile([circle([0, 0], 8)])],
+    ([a]) => kernel.loft([a as ShapeHandle, { point: [0, 0, 15] }]),
+  ],
+  [
+    'sweep, along sketch lines',
+    () => [profile([circle([0, 0], 2)]), path(XZ, [0, 0], [0, 8], [6, 15])],
+    ([a, b]) => kernel.sweep(a as ShapeHandle, b as ShapeHandle),
+  ],
+  [
+    'sweep, twisted and scaled',
+    () => [profile(rect(-2, -1, 2, 1)), path(XZ, [0, 0], [0, 12])],
+    ([a, b]) => kernel.sweep(a as ShapeHandle, b as ShapeHandle, { twist: 0.6, scale: 0.7 }),
+  ],
+  [
+    "sweep, along a body's edge",
+    () => [profile([circle([15, 0], 1)]), plate()],
+    ([a, b]) => {
+      const edge = edgeBetween(b as ShapeHandle, [15, 0, 0], [15, 0, 3]);
+      const wire = kernel.path([{ kind: 'edge', shape: b as ShapeHandle, edge }]);
+      try {
+        return kernel.sweep(a as ShapeHandle, wire);
+      } finally {
+        kernel.release(wire);
+      }
+    },
+  ],
+  [
+    'sweep of a profile with a hole (its pipes cut by a boolean)',
+    () => [annulus(0, 0, 3, 1.5), path(XZ, [0, 0], [0, 8], [6, 15])],
+    ([a, b]) => kernel.sweep(a as ShapeHandle, b as ShapeHandle),
+  ],
+  [
+    'loft, closed (three sections in a ring)',
+    () => RING.map(ringSection),
+    (sections) => kernel.loft(sections, { closed: true }),
+  ],
+  [
+    "path of a body's edge and a sketch line that meets it",
+    () => [plate(), lineOnPlate()],
+    ([a, b]) => {
+      const edge = edgeBetween(a as ShapeHandle, [15, 0, 0], [15, 0, 3]);
+      return kernel.path([
+        { kind: 'edge', shape: a as ShapeHandle, edge },
+        { kind: 'edge', shape: b as ShapeHandle, edge: 0 },
+      ]);
+    },
+  ],
+  [
+    'threadSweep',
+    () => [profile(lines([5, 0], [6, 0.4], [5, 0.8]), XZ)],
+    ([a]) =>
+      kernel.threadSweep(
+        a as ShapeHandle,
+        { origin: [0, 0, 0], direction: [0, 0, 1] },
+        1,
+        3,
+        false,
+      ),
+  ],
+  [
+    'threadSweep, tapered',
+    () => [profile(lines([5, 0], [6, 0.4], [5, 0.8]), XZ)],
+    ([a]) =>
+      kernel.threadSweep(
+        a as ShapeHandle,
+        { origin: [0, 0, 0], direction: [0, 0, 1] },
+        1,
+        3,
+        false,
+        0.05,
+      ),
+  ],
+  [
+    'wrapOnCylinder',
+    () => [profile(rect(-3, 2, 3, 6), WRAP_PLANE)],
+    ([a]) => kernel.wrapOnCylinder(a as ShapeHandle, CYLINDER, 1),
+  ],
+  [
+    'wrapOnCone',
+    () => [profile(rect(-3, 2, 3, 6), WRAP_PLANE)],
+    ([a]) => kernel.wrapOnCone(a as ShapeHandle, CONE, 1),
+  ],
+  [
+    'filletVariable',
+    () => [buildTestPart(kernel)],
+    ([a]) => kernel.filletVariable(a as ShapeHandle, [0], [[1, 2]]),
+  ],
+  [
+    'shellFaces (a shell with a wall set)',
+    () => [buildTestPart(kernel)],
+    ([a]) => kernel.shell(a as ShapeHandle, [0], 1, 'inside', [{ face: 1, thickness: 2 }]),
+  ],
+  [
+    'writeStepXde (a STEP file with a colour)',
+    () => [torus(), plate()],
+    ([a, b]) =>
+      void kernel.writeStep([
+        { shape: a as ShapeHandle, name: 'T', color: '#c81e28' },
+        { shape: b as ShapeHandle, name: 'P' },
+      ]),
+  ],
+  [
+    'writeStepAssembly (a STEP file with a group)',
+    () => [torus(), plate()],
+    ([a, b]) =>
+      void kernel.writeStep(
+        [
+          { shape: a as ShapeHandle, name: 'T', group: 0 },
+          { shape: b as ShapeHandle, name: 'P' },
+        ],
+        ['G'],
+      ),
+  ],
+];
+
 describe('no kernel call changes the shapes it is given (ADR-0035, 2026-11-25)', () => {
   it.each(CALLS)('%s', { timeout: 60_000 }, (_name, inputs, call) => {
     const shapes = inputs();
@@ -285,6 +553,19 @@ describe('no kernel call changes the shapes it is given (ADR-0035, 2026-11-25)',
       } catch {
         // A call that refuses these inputs must not have changed them either.
       }
+      shapes.forEach((shape, i) => {
+        expect(snapshot(shape), `input ${i}`).toEqual(before[i]);
+      });
+    } finally {
+      kernel.release(...shapes);
+    }
+  });
+
+  it.each(MORE_CALLS)('%s (computes)', { timeout: 60_000 }, (_name, inputs, call) => {
+    const shapes = inputs();
+    try {
+      const before = shapes.map(snapshot);
+      release(call(shapes));
       shapes.forEach((shape, i) => {
         expect(snapshot(shape), `input ${i}`).toEqual(before[i]);
       });
@@ -345,6 +626,432 @@ describe('a profile face used by prisms and revolves before (ADR-0035, 2026-11-2
       expect(cutWith(used.face)).toEqual(cutWith(fresh.face));
     } finally {
       kernel.release(fresh.face, fresh.cylinder, used.face, used.cylinder);
+    }
+  });
+});
+
+describe('a profile, path or body used by a call gives later results as a fresh one (ADR-0035)', () => {
+  // What the box-and-description comparison can't see (a p-curve added to an edge, an edge's
+  // continuity), a later result could still read. So each call's profile, path or body is used
+  // again afterwards, and every result compared, bit for bit, with the same made from a fresh one.
+  const cross = (a: readonly number[], b: readonly number[]): Vec3 => [
+    (a[1] as number) * (b[2] as number) - (a[2] as number) * (b[1] as number),
+    (a[2] as number) * (b[0] as number) - (a[0] as number) * (b[2] as number),
+    (a[0] as number) * (b[1] as number) - (a[1] as number) * (b[0] as number),
+  ];
+  const along = (p: readonly number[], d: readonly number[], t: number): Vec3 => [
+    (p[0] as number) + t * (d[0] as number),
+    (p[1] as number) + t * (d[1] as number),
+    (p[2] as number) + t * (d[2] as number),
+  ];
+  function fingerprint(shape: ShapeHandle) {
+    const copy = kernel.transform(shape, IDENTITY).shape;
+    const mesh = kernel.mesh(copy, { linearDeflection: 0.05, angularDeflection: 0.3 });
+    kernel.release(copy);
+    return {
+      snapshot: snapshot(shape),
+      measure: kernel.measure(shape),
+      properties: kernel.properties(shape),
+      mesh: JSON.stringify(Object.values(mesh).map((v) => Array.from(v as ArrayLike<number>))),
+    };
+  }
+  /** Fingerprints what `make` builds (or its refusal), releasing it and anything it tracked. */
+  function made(make: (track: (s: ShapeHandle) => ShapeHandle) => ShapeHandle) {
+    const kept: ShapeHandle[] = [];
+    try {
+      return fingerprint(
+        make((s) => {
+          kept.push(s);
+          return s;
+        }),
+      );
+    } catch (error) {
+      if (!(error instanceof KernelError)) throw error;
+      return { refused: error.message };
+    } finally {
+      kernel.release(...kept);
+    }
+  }
+  /** A small cube at the middle of `shape`'s box: what a later cut takes out of it. */
+  function cubeIn(shape: ShapeHandle) {
+    const { min, max } = kernel.measure(shape).bbox;
+    const c = min.map((v, k) => (v + (max[k] as number)) / 2);
+    return kernel.box(
+      [2, 2, 2],
+      [(c[0] as number) - 1, (c[1] as number) - 1, (c[2] as number) - 1],
+    );
+  }
+  /** What later features make from a profile face in `frame`: prism, cut, revolve, loft, sweep. */
+  function fromProfile(face: ShapeHandle, frame: PlanarFrame) {
+    const { normal: n, x } = frame;
+    const y = cross(n, x);
+    const { min, max } = kernel.measure(face).bbox;
+    const c = min.map((v, k) => (v + (max[k] as number)) / 2);
+    return {
+      prism: made((t) => t(kernel.prism(face, along([0, 0, 0], n, 6)).shape)),
+      cut: made((t) => {
+        const prism = t(kernel.prism(face, along([0, 0, 0], n, 6)).shape);
+        return t(kernel.cut(prism, t(cubeIn(prism))).shape);
+      }),
+      revolve: made((t) =>
+        t(kernel.revolve(face, { origin: along(c, x, -30), direction: y }, 1.2).shape),
+      ),
+      loft: made((t) => {
+        const top = t(profile([circle([0, 0], 1)], { origin: along(c, n, 20), x, normal: n }));
+        return t(kernel.loft([face, top]).shape);
+      }),
+      sweep: made((t) => {
+        const wire = t(path({ origin: c as Vec3, x, normal: cross(x, n) }, [0, 0], [0, 12]));
+        return t(kernel.sweep(face, wire).shape);
+      }),
+    };
+  }
+  /** What a later cut makes of a body, and the body itself. */
+  const fromBody = (body: ShapeHandle) => ({
+    body: fingerprint(body),
+    cut: made((t) => t(kernel.cut(body, t(cubeIn(body))).shape)),
+  });
+
+  /** The operations of a result that OCCT refused. */
+  const refused = (out: Record<string, object>) =>
+    Object.entries(out)
+      .filter(([, v]) => 'refused' in v)
+      .map(([k]) => k);
+  /** The later operations a profile can't take, by profile, and why. */
+  const REFUSED: Record<string, string[]> = {
+    // The wavy ring lofted to a small circle crosses itself (LoftError `crosses`), fresh or used.
+    'prism, tapered (a spline)': ['loft'],
+    // A loft section can't have a hole (LoftError `holes`).
+    'sweep of a profile with a hole': ['loft'],
+  };
+
+  /** A call and the profile it takes (a fresh one each time), in its frame. */
+  const PROFILES: [string, () => ShapeHandle, PlanarFrame, (face: ShapeHandle) => Out][] = [
+    [
+      'revolve',
+      () => profile(rect(10, 0, 20, 5)),
+      XY,
+      (a) => kernel.revolve(a, { origin: [0, 0, 0], direction: [0, 1, 0] }, 1.5),
+    ],
+    [
+      'prism, tapered (lines)',
+      () => profile(rect(-10, -5, 10, 5)),
+      XY,
+      (a) => kernel.prism(a, [0, 0, 10], [0, 0, 0], 0.1),
+    ],
+    [
+      'prism, tapered (an ellipse)',
+      () => profile([ellipse([0, 0], 10, 5)]),
+      XY,
+      (a) => kernel.prism(a, [0, 0, 10], [0, 0, 0], 0.1),
+    ],
+    [
+      'prism, tapered (a spline)',
+      () => profile([ring([0, 0], 8)]),
+      XY,
+      (a) => kernel.prism(a, [0, 0, 10], [0, 0, 0], 0.1),
+    ],
+    [
+      'loft',
+      () => profile([circle([0, 0], 8)]),
+      XY,
+      (a) => {
+        const top = profile([circle([0, 0], 5)], XY_HIGH);
+        try {
+          return kernel.loft([a, top]);
+        } finally {
+          kernel.release(top);
+        }
+      },
+    ],
+    [
+      'loft, ruled',
+      () => profile(rect(-8, -8, 8, 8)),
+      XY,
+      (a) => {
+        const top = profile([circle([0, 0], 5)], XY_HIGH);
+        try {
+          return kernel.loft([a, top], { ruled: true });
+        } finally {
+          kernel.release(top);
+        }
+      },
+    ],
+    [
+      'loft to a point',
+      () => profile([circle([0, 0], 8)]),
+      XY,
+      (a) => kernel.loft([a, { point: [0, 0, 15] }]),
+    ],
+    [
+      'loft: its second section',
+      () => profile([circle([0, 0], 5)], XY_HIGH),
+      XY_HIGH,
+      (a) => {
+        const bottom = profile([circle([0, 0], 8)]);
+        try {
+          return kernel.loft([bottom, a]);
+        } finally {
+          kernel.release(bottom);
+        }
+      },
+    ],
+    [
+      'loft, closed: its first section',
+      () => ringSection(RING[0] as PlanarFrame),
+      RING[0] as PlanarFrame,
+      (a) => {
+        const rest = RING.slice(1).map(ringSection);
+        try {
+          return kernel.loft([a, ...rest], { closed: true });
+        } finally {
+          kernel.release(...rest);
+        }
+      },
+    ],
+    [
+      'sweep, along sketch lines',
+      () => profile([circle([0, 0], 2)]),
+      XY,
+      (a) => {
+        const wire = path(XZ, [0, 0], [0, 8], [6, 15]);
+        try {
+          return kernel.sweep(a, wire);
+        } finally {
+          kernel.release(wire);
+        }
+      },
+    ],
+    [
+      'sweep of a profile with a hole',
+      () => annulus(0, 0, 3, 1.5),
+      XY,
+      (a) => {
+        const wire = path(XZ, [0, 0], [0, 8], [6, 15]);
+        try {
+          return kernel.sweep(a, wire);
+        } finally {
+          kernel.release(wire);
+        }
+      },
+    ],
+    [
+      'sweep, twisted and scaled',
+      () => profile(rect(-2, -1, 2, 1)),
+      XY,
+      (a) => {
+        const wire = path(XZ, [0, 0], [0, 12]);
+        try {
+          return kernel.sweep(a, wire, { twist: 0.6, scale: 0.7 });
+        } finally {
+          kernel.release(wire);
+        }
+      },
+    ],
+    [
+      'threadSweep',
+      () => profile(lines([5, 0], [6, 0.4], [5, 0.8]), XZ),
+      XZ,
+      (a) => kernel.threadSweep(a, { origin: [0, 0, 0], direction: [0, 0, 1] }, 1, 3, false),
+    ],
+    [
+      'threadSweep, tapered',
+      () => profile(lines([5, 0], [6, 0.4], [5, 0.8]), XZ),
+      XZ,
+      (a) => kernel.threadSweep(a, { origin: [0, 0, 0], direction: [0, 0, 1] }, 1, 3, false, 0.05),
+    ],
+    [
+      'wrapOnCylinder',
+      () => profile(rect(-3, 2, 3, 6), WRAP_PLANE),
+      WRAP_PLANE,
+      (a) => kernel.wrapOnCylinder(a, CYLINDER, 1),
+    ],
+    [
+      'wrapOnCone',
+      () => profile(rect(-3, 2, 3, 6), WRAP_PLANE),
+      WRAP_PLANE,
+      (a) => kernel.wrapOnCone(a, CONE, 1),
+    ],
+  ];
+
+  it.each(PROFILES)(
+    '%s: its profile afterwards',
+    { timeout: 60_000 },
+    (name, make, frame, call) => {
+      const fresh = make();
+      const used = make();
+      try {
+        release(call(used));
+        const want = fromProfile(fresh, frame);
+        // A refusal equal in both compares nothing: only the ones listed (with why) may refuse.
+        expect(refused(want)).toEqual(REFUSED[name] ?? []);
+        expect(fromProfile(used, frame)).toEqual(want);
+      } finally {
+        kernel.release(fresh, used);
+      }
+    },
+  );
+
+  it('a sweep: its path afterwards (sketch lines, and a body whose edge it took)', {
+    timeout: 60_000,
+  }, () => {
+    const lines3 = () => path(XZ, [0, 0], [0, 8], [6, 15]);
+    const freshPath = lines3();
+    const usedPath = lines3();
+    const freshPlate = plate();
+    const usedPlate = plate();
+    const disc = () => profile([circle([0, 0], 2)]);
+    const along3 = (wire: ShapeHandle) => made((t) => t(kernel.sweep(t(disc()), wire).shape));
+    try {
+      const first = disc();
+      release(kernel.sweep(first, usedPath));
+      kernel.release(first);
+      const edge = edgeBetween(usedPlate, [15, 0, 0], [15, 0, 3]);
+      const wire = kernel.path([{ kind: 'edge', shape: usedPlate, edge }]);
+      const foot = profile([circle([15, 0], 1)]);
+      release(kernel.sweep(foot, wire));
+      kernel.release(wire, foot);
+      expect(along3(usedPath)).toEqual(along3(freshPath));
+      expect(fromBody(usedPlate)).toEqual(fromBody(freshPlate));
+    } finally {
+      kernel.release(freshPath, usedPath, freshPlate, usedPlate);
+    }
+  });
+
+  it('a twisted and scaled sweep: its path afterwards', { timeout: 60_000 }, () => {
+    const line = () => path(XZ, [0, 0], [0, 12]);
+    const fresh = line();
+    const used = line();
+    const bar = () => profile(rect(-2, -1, 2, 1));
+    const along = (wire: ShapeHandle) => made((t) => t(kernel.sweep(t(bar()), wire).shape));
+    try {
+      const first = bar();
+      release(kernel.sweep(first, used, { twist: 0.6, scale: 0.7 }));
+      kernel.release(first);
+      const want = along(fresh);
+      expect('refused' in want).toBe(false);
+      expect(along(used)).toEqual(want);
+    } finally {
+      kernel.release(fresh, used);
+    }
+  });
+
+  it("a path of a body's edge and a sketch line: the body and the line afterwards", {
+    timeout: 60_000,
+  }, () => {
+    const freshPlate = plate();
+    const usedPlate = plate();
+    const freshLine = lineOnPlate();
+    const usedLine = lineOnPlate();
+    const foot = () => profile([circle([15, 0], 1)]);
+    const alongLine = (wire: ShapeHandle) => made((t) => t(kernel.sweep(t(foot()), wire).shape));
+    try {
+      const edge = edgeBetween(usedPlate, [15, 0, 0], [15, 0, 3]);
+      const wire = kernel.path([
+        { kind: 'edge', shape: usedPlate, edge },
+        { kind: 'edge', shape: usedLine, edge: 0 },
+      ]);
+      const first = foot();
+      release(kernel.sweep(first, wire));
+      kernel.release(wire, first);
+      const want = alongLine(freshLine);
+      expect('refused' in want).toBe(false);
+      expect(alongLine(usedLine)).toEqual(want);
+      expect(fromBody(usedPlate)).toEqual(fromBody(freshPlate));
+    } finally {
+      kernel.release(freshPlate, usedPlate, freshLine, usedLine);
+    }
+  });
+
+  /** A call and the body it takes. */
+  const BODIES: [string, () => ShapeHandle, (body: ShapeHandle) => Out][] = [
+    ['filletVariable', () => buildTestPart(kernel), (a) => kernel.filletVariable(a, [0], [[1, 2]])],
+    [
+      'shellFaces',
+      () => buildTestPart(kernel),
+      (a) => kernel.shell(a, [0], 1, 'inside', [{ face: 1, thickness: 2 }]),
+    ],
+    [
+      'writeStepXde',
+      torus,
+      (a) => void kernel.writeStep([{ shape: a, name: 'T', color: '#c81e28' }]),
+    ],
+    [
+      'writeStepAssembly',
+      torus,
+      (a) => void kernel.writeStep([{ shape: a, name: 'T', group: 0 }], ['G']),
+    ],
+  ];
+
+  it.each(BODIES)('%s: its body afterwards', { timeout: 60_000 }, (_n, make, call) => {
+    const fresh = make();
+    const used = make();
+    try {
+      release(call(used));
+      expect(fromBody(used)).toEqual(fromBody(fresh));
+    } finally {
+      kernel.release(fresh, used);
+    }
+  });
+});
+
+describe('hlrPolySpans meshes a body that has no triangulation (ADR-0035, 2026-11-25)', () => {
+  const VIEW = DEFAULT_TESSELLATION;
+  const same = (a: BodyMesh, b: BodyMesh) => sameMesh(a, b);
+
+  it('in place, at its own angle, which a later display mesh keeps (so callers mesh first)', {
+    timeout: 60_000,
+  }, () => {
+    // The quick drawing view's mesher: the linear deflection asked for, an angle of 0.5 rad, on
+    // faces without a triangulation. The view's display mesh (0.3 rad) then keeps that coarser
+    // one. Meshed first at the view's own tessellation, the body keeps its display mesh.
+    const fresh = buildTestPart(kernel);
+    const unmeshed = buildTestPart(kernel);
+    const meshed = buildTestPart(kernel);
+    try {
+      const display = kernel.mesh(meshed, VIEW);
+      kernel.hlrPolySpans(unmeshed, [0, -1, 0], VIEW.linearDeflection);
+      kernel.hlrPolySpans(meshed, [0, -1, 0], VIEW.linearDeflection);
+      expect(same(kernel.mesh(unmeshed, VIEW), kernel.mesh(fresh, VIEW))).toBe(false);
+      expect(same(kernel.mesh(meshed, VIEW), display)).toBe(true);
+    } finally {
+      kernel.release(fresh, unmeshed, meshed);
+    }
+  });
+
+  it("the engine's quick view leaves a body it never meshed with the display mesh from scratch", {
+    timeout: 60_000,
+  }, async () => {
+    // A recompute that holds the body's mesh already (`have`) doesn't mesh it, so its cached torus
+    // has no triangulation when the quick view draws it. The engine meshes it at the view's
+    // tessellation first (`sheetView`): the next display mesh equals a fresh engine's.
+    const doc = testDocument([
+      {
+        ...testFeature('T', 'torus'),
+        inputs: primitiveInputs('torus', {
+          numbers: { diameter: '40 mm', tube: '10 mm' },
+          plane: originPlaneRef('origin:xy'),
+        }),
+      },
+    ]);
+    const fresh = new RecomputeEngine(kernel, testFeatures().registry, { strictLeaks: true });
+    const viewed = new RecomputeEngine(kernel, testFeatures().registry, { strictLeaks: true });
+    try {
+      const first = await fresh.recompute({ doc });
+      if (first.status !== 'done') throw new Error(first.status);
+      const body = first.bodies[0];
+      if (!body?.mesh) throw new Error('no mesh');
+      const held = await viewed.recompute({ doc, have: { [body.id]: body.version } });
+      if (held.status !== 'done') throw new Error(held.status);
+      expect(held.bodies[0]?.mesh).toBeUndefined();
+      const view = viewed.sheetView({ id: 'v', direction: [0, 1, 0], up: [0, 0, 1], quick: true });
+      expect('geometry' in view).toBe(true);
+      const again = await viewed.recompute({ doc });
+      if (again.status !== 'done') throw new Error(again.status);
+      expect(same(again.bodies[0]?.mesh as BodyMesh, body.mesh)).toBe(true);
+    } finally {
+      fresh.clear();
+      viewed.clear();
     }
   });
 });

@@ -399,12 +399,8 @@ the three single-edge chamfers tried on a box.
   simplifying booleans (every Join) already worked on copies (OCCT repairs its input in place
   there); those copies copy the geometry too and were left as they are, so the seam finding
   above was not checked for them.
-- **Open:** the calls the test below doesn't list were not checked: `loft`, `sweep`,
-  `threadSweep`, `wrapOnCylinder`, `wrapOnCone`, a tapered prism (its sweep and loft paths),
-  `filletVariable`, `shellFaces`, `offsetProbe`, `writeStepXde`, `writeStepAssembly`. A tapered
-  prism over an ellipse or spline profile lofts and sews the caller's profile without a copy.
-  Two bodies that shared a face (the halves of a split) no longer share it after a plain boolean
-  or a fillet on one of them; no fixture has a plain boolean between such bodies afterwards.
+- **Open** (when this was written; settled by the amendment below): the calls the test below
+  didn't list, a tapered prism's loft path, and the halves of a split after a plain boolean.
 - **Tested:** `arguments-unchanged.test.ts`: the kernel calls in its list (the booleans plain
   and simplified, the splits, the sections, distance and proximity, the hidden-line calls,
   `mesh`, `exportMesh`, `transform`, `scale`, `locate`, `writeStep`, the one-face and one-edge
@@ -418,3 +414,76 @@ the three single-edge chamfers tried on a box.
   bit and every body's `measure` box; with main's build all four fail. `features/thread-seams.test.ts`: the
   bottle cap's two threaded bodies keep their seam edges by name (no golden records edge flags);
   it fails with the copies that copy the geometry.
+
+## Amendment (2026-11-26): the calls left open
+
+- **Checked now** (`arguments-unchanged.test.ts`, each call must compute with its inputs, so a
+  refusal can't pass for "unchanged"): `revolve`; a tapered `prism` over lines (its draft path),
+  over an ellipse and over a closed B-spline (its loft path, `taperLoft`); `loft` (smooth, ruled,
+  to a point, and closed through three sections in a ring, whose wires `BRepFill_CompatibleWires`
+  lines up); `sweep` along sketch lines, twisted and scaled, along a body's edge, and of a profile
+  with a hole (its pipes cut by a plain boolean); `path` of a body's edge and a sketch line that
+  meets it (`pathWire` hands both edges to `BRepBuilderAPI_MakeWire`); `threadSweep`, straight and
+  tapered; `wrapOnCylinder`; `wrapOnCone`; `filletVariable`;
+  `shellFaces` (a shell with a wall set); the STEP writer with a colour (`writeStepXde`) and with
+  a group (`writeStepAssembly`). Profiles are sketch faces (`planarFaces`), as a sketch's cached
+  profile face reaches these calls; paths are sketch wires (`path`) or a body's edge.
+  `offsetProbe` is left out: nothing in the repository calls it (its only other mention is its
+  declaration in `occt/types.ts`), and it builds on a full copy of its input
+  (`BRepBuilderAPI_Copy(*input, true, false)`).
+- **What the comparison sees, and what it doesn't.** The box of every face, edge and vertex,
+  each enlarged by its own tolerance, and the description (sub-shapes, their types, sizes and
+  neighbours): a tolerance raised or re-set, a sub-shape moved, added or taken away. Not: a
+  p-curve added to an edge, an edge's continuity (regularity) record, triangulations and polygons
+  on edges, a shape's flags. The facade has no cheap second view of those: it writes no B-rep
+  text (only `readBrep` reads it) and no call lists an edge's curve representations (either would
+  be a facade change). So each call is also checked by what it would change downstream: its
+  profile, path or body, used by the call, then used again, against a fresh one made the same way.
+  Profile: a prism of it, a cut of that prism, a revolve, a loft to a small circle and a sweep along
+  a line from its middle. Path: a sweep along it. Body: itself and a cut of it. Results compare bit for
+  bit (the description and boxes, `measure`, `properties` and the mesh of a copy). A refusal would
+  compare nothing, so the fresh profile's results must all compute but two, listed with their
+  reason: the wavy ring and the profile with a hole can't be lofted to a circle (the loft crosses
+  itself; a loft section can't have a hole). Checked this way: the profile of every call above that
+  takes one (the loft's first and second sections, the closed loft's first, the straight and the
+  tapered thread's tooth, every sweep's and both wraps'); the paths of the plain and the twisted
+  sweep; the body and the sketch line of the two-piece path, and the body whose edge a path took;
+  the bodies of `filletVariable`, `shellFaces` and the two STEP writers.
+- **What wrote.** The tapered prism's loft path. Over an ellipse or a spline it re-set the profile's
+  vertex and edge tolerances in place: 1e-7 became 1.0000000000000002e-7. Every later prism, cut,
+  revolve, loft and sweep of that profile then carried the same value on the sub-shapes it shares
+  with the profile, so their boxes per sub-shape differed from a fresh profile's by that much
+  (`measure`, `properties` and the meshes did not). Which of its steps writes (`ThruSections`,
+  built with its input mutable, or the sewing of the profile face into the solid) was not
+  narrowed down (the facade's comment at the copy says "its lofts and its sewing": it is one or the
+  other or both). Everything else on the list leaves its arguments as they were, and nothing of
+  what is checked downstream (above) differs.
+- **The change** (`extrudo_facade.cpp`, `prism`): the loft path takes a topology-only copy of the
+  profile (`BRepBuilderAPI_Copy(base, false, true)`, as the booleans do since the amendment
+  above). The copy keeps the sub-shapes' order, so the history's indices are the profile's. With
+  main's build the two loft-path entries of each test fail; with this one every entry passes.
+- **From scratch:** the 64 designs in `fixtures/` give the same bodies, versions, statuses,
+  reports, meshes (edge flags included) and `inspect` of every body as main's build.
+- **Cost:** none seen. A tapered prism of 10 mm at 0.1 rad, per prism, the median of five batches
+  of 40 after 10 to warm up, two runs each (main's build → this): over a 20 × 10 mm ellipse 98.0,
+  98.4 → 94.6, 94.2 ms; over a closed B-spline 1,135, 1,128 → 1,135, 1,110 ms.
+- **The halves of a split, then a plain boolean** (a probe, not a test: it needs two builds). Split
+  Body's two halves are two `common`s of the body. A box 40 × 30 × 20 mm, the test part (a box with
+  rounded vertical edges and a hole) and a torus, each split at x = 3, a 4 mm cube cut from one
+  half or its first edge rounded (0.5 mm), then the halves fused, on the build before the amendment
+  above and on main's. The halves, the cut half and the rounded half are the same on both, and so
+  are the box's and the torus's fusions. The test part's halves shared two edges on the earlier
+  build and share none now (each `common` runs on its own copy). Its fusion after the cut, and
+  after the rounding, has the same faces (types, areas, counts) and is valid on both, in another
+  order, its volumes 4e-12 mm³ apart (22840.17702849743 and 22840.177028497426 mm³). Face names come from
+  the history, so they don't move with the order. The 64 designs have no plain boolean between
+  such halves and are unchanged (above). Left as it is.
+- **`hlrPolySpans`** meshes a face that has no triangulation, in place, at the linear deflection
+  it is given and 0.5 rad. A body meshed that way first keeps that triangulation in its later
+  display mesh: the test part gives 244 triangles where a fresh one gives 360 at the view's
+  tessellation (0.05 mm, 0.3 rad). The engine's quick drawing view meshes every body at the view's
+  tessellation first (`sheetView`), so a body it draws keeps its display mesh, and a body that
+  reached it unmeshed (its mesh held by the app, `have`) gets the display mesh a fresh engine gives.
+  Both are tests now (`arguments-unchanged.test.ts`; the engine's fails without that loop). It
+  stays exempt like `mesh`: making it work on a copy would mesh every body for every quick view,
+  and passing it the view's angle is a facade change for a path the engine already covers.
