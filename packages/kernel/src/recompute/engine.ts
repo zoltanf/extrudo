@@ -726,6 +726,7 @@ export class RecomputeEngine {
     const features: Record<FeatureId, FeatureStatus> = {};
     const reports: Record<FeatureId, unknown> = {};
     const evaluated: FeatureId[] = [];
+    const viewed: FeatureId[] = [];
     let reused = 0;
     let bodies: ReadonlyMap<BodyId, ShapeHandle> = new Map();
     let bodiesKey = EMPTY_BODIES;
@@ -871,15 +872,23 @@ export class RecomputeEngine {
         scope === undefined &&
         !this.#readBodies(addKey) &&
         !hasOwnBodies(bodies, feature.id);
+      // A feature that reads only the bodies its references name (ADR-0024's amendment on `view`
+      // access) sees those and keys their versions; `write` when the view can't be worked out
+      // (`#viewOf`), inside an isolated expansion, and once its evaluation looked outside it.
+      const looked =
+        access === 'view' && scope === undefined ? this.#viewOf(feature, bodies) : undefined;
+      const viewKey = looked && keyOf(hashOf('view', looked.versions));
+      let view =
+        looked && viewKey !== undefined && !this.#readBodies(viewKey) ? looked.bodies : undefined;
       const seen = adds
         ? new NoBodies()
-        : scope === undefined
-          ? bodies
-          : ownBodies(bodies, script as FeatureId);
+        : (view ?? (scope === undefined ? bodies : ownBodies(bodies, script as FeatureId)));
       let key =
         adds && addKey !== undefined
           ? addKey
-          : keyOf(access === 'none' ? null : (scope ?? bodiesKey));
+          : view && viewKey !== undefined
+            ? viewKey
+            : keyOf(access === 'none' ? null : (scope ?? bodiesKey));
 
       let entry = this.#entries.get(key);
       if (!entry) {
@@ -904,12 +913,14 @@ export class RecomputeEngine {
         this.#entries.set(found.key, found);
         return found;
       };
+      const outputs = new Map(dependencies.map((id, i) => [id, upstream[i]?.output]));
+      // Whether this walk evaluated it (a cache hit's entry may be another walk's too).
+      let made = false;
       if (entry) {
         hit(entry);
       } else {
         // A crash in a script's feature is the script's (the app keys crashes by stored features).
         if (!prepared) onFeature?.(script ?? feature.id);
-        const outputs = new Map(dependencies.map((id, i) => [id, upstream[i]?.output]));
         entry = this.#evaluate(
           definition,
           feature,
@@ -923,43 +934,60 @@ export class RecomputeEngine {
           prepared,
         );
         evaluated.push(feature.id);
-        if (seen instanceof NoBodies && (seen.read || entry.retry === 'bodies')) {
-          // It read a body after all: its `add` answer was wrong for these inputs. Its result
-          // goes, and it runs as `write`, now and whenever these inputs come again. So does an
-          // error to try again once the bodies before it change, as main's `write` key did.
-          this.#readsBodies.add(key);
-          const max = this.#options.maxEntries ?? 256;
-          for (const old of this.#readsBodies) {
-            if (this.#readsBodies.size <= max) break;
-            this.#readsBodies.delete(old);
-          }
+        made = true;
+      }
+      // A view's result whose bodies aren't in the view's order (an ID deleted and set again) is
+      // not what `mergeInPlace` assumes.
+      const misordered =
+        view !== undefined &&
+        entry.output?.bodies !== undefined &&
+        !inViewOrder(view, entry.output.bodies);
+      if (
+        ((seen instanceof NoBodies || seen instanceof BodyView) &&
+          (seen.read || entry.retry === 'bodies')) ||
+        misordered
+      ) {
+        // It read a body after all: its `add` or `view` answer was wrong for these inputs, or a
+        // view's result isn't in its order. Its result goes, and it runs as `write`, now and
+        // whenever these inputs come again. So does an error to try again once the bodies before
+        // it change, as main's `write` key did.
+        this.#readsBodies.add(key);
+        const max = this.#options.maxEntries ?? 256;
+        for (const old of this.#readsBodies) {
+          if (this.#readsBodies.size <= max) break;
+          this.#readsBodies.delete(old);
+        }
+        if (made) {
+          // Made by this walk; a result from the cache stays for the walks that still use it.
           this.#entries.delete(key);
           this.#drop(entry);
-          const writeKey = keyOf(bodiesKey);
-          const cached = this.#entries.get(writeKey);
-          if (cached) {
-            // Evaluated as `write` by another walk meanwhile (a preview), or before this key was
-            // forgotten.
-            entry = hit(cached);
-          } else {
-            entry = this.#evaluate(
-              definition,
-              feature,
-              parsed.data,
-              values,
-              bodies,
-              outputs,
-              writeKey,
-              (id) => byId.get(id)?.name,
-              doc,
-              prepared,
-            );
-            evaluated.push(feature.id);
-          }
-          adds = false;
-          key = entry.key;
         }
+        const writeKey = keyOf(bodiesKey);
+        const cached = this.#entries.get(writeKey);
+        if (cached) {
+          // Evaluated as `write` by another walk meanwhile (a preview), or before this key was
+          // forgotten.
+          entry = hit(cached);
+        } else {
+          entry = this.#evaluate(
+            definition,
+            feature,
+            parsed.data,
+            values,
+            bodies,
+            outputs,
+            writeKey,
+            (id) => byId.get(id)?.name,
+            doc,
+            prepared,
+          );
+          evaluated.push(feature.id);
+        }
+        adds = false;
+        view = undefined;
+        key = entry.key;
       }
+      if (view) viewed.push(feature.id);
       used.add(key);
       features[feature.id] = ignored.length > 0 ? withIgnored(entry.status, ignored) : entry.status;
       if (!entry.output) {
@@ -971,14 +999,16 @@ export class RecomputeEngine {
         for (const [piece, source] of entry.output.origins) origins.set(piece, source);
       }
       if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
-      if ((access === 'write' || access === 'add') && entry.output.bodies) {
+      if ((access === 'write' || access === 'add' || access === 'view') && entry.output.bodies) {
         // An isolated feature's result replaces only the bodies it saw; an `add` result goes
-        // after the bodies before it.
+        // after the bodies before it; a `view` result takes its bodies' places.
         const after = adds
           ? mergeBodies(bodies, new Map(), entry.output.bodies)
-          : scope === undefined
-            ? entry.output.bodies
-            : mergeBodies(bodies, seen, entry.output.bodies);
+          : view
+            ? mergeInPlace(bodies, view, entry.output.bodies)
+            : scope === undefined
+              ? entry.output.bodies
+              : mergeBodies(bodies, seen, entry.output.bodies);
         if (channel === 'recompute') {
           steps.push({
             feature,
@@ -995,6 +1025,8 @@ export class RecomputeEngine {
         if (adds) {
           // Every later feature that reads bodies keys the set with this one in it.
           bodiesKey = hashOf('add', bodiesKey, key);
+        } else if (view) {
+          bodiesKey = hashOf('view', bodiesKey, key);
         } else if (scope === undefined) {
           bodiesKey = key;
         } else {
@@ -1066,6 +1098,7 @@ export class RecomputeEngine {
       stats: {
         evaluated,
         reused,
+        viewed,
         ms: performance.now() - start,
         liveShapes: this.#kernel.stats().liveShapes,
       },
@@ -1282,6 +1315,21 @@ export class RecomputeEngine {
       // An `add` evaluator has no bodies to name or to resolve a reference in: a try is a read.
       bodyNames = () => bodies.noticed();
       resolve = () => bodies.noticed();
+    } else if (bodies instanceof BodyView) {
+      // A `view` evaluator resolves by exact name only: every reference `#viewOf` read has an exact
+      // match in the view, so a reference resolved some other way (a related name, a fingerprint,
+      // lost) is one the view wasn't made for, and the bodies outside it might answer otherwise.
+      const inView = resolve;
+      resolve = (ref, options) => {
+        let resolved: ResolvedRef;
+        try {
+          resolved = inView(ref, options);
+        } catch (error) {
+          if (error instanceof LostReferenceError) bodies.noticed();
+          throw error;
+        }
+        return resolved.via === 'name' ? resolved : bodies.noticed();
+      };
     }
     const describe = (shape: ShapeHandle) => this.#describe(shape);
     const files = this.#files(doc);
@@ -1490,6 +1538,53 @@ export class RecomputeEngine {
    * a loss outranks a guess. An evaluator's `resolve` and a plugin feature's
    * (`expand`, ADR-0077 §3) are this one.
    */
+  /**
+   * The bodies a `view` feature sees (ADR-0024's amendment on `view` access): every body a `body`
+   * reference names and every body whose naming table holds the exact name of a face, edge or
+   * vertex reference, in walk order, with their versions for its key. `undefined`, so the feature
+   * runs as `write`, when it has no such reference, a reference of another kind, a body reference
+   * to no body, a face, edge or vertex reference no body has by that name (lost, or found only by
+   * a related name or a fingerprint), or a body without a naming table or a version.
+   */
+  #viewOf(
+    feature: Feature,
+    bodies: ReadonlyMap<BodyId, ShapeHandle>,
+  ): { bodies: BodyView; versions: [BodyId, string][] } | undefined {
+    const ids = new Set<BodyId>();
+    for (const input of Object.values(feature.inputs)) {
+      if (input.kind !== 'ref') continue;
+      for (const ref of input.refs) {
+        if (ref.kind === 'body') {
+          if (!bodies.has(ref.id as BodyId)) return undefined;
+          ids.add(ref.id as BodyId);
+          continue;
+        }
+        if (ref.kind !== 'face' && ref.kind !== 'edge' && ref.kind !== 'vertex') return undefined;
+        let found = false;
+        for (const [id, shape] of bodies) {
+          const names = this.#names.get(shape);
+          if (!names) return undefined;
+          if (namesOf(names, ref.kind).includes(ref.id)) {
+            ids.add(id);
+            found = true;
+          }
+        }
+        if (!found) return undefined;
+      }
+    }
+    if (ids.size === 0) return undefined;
+    const view = new BodyView();
+    const versions: [BodyId, string][] = [];
+    for (const [id, shape] of bodies) {
+      if (!ids.has(id)) continue;
+      const version = this.#versions.get(shape);
+      if (version === undefined) return undefined;
+      view.set(id, shape);
+      versions.push([id, version]);
+    }
+    return { bodies: view, versions };
+  }
+
   #references(feature: Feature, bodies: ReadonlyMap<BodyId, ShapeHandle>) {
     const warnings: string[] = [];
     const issues = new Map<string, ReferenceIssue>();
@@ -1776,6 +1871,76 @@ class NoBodies extends Map<BodyId, ShapeHandle> {
   override get size(): number {
     return this.noticed();
   }
+}
+
+/**
+ * The bodies a `view` feature sees (ADR-0024's amendment on `view` access). A look-up of a body
+ * outside them (`get`, `has`) or of their number (`size`, which differs from the design's) is
+ * noticed, and the engine evaluates the feature again as `write`; so are `names` of such a body
+ * and a reference resolved by anything but its exact name. Iterating gives the view's bodies
+ * and is not noticed: an evaluator copies its input map that way.
+ */
+class BodyView extends Map<BodyId, ShapeHandle> {
+  read = false;
+  noticed(): never {
+    this.read = true;
+    throw new KernelError('A feature that reads only the bodies it refers to looked at another.');
+  }
+  /** `has` without noticing, for the engine. */
+  holds(id: BodyId): boolean {
+    return super.has(id);
+  }
+  override get(id: BodyId): ShapeHandle | undefined {
+    return super.has(id) ? super.get(id) : this.noticed();
+  }
+  override has(id: BodyId): boolean {
+    return super.has(id) ? true : this.noticed();
+  }
+  override get size(): number {
+    return this.noticed();
+  }
+}
+
+/**
+ * The design's bodies after a `view` feature: each body in order, a view body replaced by the
+ * result's body of that ID or left out when the result has none, a body outside the view replaced
+ * when the result has one of its ID, then the result's new bodies in its order: what
+ * `new Map(bodies)` with `set` and `delete` gives, but for a `delete` of a body outside the view
+ * (the evaluator's copy of the view has none to delete).
+ */
+function mergeInPlace(
+  bodies: ReadonlyMap<BodyId, ShapeHandle>,
+  view: BodyView,
+  made: ReadonlyMap<BodyId, ShapeHandle>,
+): ReadonlyMap<BodyId, ShapeHandle> {
+  // A plain map: an evaluator may hand back the view itself, whose look-ups would be noticed.
+  const result = new Map(made);
+  const out = new Map<BodyId, ShapeHandle>();
+  for (const [id, shape] of bodies) {
+    const now = result.get(id);
+    if (now !== undefined) out.set(id, now);
+    else if (!view.holds(id)) out.set(id, shape);
+  }
+  for (const [id, shape] of result) if (!out.has(id)) out.set(id, shape);
+  return out;
+}
+
+/**
+ * Whether a `view` result keeps its view's bodies in the view's order, before any other body:
+ * what a copy of `ctx.bodies` changed by `set` and `delete` gives when no ID is put back after
+ * its `delete`, the only results `mergeInPlace` reproduces.
+ */
+function inViewOrder(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>): boolean {
+  const order = new Map([...view.keys()].map((id, i) => [id, i]));
+  let last = -1;
+  let other = false;
+  for (const id of made.keys()) {
+    const at = order.get(id);
+    if (at === undefined) other = true;
+    else if (other || at < last) return false;
+    else last = at;
+  }
+  return true;
 }
 
 /** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */

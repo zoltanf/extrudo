@@ -765,3 +765,234 @@ under one of these features (it answers `read` and reaches them as an upstream k
 a face does for the extrude); an import whose attachment record changes its file name (the
 attachment commands add and remove a record, `addAttachment` refuses an ID in use); joints, annotations, sheets
 and previews.
+
+## Amendment 2026-11-25: `view` access, for features that change only the bodies they name
+
+**Context.** After `add`, a fillet still keyed the whole body set: an edit of any earlier
+body-writing feature changed every later fillet's key, so each ran again and its body was sent
+again, though it reads and changes only the bodies its edges are on.
+
+**Decision.** `BodyAccess` gains `view`: the feature reads and changes only the bodies its
+references name. For such a feature the engine works out its view before evaluating it
+(`#viewOf`, `recompute/engine.ts`):
+
+- every body a `body` reference names, and every body whose naming table holds the **exact**
+  name of a face, edge or vertex reference, in walk order;
+- `write` instead when the feature has no such reference, a reference of another kind, a body
+  reference to no body, a face, edge or vertex reference that no body has by that exact name (lost,
+  or found only by a related name or a fingerprint), any body before it without a naming table
+  (`#viewOf` reads every body's table to find the matches and gives up at the first without one,
+  which is stricter than it needs to be and only happens when describing a shape failed), or a view
+  body without a version; also inside an isolated expansion, as for `add`, and when an evaluation with these
+  inputs and this view looked outside it before (`#readsBodies`, shared with `add`) or failed
+  with an error to try again once the bodies before it change (an `OutsideError` with `retry:
+  'bodies'`, as for `add`; neither the fillet nor the chamfer throws one). `add`'s own
+  ID-prefix check doesn't apply: a `view` result is merged by ID (below).
+
+The evaluator gets the view as `ctx.bodies` (a `BodyView`). Its key's last part is the view's
+`[id, version]` pairs instead of the chained body-set key. Its result is merged **in place**
+(`mergeInPlace`): each body in walk order, a view body replaced by the result's body of its ID or
+left out when the result has none, a body outside the view replaced when the result has one of its
+ID, then the result's new IDs in its order. That is what the evaluator's `new Map(ctx.bodies)` with
+`set` and `delete` gives under `write` **only when** it returns a copy of `ctx.bodies` changed by
+`set` and `delete` alone and never puts back an ID it deleted (under `write` a deleted and set
+again ID goes to the end; in place it keeps its place), and deletes no body outside the view (its
+copy has none to delete). The engine checks the first condition: a result whose view bodies aren't
+in the view's order, or come after a body that isn't in the view (`inViewOrder`), is dropped and the
+feature runs as `write`, remembered, as for a read. The second is the audit's.
+Then `bodiesKey = hashOf('view', bodiesKey, key)`: every later feature that reads bodies keys the
+set with this result in it. `RecomputeStats.viewed` lists the features that took their result
+with a view.
+
+The fillet and the chamfer answer `view` for every input (`features/fillet.ts`,
+`features/chamfer.ts`); the engine falls back by itself.
+
+**Fail-closed.** A `BodyView` notices a look-up of a body outside it (`get`, `has`), its size
+(which differs from the design's), `names` of such a body, and a reference resolved by anything but
+its exact name (a related name, a fingerprint, or lost: every input reference has an exact match in
+the view, so such a reference is one the view wasn't made for). A noticed read throws, the result
+is dropped, the feature runs again as `write` and the key is remembered, as for `add`. Two things
+can't be noticed: iterating (it gives the view's bodies, and it is how an evaluator copies its input
+map) and a `delete` of a body outside the view from that copy. Both are kept out by the audit of
+each feature that answers `view` (below): an evaluator that iterates to search the bodies, or
+deletes bodies it didn't name, must not answer `view`.
+
+**Bodies with the same exact names.** `resolveRef` expects them ("bodies that share names",
+`naming/resolve.ts:76`) and tells them apart by `closest`. The view must then hold every such body,
+not the first: if it held one, the evaluator would find the name in the view, nothing would be
+noticed, and `write`'s `closest` might have picked the other. No kernel feature was found that makes
+two such bodies: a solid split by `splitSolids` keeps the whole's face names, each face in one piece,
+and names its edges again (`features/bodies.ts:83`, :92); copies by Move/Copy, Mirror and the
+patterns take a role (`move:<feature>:from:(<name>)`, a pattern instance its own:
+`features/transform.ts:85-88`, `features/pattern.ts:197-200`, `features/mesh-bodies.ts:119-120`);
+a move keeps the names but replaces its source; an import names faces over the whole file before it
+is split (`features/import.ts:380-386`) and numbers mesh pieces (:498). The engine's own names for a
+body given no table (`#positional`, `recompute/engine.ts:1405`, `naming/names.ts:303`) come from the
+feature's type and ID only, so two bodies one evaluator returned without tables would share them;
+none of the features read for this does. The proof has a test feature that makes such twins.
+
+**Why the view is complete.** `resolveRef` (`naming/resolve.ts`) collects candidates from every
+body it is given (:101) and, when any has the exact name (:116), returns from among those only:
+one wins (:117), several are told apart by the fingerprint among them (:118, `closest`). The view
+holds every body with an exact match, in the same order, so the evaluator resolves to the same
+body, index and name, and `closest` compares the same candidates. The related-name branch (:123)
+and the fingerprint branch (:143) look at every body; they are reached only when no body has the
+exact name, and then `#viewOf` has already answered `write`. Body versions identify content (a
+version is the hash of the key that made the shape, and a `view` key holds its view's versions),
+and the view is worked out again on every walk from the naming tables, so a body that gains or
+loses a matching name changes the view's ID list and the key.
+
+**What the fillet and the chamfer read** (audited on this branch; file:line, `features/`):
+
+| Read | Fillet | Chamfer | Under `view` |
+|---|---|---|---|
+| its sets (`filletSets`, `chamferSets`) and `skipsLostEdges` of `ctx.inputs` | :114, :119 | :120, :125 | inputs only |
+| each edge through `edgeResolver` (`lost-edges.ts:27` → `ctx.resolve`) | :128 | :140 | exact name, in the view (above); a lost edge with `skipLostEdges` has no exact match, so `write` |
+| the reference face of a set (`ctx.resolve`) | none | :133 | a face reference: its bodies are in the view |
+| `flipAt`: `ctx.describe(edge.shape)`, the edge's own body | none | :271 | a view body |
+| radii, distances, angle (`ctx.value`) | :219, :226 | :223, :244 | no bodies |
+| `new Map(ctx.bodies)`, the map it returns | :150 | :166 | iterates the view: a copy, merged in place |
+| `ctx.bodies.get(body)` of each body an edge resolved in | :154 | :170 | a view body |
+| `kernel.fillet` / `filletVariable` / `chamfer` of that shape; variable radii and tangent chains are worked out by the facade on that shape | :157, :162 | :172 | that body only |
+| `buildRound` (`round-fallback.ts`): retries of the same build, `ctx.warn`; no bodies | :169 | :179 | no bodies |
+| `withHistory(kernel, result, [ctx.names(body)])` (`naming/ops.ts`): the history and that body's table | :196 | :205 | a view body |
+| the engine after it: `#checkNames` and `#checkSound` with the view as `before` (`engine.ts:1371`, :1372) | | | iterate the view to know its handles |
+
+No global state. Neither iterates to search, deletes a body, makes a body ID, or resolves anything
+but its own edge and face references. Every fillet and chamfer input reference is an edge or a face
+(`refsOf(FILLET_EDGE_KINDS)`, the chamfer's edge and face kinds), so "another kind" can't happen for
+them; a set with no edges is a set the evaluator skips, and with none at all it fails ("Pick at
+least one edge"), as `write`.
+
+**Rejected.** Making a result with a body ID outside the view fall back to `write` (it was in the
+first version): such a result is merged exactly as `write` merges it, and replacing a body by its
+ID doesn't read it.
+
+**The proof** (`recompute/view-access.test.ts`; real OCCT and manifold, `strictLeaks`, no clock,
+fixed seeds; the helpers of the `add` proofs, `recompute/add-access-test-support.ts`, which also
+compare every body's `measure` box and, asked (`exact`), versions):
+
+- **Designs:** five plates with a fillet each; plates overlapping their neighbours with fillets and
+  a slot cut through them after; plates with a chamfer of each mode (equal, two distances with a
+  reference face, distance and angle, two edges); a plate with two fillets, the second on edges
+  named after the first; a plate whose fillet's edges a groove (a box cut) makes findable by a
+  related name only; one fillet across two plates; plates with fillets and an inserted design with
+  fillets; two twin boxes (a test feature, `test-twin`, names a box from a tag, so both have the
+  same names) and a fillet of an edge named on both; b4, b6, b7 and the simplify-for-print demo.
+- **Edits:** 40 seeded per design. The terms of the rule, each both ways, on the design's first
+  fillet or chamfer, first in this order: an edge no body has by its name and back (`lose`,
+  `find`), no edges and back (`empty`, `fill`), the groove on and off (`split`, `unsplit`), the
+  twins swapping places so `closest` picks the other (`swap`), one twin suppressed and back
+  (`twin-off`, `twin-on`); then a
+  round's radius or distance, `skipLostEdges`, a plate's extrude cycling New Body, join and cut,
+  and the generic edits (insert, length, suppress, marker, reorder, delete, undo, parameter).
+- **After every step** the cached engine equals a cleared engine: statuses, origins, reports, body
+  IDs and order, every mesh and name bit for bit, every body's version and `measure` box; and an
+  engine that runs every feature as `write` (the same, but versions, which are keys); no fall-back
+  (no feature evaluated more often than the document holds it). Every term flipped both ways
+  (`view→write`, `write→view`, from `stats.viewed`); an edited round computed with a view.
+- **What "equal, versions included" covers.** A key is remembered as `write` after a read, which
+  the same inputs and view make again, and after an `OutsideError` with `retry: 'bodies'`, whose
+  cause is outside the document. Once that cause is gone, the engine that remembered runs the
+  feature as `write` where a cleared engine takes the view again: the same statuses, bodies, meshes
+  and boxes, but that feature's bodies' versions and every key after it differ (a test pins it).
+  `add` has the same; no `view` feature throws such an error, and of the `add` features only the
+  import does, for an OpenSCAD compile that was stopped (`features/import.ts:678-683`).
+- **`view` = `write`:** the same seeded edits with the fillet and chamfer forced to `write` in the
+  engine under test, against a cleared engine with views: the same statuses, origins, reports,
+  bodies, order, meshes and names (versions differ: they are keys).
+- **Twins:** the fillet goes to the twin its fingerprint matches, to the other after `swap`, to the
+  one left when the other is suppressed; both twins are in its view, so it runs again when either
+  changes.
+- **Isolated:** in the inserted design the fillets run as `write`; the host's take views.
+- **Reads outside** (a probe feature answering `view`): a `get`, `has`, `size`, `names` of
+  another body, a reference resolved in another body and one no body has are each noticed: the
+  first recompute evaluates the probe twice and equals the probe as `write`; after an edit outside
+  the view it runs as `write` at once (the memory). So are a result with a view body deleted and
+  set again (out of the view's order) and an `OutsideError` with `retry: 'bodies'`. A result that replaces a body outside the view
+  takes its result's view and equals `write`. A copy of the view isn't a read. A probe that moves
+  every body it iterates over moves only its view: not noticed, and different from `write`, which
+  is why each `view` feature is audited.
+- **Counters:** six plates with a fillet each, for plate 0, 2 and 5: its sketch edited evaluates
+  that sketch, its extrude and its fillet and sends one mesh; its fillet's radius evaluates the
+  fillet alone, one mesh; its extrude's distance the extrude and the fillet, one mesh; every fillet
+  took a view; no fall-back. The cut through the overlapping plates is `write` and reads the
+  fillets: a fillet's radius edited evaluates the fillet and the cut. A fillet across two plates
+  runs again when one of them changes, not when the third does.
+- **Negative controls** (the engine's source changed in a temporary copy, `faultyEngine`): the
+  view's versions left out of its key: step 0 equal, then an edit of a plate leaves its fillet
+  stale (`mesh ex0:0`); a view missing one of its bodies: caught by the fall-back at once (the
+  fillet across two plates evaluated twice), the result right; the result appended after the
+  other bodies instead of in place: the body order differs at step 0; a view of the first twin
+  only (`#viewOf` stopping at the first exact match): the status differs at step 0 (no guess, so no
+  warning) and both twins' meshes after the swap.
+- **Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
+  the fillet's `bodyAccess` back to `write` (the six-plates counters, the later cut's counter and
+  the counter across two plates fail); the chamfer's (the chamfer design's differential: no flip
+  to `view`); each of the `BodyView`'s traps (`get`: its probe and the `names` one, which looks
+  the body up; `has`; `size`); a non-exact resolution accepted (the fingerprint probe); a lost
+  reference not noticed (the probes of a reference in another body and of one no body has); the
+  memory not asked (six probes: they evaluate twice again after the edit); the chain after a
+  view left out (the later cut's counter); the isolated term (the inserted-design test); the order
+  check (the probe that deletes and sets again); the `retry` term for a view (both `OutsideError`
+  tests); `#viewOf` stopping at the first exact match (the twins' differential, through its
+  comparison with the all-`write` engine, and the twins test); a
+  reference no body has by its name taken as nowhere instead of `write` (nine of the eleven
+  differentials: fall-backs); the no-reference term (all eleven: the flip to `write` missing);
+  the result appended instead of put in place (`view` = `write`). The differential runs both
+  engines from the same source, so a fault in the source alone shows only through its other
+  checks (the flips, the fall-backs) and the comparison with `write`.
+
+**Not covered:** features other than the fillet and the chamfer (to audit next: shell, draft,
+offset and remove faces, thread, the features that take picked bodies, sketches and construction
+geometry on faces); twins made by a kernel feature (none found, above); previews; joints,
+annotations and sheets (they read the bodies at the marker, not a feature's view).
+
+**Measured** ad hoc, with scripts outside the repository, on one machine. Kernel time and meshes
+sent for an edit of the first, a middle and the last plate (its distance to 6 mm) and fillet (its
+radius to 0.7 mm), incremental with `have`, in Node, two runs each, each version's own code: main
+(with `add` for the extrude) → slice 2 (`add` for more features) → this. Designs of 20 and of 100
+plates, each 200 × 120 × 5 mm with 30 holes and a fillet of four of its edges, 0.5 mm.
+
+| Design | Edit | Evaluated / meshes sent | ms |
+|---|---|--:|--:|
+| 20 plates | first plate | 21/20 → 21/20 → 2/1 | 2,262, 2,268 → 2,231, 2,237 → 150, 153 |
+| | middle plate | 12/11 → 12/11 → 2/1 | 1,248, 1,249 → 1,264, 1,245 → 145, 143 |
+| | last plate | 2/1 → 2/1 → 2/1 | 148, 147 → 145, 144 → 149, 145 |
+| | first fillet | 20/20 → 20/20 → 1/1 | 2,245, 2,210 → 2,252, 2,218 → 120, 130 |
+| | middle fillet | 11/11 → 11/11 → 1/1 | 1,266, 1,259 → 1,250, 1,235 → 125, 121 |
+| | last fillet | 1/1 → 1/1 → 1/1 | 120, 118 → 117, 117 → 131, 123 |
+| 100 plates | first plate | 101/100 → 101/100 → 2/1 | 11,095, 11,057 → 11,199, 11,004 → 198, 198 |
+| | middle plate | 52/51 → 52/51 → 2/1 | 5,629, 5,671 → 5,743, 5,610 → 189, 190 |
+| | last plate | 2/1 → 2/1 → 2/1 | 181, 179 → 181, 178 → 194, 192 |
+| | first fillet | 100/100 → 100/100 → 1/1 | 10,903, 11,139 → 10,883, 10,879 → 164, 165 |
+| | middle fillet | 51/51 → 51/51 → 1/1 | 5,612, 5,641 → 5,611, 5,601 → 171, 170 |
+| | last fillet | 1/1 → 1/1 → 1/1 | 162, 166 → 162, 165 → 169, 173 |
+
+The last plate's and the last fillet's edits evaluate the same features in all three. With 100
+plates they take 180 → 193 ms and 164 → 171 ms (medians of the two runs, main → this; 20 plates:
+148 → 147 and 119 → 127 ms): every fillet's view is worked out on every walk (its four
+references against every body's naming table) and merged in place (a copy of the bodies), so
+like `add`'s merge it grows with the bodies before each fillet. Not looked into further.
+
+From scratch (every feature of the 64 designs in `fixtures/`, the fastest of two runs each,
+main → slice 2 → this): 11,209 → 11,258 → 11,258 ms over 180 features; the largest change of one
+feature is +39 ms (+0.6 %) in slice 2 and +28 ms (+0.4 %) here, both in a boolean neither change
+runs differently; the seven fillets and chamfers 47.9 → 47.7 → 48.0 ms.
+
+In the app (those designs as files, production build, Chrome, 1280 × 800, 4 interleaved runs:
+the median and the range, ms, main → slice 2 → this), until the model is ready:
+
+| Action | 20 plates | 100 plates |
+|---|--:|--:|
+| Commit an edit of the first plate in its dialog | 2,216 (2,205–2,223) → 2,230 (2,216–2,617) → 191 (184–281) | 10,820 (10,774–10,867) → 10,850 (10,783–10,878) → 407 (392–410) |
+| Undo it | 320 (319–321) → 320 (319–321) → 320 (319–322) | 10,666 (10,642–10,789) → 10,672 (10,625–10,796) → 334 (333–350) |
+
+The page's blocked time (tasks of 50 ms or more), the same runs, 100 plates: click on a face 0,
+0, 0; box select 55 (53–56), 56 (54–57), 54 (54–55); commit 120 (120–122), 122 (120–122), 120
+(119–122); undo 0, 0, 0; open a sketch 138 (134–141), 137 (136–141), 130 (128–132); drag a point
+in it 56 (55–58), 56 (56–115), 56 (55–59); open the design 934 (933–961), 964 (896–983), 922
+(908–961). With 20 plates every action is 0 in every run but open a sketch, 80 (80–86), 79
+(78–80), 79 (78–92), and open the design, 578 (546–617), 571 (364–613), 553 (543–588). Components rendered on the commit with 100 plates: 25,432 → 25,726
+→ 14,454; on the undo 12,097 → 12,194 → 862 (one run with the render counter, whose hooks make
+the page's own tasks longer, so its blocked times are not compared).

@@ -45,6 +45,7 @@ import { kernelFeatures } from '../features/index';
 import { Kernel } from '../kernel';
 import { loadOcct } from '../occt/load';
 import {
+  atStep,
   bytesOf,
   choice,
   client,
@@ -673,9 +674,6 @@ describe("the extrude's predicate, term by term", () => {
 /** The kernel's features, with the extrude's `bodyAccess` replaced. */
 const withExtrudeAccess = (access: (inputs: ExtrudeInputs) => 'add' | 'write') =>
   withAccess('extrude', access as (inputs: never) => 'add' | 'write');
-
-const atStep = (problems: readonly string[], step: number) =>
-  problems.filter((p) => p.startsWith(`step ${step}:`));
 
 describe('the comparison catches a wrong `add` (negative controls)', () => {
   it('the body set not chained after an `add`: right at first, wrong after edits', {

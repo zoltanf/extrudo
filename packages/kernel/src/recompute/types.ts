@@ -85,8 +85,22 @@ export interface ImportedFile {
  *   `names` or `resolve` makes the engine evaluate the feature again as `write`; a read by
  *   iterating over the bodies is not noticed. Treated as `write` inside an isolated expansion
  *   and when a body with the feature's own ID prefix exists already.
+ * - `view` (ADR-0024's amendment on `view` access): reads and changes only the bodies its
+ *   references name (a fillet of picked edges). The engine hands it those bodies, the ones whose
+ *   naming tables hold a face, edge or vertex reference's exact name and the ones a `body`
+ *   reference names, in order (`ctx.bodies`), keys their versions instead of every earlier
+ *   body-writing feature, and puts its result in their places. Answer it only for inputs whose
+ *   evaluation reads no other body: a look-up of another body (`get`, `has`), `size`, `names`
+ *   of another body, or a reference resolved other than by its exact name makes the engine
+ *   evaluate the feature again as `write`; a read by iterating gives the view's bodies and is
+ *   not noticed, and neither is a `delete` of a body outside the view from the evaluator's copy.
+ *   Its result must be a copy of `ctx.bodies` changed by `set` and `delete` only, with no ID put
+ *   back after its `delete`: a result out of the view's order runs as `write` again.
+ *   Treated as `write` inside an isolated expansion, when a reference has no exact match
+ *   among the bodies (or is of another kind), and after an error to try again once the bodies
+ *   before it change (`OutsideError` `retry: 'bodies'`), as `add` is.
  */
-export type BodyAccess = 'none' | 'read' | 'write' | 'add';
+export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view';
 
 /**
  * A feature definition as the kernel sees it: core's data part plus the
@@ -373,6 +387,11 @@ export interface RecomputeStats {
   evaluated: FeatureId[];
   /** Features whose result came from the cache. */
   reused: number;
+  /**
+   * Features that took their result with a view of the bodies (`view` access), evaluated or from
+   * the cache, in order; a `view` feature not listed ran as `write`. Absent from engines before it.
+   */
+  viewed?: FeatureId[];
   ms: number;
   /** Shapes held by the kernel afterwards (the cache and the current bodies). */
   liveShapes: number;

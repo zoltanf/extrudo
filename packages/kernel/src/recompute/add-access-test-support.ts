@@ -25,7 +25,12 @@ import { kernelFeatures } from '../features/index';
 import type { Kernel } from '../kernel';
 import { type BodyMesh, sameMesh } from '../mesh';
 import { type EngineOptions, RecomputeEngine } from './engine';
-import type { KernelFeatureDefinition, RecomputeRequest, RecomputeResult } from './types';
+import type {
+  BodyAccess,
+  KernelFeatureDefinition,
+  RecomputeRequest,
+  RecomputeResult,
+} from './types';
 
 export type Done = Extract<RecomputeResult, { status: 'done' }>;
 type Engine = Pick<RecomputeEngine, 'recompute' | 'clear' | 'latestBody'>;
@@ -151,7 +156,7 @@ export function allWrite(
               ...definition,
               bodyAccess: (inputs: never) => {
                 const answer = access.call(definition, inputs);
-                return answer === 'add' ? 'write' : answer;
+                return answer === 'add' || answer === 'view' ? 'write' : answer;
               },
             } as KernelFeatureDefinition),
       );
@@ -161,7 +166,7 @@ export function allWrite(
 }
 
 /** The kernel's features, with one feature type's `bodyAccess` replaced. */
-export function withAccess(type: string, access: (inputs: never) => 'add' | 'write') {
+export function withAccess(type: string, access: (inputs: never) => BodyAccess) {
   return () => {
     const registry = new FeatureRegistry<KernelFeatureDefinition>();
     for (const definition of kernelFeatures().list()) {
@@ -260,6 +265,11 @@ export interface PairOptions {
    * predicate in both engines, as if the kernel had it, which only the all-`write` engine sees.
    */
   reference?: () => FeatureRegistry<KernelFeatureDefinition>;
+  /**
+   * Compare the bodies' versions with the cleared engine's too (`view` access, ADR-0024: a version
+   * is the key that made it).
+   */
+  exact?: boolean;
   engine?: typeof RecomputeEngine;
   stopped?: readonly FeatureId[];
   /** More engine options for both engines (files, the OpenSCAD compiler). */
@@ -300,6 +310,12 @@ export function pair(kernel: Kernel, options: PairOptions = {}) {
         ...differences(mine, fresh),
         ...differences(mine, write).map((d) => `write: ${d}`),
       ];
+      if (options.exact) {
+        for (const body of fresh.result.bodies) {
+          const other = mine.result.bodies.find((x) => x.id === body.id);
+          if (other && other.version !== body.version) problems.push(`version ${body.id}`);
+        }
+      }
       return { mine, fresh, write, problems };
     },
     close() {
@@ -509,6 +525,11 @@ export interface Run<K extends string = string> {
   computed: Set<K>;
   /** What the edited feature said after each edit of a kind (`ok`, or the status and message). */
   outcomes: Map<K, string[]>;
+  /**
+   * `<kind>: <before>→<after>` of the feature each input edit changed, by how the cached engine
+   * took its result: `view` (listed in `stats.viewed`), `write` otherwise, `none` when inactive.
+   */
+  views: Set<string>;
 }
 
 export interface DifferentialOptions<K extends string> extends PairOptions {
@@ -547,7 +568,11 @@ export async function differential<K extends string>(
     flips: new Set(),
     computed: new Set(),
     outcomes: new Map(),
+    views: new Set(),
   };
+  const how = (result: Done | undefined, id: FeatureId) =>
+    result?.stats.viewed?.includes(id) ? 'view' : result?.features[id] ? 'write' : 'none';
+  let last: Done | undefined;
   const rand = random(seed);
   const history: ExtrudoDocument[] = [doc];
   const deleted: Feature[] = [];
@@ -590,7 +615,9 @@ export async function differential<K extends string>(
             : `${edited[1]} ${status.status}: ${'message' in status ? status.message : ''}`,
         );
         run.outcomes.set(edited[0], said);
+        run.views.add(`${edited[0]}: ${how(last, edited[1])}→${how(mine.result, edited[1])}`);
       }
+      last = mine.result;
       if (step === 0) {
         run.initialErrors = Object.entries(mine.result.features)
           .filter(([, status]) => status.status === 'error')
@@ -610,3 +637,6 @@ export async function differential<K extends string>(
   }
   return run;
 }
+
+export const atStep = (problems: readonly string[], step: number) =>
+  problems.filter((p) => p.startsWith(`step ${step}:`));

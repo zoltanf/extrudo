@@ -1,0 +1,1 @@
+- 2026-11-25 · **Quicker edits in designs with filleted or chamfered parts**: changing one part no longer re-rounds the fillets and chamfers of the parts after it; in a design of 100 plates with a fillet each, the kernel's work for an edit of the first plate drops from about 11 seconds to 0.2 seconds.
