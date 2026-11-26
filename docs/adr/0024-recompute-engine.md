@@ -922,4 +922,16 @@ main → slice 2 → this): 11,209 → 11,258 → 11,258 ms over 180 features; t
 the bottle cap's first thread, 6,286 → 6,325 → 6,314 ms (the runs of the boolean copies round gave
 6,263–6,291 ms for it); the seven fillets and chamfers 47.9 → 47.7 → 48.0 ms.
 
-APP
+In the app (those designs as files, production build, Chrome, 1280 × 800, median of 4 interleaved
+runs with their range, main → slice 2 → this), until the model is ready:
+
+| Action | 20 plates | 100 plates |
+|---|--:|--:|
+| Commit an edit of the first plate in its dialog | 2,216 → 2,230 → 191 ms | 10,820 → 10,850 → 407 ms |
+| Undo it | 320 → 320 → 320 ms | 10,666 → 10,672 → 334 ms |
+
+The page's blocked time (tasks of 50 ms or more) of the seven measured actions (click on a face,
+box select, commit, undo, open a sketch, drag a point in it, open the design) stays within its
+runs' spread on both designs. Components rendered on the commit with 100 plates: 25,432 → 25,726
+→ 14,454; on the undo 12,097 → 12,194 → 862 (one run with the render counter, whose hooks make
+the page's own tasks longer, so its blocked times are not compared).

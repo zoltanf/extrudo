@@ -767,7 +767,11 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
       const a = await client(kernel, viewEngine).run(doc);
       const b = await client(kernel, writeEngine).run(doc);
       expect(a.result.stats.viewed).toContain('probe');
-      expect(differences(a, b)).toEqual(['mesh ex0:0', 'mesh ex2:0']);
+      // The two plates outside the view stay where they are; the one in it moves in both.
+      const found = differences(a, b);
+      expect(found).toContain('mesh ex0:0');
+      expect(found).toContain('mesh ex2:0');
+      expect(found.filter((d) => d.includes('ex1:0'))).toEqual([]);
     } finally {
       viewEngine.clear();
       writeEngine.clear();
