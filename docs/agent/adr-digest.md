@@ -1440,12 +1440,23 @@ harness `spikes/p4-12-conics/` (`run.sh`, `run.sh probe`, `run.sh leaks 300`).
 FORWARD/REVERSED face with a surface, all about the **average of the shape's vertices**, mass
 only), a curved face integrated by `BRepGProp_VinertGK` as OCCT does and **a planar face's share
 taken exactly**, `(C − P)·N · A / 3` from the bounded area integral; the centre `properties` reports
-for such a shape is the average of its vertices, not a centre of mass (what OCCT's call gave, kept;
-open as its own task). **Never add faces measured one at a time**
+is the centre of mass (amendment of the same date, below). **Never add faces measured one at a time**
 (a lone face is integrated about its own vertices: a plane's share comes out zero), and a
 `GProp_GProps` location doesn't move `VolumePropertiesGK`'s point. The non-rational branches are
 unchanged. Tests: `mass-properties.test.ts` (coils against Pappus, 2.25 turns so the caps' shares
 count; a conic prism moved, turned and mirrored).
+**Amendment 2026-11-26, the centre of mass:** `integrateVolume(shape, props, centre)` (only
+`properties` asks for it); `rationalShares` makes every face's share in face order (masses added in
+that order: the volume is the same with or without the centre); a planar cone's centre P + ¾(C − P);
+a curved face's centre from the fixed-order `BRepGProp_Vinert` about P **when its mass agrees with
+the Gauss–Kronrod mass to `CENTRE_AGREEMENT` (1e-9 of the volume)**, else **the whole shape's**
+centre by `gaussKronrodCentre` (Gauss–Kronrod with the centre flag to `CENTRE_EPS` = 1e-5, about an
+apex moved off P: `VinertGK` always takes its location as the apex, so a face can't be redone alone).
+A failed face or area integral → the whole shape's bounded `VolumeProperties` (never a partial sum).
+Rational conic prisms of rho ≥ 0.9 and lofts from conics take the Gauss–Kronrod pass. Readers: Measure's
+centre (`inspect`), the FreeCAD import's stored-shape check, the rib's side. Tests:
+`mass-properties.test.ts` "the centre of mass of a body with a rational edge" (coils: the
+fixed-order path; a rho 0.95 prism: the Gauss–Kronrod pass).
 **P4-12's third amendment (2026-10-16)**: an **open fit spline** may store
 `tangents: { start?, end? }`, its end **derivative vectors** (mm per unit of the
 0..1 parameter; `fitSpline(points, tangents)` adds a pole and a Piegl & Tiller

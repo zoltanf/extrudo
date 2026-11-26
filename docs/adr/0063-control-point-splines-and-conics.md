@@ -721,7 +721,8 @@ What changes is how that sum is made, and only for planar faces.
   vertices goes to `VolumePropertiesGK` whole, as before.
 - The centre `properties` reports for such a shape is the average of its vertices, not
   its centre of mass: `VolumePropertiesGK` was called without the centre flag and gave
-  that, and this sum keeps it. Known; it is open as a task of its own.
+  that, and this sum keeps it. (Closed by the next amendment: the centre is the centre
+  of mass.)
 - The non-rational branches (`needsTolerance`'s bounded integral, the fixed order) are
   unchanged, and so are `integrateArea` and the lengths.
 
@@ -754,3 +755,103 @@ several positions. The conic shapes' volumes differ by at most 7e-15 relative, t
 circles' and the coils' are bit-identical, the areas are bit-identical. The conic checks
 of the 2026-10-07 amendment (`sketch-conic.test.ts`, `mass-properties.test.ts`) pass
 unchanged. The volume of a rational shape is faster.
+
+## Amendment, 2026-11-26 — the centre of mass of a shape with a rational edge
+
+The previous amendment left one point open: `properties` reported the average of the
+shape's vertices as the centre of a shape with a rational edge. It now reports the centre
+of mass. The volume is unchanged, bit for bit.
+
+### Decision
+
+- `rationalVolume(shape, props, centre)`: `integrateVolume` asks for the centre only for
+  `properties`; `measure` and the facade's volume checks don't, and take the same volume.
+- Every face's share is computed in face order (`rationalShares`) about the one apex P,
+  the average of the shape's vertices, and the masses are added in that order, so the
+  volume is the same with or without the centre. A planar face's share now takes a point
+  of its plane (`Plane().Location()`) for (Q − P)·N, and its cone's centre is
+  P + ¾(C − P), C the face's centroid from the bounded area integral.
+- A curved face's mass is Gauss–Kronrod's, as before. With the centre asked for, the face
+  is also integrated by OCCT's fixed-order Gauss integral (`BRepGProp_Vinert`) about P,
+  and that integral's centre is the face's, **if its mass agrees with the Gauss–Kronrod
+  mass to `CENTRE_AGREEMENT` = 1e-9 of the shape's volume**.
+- **If any curved face disagrees**, the whole shape's centre is integrated again by
+  Gauss–Kronrod with the centre flag (`gaussKronrodCentre`), to **`CENTRE_EPS` = 1e-5**
+  (relative, per integral; the volume keeps `MASS_EPS`), about an apex moved off P by the
+  shape's box diagonal along an uneven direction, planar faces' cones exact. It is the
+  whole shape because `BRepGProp_VinertGK` always takes its location as the cones' apex
+  (the extra point of its point mode only offsets the centre it reports): one face can't
+  be integrated about another apex and added to the others. The apex is moved because
+  about P a centre component can cancel.
+- **A face integral that fails** (a negative error from `BRepGProp_VinertGK`, or from
+  `BRepGProp::SurfaceProperties` on a planar face) gives the whole shape to the bounded
+  adaptive Gauss integral, `BRepGProp::VolumeProperties(shape, props, MASS_EPS, false)`:
+  volume and centre, never a partial sum. Its relative bound is `MASS_EPS`, but on a
+  conic's prism it is up to 5e-3 out (the 2026-10-07 amendment's measurement), so it is
+  a fall-back only.
+- `looseBox` is private. The planar area is still integrated twice in `measure` (once for
+  the volume, once in `integrateArea`): sharing the loop would move area digits of planes
+  without a rational edge, which take the fixed order there.
+
+### Which shapes take which path
+
+Measured in a native build of the facade against main's (the same shapes, `properties`,
+fastest of five runs each, one machine): every coil tried (2, 2.25, 1.5, 0.5 and 6 turns,
+several positions; the fixed-order mass within 3e-12 of the volume), conic prisms up to
+rho 0.8, moved, turned and mirrored (7.5e-11), a conic turned 270° and STEP copies take the
+fixed-order centres. Conic prisms of rho 0.9, 0.95 and 0.99 (7.2e-7, 1.4e-4, 5.0e-2) and a
+loft from a rho 0.8 conic to a circle (5.4e-5) disagree and take the Gauss–Kronrod pass;
+without it their centre is off by 4.6e-5, 5.6e-3, 0.77 and 1.7e-3 mm.
+
+| Shapes | `properties`, main → this |
+|---|---|
+| coils (6 cases) | 23–153 → 25–175 ms (1.09–1.14×) |
+| conic prisms rho ≤ 0.8, moved, turned, mirrored; turned conic; STEP copies | 6.7–81.8 → 7.3–84.9 ms (1.04–1.12×) |
+| conic prisms rho 0.9, 0.95, 0.99 (Gauss–Kronrod pass) | 12–16 → 18–21 ms (1.29–1.45×) |
+| loft from a conic to a circle (Gauss–Kronrod pass) | 11.1 → 17.5 ms (1.58×) |
+| circles swept along arcs (no rational edge) | unchanged |
+
+The Gauss–Kronrod pass alone on the 6-turn coil, if it ever disagreed, takes about 0.12 s
+(measured the same way). The volume is bit-identical to main's on every shape above.
+
+### Tests
+
+`packages/kernel/src/mass-properties.test.ts`, "the centre of mass of a body with a
+rational edge": coils of 2.25, 1.5 and 0.5 turns at several positions against the closed
+form (a screw motion's centre: the section's r-weighted radius R + a²/4R turned through
+the coil's angle, half its rise), within 1e-4 mm, cover the fixed-order path; a conic
+prism of rho 0.4, plain, moved and turned (located caps) and mirrored (indirect frames),
+against the profile's area centroid within 1e-6 mm, covers it with planar cones; a conic
+prism of rho 0.95 against its area centroid covers the Gauss–Kronrod pass. Each was
+checked against a broken path in a native build running the same assertions: the
+fixed-order centre left out fails the coil and rho 0.4 tests (4.8 and 2.4 mm), the planar
+cone's centre at ½ instead of ¾ fails them (0.027 and 0.27 mm), the Gauss–Kronrod pass
+skipped fails the rho 0.95 test (5.7e-3 mm), and that pass without its planar cones fails
+it too.
+
+### From scratch
+
+Compared once with an ad hoc script outside the repository, main's code and build against this
+branch's, on one machine: the 65 designs in `fixtures/` recomputed from scratch give the same
+statuses, bodies, names, versions, reports and meshes, and the same `inspect` of every one of
+their 81 bodies but one, whose centre moved: the sweep fixture's body (`p4-01-sweep-loft-coil`,
+a body with a rational edge), from (19.961, 0.512, 32.620) to (12.885, 0.000, 33.228) mm, which
+the volume centroid of a fine tessellation of the body confirms to 1.4e-3 mm. Its volume is
+unchanged.
+
+### Who reads the centre
+
+| Reader | What | With this |
+|---|---|---|
+| `packages/kernel/src/inspect.ts:161` | a body's centre in `inspect`: Measure's "Centre" row (`apps/web/src/measure/format.ts:79`), the agent's measure | the centre of mass |
+| `packages/kernel/src/stored-shape.ts:97` (`measureShape`) | the FreeCAD import's check of a stored shape against the rebuilt body, both measured by this code | both sides move together |
+| `packages/kernel/src/features/rib.ts:229` (`massCentre`) | the rib's side: the volume-weighted centre of every body, which side of the line it lies on | the true centre of a body with a rational edge |
+| `packages/kernel/src/features/sweep.ts:132` | a profile's centroid (a face, so the area path) | unchanged |
+| `packages/kernel/src/inspect.ts` (`centreDistance`) | vertices, circle and sphere centres, axes | unchanged |
+| the facade's other centres (`SurfaceProperties`/`VolumeProperties` of their own) | | unchanged |
+
+The rib reads `properties`' volume and centre of every body before it and lays the wall on
+the side of the line their volume-weighted centre is on. No fixture has a rib, and the rib
+golden table (`features/golden/rib-options.json`, each case's side as `towards`) is built
+on bodies without a rational edge: unchanged.
+

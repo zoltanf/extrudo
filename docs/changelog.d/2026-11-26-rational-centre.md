@@ -1,1 +1,1 @@
-- 2026-11-26 · **Correct centre of mass for bodies with rational curved edges**: the centre Measure shows for such a body (a coil, an extruded or turned conic, a STEP body with rational edges) is now its centre of mass; it was the average of the body's vertices.
+- 2026-11-26 · **Measure's centre of a body with conic or coil edges is its centre of mass**: it was the average of the body's vertices.
