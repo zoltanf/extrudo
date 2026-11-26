@@ -1,0 +1,1 @@
+- 2026-11-26 · **Quicker edits in designs with many bodies moved, scaled or mirrored in place, removed or combined**: changing one part no longer redoes those moves, scales, mirrors, removals and combines of the other parts after it (moved, scaled or mirrored copies are redone as before).

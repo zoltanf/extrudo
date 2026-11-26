@@ -125,7 +125,9 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names' | '
  */
 export const kernelRemove: KernelFeatureDefinition<RemoveInputs> = {
   ...removeBodiesFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only the bodies it names (ADR-0024's amendment on `view` access): it looks
+  // them up and deletes them from a copy of the map it is given.
+  bodyAccess: () => 'view',
   evaluate(ctx) {
     const ids = ctx.inputs.bodies.refs.map((ref) => ref.id as BodyId);
     const missing = ids.filter((id) => !ctx.bodies.has(id));
