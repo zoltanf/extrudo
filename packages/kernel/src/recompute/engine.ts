@@ -936,13 +936,21 @@ export class RecomputeEngine {
         evaluated.push(feature.id);
         made = true;
       }
+      // A view's result whose bodies aren't in the view's order (an ID deleted and set again) is
+      // not what `mergeInPlace` assumes.
+      const misordered =
+        view !== undefined &&
+        entry.output?.bodies !== undefined &&
+        !inViewOrder(view, entry.output.bodies);
       if (
-        (seen instanceof NoBodies || seen instanceof BodyView) &&
-        (seen.read || entry.retry === 'bodies')
+        ((seen instanceof NoBodies || seen instanceof BodyView) &&
+          (seen.read || entry.retry === 'bodies')) ||
+        misordered
       ) {
-        // It read a body after all: its `add` or `view` answer was wrong for these inputs. Its
-        // result goes, and it runs as `write`, now and whenever these inputs come again. So does
-        // an error to try again once the bodies before it change, as main's `write` key did.
+        // It read a body after all: its `add` or `view` answer was wrong for these inputs, or a
+        // view's result isn't in its order. Its result goes, and it runs as `write`, now and
+        // whenever these inputs come again. So does an error to try again once the bodies before
+        // it change, as main's `write` key did.
         this.#readsBodies.add(key);
         const max = this.#options.maxEntries ?? 256;
         for (const old of this.#readsBodies) {
@@ -1915,6 +1923,24 @@ function mergeInPlace(
   }
   for (const [id, shape] of result) if (!out.has(id)) out.set(id, shape);
   return out;
+}
+
+/**
+ * Whether a `view` result keeps its view's bodies in the view's order, before any other body:
+ * what a copy of `ctx.bodies` changed by `set` and `delete` gives when no ID is put back after
+ * its `delete`, the only results `mergeInPlace` reproduces.
+ */
+function inViewOrder(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>): boolean {
+  const order = new Map([...view.keys()].map((id, i) => [id, i]));
+  let last = -1;
+  let other = false;
+  for (const id of made.keys()) {
+    const at = order.get(id);
+    if (at === undefined) other = true;
+    else if (other || at < last) return false;
+    else last = at;
+  }
+  return true;
 }
 
 /** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */

@@ -15,6 +15,7 @@ import {
   createDocument,
   type EnumInput,
   EnumInputSchema,
+  ExprInputSchema,
   type ExtrudoDocument,
   extrudeInputs,
   type Feature,
@@ -22,6 +23,7 @@ import {
   FeatureRegistry,
   filletInputs,
   type GeomRef,
+  type Input,
   insertDesign,
   insertDesignPayload,
   originPlaneRef,
@@ -44,6 +46,7 @@ import { kernelFeatures } from '../features/index';
 import { Kernel, KernelError } from '../kernel';
 import { loadManifold } from '../manifold';
 import type { ShapeDescription } from '../naming/description';
+import { positionalNames } from '../naming/names';
 import { loadOcct } from '../occt/load';
 import {
   atStep,
@@ -63,7 +66,12 @@ import {
   setInputs,
 } from './add-access-test-support';
 import { RecomputeEngine } from './engine';
-import type { BodyAccess, EvalContext, KernelFeatureDefinition } from './types';
+import {
+  type BodyAccess,
+  type EvalContext,
+  type KernelFeatureDefinition,
+  OutsideError,
+} from './types';
 
 let kernel: Kernel;
 beforeAll(async () => {
@@ -375,6 +383,77 @@ async function inserted() {
   return after;
 }
 
+/**
+ * `test-twin`: a new box (`size`, its corner at `x`, -50, 0) whose naming table comes from its
+ * `tag` instead of its feature ID (`positionalNames`, as the engine names a body given none). Two
+ * of them with one tag are bodies with the same exact names: no kernel feature makes such bodies
+ * (ADR-0024's amendment on `view` access), but `resolveRef` tells them apart (`closest`).
+ */
+function twinRegistry() {
+  return () => {
+    const registry = kernelFeatures();
+    registry.register({
+      type: 'test-twin',
+      label: 'test-twin',
+      category: 'create',
+      icon: 'test',
+      inputsSchema: z.strictObject({
+        size: ExprInputSchema,
+        x: ExprInputSchema,
+        tag: EnumInputSchema,
+      }),
+      evaluate(ctx: EvalContext) {
+        const size = ctx.value('size');
+        const box = ctx.kernel.box([size, size, size], [ctx.value('x'), -50, 0]);
+        const id = ctx.bodyId();
+        const tag = (ctx.inputs.tag as EnumInput).value;
+        return {
+          bodies: new Map(ctx.bodies).set(id, box),
+          names: new Map([[id, positionalNames('twin', tag, ctx.describe(box))]]),
+        };
+      },
+    } as unknown as KernelFeatureDefinition);
+    return registry;
+  };
+}
+
+const twin = (id: string, x: string): Feature => ({
+  id: id as FeatureId,
+  type: 'test-twin',
+  name: `Twin ${id}`,
+  suppressed: false,
+  inputs: {
+    size: length('10 mm'),
+    x: length(x),
+    tag: choice('T'),
+  },
+});
+
+/**
+ * Two twin boxes (the same names) and a fillet of an edge named on both, taken from the first:
+ * `closest` picks the twin whose geometry matches the reference's fingerprint. Plates beside.
+ */
+async function twins(): Promise<ExtrudoDocument> {
+  const features = [twin('ta', '0 mm'), twin('tb', '30 mm'), ...platesOf(2)];
+  const doc = document('twin bodies and a fillet named on both', features);
+  const engine = new RecomputeEngine(kernel, twinRegistry()(), { strictLeaks: true });
+  try {
+    await engine.recompute({ doc });
+    const edge = engine.reference('ta:0' as BodyId, 'edge', 0) as GeomRef;
+    const fillet: Feature = {
+      id: 'ft' as FeatureId,
+      type: 'fillet',
+      name: 'Fillet on a twin',
+      suppressed: false,
+      inputs: filletInputs([{ edges: [edge], radius: '1 mm' }]),
+    };
+    const all = [...features.slice(0, 2), fillet, ...features.slice(2)];
+    return { ...doc, features: all, timelineMarker: all.length };
+  } finally {
+    engine.clear();
+  }
+}
+
 const DESIGNS: [string, () => Promise<ExtrudoDocument> | ExtrudoDocument][] = [
   ['plates, each with a fillet', () => platesWithFillets()],
   ['overlapping plates with fillets and a cut through them', overlapping],
@@ -383,6 +462,7 @@ const DESIGNS: [string, () => Promise<ExtrudoDocument> | ExtrudoDocument][] = [
   ['a fillet whose edges a cut splits, and back', splitter],
   ['one fillet across two bodies', acrossTwo],
   ['plates with fillets and an inserted design', inserted],
+  ['twin bodies and a fillet named on both', twins],
   ['b4 box with lid', () => fixture(b4)],
   ['b6 wall hook', () => fixture(b6)],
   ['b7 knurled knob', () => fixture(b7)],
@@ -408,6 +488,9 @@ const KINDS = [
   'fill',
   'split',
   'unsplit',
+  'swap',
+  'twin-off',
+  'twin-on',
   'size',
   'skip',
   'operation',
@@ -454,6 +537,30 @@ function edit(
       const list = now && edges(now)?.refs;
       const own = target && edges(target)?.refs;
       return list && own && list.length === 0 ? set(own) : undefined;
+    }
+    case 'swap': {
+      // The twins change places: the other one now matches the fillet's fingerprint.
+      const a = doc.features.find((f) => f.id === 'ta');
+      const b = doc.features.find((f) => f.id === 'tb');
+      if (!original.features.some((f) => f.id === 'ta')) return { doc };
+      if (!a || !b) return undefined;
+      const swapped = setInputs(setInputs(doc, 'ta', { x: b.inputs.x as Input }), 'tb', {
+        x: a.inputs.x as Input,
+      });
+      return { doc: swapped, feature: 'ft' as FeatureId };
+    }
+    case 'twin-off':
+    case 'twin-on': {
+      const b = doc.features.find((f) => f.id === 'tb');
+      if (!original.features.some((f) => f.id === 'tb')) return { doc };
+      if (!b || b.suppressed === (kind === 'twin-off')) return undefined;
+      return {
+        doc: {
+          ...doc,
+          features: doc.features.map((f) => (f === b ? { ...f, suppressed: !f.suppressed } : f)),
+        },
+        feature: 'ft' as FeatureId,
+      };
     }
     case 'split':
     case 'unsplit': {
@@ -508,6 +615,8 @@ function differential(
 ) {
   return differentialOf(kernel, doc, steps, seed, {
     exact: true,
+    registry: twinRegistry(),
+    reference: twinRegistry(),
     ...options,
     kinds: KINDS,
     edit: (kind, current, rand, history, deleted) =>
@@ -517,7 +626,12 @@ function differential(
 }
 
 const sequence = (docs: readonly ExtrudoDocument[], options: PairOptions = {}) =>
-  sequenceOf(kernel, docs, { exact: true, ...options });
+  sequenceOf(kernel, docs, {
+    exact: true,
+    registry: twinRegistry(),
+    reference: twinRegistry(),
+    ...options,
+  });
 
 /** `base`'s features with some types' `bodyAccess` replaced. */
 function accessOf(
@@ -535,7 +649,7 @@ function accessOf(
 }
 
 /** The kernel's features with the fillet and the chamfer as `write` (as before this change). */
-const roundsWrite = () => accessOf(kernelFeatures, { fillet: 'write', chamfer: 'write' });
+const roundsWrite = () => accessOf(twinRegistry(), { fillet: 'write', chamfer: 'write' });
 
 // ------------------------------------------------------------------------------- the proof
 
@@ -563,8 +677,12 @@ describe('view access: the cached engine gives what a cleared one gives (ADR-002
       expect(run.views).toContain('unsplit: write→view');
     }
     // An edited round computed with its view.
-    expect(run.computed, [...run.views].join('; ')).toContain('size');
-    expect(run.computed).toContain('find');
+    // (The twins' fillet computes with a warning: `closest` guessed between two exact names.)
+    const built = (kind: Kind) =>
+      run.computed.has(kind) ||
+      (run.outcomes.get(kind) ?? []).some((said) => / warning: /.test(said));
+    expect(built('size'), [...run.views].join('; ')).toBe(true);
+    expect(built('find')).toBe(true);
     // The cache saved work.
     expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
   });
@@ -649,6 +767,26 @@ function probeRegistry() {
           case 'stray':
             out.set(other, ctx.kernel.box([1, 1, 1], [0, 0, 50]));
             break;
+          case 'reorder': {
+            // The view's first body deleted and set again: under `write` it goes to the end.
+            const [first] = [...out.keys()];
+            const shape = first === undefined ? undefined : out.get(first);
+            if (first !== undefined && shape !== undefined) {
+              out.delete(first);
+              out.set(first, shape);
+            }
+            break;
+          }
+          case 'outside':
+            // A cause outside the document (`OUTSIDE`), to try again once the bodies change.
+            if (OUTSIDE.on) throw new OutsideError('The cause is outside the document.', 'bodies');
+            // Without it, a new shape (the same place) of each body its edges are on, as a fillet.
+            for (const ref of (ctx.inputs.edges as RefInput).refs) {
+              const hit = ctx.resolve(ref);
+              const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+              out.set(hit.body, ctx.kernel.transform(hit.shape, identity).shape);
+            }
+            break;
           case 'iterate':
             for (const [id, shape] of ctx.bodies) {
               const moved = ctx.kernel.transform(shape, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 30]);
@@ -664,6 +802,9 @@ function probeRegistry() {
 }
 
 /** Three plates and a probe after them on an edge of the middle one. */
+/** Whether the `outside` probe's cause outside the document is there. */
+const OUTSIDE = { on: true };
+
 async function probed(mode: string): Promise<ExtrudoDocument> {
   const doc = document('a probe', platesOf(3));
   const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
@@ -681,7 +822,14 @@ async function probed(mode: string): Promise<ExtrudoDocument> {
         name: 'Probe',
         suppressed: false,
         inputs: {
-          edges: { kind: 'ref', refs: [edge] },
+          // `reorder` takes an edge of the first plate too: a view of two bodies.
+          edges: {
+            kind: 'ref',
+            refs:
+              mode === 'reorder'
+                ? [engine.reference('ex0:0' as BodyId, 'edge', 0) as GeomRef, edge]
+                : [edge],
+          },
           mode: choice(mode),
           other: choice('ex2:0'),
           otherEdge: choice(otherEdge),
@@ -707,9 +855,12 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     ['a reference resolved in another body', 'resolve-other'],
     ['a reference no body has', 'resolve-lost'],
     ['a reference found by its fingerprint only (in the view)', 'resolve-guess'],
+    ['a result with a view body deleted and set again (out of the view’s order)', 'reorder'],
+    ['an error to try again once the bodies change (`OutsideError`, `bodies`)', 'outside'],
   ])('%s: dropped, run as `write`, remembered', { timeout: 120_000 }, async (_n, mode) => {
     const doc = await probed(mode);
-    const other = setInputs(doc, 'ex0', { distance: length('7 mm') });
+    // The last plate is in no probe's view (it is the `other` body some probes look up).
+    const other = setInputs(doc, 'ex2', { distance: length('7 mm') });
     // The probe as `view` against the same probe as `write` (cleared each step).
     const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
     const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
@@ -731,11 +882,46 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     }
   });
 
+  it('an error to try again once the bodies change, its cause then gone: the same content, other versions', {
+    timeout: 120_000,
+  }, async () => {
+    // The engine that kept its memory runs the probe as `write` at once; a cleared one takes the
+    // view again, which now computes. What they make is the same; the version of the probe's body
+    // (a version is the key that made it) is not.
+    const doc = await probed('outside');
+    const other = setInputs(doc, 'ex0', { distance: length('7 mm') });
+    const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
+    const fresh = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
+    try {
+      OUTSIDE.on = true;
+      const mine = client(kernel, viewEngine);
+      await mine.run(doc);
+      OUTSIDE.on = false;
+      const a = await mine.run(other);
+      const b = await client(kernel, fresh).run(other);
+      expect(a.result.features['probe' as FeatureId]?.status).toBe('ok');
+      expect(differences(a, b)).toEqual([]);
+      expect(a.result.stats.viewed).not.toContain('probe');
+      expect(b.result.stats.viewed).toContain('probe');
+      const version = (r: typeof a, id: string) =>
+        r.result.bodies.find((x) => x.id === id)?.version;
+      expect(version(a, 'ex1:0')).not.toBe(version(b, 'ex1:0'));
+      expect(version(a, 'ex2:0')).toBe(version(b, 'ex2:0'));
+    } finally {
+      OUTSIDE.on = true;
+      viewEngine.clear();
+      fresh.clear();
+    }
+  });
+
   it('a result that replaces a body outside the view by its ID takes its place, as `write` does', {
     timeout: 120_000,
   }, async () => {
     // Not a read: the result doesn't depend on that body.
-    const [step] = await sequence([await probed('stray')], { registry: probeRegistry() });
+    const [step] = await sequence([await probed('stray')], {
+      registry: probeRegistry(),
+      reference: probeRegistry(),
+    });
     expect(step?.result.stats.viewed).toContain('probe');
     const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
     const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
@@ -751,7 +937,10 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
   });
 
   it('a copy of the view (what a fillet does) is not a read', { timeout: 120_000 }, async () => {
-    const [step] = await sequence([await probed('copy')], { registry: probeRegistry() });
+    const [step] = await sequence([await probed('copy')], {
+      registry: probeRegistry(),
+      reference: probeRegistry(),
+    });
     expect(step?.result.stats.viewed).toContain('probe');
     expect(step?.evaluated.filter((id) => id === 'probe')).toEqual(['probe']);
   });
@@ -780,6 +969,36 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
 });
 
 // ------------------------------------------------------------------------------- counters
+
+describe('view access: twin bodies with the same names', () => {
+  it('the fillet follows `closest` from one twin to the other, and to the one left', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = await twins();
+    const swap = (d: ExtrudoDocument) => {
+      const a = d.features.find((f) => f.id === 'ta')?.inputs.x as Input;
+      const b = d.features.find((f) => f.id === 'tb')?.inputs.x as Input;
+      return setInputs(setInputs(d, 'ta', { x: b }), 'tb', { x: a });
+    };
+    const off = {
+      ...doc,
+      features: doc.features.map((f) => (f.id === 'tb' ? { ...f, suppressed: true } : f)),
+    };
+    const steps = await sequence([doc, swap(doc), doc, off]);
+    const faces = (step: (typeof steps)[number] | undefined, id: string) =>
+      step?.result.bodies.find((b) => b.id === id)?.mesh?.faceIds?.length ?? 0;
+    // A box has 6 faces; the rounded one 7. Step 2 sends no mesh: both twins as at step 0.
+    expect([faces(steps[0], 'ta:0'), faces(steps[0], 'tb:0')]).toEqual([7, 6]);
+    expect([faces(steps[1], 'ta:0'), faces(steps[1], 'tb:0')]).toEqual([6, 7]);
+    expect(faces(steps[3], 'ta:0')).toBe(7);
+    for (const step of steps) {
+      expect(step.problems).toEqual([]);
+      expect(step.result.stats.viewed).toContain('ft');
+    }
+    // Both twins are in the fillet's view: it runs again when either changes.
+    expect(steps[1]?.evaluated).toEqual(['ta', 'tb', 'ft']);
+  });
+});
 
 describe('view access: what an edit costs (exact counters)', () => {
   /** Plate `k`'s holes 4 mm instead of 5 mm (its sketch). */
@@ -888,6 +1107,29 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
       const [a] = await sequence([doc], { engine: broken.engine, exact: false });
       expect(a?.problems).toEqual([]);
       expect(fallbacks(a?.result as NonNullable<typeof a>['result'], doc)).toEqual(['fx']);
+    } finally {
+      broken.remove();
+    }
+  });
+
+  it('a view of the first twin only: the comparison sees it once `closest` would pick the other', {
+    timeout: 120_000,
+  }, async () => {
+    // The one term the fall-back can't guard: the evaluator finds the name in the view.
+    const broken = await faultyEngine([
+      '            ids.add(id);\n            found = true;\n',
+      '            ids.add(id);\n            found = true;\n            break;\n',
+    ]);
+    try {
+      const doc = await twins();
+      const swapped = setInputs(setInputs(doc, 'ta', { x: length('30 mm') }), 'tb', {
+        x: length('0 mm'),
+      });
+      const [a, b] = await sequence([doc, swapped], { engine: broken.engine, exact: false });
+      // The view's one twin resolves without the guess's warning, and then to the wrong twin.
+      expect(a?.problems).toContain('statuses');
+      expect(b?.problems).toContain('mesh ta:0');
+      expect(b?.problems).toContain('mesh tb:0');
     } finally {
       broken.remove();
     }

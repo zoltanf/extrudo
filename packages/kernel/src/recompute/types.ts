@@ -94,6 +94,8 @@ export interface ImportedFile {
  *   of another body, or a reference resolved other than by its exact name makes the engine
  *   evaluate the feature again as `write`; a read by iterating gives the view's bodies and is
  *   not noticed, and neither is a `delete` of a body outside the view from the evaluator's copy.
+ *   Its result must be a copy of `ctx.bodies` changed by `set` and `delete` only, with no ID put
+ *   back after its `delete`: a result out of the view's order runs as `write` again.
  *   Treated as `write` inside an isolated expansion, when a reference has no exact match
  *   among the bodies (or is of another kind), and after an error to try again once the bodies
  *   before it change (`OutsideError` `retry: 'bodies'`), as `add` is.
