@@ -994,7 +994,7 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
     timeout: 120_000,
   }, async () => {
     const broken = await faultyEngine([
-      '? mergeInPlace(bodies, view, entry.output.bodies)',
+      '? mergeInPlace(bodies, view, entry.output.bodies, entry.output.origins)',
       '? mergeBodies(bodies, new Map(view), entry.output.bodies)',
     ]);
     try {
