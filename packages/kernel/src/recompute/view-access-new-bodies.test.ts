@@ -16,6 +16,7 @@ import {
   mirrorInputs,
   moveInputs,
   originPlaneRef,
+  pathPatternInputs,
   primitiveInputs,
   rectangularPatternInputs,
   scaleInputs,
@@ -23,6 +24,7 @@ import {
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
+import { kernelFeatures } from '../features';
 import { bytesOf, fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
 import type { ImportedFile } from './types';
 import {
@@ -245,6 +247,37 @@ describe('view access: new bodies (ADR-0024)', () => {
       'sp2:0',
       'o2:0',
     ]);
+  });
+
+  it('mirrors and patterns of features answer write; of bodies, view', () => {
+    // A replayed tool cuts or joins whatever bodies it meets. (The engine gives no view to a
+    // `feature` reference either.)
+    const registry = kernelFeatures();
+    const access = (type: string, inputs: object) =>
+      registry.get(type)?.bodyAccess?.(inputs as never);
+    const plane = originPlaneRef('origin:yz');
+    const line: GeomRef = { kind: 'sketchEntity', id: 'sk:line' };
+    const cases = [
+      ['mirror', (features?: string[]) => mirrorInputs(['b0:0'], plane, { features })],
+      [
+        'rectangularPattern',
+        (features?: string[]) =>
+          rectangularPatternInputs({ bodies: ['b0:0'], features, direction1: X_AXIS }),
+      ],
+      [
+        'circularPattern',
+        (features?: string[]) =>
+          circularPatternInputs({ bodies: ['b0:0'], features, axis: Z_AXIS }),
+      ],
+      [
+        'pathPattern',
+        (features?: string[]) => pathPatternInputs({ bodies: ['b0:0'], features, path: [line] }),
+      ],
+    ] as const;
+    for (const [type, inputs] of cases) {
+      expect(access(type, inputs()), type).toBe('view');
+      expect(access(type, inputs(['cut'])), type).toBe('write');
+    }
   });
 
   it('a mesh split by Split Body with a body outside the view after it: write; with none: view', {
