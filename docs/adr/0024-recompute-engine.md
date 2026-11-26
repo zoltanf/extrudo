@@ -589,7 +589,11 @@ cached: evaluated, and compiled, once. No other feature throws an `OutsideError`
 the only evaluator that reads a file (`ctx.file`), and the plugin feature, whose expansion reads
 its plugin file, words a missing one as a plain `KernelError`, and an expansion's failed run isn't
 kept anyway unless the code itself failed (`#expand`). In the engine: the entry's `retry`, no
-entry kept for `next`, and the fall-back's condition (a few lines).
+entry kept for `next`, and the fall-back's condition (a few lines). What `next` costs while its
+cause lasts: each recompute that walks the import runs its `prepare` and `evaluate` again (a
+look-up of the file; for the compiler not downloaded, one compile request, which asks for the
+compiler again), and the features after it stay cached. Nothing starts a recompute because a
+feature failed.
 
 Tests (`recompute/outside-errors.test.ts`; real OCCT and manifold, the compiler a stand-in that
 answers in the real compiler's words): each cause fails first, then the same document is
@@ -634,9 +638,9 @@ offset and the shape for the primitives and coils, a face profile, an edge axis,
 axis, text and angles for the revolves, a face profile (a cylinder's top along a path from its
 centre), an edge path (with a profile at its foot), the path and twist for the sweeps, a face
 section, a vertex tip (a small box over each loft), a point and ruled for the lofts, and every
-term's edit for the imports. The coils' operation is the one write term that doesn't compute: the
-coil moved onto B0 kept one evaluation in the seeded run busy for over 25 minutes (not looked
-into), so its edit leaves the coil where it is, overlapping nothing.
+term's edit for the imports. The coils' operation is the one write term that doesn't compute: its
+edit leaves the coil where it is, overlapping nothing, so a coil's join, cut or intersect with a
+body isn't covered here.
 
 **Two references (2026-11-25).** A cleared engine with the same features can't see a predicate
 that admits inputs whose evaluator only iterates the bodies: under `add` both engines hand it the

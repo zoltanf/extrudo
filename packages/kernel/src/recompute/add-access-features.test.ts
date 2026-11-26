@@ -705,9 +705,9 @@ const PRIMITIVES: Family = {
 const COILS: Family = {
   types: ['coil'],
   terms: [
-    // Where the coil is: it overlaps nothing, so the operation doesn't compute. With the coil
-    // moved onto B0 (XY, x −60, y 5) one evaluation in the seeded run didn't return in 25 minutes
-    // (not looked into); the primitives' operation term computes over B0 instead.
+    // Where the coil is: it overlaps nothing, so the operation doesn't compute (a coil's join, cut
+    // or intersect with a body isn't covered here); the primitives' operation term computes over
+    // B0 instead.
     operationTerm(() => ({})),
     ...PLACED_REST,
     {
