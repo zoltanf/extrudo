@@ -372,7 +372,8 @@ with New Body extrudes; plates with a failed and a stopped feature), each with p
 until it holds five extrudes that answer `add`, and 40 seeded edits each. After every step the
 engine that kept its cache, holding the meshes it was sent like the `Recomputer`, gives what a
 cleared engine gives for the same document: statuses and errors, origins, reports, body IDs and
-order, every mesh array bit for bit and every name; a mesh left out under `have` must be one it
+order, every mesh array bit for bit and every name, and every body's measured box; and so does an
+all-`write` engine (see "Two references" below); a mesh left out under `have` must be one it
 holds. Each design starts with no errors but the ones it is built with.
 
 The edits, each kind at least once in every design: an insert; one edit per term of the
@@ -392,16 +393,29 @@ scaled, suppress, reorder and delete; "to object" up to a vertex or a plane; joi
 annotations, sheets and previews (a preview only in the reused count below); mesh bodies,
 imports, scripts and OpenSCAD features; the stopped list (fixed per design).
 
-**Assumed, not shown beyond these designs.** A cached body carries the triangulation the view's
-meshing left on its faces, where a body evaluated again has none. Two things could then differ
-between an edit and a recompute from scratch, without `add` too, but `add` keeps more bodies
-cached: (1) boxes OCCT builds inside its own algorithms (the distance check behind
-`bodiesTouch`, a boolean's pair search) may use a triangulation; they only prune, so results
-should not change. (2) A cut or a join keeps a body's untouched faces with their triangulation,
-and meshing the result keeps a triangulation that already meets the deflection, where from
-scratch those faces are meshed inside the result. The proof compares every mesh bit for bit
-after cuts and joins over cached bodies with planes, cylinders and the benchmarks' fillets, and
-finds no difference; free-form and toroidal faces under a cut are not among its designs.
+**What a cached body carries, and what the tests show.** A cached body carries the
+triangulation the view's meshing left on its faces, where a body evaluated again has none.
+- OCCT's booleans and its distance check (behind `bodiesTouch`) give the same result over
+  operands meshed coarse (0.5 mm), fine (0.005 mm) or not at all: the same description
+  (sub-shape counts, order, types, sizes), history, volume, and display mesh of a copy of the
+  result, bit for bit, for fuse, cut and common of a torus, a body with a B-spline face and a
+  filleted box with a hole, and the same distance (`meshed-operands.test.ts`; a result whose
+  operand moved by a nanometre compares as different).
+- A cut keeps a body's untouched faces with their triangulation. The result's mesh equals a
+  cleared engine's when that triangulation is the view's own (the view meshes every body at one
+  tessellation): a hole through a spline body clear of its B-spline side, and a hole in a plate
+  joined to a torus away from the torus (`add-access.test.ts`, cases by name). A finer
+  triangulation left on the cached body reaches the result's mesh (a control in the same file),
+  so the rule is: nothing but the view's meshing at the view's tessellation leaves a
+  triangulation on a cached body.
+- **Settled (ADR-0035's amendment "a kernel call never changes the shapes it is given"):** after
+  a cut or an intersect over a cached torus or loft, an edit that made that feature a join gave a
+  result whose `measure` box was about 1e-12 mm larger than from scratch. The cause was the
+  boolean raising a vertex tolerance of its tool in place, and the tool's bottom cap is its
+  sketch's cached profile face; booleans now work on copies. The differential set has the curved
+  design (a torus, a spline extrude and a smooth loft, with a plate joined to the torus, holes
+  and a plate over the others), clean over its 40 seeded edits; it differs with the build before
+  that amendment.
 
 Cases by name: through all over cached bodies (P1–P3 lying cylinders, `add`; T a New Body disc
 "through all" both ways, `write`; P1's distance edited: exactly P1 and T evaluated, the same as a
@@ -440,3 +454,314 @@ checks each term's access after its edit). Control (3) without its fault (the ri
 that predicate) differs at step 0 already, as (2) does: T sees no bodies.
 `recomputer-keep.test.ts`'s six-mesh case now edits grooved plates (a cut reads every plate), and
 a new case shows one mesh for separate plates.
+
+**More features answer `add` (2026-11-25).** The primitives, the revolve, the coil, the sweep, the
+loft and the import answer `add` too, each for the inputs its predicate allows; everything else is
+`write` as before. The predicates use the parsed inputs' settings (`primitiveSettings`,
+`revolveSettings`, …), as `addsOnly` does.
+
+- **Box, cylinder, sphere, torus** (`primitiveAddsOnly`, `features/primitives.ts`; there is no
+  other primitive type, `KERNEL_PRIMITIVES`) and **the coil** (`coilAddsOnly`, `features/coil.ts`),
+  both through `placedAddsOnly`: New Body, no picked bodies, placed on a plane (the default XY, an
+  origin plane or a construction plane). `write` for a face placement, join, cut and intersect,
+  and picked bodies.
+- **The revolve** (`revolveAddsOnly`, `features/revolve.ts`): New Body, no picked bodies, extent
+  `angle`, the axis an origin or construction axis or a sketch line (`axis` or `sketchEntity`),
+  every profile a sketch's profile or text. `write` for a face profile, an edge axis, no axis,
+  "to object" whatever the object (a plane too: see below), join, cut, intersect, picked bodies.
+- **The sweep** (`sweepAddsOnly`, `features/sweep.ts`): New Body, no picked bodies, every profile
+  a sketch's profile, every piece of the path a sketch curve. `write` for a face profile, an edge
+  in the path, join, cut, intersect, picked bodies.
+- **The loft** (`loftAddsOnly`, `features/loft.ts`): New Body, no picked bodies, every section a
+  sketch's profile, a sketch point, or the origin or a construction point (`profile`, `sketchEntity`,
+  `point`). `write` for a face or a vertex section, join, cut, intersect, picked bodies.
+- **The import** (`features/import.ts`): `add` for every input. It has no reference input, so no
+  picked body, no operation and no upstream feature. It reads the bodies before it only by
+  iterating, to skip IDs under its own prefix, which the own-prefix check leaves none of.
+  `splitSolids` (`features/bodies.ts`) used to look an ID up (`ctx.bodies.has`) for each fresh
+  piece of a body with two or more solids, which every STEP file of several solids reaches (a
+  FreeCAD or f3d design's stored shapes are plain STEP or STL imports, with no feature type of
+  their own): it now collects the IDs before it by iterating (`earlier`), the same set under
+  `write`. Without that change the look-up failed the `add` evaluation of every such file inside
+  `splitSolids`, after a piece was kept, so it left shapes behind (see the checks below) and the
+  file would be parsed again as `write`.
+
+**What they read under those predicates** (audited on this branch; file:line; `features/` unless
+said; the shared helpers as listed for the extrude: `explicitBodies` `operation.ts:91` returns at
+once for no picked bodies, `operate` → `newBodies` `operation.ts:333` iterates the empty map and
+names bodies with `ctx.bodyId` (:341, :356), `splitSolids` `bodies.ts:38`/:41 iterates, and its
+look-up `earlier.has` (:88) is the local set):
+
+- Primitives (`primitives.ts`, one evaluator `primitive()` for all four): `primitiveSettings`
+  (:112) and `numbersOf` (:113: `ctx.value` or the core's constant); `placement` (:114) →
+  `planeFrame` (:273): `ref.kind === 'face'` resolves among the bodies (:275, not reached),
+  `originPlane` (:287, a constant table) or `planeOf` → `constructionOf` → `ctx.output` of the
+  construction plane (`references.ts:55`: an upstream key; a construction plane on a body face is
+  `read`, `construction.ts:85`); `build` (:116): `planarFace` (:301, own curves), `namedPrism`
+  (:447) or `namedRevolve` (:463), which take the kernel only; `explicitBodies` (:117, reached for
+  New Body too: picked bodies left from a join are looked up and fail if gone); `operate` (:122);
+  `splitSolids` (:119). Body IDs `<feature>:0`.
+- Coil (`coil.ts`): `coilSettings` (:113), `numbersOf` (:114), `placement` (:148 → `planeFrame`
+  :201, as above), `helixSweep` (:151 → :81 `planarFace`, :83 `kernel.helix`, :94 `sweepTool`):
+  own geometry; `explicitBodies` (:161), `operate` (:166), `splitSolids` (:163). IDs
+  `<feature>:<n>`.
+- Revolve (`revolve.ts`): `revolveSettings` (:220); `partsOf` (:226 → `sources.ts`
+  `profilePart` :86 / `textParts` :113, sketch outputs; `facePart` :152 not reached);
+  `uniteParts` (:227, own faces); `axisOf` (:228 → :263): `originAxis` (:266, constant),
+  `lineOf` → `constructionOf` (:269, upstream), `sketchLineAxis` (:273 → :299 `ctx.output`,
+  upstream), the edge branch (:275 `ctx.resolve`) not reached; `oneSide` (:234 → :331, :363):
+  the parts' own faces and a half plane; `anglesOf` (:239 → :406, `ctx.value`); `sweep` (:241,
+  `namedRevolve` :478); `centroidOf` (:244, own face); `explicitBodies` (:250), `operate` (:255),
+  `splitSolids` (:252). `sweepToObject` (:242) is not reached: it **iterates and measures every
+  body** (`for (const body of ctx.bodies.values())`, :522) to size its target, for every kind of
+  object, before `trimTarget` (`to-object.ts:49`, `ctx.bodies.get` :60, `ctx.resolve` :71) looks
+  at it; that iteration isn't noticed, so the extent term is `extent === 'angle'`, not "the object
+  is a plane". IDs `<feature>:0…n-1` (several separate profiles make several bodies).
+- Sweep (`sweep.ts`): `sweepSettings` (:76), `ctx.value` of twist and scale (:83, :84); `baseOf`
+  (:92 → `partsOf`: `profilePart`; `facePart` not reached; the schema allows no text in a sweep);
+  `pathOf` (:93 → `pieceOf`: the edge branch :220 not reached, a sketch curve's exact geometry and
+  frame from `ctx.output` :230, upstream; `kernel.path` :207 of those pieces); `sweepTool` (:94 →
+  `namedSweep` :267, kernel only); `explicitBodies` (:99); `placementReport` (:101 → `kernel.properties`
+  :132, :181 of the profile face and the own path); `operate` (:105), `splitSolids` (:102). IDs
+  `<feature>:<n>`.
+- Loft (`loft.ts`): `loftSettings` (:61); `sectionOf` (:71): a profile → `partsOf` (:107,
+  `profilePart`; a face → `facePart`, not reached), a point → `pointOf` (:119 →
+  `references.ts:162`: the origin point or `constructionOf`, upstream; a vertex → `ctx.resolve`
+  `references.ts:157`, not reached), a sketch point → `sketchPoint` (:120 → :129 `ctx.output`,
+  upstream); the coplanarity check (:80, own planes); `loftTool` (:87 → `namedLoft` :156);
+  `explicitBodies` (:88), `operate` (:93), `splitSolids` (:90). IDs `<feature>:<n>`.
+- Import (`import.ts`): `ctx.fileType` (:142) picks the branch. STEP: `ctx.file` (:155),
+  `readStep` (:157) and the XDE reads of colours, names and hidden solids, all of the file;
+  `new Map(ctx.bodies)` (:195, iterates), `ctx.bodyId(0)` (:194), `importNames` (:198, own shape),
+  `splitSolids` (:200; fresh IDs from `ctx.bodyId`), `importReport` (:338, the output's own naming
+  tables). Mesh files and OpenSCAD: `readMeshFile` (:512) or the 3MF `prepare` compiled
+  (`ctx.prepared` :684), `meshBodies` (:400, :688): `new Set(ctx.bodies.keys())` (:484) and
+  `new Map(ctx.bodies)` (:485) iterate, `used.has` (:490) is the local set. `prepareImport`
+  (:580) has no bodies at all (`PrepareContext`). No `names`, `resolve` or measure of an earlier
+  body. Body IDs `<feature>:<n>`; `import:<feature>:face:<n>` and `mesh:<feature>` are face names.
+- The engine around them: as for the extrude. `#checkSound` with `keepsBrokenBodies` (the import)
+  only warns; `#checkNames` iterates the bodies before it only when a table doesn't match.
+- No global state but the core's constant tables (origin planes and axes, the primitives' and
+  coil's default numbers) and the OpenSCAD compiles a compiler keeps (`compiles`, :642, keyed by
+  file name, source digest and definitions). File bytes come through `options.files` and are not
+  in the key (their bytes never change under their IDs); the attachment ID is.
+
+**What changes for an import.**
+- Its key no longer holds the bodies before it, so an edit before it is a cache hit: `prepare`
+  and `evaluate` don't run, the file isn't read, parsed or compiled again, and its bodies keep
+  their versions (no mesh is sent).
+- The cache entry is still dropped as any other: inside an inserted design, after a body with its
+  own ID prefix, and when evicted.
+- An error is cached like any other result. One whose cause was outside the document (the file's
+  bytes not there yet, say) would then no longer be tried again after an edit before the import,
+  as it was on main. The rule below tries those again at least as often as main did.
+
+**Errors from outside the document (2026-11-25).** An error can say its cause is outside the
+document, so that the same inputs may do better another time: the evaluator throws an
+`OutsideError` (`recompute/types.ts`, a `KernelError`) with one of two answers.
+- `next`, cheap to ask again: the engine keeps no entry, so the next recompute (any, an edit
+  after the import too) tries again. `MissingFileError` (the bytes haven't reached the worker),
+  "OpenSCAD isn't loaded in this kernel" (`#prepare`'s `openscad()`) and the compiler's "OpenSCAD
+  isn't downloaded yet" (offline).
+- `bodies`, costly to ask again: the compile was stopped (its time or memory limit, a trap) or its
+  worker died. Trying it on every recompute would run the compile up to its limit each time,
+  so it is kept as
+  main's `write` key kept it: an `add` evaluation that fails this way falls back to `write` for
+  these inputs as one that read a body does (`#readsBodies`, then the entry under the key with
+  the bodies before it; the fall-back's evaluation reuses what `prepare` gave, so nothing is
+  compiled twice), and an edit before the import tries again. Once it computes, it stays `write`
+  for these inputs until the engine forgets the key (`#readsBodies` keeps at most `maxEntries`).
+
+When was a failed import tried again? Main (the import `write`) tried it when its key moved: its
+own inputs or values, a feature it refers to, any body before it; and after eviction or a worker
+restart (an empty engine). Without the rule its key holds no bodies, so only its own edit did.
+
+| Cause | Main | Before the rule | Now |
+|---|---|---|---|
+| The bytes not there yet | an edit before it | its own edit | the next recompute |
+| OpenSCAD not loaded | an edit before it | its own edit | the next recompute |
+| OpenSCAD not downloaded (offline) | an edit before it | its own edit | the next recompute |
+| A compile stopped (time, memory, its worker) | an edit before it | its own edit | an edit before it |
+
+The import's `compileRetry` (`features/import.ts`) reads the cause the compiler marks on a failed
+result (`ScadResult.cause`: `offline`, or `stopped` for its time or memory limit, a trap or its
+worker dying, set in `@extrudo/openscad`'s `compiler.ts` and `messages.ts` where it words them),
+and so does `compileOnce` to forget such a compile. It doesn't read the words: an error of the
+file's own may quote its output, "stopped" in an assert's message say (2026-11-26; they were read
+from the words before, `/stopped/`, which took such an error for a stopped compile). An import's own
+error (a file that isn't an STL, an OpenSCAD syntax error) is a plain `KernelError` and stays
+cached: evaluated, and compiled, once. No other feature throws an `OutsideError`: the import is
+the only evaluator that reads a file (`ctx.file`), and the plugin feature, whose expansion reads
+its plugin file, words a missing one as a plain `KernelError`, and an expansion's failed run isn't
+kept anyway unless the code itself failed (`#expand`). In the engine: the entry's `retry`, no
+entry kept for `next`, and the fall-back's condition (a few lines). What `next` costs while its
+cause lasts: each recompute that walks the import runs its `prepare` and `evaluate` again (a
+look-up of the file; for the compiler not downloaded, one compile request, which asks for the
+compiler again), and the features after it stay cached. Nothing starts a recompute because a
+feature failed.
+
+Tests (`recompute/outside-errors.test.ts`; real OCCT and manifold, the compiler a stand-in that
+answers in the real compiler's words): each cause fails first, then the same document is
+recomputed once the cause is gone, then an edit before the import, on three engines: main's
+(`allWrite`, and the engine's own source with the rule's lines taken out), this branch's without
+the rule, and this one. They assert the table (and count the compiles). A file that isn't an STL
+is evaluated once over the same document and an edit before it; an OpenSCAD syntax error is
+compiled once, and so is an error of the file's own whose words hold "stopped" (on this engine
+and on main's, where the edit before it asks `compileOnce` again). With a plate after the import,
+a retry for a `next` cause, the cause still there or gone, evaluates the import alone: the plate
+answers `add`, so its key holds no bodies and it stays cached whether the import fails or
+computes.
+
+**Left `write`**, New Body features looked at (file:line, the read that keeps each there):
+thread (`thread.ts:180` resolves the face to thread, :214 copies every body for its cut, :220 the
+cut), emboss (`emboss.ts:151` and :269 resolve the face, :153 and :276 `ctx.bodies.get`), rib
+(`rib.ts:113` `ctx.bodies.size`, :118, :228, :241 iterate the bodies, :146 a join), hole
+(`hole.ts:121` and :277 iterate the bodies, :141 a cut), mesh to solid (`mesh-to-solid.ts:56`
+`ctx.bodies.get` of the body it converts). Script, plugin and insert-design are expansions;
+combine, the moves and mirrors, patterns, place on bed, remove, fillet, chamfer, shell, draft,
+offset and remove faces, split body, scale and simplify for print change bodies.
+
+**The proof for them** (`recompute/add-access-features.test.ts`; real OCCT, a real manifold
+module and OpenSCAD's WASM in Node, `strictLeaks`, no clock; the helpers both proofs share are in
+`recompute/add-access-test-support.ts`). Six designs, each with a box B0 and a plate before the
+feature's instances, a cut after them that splits several into pieces, and one instance after the
+cut: a box, cylinder, sphere and torus (one on a construction plane, one sized by a parameter);
+revolves about the X axis, a sketch line and a construction axis (one symmetric); coils on XY, a
+construction plane and XZ; sweeps along two sketch lines (one twisted, one scaled); lofts through
+profiles on construction planes (one ruled); imports of a STEP file of three solids (named, two
+coloured, one hidden), an STL, a 3MF of two parts and an OpenSCAD file of two blocks whose size
+follows a parameter. 40 seeded edits each: every term of the feature's predicate, made to an
+instance that answers `add`, which must leave it `write` (join, cut or intersect, the instance
+moved onto B0 for it; a picked body; a face to sit on, or as a profile or section; an edge as axis
+or path; a vertex as a loft's tip; "to object" up to XZ) or `add` (another plane or an offset; a box turned, a torus
+on its side; a coil's section or hand; another axis, text, angles and directions; a path's first
+curve, twist, scale, a fixed orientation; a point as a tip, ruled; an import's up axis, position
+and units); one that takes an instance back to `add` (its own inputs again); and the generic edits
+(an insert, a length scaled, suppress, the marker, a reorder, a delete, undo, a parameter). After
+every step the cached engine gives what a cleared engine gives, compared as for the extrude, and
+no recompute of either evaluates a feature twice (no fall-back). The extrude's proof now checks the
+same for its nine designs. The edited instance computed (status `ok`) at least once after: the
+operation (a real join, cut or intersect with B0) for the primitives, revolves, sweeps and lofts,
+a picked body and the way back in every design but the imports, a face to sit on, a plane, an
+offset and the shape for the primitives and coils, a face profile, an edge axis, "to object", an
+axis, text and angles for the revolves, a face profile (a cylinder's top along a path from its
+centre), an edge path (with a profile at its foot), the path and twist for the sweeps, a face
+section, a vertex tip (a small box over each loft), a point and ruled for the lofts, and every
+term's edit for the imports. The coils' operation is the one write term that doesn't compute: its
+edit leaves the coil where it is, overlapping nothing, so a coil's join, cut or intersect with a
+body isn't covered here.
+
+**Two references (2026-11-25).** A cleared engine with the same features can't see a predicate
+that admits inputs whose evaluator only iterates the bodies: under `add` both engines hand it the
+same empty `NoBodies`, so both make the same wrong result and nothing falls back. So both proofs
+compare the engine under test with a second reference too, cleared each step: the kernel's
+features with every `add` answer turned into `write` (`allWrite` in
+`recompute/add-access-test-support.ts`, main's engine before `add`), on everything but versions
+and keys: statuses and errors, origins, reports, body IDs and their order, every mesh (names
+included) bit for bit, and every body's `measure` box (both references compare boxes now). The
+proof in both files is clean against it. A control shows what it adds: the revolve's predicate
+without its `extent === 'angle'` term, in the engine under test and in the cleared reference alike
+(as if the kernel had the fault), and a revolve "to object" up to XZ at x 150: the plane is sized
+from the bodies the evaluator iterates, so under `add` it is too small and the revolve fails, the
+same way in both engines and without a fall-back. The comparison with the cleared engine is clean
+at both steps, the one with the all-`write` engine differs at the edit (statuses), and with the
+kernel's own predicate both are clean. The proofs take longer: both files 294 s → 520 s here
+(4 cores, the two files side by side, the same machine; the coils' differential 106 s → 198 s, the
+lofts' 87 s → 194 s, which also computes more now; every differential keeps its 900 s timeout).
+
+**No fall-back, counted exactly.** `fallbacks` counts a feature evaluated twice in one recompute.
+It used to allow as many evaluations as the document held the ID, since the seeded insert could
+put back a deleted feature that an undo had already restored; the insert now puts one back only
+while its ID is free, and `fallbacks` refuses a document that holds an ID twice.
+
+Counters: an edit of the first of four separate instances (each primitive type, revolves, coils,
+sweeps, lofts; an STL import before a 3MF, the STEP and the OpenSCAD import) evaluates that
+feature alone and sends one mesh; in each design, every term made to the first instance (an engine
+of its own per term) evaluates exactly that instance and the cut, also when the instance then
+fails (its body is gone, so the cut reads another body set); an import after a box `i0:a` (whose
+body `i0:a:0` has the import's prefix) runs as `write`, and an edit of the box evaluates both;
+an edit of a plate before four imports (the STEP file of three solids, the STL, the 3MF, the
+OpenSCAD file) evaluates the plate alone and sends one mesh, and the import's `prepare` and
+`evaluate` don't run, `options.files` isn't asked for a file and nothing is compiled (a wrapped
+registry and compiler count them). The predicates term by term (`primitiveAddsOnly` for each type,
+`coilAddsOnly`, `revolveAddsOnly`, `sweepAddsOnly`, `loftAddsOnly`, the import's answer).
+
+Each was checked to fail with its change taken out (the file changed, the filtered test run, the
+file restored): each feature's `bodyAccess` back to `() => 'write'` (the first-of-four counter of
+that feature: all four primitives, the coil, revolve, sweep and loft; for the import also the
+file-read counter and its predicate test); each predicate without one of its terms (the
+predicate's own test: operation and picked bodies for each, the primitives' plane, the revolve's
+extent, axis and profile terms, the sweep's profile and path terms, the loft's section term); and
+`splitSolids` with `ctx.bodies.has` again (the file-read counter and the imports' first-of-four
+counter). With that look-up the STEP import's `add` evaluation also left two shapes behind: the
+look-up throws after the piece before it was kept (`scope.keep`), so the strict leak check failed
+the first recompute; without strict leaks the engine would warn of the leak and fall back. A
+predicate changed in the source changes the cleared engine too, so the comparison with it stays
+clean and the differential sees such a fault through its other checks (run again on the edits as
+they are now, 2026-11-26):
+- without the primitives' picked-bodies term: the fall-backs (36 in the primitives design:
+  `explicitBodies`' look-up is noticed) and the flips (`bodies: add→add`); the all-`write`
+  reference sees nothing, since the fall-back runs the box as `write`;
+- without their operation term: the flips (`operation: add→add`) and the all-`write` reference
+  (75 differences: under `add` the join onto B0 finds no body and makes a new one); no fall-back;
+- without the revolve's extent term: the flips (`to-object: add→add`) and the all-`write`
+  reference (statuses, origins, reports and the body IDs, from the first "to object" edit on);
+  no fall-back, since "to object" goes up to the XZ plane, which is no body look-up.
+
+A negative control in the same file keeps the fault in the engine under test
+only, as the extrude's control (2) does: a box joined to a box it overlaps, said to be `add`,
+finds no body to join (the iteration isn't noticed, no fall-back) and makes a new one, so the
+bodies, statuses, reports, a mesh and a box differ at once, against both references. The revolve
+control of "Two references" keeps the fault in both engines.
+
+**Measured.** Kernel time and meshes sent for an edit of the first, a middle and the last
+instance, incremental with `have`, in Node, two runs each, on this branch with the features above
+always `write` (main's behaviour; the extrude keeps `add`) → as it is. 50 boxes 20 × 20 × 10 mm
+apart on XY, the edit a height of 12 mm; 50 knobs, each a sketch on XZ revolved 360° about one of
+its own lines, the edit an angle of 300°; 20 plates (60 × 40 × 5 mm extrudes) with a STEP import
+(`fixtures/imports/b3.step`) after the eleventh, the edit a plate's distance of 6 mm.
+
+| Design | Edit | Evaluated | Meshes sent | ms |
+|---|---|--:|--:|--:|
+| 50 boxes | first | 50 → 1 | 50 → 1 | 199, 202 → 11, 11 |
+| | middle | 26 → 1 | 26 → 1 | 99, 100 → 8, 8 |
+| | last | 1 → 1 | 1 → 1 | 6, 6 → 10, 10 |
+| 50 knobs | first | 50 → 1 | 50 → 1 | 407, 406 → 17, 18 |
+| | middle | 26 → 1 | 26 → 1 | 213, 212 → 15, 16 |
+| | last | 1 → 1 | 1 → 1 | 17, 17 → 15, 15 |
+| 20 plates and an import | first | 2 → 1 | 3 → 1 | 36, 36 → 6, 6 |
+| | middle (before the import) | 2 → 1 | 3 → 1 | 34, 55 → 9, 7 |
+| | last | 1 → 1 | 1 → 1 | 7, 7 → 7, 7 |
+
+Before, the edited plate and the import ran (the plates are `add` on both); now the import is a
+cache hit and its file isn't read. The last box's edit, 6 → 10 ms in these two runs, is
+6.4 → 6.8 ms as the median of 20 edits (each a new height; the box's evaluate 1.8 ms and its mesh 1.0 ms on both).
+The difference is the engine's walk, and it grows with the number of bodies faster than they do:
+with 500 boxes the last box's edit takes 20.0 → 32.0 ms (20 edits, two runs: 19.9–20.0 and
+31.7–32.0 ms). A CPU profile puts it in `mergeBodies`, which copies the bodies before an `add`
+feature to append its own (about 7.5 ms of a walk of 500 boxes), and in `hasOwnBodies`' scan of
+their IDs (about 2 ms): both scale with the bodies before each `add` feature, so a walk of N such
+features costs on the order of N² map entries. Not changed: appending in place would have to
+keep the snapshots a walk hands out (`ScadStep.before` and `after`, a preview's base) unchanged.
+
+In the app (the 30- and 100-plate designs above, production build, the same machine and setup,
+median of 4 interleaved runs, main → this): committing an edit of the first plate in its dialog
+191 → 184 ms (30 plates) and 260 → 262 ms (100 plates) until the model is ready, undoing it
+320 → 321 and 331 → 330 ms. The page's blocked time stays within its runs' spread for six of
+the seven actions; opening the 100-plate design gave 818–864 ms (main) and 865–926 ms (this),
+and opening the 30-plate one 571–582 and 448–595 ms. Opening the 100-plate design again, quiet
+machine, interleaved: 4 more runs of all the actions gave 1,022–1,050 and 1,045–1,194 ms (this
+higher in all 8 pairs, by 44 ms as the median difference); 8 runs of opening alone 1,047–1,150
+and 991–1,139 ms (medians 1,092 and 1,097); 4 profiled runs 1,027–1,212 and 998–1,094 ms (this
+lower in 3 of the 4 pairs), their blocked time split by kind (React render and commit, three.js, sketch
+drawing, garbage collection, worker messages) with no kind higher here beyond its spread. Not
+a difference of this change, then, as far as these runs tell; the level moves by about 200 ms
+between batches of runs. The plates are extrudes, which answered
+`add` before, so no change was expected there.
+
+**Not covered:** the features inside an inserted design (an import in one included); a sketch's
+geometry, constraints and dimensions; a construction plane or axis made from a body's face or edge
+under one of these features (it answers `read` and reaches them as an upstream key, as a sketch on
+a face does for the extrude); an import whose attachment record changes its file name (the
+attachment commands add and remove a record, `addAttachment` refuses an ID in use); joints, annotations, sheets
+and previews.

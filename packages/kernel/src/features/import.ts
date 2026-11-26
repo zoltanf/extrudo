@@ -84,11 +84,12 @@ import type { ScadCompiler, ScadDefine, ScadRequest, ScadResult } from '@extrudo
 import { KernelError, MeshError, type ShapeHandle, type Vec3 } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { splitName } from '../naming/topo-id';
-import type {
-  EvalContext,
-  FeatureOutput,
-  KernelFeatureDefinition,
-  PrepareContext,
+import {
+  type EvalContext,
+  type FeatureOutput,
+  type KernelFeatureDefinition,
+  OutsideError,
+  type PrepareContext,
 } from '../recompute/types';
 import { standardStepReals } from '../step-reals';
 import { splitSolids } from './bodies';
@@ -112,7 +113,11 @@ const THREE_MF_UNITS: Readonly<Record<string, number>> = {
 
 export const kernelImport: KernelFeatureDefinition<ImportInputs> = {
   ...importFeature,
-  bodyAccess: () => 'write',
+  // Only adds bodies (ADR-0024's amendment on `add` access): it has no reference input, and reads
+  // the bodies before it only by iterating (`new Map(ctx.bodies)`, `ctx.bodies.keys()`, the IDs
+  // `splitSolids` collects), to skip IDs under its own `<feature>:` prefix; the engine treats it
+  // as `write` when an earlier body has that prefix.
+  bodyAccess: () => 'add',
   // A file's body is kept as it is, sound or not (ADR-0051, 2026-10-29).
   keepsBrokenBodies: true,
   prepare: prepareImport,
@@ -580,7 +585,10 @@ async function prepareImport(ctx: PrepareContext<ImportInputs>): Promise<ScadCom
   const source = ctx.file(file);
   const { defines, warnings } = scadDefines(ctx, name, new TextDecoder().decode(source));
   const result = await compileOnce(ctx.openscad(), { fileName: name, source, defines });
-  if (!result.ok) throw new KernelError(result.error);
+  if (!result.ok) {
+    const retry = compileRetry(result);
+    throw retry ? new OutsideError(result.error, retry) : new KernelError(result.error);
+  }
   return { model: result.model, warnings: [...warnings, ...result.warnings] };
 }
 
@@ -628,10 +636,12 @@ function assigns(source: string, variable: string): boolean {
 }
 
 /**
- * The compiles a compiler has done lately, by file and definitions, so that
- * moving an import in the timeline, or a preview and a recompute of the same
- * values, compile once (the engine's cache key also has the bodies before the
- * feature in it). A few, since a result is a small 3MF.
+ * The compiles a compiler has done lately, by file and definitions, so that a
+ * preview and a recompute of the same values compile once, and so does an
+ * import whose cache entry the engine can't use: inside an inserted design, or
+ * after a body with its own ID prefix (there its key has the bodies before it
+ * in it, ADR-0024's amendment on `add` access), or once the entry was evicted.
+ * A few, since a result is a small 3MF.
  */
 const compiles = new WeakMap<ScadCompiler, Map<string, Promise<ScadResult>>>();
 const COMPILES_KEPT = 16;
@@ -651,10 +661,25 @@ function compileOnce(compiler: ScadCompiler, request: ScadRequest): Promise<Scad
   // A compile that was stopped (its time, a crash) or found no WASM (offline)
   // may do better another time.
   void result.then((r) => {
-    if (!r.ok && /stopped|isn't downloaded/.test(r.error)) kept.delete(key);
+    if (compileRetry(r)) kept.delete(key);
   });
   while (kept.size > COMPILES_KEPT) kept.delete(kept.keys().next().value as string);
   return result;
+}
+
+/**
+ * Whether a failed compile's cause was outside the file (ADR-0024's amendment on errors from
+ * outside the document), as the compiler marks it (`ScadResult.cause`, never read from the words,
+ * which may quote the file's own output): OpenSCAD not downloaded yet is asked about again on the
+ * next recompute; a compile stopped by its time or memory limit, a trap or its worker dying, once
+ * the bodies before the import change (as when the import was `write`), since each try runs the
+ * compile up to its limit again.
+ */
+function compileRetry(result: ScadResult): OutsideError['retry'] | undefined {
+  if (result.ok) return undefined;
+  if (result.cause === 'offline') return 'next';
+  if (result.cause === 'stopped') return 'bodies';
+  return undefined;
 }
 
 /** A 64-bit FNV-1a of the bytes, as hex: enough to tell two sources apart. */
@@ -677,7 +702,9 @@ function evaluateScadImport(
 ): FeatureOutput {
   const compiled = ctx.prepared as ScadCompiled | undefined;
   const name = ctx.fileName(file);
-  if (!compiled) throw new KernelError(`${name} wasn't compiled: OpenSCAD isn't loaded here.`);
+  if (!compiled) {
+    throw new OutsideError(`${name} wasn't compiled: OpenSCAD isn't loaded here.`, 'next');
+  }
   const meshes = threeMfMeshes(read(read3mf, compiled.model, name), units, name);
   const output = meshBodies(ctx, name, meshes, placement);
   for (const warning of compiled.warnings) ctx.warn(warning);

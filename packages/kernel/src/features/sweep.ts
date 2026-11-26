@@ -51,9 +51,26 @@ export const PROFILE_PLACEMENT = (pathLength: number) => Math.max(0.01 * pathLen
  */
 export const kernelSweep: KernelFeatureDefinition<SweepInputs> = {
   ...sweepFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => (sweepAddsOnly(inputs) ? 'add' : 'write'),
   evaluate: evaluateSweep,
 };
+
+/**
+ * Whether a sweep only adds bodies and reads none before it (`add`, ADR-0024's amendment on `add`
+ * access): a new body (a join, cut or intersect finds or takes the bodies it meets), no picked
+ * bodies (`explicitBodies` looks them up, for a new body too), every profile a sketch's profile
+ * and every piece of the path a sketch curve (a face profile and an edge are resolved among the
+ * bodies). A sketch on a face keys the bodies itself and reaches the sweep as its upstream key.
+ */
+export function sweepAddsOnly(inputs: SweepInputs): boolean {
+  const settings = sweepSettings(inputs);
+  return (
+    settings.operation === 'new-body' &&
+    settings.bodies.length === 0 &&
+    settings.profiles.every((ref) => ref.kind === 'profile') &&
+    settings.path.every((ref) => ref.kind === 'sketchEntity')
+  );
+}
 
 function evaluateSweep(ctx: EvalContext<SweepInputs>): FeatureOutput {
   const settings = sweepSettings(ctx.inputs);
