@@ -1293,3 +1293,53 @@ runs: median and range, ms, main → this), until the model is ready: committing
 first plate in its dialog 2,145 (2,123–2,219) → 278 (266–281); undoing it 318 (316–320) → 320
 (320–322); opening the design 1,238 (1,203–1,364) → 1,159 (972–1,254). The page's blocked time:
 commit 0 → 0, undo 0 → 0, open 551 (533–587) → 471 (385–556).
+
+## Amendment 2026-11-27: new bodies in a `view` result
+
+**Decision.** A `view` result may hold bodies the view didn't have. With it, Move, Scale and
+Mirror of bodies answer `view` with a copy too (and a mirror's join), the patterns of bodies
+(rectangular, circular, along a path) and Split Body answer `view`, and a Combine cut that splits
+its target keeps its view. Patterns and mirrors of features stay `write` (the amendment above).
+
+**The rule** (`fitsView`, `mergeInPlace`, `recompute/engine.ts`):
+
+- **No body with the feature's own ID prefix** (`<feature>:`) may exist, in the view or out of
+  it (`hasOwnBodies`, as for `add`): every new ID is `<feature>:<n>`, picked by the feature's own
+  count or by skipping the IDs it is given, so with no such body the IDs are the ones `write`
+  picks. Else the feature runs as `write` at once.
+- **No ID of a body outside the view** in the result (it would replace a body the feature didn't
+  see), and the view's bodies in the view's order, as before; no ID put back after its `delete`
+  stays a rule for evaluators (the order check sees it only when a later view body follows).
+- **Places.** Under `write` a new body's place comes from how it was made: a `set` of a new ID on
+  the evaluator's copy of the map appends it at the end of the whole map; `splitSolids` places
+  the pieces it splits off right after the body they came from. In a view's result the two show by
+  where the new IDs stand. A new ID that a view body follows was placed after the view body before
+  it (only `splitSolids` places a body there), so it goes right after that body in the whole map.
+  After the result's last view body, the new IDs whose `origins` entry is that body are its
+  pieces and go right after it; the rest go to the end, in the result's order. Only two places
+  write an `origins` entry: `splitSolids`, for a piece of a body that existed before the feature
+  (`features/bodies.ts:88`), and Split Body's mesh path, for a mesh's second side, which it adds
+  with a `set` (`features/split-body.ts:94`, :96), so at the end. The two places differ for a mesh
+  piece of the last view body when a body outside the view comes after that body in the walk: the
+  result can't tell them apart, so then the feature runs as `write` (remembered). A B-rep piece
+  there keeps the view. A new ID before the result's first view body (no evaluator makes one)
+  runs as `write`.
+- **Keys and versions** of a new body are those of any body a feature makes: the version is the
+  hash of the key that made it (`hashOf(key, id)`), and a view's key holds the view's versions
+  and the inputs.
+
+The engine change is these checks and the merge: 59 lines of code added and 9 removed, comments
+aside.
+
+**What each new-body path reads** (audited for this change; file:line, `features/`; the reads of
+the in-place paths are in the amendment above):
+
+| Feature | New-body path | Under `view` |
+|---|---|---|
+| Move, Scale (`transform.ts`, `scale.ts`) | a copy's ID `ctx.bodyId(i)` by the body's place in its list (`transform.ts:90`, `scale.ts:59`), `set` on the copy of the map (`withImages`, `transform.ts:96`, :99) | appended at the end |
+| Mirror (`transform.ts`) | copies as Move's; the join: each copy against its own original (`bodiesTouch`, :283), fused into it (:291, :298) or kept apart with `ctx.bodyId(extra++)` (:284, :285, appended); `splitSolids` (:311) | the original and its copy only; pieces of an original after it |
+| Patterns of bodies (`pattern.ts`) | each picked body looked up with its names (:407, :417); its instances at each placement, ID `ctx.bodyId(pairSlots(slot, place))` (:431, :432, appended); the join fuses them into the original (:444, :457) and `splitSolids` (:467); the join's warning compares the result with the number of bodies it was given (:410, :470; it read `ctx.bodies.size`, which a view notices); the layout: directions and axis by `lineOf` (:689, :697, :749), a path by `pathFromRefs` (:822: sketch curves through `ctx.output`, edges resolved); the report's centre from the picked bodies' boxes (:146), all bodies only when none is found (:159), and then the view has no `body` reference and the feature runs as `write` | the picked bodies; references passed over or resolved by name |
+| Split Body (`split-body.ts`) | each picked body (:56, :69), the plane (`planeOf`, :58: a face resolved by name, which brings its body into the view; a plane passed over); `splitOne` of that body (:70); a B-rep result stays one compound under its ID (:77) for `splitSolids` (:116) to split; a mesh's smaller side gets the next `ctx.bodyId(n)` not in the map (:92, :93) and a `set` (:94) with an origin (:96) | the picked bodies; a piece of a middle body after it, of the last at the end unless a body outside the view follows it (then `write`) |
+| Combine (`combine.ts`) | `splitSolids` of the cut target (:162) | as Split Body's B-rep pieces |
+| `splitSolids` (`bodies.ts`) | the IDs before it by iterating (:41); fresh IDs `ctx.bodyId(n)` not in the output (:47, :50, :51); a piece right after its body (:113) with an origin when the body existed before (:88) | the output holds the view's bodies and the new ones: the same fresh IDs as under `write` when no body has the feature's prefix |
+
