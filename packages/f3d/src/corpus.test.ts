@@ -1,9 +1,10 @@
 /**
  * Reads a folder of real `.f3d` files, when one is given: every file decodes,
  * and every one maps to a design without throwing, its sketch constraints and
- * dimensions vetted by the solver without moving anything. The files are other
- * people's designs, so none are checked in; point `F3D_SAMPLES` at a folder
- * of them to run this (`F3D_SAMPLES=~/f3d pnpm vitest run packages/f3d`), and add
+ * dimensions vetted by the solver without moving anything. The files are the
+ * maintainer's own designs and a few openly licensed ones (FORMAT.md,
+ * Provenance), and none are checked in; point `F3D_SAMPLES` at a folder of
+ * them to run this (`F3D_SAMPLES=~/f3d pnpm vitest run packages/f3d`), and add
  * `F3D_REPORT=<file>` for what each file left out, technical detail included.
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
