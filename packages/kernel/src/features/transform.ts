@@ -110,10 +110,11 @@ export function isIdentity(matrix: Matrix12): boolean {
 
 export const kernelMove: KernelFeatureDefinition<MoveInputs> = {
   ...moveBodiesFeature,
-  // A move in place reads and changes only the bodies it names (ADR-0024's amendment on `view`
-  // access): its axis or points are an origin or construction axis or point, a sketch line, or an
-  // edge or vertex, which the view holds. A copy adds bodies, so it stays `write`.
-  bodyAccess: (inputs) => (moveSettings(inputs).copy ? 'write' : 'view'),
+  // Reads and changes only the bodies it names, and adds their copies (ADR-0024's amendments on
+  // `view` access): its axis or points are an origin or construction axis or point, a sketch line,
+  // or an edge or vertex, which the view holds; a copy's ID is `<feature>:<i>` by the body's place
+  // in its list.
+  bodyAccess: () => 'view',
   evaluate: evaluateMove,
   csg: moveCsg,
 };
