@@ -124,9 +124,10 @@ with a reference STEP) showed it is practical.
    Import .f3d… tile and home-screen button went into Import Model and
    Import….
 5. **No sample files in the repository.** The designs used to work out the
-   format are other people's or the owner's own; `corpus.test.ts` reads a
-   folder of them when `F3D_SAMPLES` points at one. `map.test.ts` covers the
-   mapper on hand-built decoded data.
+   format are the maintainer's own and a few openly licensed ones
+   (`packages/f3d/FORMAT.md`, Provenance); `corpus.test.ts` reads a folder of
+   them when `F3D_SAMPLES` points at one. `map.test.ts` covers the mapper on
+   hand-built decoded data.
 
 ## Hostile files
 
