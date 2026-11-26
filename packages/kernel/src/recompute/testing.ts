@@ -133,6 +133,14 @@ export function testFeatures(): TestFeatures {
     },
   );
 
+  // A body without a solid: the curved side face of a cylinder off the origin.
+  define('test-face', z.strictObject({}), ({ kernel, bodies, bodyId }) => {
+    using scope = kernel.scope();
+    const cylinder = scope.track(kernel.cylinder(5, 10, [20, 10, 0]));
+    const side = kernel.describe(cylinder).faces.findIndex((face) => face.type === 'cylinder');
+    return { bodies: new Map(bodies).set(bodyId(), kernel.subShape(cylinder, 'face', side)) };
+  });
+
   define('test-broken', z.strictObject({}), ({ kernel, bodies, bodyId }) => ({
     bodies: new Map(bodies).set(bodyId(), kernel.brokenSolidForTests()),
   }));

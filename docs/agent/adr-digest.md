@@ -1455,16 +1455,18 @@ from the fixed-order `BRepGProp_Vinert` **when its mass agrees with the Gauss–
 centre by `gaussKronrodCentre` (Gauss–Kronrod with the centre flag, asked `CENTRE_EPS` = 1e-5, about
 an apex moved `CENTRE_APEX` = 0.1 of the box diagonal off P: `VinertGK` always takes its location as
 the apex, so a face can't be redone alone); if that pass fails, the fixed-order moments stand.
-**Stated accuracy: `CENTRE_EPS` × the box diagonal.** A curved face's failed integral → the whole
+**The centre's accuracy is asked, not bounded** (`CENTRE_EPS` per integral; measured on the shapes tried:
+the second pass within 1.7e-10 mm, agreeing faces within 2.1e-10 of the box diagonal). A curved face's failed integral → the whole
 shape's bounded `VolumeProperties` (volume and centre; the one case where the volume differs from the
 plain sum on purpose). Conic prisms of rho ≥ 0.9, the loft measured and rational B-spline cylinders,
 spheres, tori and cones take the second pass. Readers: Measure's centre (`inspect`), the FreeCAD
 import's stored-shape check, the rib's side (a rib next to such a body chooses its side by that
-centre). **A caller that doesn't read the centre doesn't call `properties`**: the exact box is
-`Kernel.exactBox` (facade `exactBox`, `properties`' box code in the private `tightBox`), a volume is
-`measure`. Tests: `mass-properties.test.ts` "the centre of mass of a body with a rational edge"
-(coils: the fixed-order path; a rho 0.95 prism within the stated bound: the second pass) and
-`features/rib.test.ts`'s side test with a coil beside the bracket.
+centre). **`properties` only where the centre is read or a volume must be 0 without a solid** (a
+sheet's parts list, the joint check's overlap: `measure` gives a face a signed volume); the exact box
+alone is `Kernel.exactBox` (facade `exactBox`, `properties`' box code in the private `tightBox`). Tests: `mass-properties.test.ts` "the centre of mass of a body with a rational edge"
+(coils: the fixed-order path; a rho 0.95 prism within 1e-5 of its box diagonal, a margin over the
+measured error: the second pass) and
+`features/rib.test.ts`'s side test with a coil beside the bracket; `solid-gate.test.ts`.
 **P4-12's third amendment (2026-10-16)**: an **open fit spline** may store
 `tangents: { start?, end? }`, its end **derivative vectors** (mm per unit of the
 0..1 parameter; `fitSpline(points, tangents)` adds a pole and a Piegl & Tiller

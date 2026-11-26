@@ -295,10 +295,13 @@ describe('rib on an L-bracket', { timeout: 300_000 }, () => {
 
   it("takes the side of the bodies' centre of mass, a body with a rational edge included", async () => {
     // A coil (a swept circle: rational edges) beside the bracket, two whole turns about an axis
-    // along Y at (80, −56.4) in the XZ plane. Its vertices all lie R + a off the axis, so the
-    // average of its vertices is 23 mm off its centre of mass, and that is enough to carry the two
-    // bodies' volume-weighted centre across the diagonal's line: by the vertices' average it lies
-    // on the bracket's open side, by the centre of mass on its corner side, where the rib closes.
+    // along Y at (80, −56.4) in the XZ plane. Its vertices all lie R + a off the axis at the same
+    // X and Z (both ends and every turn's seam meet the plane through the axis at the start), so
+    // any average of them — `describe`'s, each vertex once, or the facade's, each vertex once per
+    // face it bounds — is the same point in the XZ plane, 23 mm off the coil's centre of mass. That
+    // carries the two bodies' volume-weighted centre across the diagonal's line: by the vertices'
+    // average it lies on the bracket's open side, by the centre of mass on its corner side, where
+    // the rib closes.
     const { features } = bracket();
     const coil = {
       ...testFeature('C', 'coil'),

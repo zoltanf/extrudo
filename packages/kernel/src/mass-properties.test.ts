@@ -307,6 +307,10 @@ describe('the volume of a body with a rational edge', () => {
 });
 
 describe('the centre of mass of a body with a rational edge', () => {
+  // Not tested here (ADR-0063's amendment says so): the second pass's failure branch (the
+  // fixed-order moments stand) and a curved face whose Gauss–Kronrod integral fails (the whole
+  // shape goes to the bounded integral). No shape among those tried makes OCCT fail there.
+
   it('is the closed form for a coil, wherever it is', () => {
     // A screw motion keeps volume (its Jacobian is r), so the tube's centre is the section's
     // r-weighted radius R + a²/4R turned through the angle the coil covers, and half its rise.
@@ -366,10 +370,12 @@ describe('the centre of mass of a body with a rational edge', () => {
     }
   });
 
-  it('is the area centroid for a conic prism of rho 0.95, within the stated bound', () => {
+  it('is the area centroid for a conic prism of rho 0.95, within 1e-5 of its box diagonal', () => {
     // A flatter shoulder: the fixed-order integral of this wall is off by about 1e-4 of the
-    // volume, so the centre comes from the Gauss–Kronrod pass, whose stated accuracy is 1e-5
-    // (CENTRE_EPS) times the box diagonal. Without that pass the centre is 5.7e-3 mm out.
+    // volume, so the centre comes from the second, Gauss–Kronrod pass (each integral asked for
+    // CENTRE_EPS = 1e-5). Its error here was measured at 8e-10 mm; the tolerance, 1e-5 times the
+    // box diagonal (3.6e-4 mm), is a margin over that, not a bound. Without the second pass the
+    // centre is 4.7e-3 mm out (the fixed-order moments; measured in a native build).
     const shape = prism(XY, 0.95);
     try {
       const { centroid, volume } = kernel.properties(shape);

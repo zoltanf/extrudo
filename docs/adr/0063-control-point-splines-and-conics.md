@@ -799,11 +799,14 @@ of mass.
   apex is moved because about P a centre component can cancel, and kept near P because a far
   apex makes large cones of both signs. **If that pass fails**, the fixed-order moments
   stand, and so does the volume.
-- **The stated accuracy of the centre: within `CENTRE_EPS` × the box diagonal.** For the
-  second pass the integrals' bound gives an error of at most CENTRE_EPS × (Σ|mᵢ|·|cᵢ − a| +
-  |c − a|·Σ|mᵢ|) / |V| over the curved faces' cones from the apex a; for the shapes below
-  that factor is 0.2 to 0.8 of the box diagonal. For the fixed-order path, the measured
-  effect of any agreeing face on the centre is at most 2.1e-10 of the box diagonal (below).
+- **How accurate the centre is: asked, not bounded.** The second pass asks OCCT for
+  `CENTRE_EPS` per integral; if each integral met it, the centre's error would be at most
+  CENTRE_EPS × (Σ|mᵢ|·|cᵢ − a| + |c − a|·Σ|mᵢ|) / |V| over the curved faces' cones from the
+  apex a, which has no upper limit where the cones cancel (a thin-walled hollow part), and
+  OCCT reports only the mass integral's reached error, so nothing checks the moments. On the
+  fixed-order path the agreement of a face's mass doesn't bound its moment either. What is
+  known is what was measured (below): on the shapes tried, the second pass within 1.7e-10 mm,
+  the fixed-order path within 2.1e-10 of the box diagonal per agreeing face.
 - `looseBox` and `tightBox` are private. The planar area is still integrated twice in
   `measure` (once for the volume, once in `integrateArea`): sharing the loop would move area
   digits of planes without a rational edge, which take the fixed order there.
@@ -821,8 +824,8 @@ of five runs (`properties`); the centres against Gauss–Kronrod about P at 1e-9
   loft measured (a rho 0.8 conic to a circle, 5.4e-5), and a cylinder, a sphere, a torus and
   a cone converted to rational B-splines (several spans each; 4.4e-4 to 9.2e-3).
 - **Accuracy.** The second pass's centre differs from the reference by at most 1.7e-10 mm on
-  those shapes, the 0.5 mm parts included (the bound above allows 3.6e-4 mm for the rho
-  0.95 prism). Among faces whose fixed-order mass agrees, the largest effect on the centre
+  those shapes, the 0.5 mm parts included (for those shapes the factor in the formula
+  above is 0.2 to 0.8 of the box diagonal). Among faces whose fixed-order mass agrees, the largest effect on the centre
   is 2.1e-10 of the box diagonal (a rho 0.8 prism's wall, a cut sphere's face). Without the
   second pass, the disagreeing shapes' centres are off by up to 0.77 mm (rho 0.99).
 - **Volume.** Bit-identical to main's on every shape here (33 shapes).
@@ -852,16 +855,20 @@ rational edge":
 - a conic prism of rho 0.4, plain, moved and turned (located caps), mirrored (indirect
   frames), against the profile's area centroid within 1e-6 mm: the fixed-order path with
   planar cones;
-- a conic prism of rho 0.95 against its area centroid within `CENTRE_EPS` × its box
-  diagonal (the stated bound), and its `properties` volume equal to `measure`'s: the second
-  pass.
+- a conic prism of rho 0.95 against its area centroid within 1e-5 × its box diagonal
+  (3.6e-4 mm, a margin over the measured 8e-10 mm, not a bound), and its `properties` volume
+  equal to `measure`'s: the second pass.
+
+Not tested: the second pass's failure branch (the fixed-order moments stand) and a curved
+face whose Gauss–Kronrod integral fails (the whole shape goes to the bounded integral); no
+shape tried makes OCCT fail there.
 
 Nothing in the kernel tells which path a shape took, and the facade has no switch for it,
 so the coverage rests on what was taken out in a native build running the same assertions:
-the fixed-order moments left out fail the coil and rho 0.4 tests (5.7 and 2.4 mm), the
+the fixed-order moments left out fail the coil and rho 0.4 tests (5.7 and 2.4 mm off), the
 planar cone's centre at ½ instead of ¾ fails all three (0.027, 0.27 and 0.39 mm), the second
-pass skipped fails the rho 0.95 test (4.7e-3 mm), and that pass without its planar cones
-fails it too (1.35 mm).
+pass skipped fails the rho 0.95 test (its centre then 4.7e-3 mm off, the fixed-order
+moments'), and that pass without its planar cones fails it too (1.35 mm).
 
 ### From scratch
 
@@ -895,13 +902,21 @@ mass on the corner side; the rib closes on the corner side). No fixture has a ri
 rib golden table (`features/golden/rib-options.json`, each case's side as `towards`) is
 built on bodies without a rational edge: unchanged.
 
-**Callers that don't read the centre don't pay for it** (they called `properties` for its
-volume or its exact box): `features/place-on-bed.ts:101`, `features/transform.ts:207`,
+**Who calls `properties` and why.** It is called where the centre is read (the three rows
+above), and where a volume must be 0 for a shape without a solid: `properties` sets the volume
+only when the shape has a solid, while `measure` integrates whatever faces it is given (a curved
+face off the origin has a signed "volume" of its own). So `recompute/engine.ts:481` (a sheet's
+parts list: each body's volume and exact box, as Print Info reports them; a listed body can have
+no solid) and `joints/check.ts:284` (the joint check's overlap: the common of a solid and a body
+without one is a face) call `properties`; test: `solid-gate.test.ts` (a face body in a parts
+list gets volume 0, and makes no overlap in a joint check; with `measure` both would not). The
+callers that read only the exact box call `Kernel.exactBox` (the facade's `exactBox`,
+`properties`' box code in one private helper, `tightBox`, so the same numbers; a mesh body's
+box from manifold-3d, as `properties` reports it; and where one of `properties`' integrals
+would throw, `exactBox` doesn't): `features/place-on-bed.ts:101`, `features/transform.ts:210`,
 `features/import.ts:215, 220`, `interference.ts:45` and the agent's test host
-(`apps/web/src/agent/kernelTesting.ts:91`) read the exact box and call `Kernel.exactBox` (the
-facade's `exactBox`, `properties`' box code in one private helper, `tightBox`: the same
-numbers); `joints/check.ts:283` reads the volume of a boolean common of two solids and calls
-`measure` (the same `integrateVolume`; a common of two solids is solids or nothing, where
-`properties`' "solids only" gate gives the same 0); `recompute/engine.ts:480` reads a body's
-volume and exact box and calls `measure` and `exactBox`. Only Measure (`inspect`), the
-stored-shape check and the rib call `properties` on solids.
+(`apps/web/src/agent/kernelTesting.ts:91`); test: `measure-box.test.ts` (`exactBox` equals
+`properties`' box on a part with curved faces, a body with a rational edge and a mesh body).
+`properties` on a solid is therefore called by Measure (`inspect`), the stored-shape check, the
+rib, a sheet's parts list and the joint check; `inspect` calls it on faces, edges and vertices
+too, and the sweep on a face and a wire, where it integrates no volume or centre.

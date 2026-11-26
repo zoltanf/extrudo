@@ -13,7 +13,7 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { touchingBodies } from './features/operation';
-import { Kernel } from './kernel';
+import { Kernel, type ShapeHandle } from './kernel';
 import { loadManifold } from './manifold';
 import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
@@ -374,6 +374,26 @@ describe('measureBox', () => {
     }
     const mesh = scope.track(meshCube(10, [2, 3, 4]));
     expect(kernel.measureBox(mesh)).toEqual(kernel.measure(mesh).bbox);
+  });
+
+  it("exactBox gives properties' box exactly: curved faces, a rational edge, a mesh body", () => {
+    using scope = kernel.scope();
+    const { faces } = kernel.planarFaces(
+      [
+        { kind: 'conic', start: [0, 0], shoulder: [15, 20], end: [30, 0], rho: 0.4 },
+        { kind: 'line', a: [30, 0], b: [0, 0] },
+      ],
+      { origin: [3, -4, 2], x: [1, 0, 0], normal: [0, 0, 1] },
+      1e-4,
+    );
+    for (const face of faces) scope.track(face.shape);
+    const shapes = [
+      scope.track(buildTestPart(kernel)),
+      scope.track(kernel.prism(faces[0]?.shape as ShapeHandle, [0, 0, 5]).shape),
+      scope.track(meshCube(10, [2, 3, 4])),
+    ];
+    for (const shape of shapes)
+      expect(kernel.exactBox(shape)).toEqual(kernel.properties(shape).bbox);
   });
 
   it('is what the look-up of the bodies an operation touches asks for: only boxes', () => {
