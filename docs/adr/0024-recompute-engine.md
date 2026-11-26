@@ -847,7 +847,7 @@ loses a matching name changes the view's ID list and the key.
 | Read | Fillet | Chamfer | Under `view` |
 |---|---|---|---|
 | its sets (`filletSets`, `chamferSets`) and `skipsLostEdges` of `ctx.inputs` | :114, :119 | :120, :125 | inputs only |
-| each edge through `edgeResolver` (`lost-edges.ts:27` → `ctx.resolve`) | :127 | :139 | exact name, in the view (above); a lost edge with `skipLostEdges` has no exact match, so `write` |
+| each edge through `edgeResolver` (`lost-edges.ts:27` → `ctx.resolve`) | :128 | :140 | exact name, in the view (above); a lost edge with `skipLostEdges` has no exact match, so `write` |
 | the reference face of a set (`ctx.resolve`) | none | :133 | a face reference: its bodies are in the view |
 | `flipAt`: `ctx.describe(edge.shape)`, the edge's own body | none | :271 | a view body |
 | radii, distances, angle (`ctx.value`) | :219, :226 | :223, :244 | no bodies |
@@ -856,7 +856,7 @@ loses a matching name changes the view's ID list and the key.
 | `kernel.fillet` / `filletVariable` / `chamfer` of that shape; variable radii and tangent chains are worked out by the facade on that shape | :157, :162 | :172 | that body only |
 | `buildRound` (`round-fallback.ts`): retries of the same build, `ctx.warn`; no bodies | :169 | :179 | no bodies |
 | `withHistory(kernel, result, [ctx.names(body)])` (`naming/ops.ts`): the history and that body's table | :196 | :205 | a view body |
-| the engine after it: `#checkNames` and `#checkSound` with the view as `before` (`engine.ts:1355`, :1356) | | | iterate the view to know its handles |
+| the engine after it: `#checkNames` and `#checkSound` with the view as `before` (`engine.ts:1371`, :1372) | | | iterate the view to know its handles |
 
 No global state. Neither iterates to search, deletes a body, makes a body ID, or resolves anything
 but its own edge and face references. Every fillet and chamfer input reference is an edge or a face
@@ -934,7 +934,9 @@ compare every body's `measure` box and, asked (`exact`), versions):
   reference not noticed (the probes of a reference in another body and of one no body has); the
   memory not asked (six probes: they evaluate twice again after the edit); the chain after a
   view left out (the later cut's counter); the isolated term (the inserted-design test); the order
-  check (the probe that deletes and sets again); the `retry` term (the `OutsideError` probe); a
+  check (the probe that deletes and sets again); the `retry` term for a view (both `OutsideError`
+  tests); `#viewOf` stopping at the first exact match (the twins' differential, through its
+  comparison with the all-`write` engine, and the twins test); a
   reference no body has by its name taken as nowhere instead of `write` (nine of the eleven
   differentials: fall-backs); the no-reference term (all eleven: the flip to `write` missing);
   the result appended instead of put in place (`view` = `write`). The differential runs both
