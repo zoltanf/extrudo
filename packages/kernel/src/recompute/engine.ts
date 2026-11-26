@@ -949,7 +949,7 @@ export class RecomputeEngine {
       const misordered =
         view !== undefined &&
         entry.output?.bodies !== undefined &&
-        !fitsView(bodies, view, entry.output);
+        !fitsView(bodies, view, entry.output, (h) => this.#kernel.isMesh(h));
       if (
         ((seen instanceof NoBodies || seen instanceof BodyView) &&
           (seen.read || entry.retry === 'bodies')) ||
@@ -1013,7 +1013,7 @@ export class RecomputeEngine {
         const after = adds
           ? mergeBodies(bodies, new Map(), entry.output.bodies)
           : view
-            ? mergeInPlace(bodies, view, entry.output.bodies)
+            ? mergeInPlace(bodies, view, entry.output.bodies, entry.output.origins)
             : scope === undefined
               ? entry.output.bodies
               : mergeBodies(bodies, seen, entry.output.bodies);
@@ -1921,17 +1921,19 @@ class BodyView extends Map<BodyId, ShapeHandle> {
 /**
  * The design's bodies after a `view` feature whose result fits its view (`fitsView`): each body
  * in walk order, a view body replaced by the result's body of that ID or left out when the result
- * has none, and after it the new bodies the result holds right after it (pieces `splitSolids`
- * placed after the body they came from); then the result's new bodies after its last view body,
- * at the end, in its order (what a `set` of a new ID does). What `new Map(bodies)` changed by
- * `set` and `delete` and taken apart by `splitSolids` gives under `write`.
+ * has none, and right after it the new bodies the result holds right after it: pieces
+ * `splitSolids` placed after the body they came from (after the result's last view body, those
+ * whose `origins` entry is that body); then the result's other new bodies, at the end, in its
+ * order (where a `set` of a new ID puts them). What `new Map(bodies)` changed by `set` and
+ * `delete` and taken apart by `splitSolids` gives under `write`.
  */
 function mergeInPlace(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
   view: BodyView,
   made: ReadonlyMap<BodyId, ShapeHandle>,
+  origins?: ReadonlyMap<BodyId, BodyId>,
 ): ReadonlyMap<BodyId, ShapeHandle> {
-  const { after, trailing } = newBodies(view, made);
+  const { after, trailing } = newBodies(view, made, origins);
   // A plain map: an evaluator may hand back the view itself, whose look-ups would be noticed.
   const result = new Map(made);
   const out = new Map<BodyId, ShapeHandle>();
@@ -1949,10 +1951,14 @@ function mergeInPlace(
 
 /**
  * The new bodies of a `view` result (IDs that aren't the view's), by where they stand: `after` a
- * view body when a view body comes after them in the result too, else `trailing` (after its last
- * view body).
+ * view body when a view body comes after them in the result too, or when they are pieces of the
+ * result's `last` view body right after it (their `origins` entry); else `trailing`, at the end.
  */
-function newBodies(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>) {
+function newBodies(
+  view: BodyView,
+  made: ReadonlyMap<BodyId, ShapeHandle>,
+  origins?: ReadonlyMap<BodyId, BodyId>,
+) {
   const after = new Map<BodyId, BodyId[]>();
   let group: BodyId[] = [];
   let last: BodyId | undefined;
@@ -1964,21 +1970,33 @@ function newBodies(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>) {
       last = id;
     }
   }
-  return { after, trailing: group, last };
+  let pieces = 0;
+  while (
+    last !== undefined &&
+    pieces < group.length &&
+    origins?.get(group[pieces] as BodyId) === last
+  ) {
+    pieces++;
+  }
+  if (last !== undefined && pieces > 0) after.set(last, group.slice(0, pieces));
+  return { after, trailing: group.slice(pieces), last, pieces: group.slice(0, pieces) };
 }
 
 /**
  * Whether a `view` result can be merged in place (`mergeInPlace`): its view bodies in the view's
  * order (no ID put back after its `delete` before a later view body), no ID of a body outside the
  * view (it would replace a body the feature didn't see), no new body before its first view body,
- * and its new bodies' places the same as under `write`. Those after its last view body go to the
- * end; a piece of that last body (its `origins` entry) goes right after it under `write`, which is
- * the end only when no body outside the view comes after it in the walk.
+ * and its new bodies' places the same as under `write`. The one place that can't be told from the
+ * result: a mesh piece of its last view body. `splitSolids` puts a piece right after its body,
+ * while Split Body gives a mesh's second side an `origins` entry and a `set`, at the end; the two
+ * places differ when a body outside the view comes after that last body in the walk. (A B-rep
+ * piece with an `origins` entry comes from `splitSolids` alone.)
  */
 function fitsView(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
   view: BodyView,
   output: FeatureOutput,
+  isMesh: (shape: ShapeHandle) => boolean,
 ): boolean {
   const made = output.bodies as ReadonlyMap<BodyId, ShapeHandle>;
   const order = new Map([...view.keys()].map((id, i) => [id, i]));
@@ -1993,8 +2011,8 @@ function fitsView(
     if (i < at) return false;
     at = i;
   }
-  const { trailing, last } = newBodies(view, made);
-  if (last === undefined || !trailing.some((id) => output.origins?.get(id) === last)) return true;
+  const { pieces, last } = newBodies(view, made, output.origins);
+  if (last === undefined || !pieces.some((id) => isMesh(made.get(id) as ShapeHandle))) return true;
   const walk = [...bodies.keys()];
   return walk.slice(walk.indexOf(last) + 1).every((id) => view.holds(id));
 }
