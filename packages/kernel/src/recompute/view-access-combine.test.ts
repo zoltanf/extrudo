@@ -50,17 +50,21 @@ const DESIGNS: Design[] = [
       'keep-tools',
       'keep-tools',
       'twice',
+      'untwice',
       'tool-is-target',
-      'tool-is-target',
+      'tool-not-target',
       ...GENERIC_KINDS,
     ] as Kind[],
     flips: [
       'combine-op: view→view',
       'keep-tools: view→view',
       'twice: view→view',
+      'untwice: view→view',
       'tool-is-target: view→view',
+      'tool-not-target: view→view',
     ],
-    steps: 20,
+    // 21 kinds: each once in order (the generic edits on a working combine), then three seeded.
+    steps: 24,
   },
 ];
 

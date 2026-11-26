@@ -117,6 +117,21 @@ export function faceRefs(engine: RecomputeEngine, body: string, pick: FacePick):
   });
 }
 
+/** The references of the edges `pick` gives on `body`, in an engine that computed the design. */
+export function edgeRefs(
+  engine: RecomputeEngine,
+  body: string,
+  pick: (d: ShapeDescription) => number[],
+): GeomRef[] {
+  const shape = engine.latestBody(body as BodyId);
+  if (shape === undefined) throw new Error(`no body ${body}`);
+  return pick(kernel.describe(shape)).map((i) => {
+    const ref = engine.reference(body as BodyId, 'edge', i);
+    if (!ref) throw new Error(`no edge ${i} on ${body}`);
+    return ref;
+  });
+}
+
 /** The reference of vertex `index` of `body`, in an engine that computed the design. */
 export function vertexRef(engine: RecomputeEngine, body: string, index: number): GeomRef {
   const ref = engine.reference(body as BodyId, 'vertex', index);
@@ -189,12 +204,19 @@ export async function filletAfter(
 // ------------------------------------------------------------------------------- edits
 
 /**
- * The terms of the rule for a view, each both ways, on the design's first feature of `TYPES`: a
- * face no body has by its name and back (`lose`, `find`), no faces and back (`empty`, `fill`);
- * per design: a body picked to hollow and back, one that doesn't exist and back (`pick-body`,
- * `unpick-body`, `lose-body`, `found-body`); the neutral plane cycling XY, a construction plane
- * and a face of the plate (`plane`); the twins swapping places and one suppressed and back. Then
- * the features' own inputs and the generic edits.
+ * The edits, each applied to the design's target (`Design.target`, by default its first feature
+ * of `TYPES`) unless it says otherwise. The rule's terms: the first reference of `Design.refsKey`
+ * (default `faces`) made one no body has (a face name, or a `body` reference to no body) and back
+ * (`lose`, `find`), no references and back (`empty`, `fill`), the first one picked twice and back
+ * (`twice`, `untwice`). The shell's: a body picked to hollow and back, one that doesn't exist and
+ * back (`pick-body`, `unpick-body`, `lose-body`, `found-body`). The draft's neutral plane cycling
+ * XY, a construction plane and a named face (`plane`). Move, Scale and Mirror: the copy on and off
+ * (`copy`), Move's mode cycling free, about the named axis, from and to the named points
+ * (`mode`), the mirror plane between the YZ plane and a named face (`mirror-plane`). Combine: the
+ * operation cycling (`combine-op`), the tools kept and not (`keep-tools`), the target picked as a
+ * tool and back (`tool-is-target`, `tool-not-target`). The twins swapping places (`swap`), one
+ * suppressed and back (`twin-off`, `twin-on`). A random draft's flip, offset's kept rounds,
+ * thread's hand or extent, extrude's operation; then the generic edits.
  */
 export const RULE = ['lose', 'find', 'empty', 'fill'] as const;
 export type Kind =
@@ -219,6 +241,8 @@ export type Kind =
   | 'combine-op'
   | 'keep-tools'
   | 'tool-is-target'
+  | 'tool-not-target'
+  | 'untwice'
   | (typeof GENERIC_KINDS)[number];
 
 export const LOST: GeomRef = { kind: 'face', id: 'f[nowhere]' };
@@ -260,9 +284,13 @@ export function edit(
     case 'fill':
       return own && list && list.length === 0 ? set(refs(own)) : undefined;
     case 'twice':
-      // The first reference picked twice, and back.
-      if (!list?.length || !own) return undefined;
-      return set(refs(list.length > own.length ? own : [...list, list[0] as GeomRef]));
+      // The first reference picked a second time.
+      if (!list?.length || list.length > new Set(list.map((r) => r.id)).size) return undefined;
+      return set(refs([...list, list[0] as GeomRef]));
+    case 'untwice':
+      // Each reference once again.
+      if (!list || list.length === new Set(list.map((r) => r.id)).size) return undefined;
+      return set(refs(list.filter((r, i) => list.findIndex((x) => x.id === r.id) === i)));
     case 'copy': {
       if (!now) return undefined;
       const on = (now.inputs.copy as { value?: boolean } | undefined)?.value;
@@ -308,11 +336,14 @@ export function edit(
       const on = (now.inputs.keepTools as { value?: boolean } | undefined)?.value === true;
       return set({ keepTools: { kind: 'bool', value: !on } });
     }
-    case 'tool-is-target': {
-      // The target picked as a tool too (an error under both), and back.
-      if (now?.type !== 'combine' || !list || !own) return undefined;
+    case 'tool-is-target':
+    case 'tool-not-target': {
+      // The target picked as a tool too (an error under both), and taken out of the tools again.
+      if (now?.type !== 'combine' || !list) return undefined;
       const target = (now.inputs.target as RefInput).refs[0] as GeomRef;
-      return set(refs(list.length > own.length ? own : [...list, target]));
+      const has = list.some((r) => r.id === target.id);
+      if (has === (kind === 'tool-is-target')) return undefined;
+      return set(refs(has ? list.filter((r) => r.id !== target.id) : [...list, target]));
     }
     case 'pick-body':
     case 'unpick-body':
@@ -408,13 +439,16 @@ export interface Design {
   kinds: Kind[];
   /** Flips that must happen, besides the rule's four. */
   flips: string[];
-  /** The feature the rule's edits go to (default: the first of the five). */
+  /** The feature the rule's edits go to (default: the design's first feature of `TYPES`). */
   target?: string;
   /** Kinds of edit that must never take a view from their feature (no `<kind>: view→write`). */
   steady?: Kind[];
   /** Seeded edits (default 40). */
   steps?: number;
-  /** References some edits use, from the design as made (the draft's other plate's face). */
+  /**
+   * References some edits use, from the design as made: the draft's `plane face`, the mirror's
+   * `mirror face`, Move's `axis`, `from` and `to`.
+   */
   named?: (doc: ExtrudoDocument) => Promise<Record<string, GeomRef>>;
   /** The input whose references the rule's edits change (default `faces`). */
   refsKey?: string;

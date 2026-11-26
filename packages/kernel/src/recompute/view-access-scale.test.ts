@@ -45,8 +45,8 @@ const DESIGNS: Design[] = [
     name: 'boxes scaled about their centre and about another box’s corner',
     make: scales,
     refsKey: 'bodies',
-    kinds: [...BASE, 'copy', 'copy', 'twice', ...GENERIC_KINDS] as Kind[],
-    flips: ['copy: view→write', 'copy: write→view', 'twice: view→view'],
+    kinds: [...BASE, 'copy', 'copy', 'twice', 'untwice', ...GENERIC_KINDS] as Kind[],
+    flips: ['copy: view→write', 'copy: write→view', 'twice: view→view', 'untwice: view→view'],
     steps: 20,
   },
 ];
