@@ -1375,7 +1375,9 @@ no clock, fixed seeds, 10 mm boxes). Four designs, each with boxes outside the v
 between and after the bodies the features name, and a slot cut through every box at the end
 (`write`: it reads them all, in order):
 
-- copies: a Move copying two boxes, a Scale and a Mirror copying one each;
+- copies: a Move copying two boxes, a Scale and a Mirror copying one each, and a Mirror with a
+  copy and a join of two boxes (one copy fused into its box, the other apart, over a box outside
+  the view: the join takes only its own original);
 - patterns of bodies: a rectangular pattern along X, over a box outside its view, and a circular
   one about Z;
 - splits: two boxes split by XZ with a box outside the view before and between them, then a box
@@ -1388,22 +1390,23 @@ The tests:
 - **Seeded edits**, 20 per design, at every step equal to a cleared engine (versions and
   `measure` boxes too) and an all-`write` engine (all but versions):
   - the rule's terms: a body that doesn't exist, and back; no bodies, and back; a body picked a
-    second time, and back; the copy on and off (copies);
+    second time, and back; the copy off, and back on (copies);
   - the generic edits (insert, length, suppress, marker, reorder, delete, undo, parameter).
 - **Every placement**, each feature's new bodies where `write` puts them, and which features keep
   the view: the three copies, both patterns, both splits, both Combine cuts.
 - **The order a later feature reads**, without the cut (which splits every box):
   - the copies at the end of the map as it stood when each was made (the Move's after the last
-    box, the Scale's of a middle box after a box outside its view);
+    box, the Scale's of a middle box after a box outside its view), the joined Mirror's copy kept
+    apart last;
   - a middle box's piece right after it, before the box outside the view;
   - the last box's at the end;
   - a box's piece right after it with a box outside the view after it (a B-rep piece).
 - **A mesh split** (the 20 mm cube STL split by a construction plane): with a box outside the view
   after it the split falls back to `write` once; with none it keeps its view. Same IDs either way.
 - **A collision control:** a box with the Move's own prefix (`mc:x`) sends the Move to `write` at
-  once (no fall-back), while the Scale and the Mirror keep their views.
+  once (no fall-back), while the Scale and the Mirrors keep their views.
 - **Counters:** an edit of a box outside every view evaluates it and the cut; an edit of a copied
-  box evaluates it, the Move copying it with another, the Mirror of it, and the cut.
+  box evaluates it, the Move copying it with another, the Mirrors of it, and the cut.
 - **The answers for features:** Mirror and the three patterns answer `view` for bodies and `write`
   for features.
 - In `recompute/view-access.test.ts`, a probe whose result adds a body after its view now keeps
