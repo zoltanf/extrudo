@@ -616,6 +616,11 @@ function probeRegistry() {
           case 'new':
             out.set(ctx.bodyId(), ctx.kernel.box([1, 1, 1], [0, 0, 50]));
             break;
+          case 'lead':
+            // A new body before the bodies it was given: under `write` it would lead the map.
+            return {
+              bodies: new Map([[ctx.bodyId(), ctx.kernel.box([1, 1, 1], [0, 0, 50])], ...out]),
+            };
           case 'stray':
             out.set(other, ctx.kernel.box([1, 1, 1], [0, 0, 50]));
             break;
@@ -709,7 +714,7 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     ['a reference found by its fingerprint only (in the view)', 'resolve-guess'],
     ['a result with a view body deleted and set again (out of the view’s order)', 'reorder'],
     ['a result that replaces a body outside the view by its ID', 'stray'],
-    ['a result with a new body', 'new'],
+    ['a result with a new body before the bodies it was given', 'lead'],
     ['an error to try again once the bodies change (`OutsideError`, `bodies`)', 'outside'],
   ])('%s: dropped, run as `write`, remembered', { timeout: 120_000 }, async (_n, mode) => {
     const doc = await probed(mode);
@@ -765,6 +770,24 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
       OUTSIDE.on = true;
       viewEngine.clear();
       fresh.clear();
+    }
+  });
+
+  it('a result with a new body after the view keeps the view and equals `write`', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = await probed('new');
+    const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
+    const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
+    try {
+      const a = await client(kernel, viewEngine).run(doc);
+      const b = await client(kernel, writeEngine).run(doc);
+      expect(a.result.stats.viewed).toContain('probe');
+      expect(a.result.stats.evaluated.filter((id) => id === 'probe')).toEqual(['probe']);
+      expect(differences(a, b)).toEqual([]);
+    } finally {
+      viewEngine.clear();
+      writeEngine.clear();
     }
   });
 
@@ -971,7 +994,7 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
     timeout: 120_000,
   }, async () => {
     const broken = await faultyEngine([
-      '? mergeInPlace(bodies, view, entry.output.bodies)',
+      '? mergeInPlace(bodies, view, entry.output.bodies, entry.output.origins)',
       '? mergeBodies(bodies, new Map(view), entry.output.bodies)',
     ]);
     try {

@@ -94,13 +94,18 @@ export interface ImportedFile {
  *   of another body, or a reference resolved other than by its exact name makes the engine
  *   evaluate the feature again as `write`; a read by iterating gives the view's bodies and is
  *   not noticed, and neither is a `delete` of a body outside the view from the evaluator's copy.
- *   Its result must be a copy of `ctx.bodies` changed by `set` and `delete` of view bodies only,
- *   with no ID put back after its `delete`: a result out of the view's order, or with a body
- *   outside the view (a new one too, a piece `splitSolids` split off), runs as `write` again.
+ *   Its result must be a copy of `ctx.bodies` changed by `set` and `delete` of view bodies and
+ *   `set` of new bodies with its own IDs (`ctx.bodyId`), with no ID put back after its `delete`,
+ *   then taken apart by `splitSolids` if it splits. A result out of the view's order, with an ID
+ *   of a body outside the view, or with a new body before its first view body runs as `write`
+ *   again. A new body goes where `write` puts it: a piece `splitSolids` split off right after its
+ *   body, any other at the end. A mesh piece of the view's last body with a body outside the view
+ *   after that body runs as `write` for that walk (its place can't be told from the result).
  *   A `plane`, `axis`, `point` or `sketchEntity` reference (an origin one, a construction
  *   feature's output or a sketch's) reads no body and takes no part in the view. Treated as
  *   `write` inside an isolated expansion, when a face, edge or vertex reference has no exact
- *   match among the bodies (or a reference is of another kind), and after an error
+ *   match among the bodies (or a reference is of another kind), when a body with the feature's
+ *   own ID prefix exists already, and after an error
  *   to try again once the bodies before it change (`OutsideError` `retry: 'bodies'`), as `add`
  *   is.
  */

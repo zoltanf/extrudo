@@ -46,7 +46,7 @@ const DESIGNS: Design[] = [
     make: scales,
     refsKey: 'bodies',
     kinds: [...BASE, 'copy', 'copy', 'twice', 'untwice', ...GENERIC_KINDS] as Kind[],
-    flips: ['copy: view→write', 'copy: write→view', 'twice: view→view', 'untwice: view→view'],
+    flips: ['copy: view→view', 'twice: view→view', 'untwice: view→view'],
     steps: 20,
   },
 ];

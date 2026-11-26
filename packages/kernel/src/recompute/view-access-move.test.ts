@@ -152,13 +152,7 @@ const DESIGNS: Design[] = [
       'untwice',
       ...GENERIC_KINDS,
     ] as Kind[],
-    flips: [
-      'copy: view→write',
-      'copy: write→view',
-      'mode: view→view',
-      'twice: view→view',
-      'untwice: view→view',
-    ],
+    flips: ['copy: view→view', 'mode: view→view', 'twice: view→view', 'untwice: view→view'],
     steady: ['mode'],
     steps: 20,
   },
@@ -168,7 +162,7 @@ const DESIGNS: Design[] = [
     target: 'mva',
     refsKey: 'bodies',
     kinds: [...BASE, 'copy', 'copy', ...GENERIC_KINDS] as Kind[],
-    flips: ['copy: view→write', 'copy: write→view'],
+    flips: ['copy: view→view'],
     steps: 20,
   },
 ];
