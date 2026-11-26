@@ -67,7 +67,8 @@ const cut = () => slot('cut', [-60, 3, 200, 4]);
 
 /**
  * Boxes `o…` no feature names, before, between and after the ones it copies: a move copies two,
- * a scale and a mirror one each.
+ * a scale and a mirror one each; a mirror with a join copies two, one fused into its box, the
+ * other apart, over the box outside the view `o0` (the join takes only its own original).
  */
 function copies(withCut = true) {
   return document('copies among bodies outside the view', [
@@ -79,6 +80,11 @@ function copies(withCut = true) {
     box('o2', 60),
     feature('sc', 'scale', scaleInputs(['b1:0'], { factor: '0.5', copy: true })),
     feature('mic', 'mirror', mirrorInputs(['b0:0'], originPlaneRef('origin:yz'), { copy: true })),
+    feature(
+      'mij',
+      'mirror',
+      mirrorInputs(['b0:0', 'b1:0'], originPlaneRef('origin:yz'), { copy: true, join: true }),
+    ),
     ...(withCut ? cut() : []),
   ]);
 }
@@ -190,7 +196,7 @@ describe('view access: new bodies (ADR-0024)', () => {
   proveDesigns(DESIGNS);
 
   it.each([
-    ['copies', copies, ['mc', 'sc', 'mic'], []],
+    ['copies', copies, ['mc', 'sc', 'mic', 'mij'], []],
     ['patterns', patterns, ['rp', 'cp'], []],
     ['splits', splits, ['sp', 'sp2'], []],
     ['combine cuts', combines, ['cb', 'cb2'], []],
@@ -207,8 +213,11 @@ describe('view access: new bodies (ADR-0024)', () => {
       expect(fallbacks(step?.result as NonNullable<typeof step>['result'], doc)).toEqual([
         ...written,
       ]);
+      // The mirror's join warns that one copy stays apart.
       for (const id of [...viewed, ...written]) {
-        expect(step?.result.features[id as FeatureId]?.status, id).toBe('ok');
+        expect(step?.result.features[id as FeatureId]?.status, id).toBe(
+          id === 'mij' ? 'warning' : 'ok',
+        );
       }
     },
   );
@@ -233,6 +242,7 @@ describe('view access: new bodies (ADR-0024)', () => {
       'o2:0',
       'sc:0',
       'mic:0',
+      'mij:0',
     ]);
     // `b1`'s piece right after it (before `o1`); `b3`'s at the end, which is right after it.
     // `b5`'s piece right after it too, before `o2` (a B-rep piece: `splitSolids` placed it).
@@ -329,7 +339,7 @@ describe('view access: new bodies (ADR-0024)', () => {
     const steps = await sequence([clash, setInputs(clash, 'o0', { length: length('12 mm') })]);
     for (const step of steps) {
       expect(step.problems).toEqual([]);
-      expect(step.result.stats.viewed).toEqual(['sc', 'mic']);
+      expect(step.result.stats.viewed).toEqual(['sc', 'mic', 'mij']);
       expect(fallbacks(step.result, clash)).toEqual([]);
     }
   });
@@ -347,7 +357,7 @@ describe('view access: new bodies (ADR-0024)', () => {
     for (const step of steps) expect(step.problems).toEqual([]);
     // A box outside every view: it, and the cut that reads every body.
     expect(steps[1]?.evaluated).toEqual(['o1', 'cut']);
-    // A copied box: it, the move that copies it with another, the mirror of it, and the cut.
-    expect(steps[3]?.evaluated).toEqual(['b0', 'mc', 'mic', 'cut']);
+    // A copied box: it, the move that copies it with another, the mirrors of it, and the cut.
+    expect(steps[3]?.evaluated).toEqual(['b0', 'mc', 'mic', 'mij', 'cut']);
   });
 });
