@@ -1297,11 +1297,20 @@ commit 0 → 0, undo 0 → 0, open 551 (533–587) → 471 (385–556).
 ## Amendment 2026-11-27: new bodies in a `view` result
 
 **Decision.** A `view` result may hold bodies the view didn't have. With it, Move, Scale and
-Mirror of bodies answer `view` with a copy too (and a mirror's join), the patterns of bodies
-(rectangular, circular, along a path) and Split Body answer `view`, and a Combine cut that splits
-its target keeps its view. Patterns and mirrors of features stay `write` (the amendment above).
+Mirror of bodies answer `view` with a copy too (and a mirror's join), and the patterns of bodies
+(rectangular, circular, along a path) and Split Body answer `view`. The rule is the engine's, so
+it holds for every `view` feature: a Combine whose result splits (whatever its operation) and a
+thread whose cut splits its body (`features/thread.ts:220`) keep their view too. Patterns and
+mirrors of features stay `write` (the amendment above).
 
-**The rule** (`fitsView`, `mergeInPlace`, `recompute/engine.ts`):
+**What no longer holds.** In the amendment on the shell, draft, offset faces, remove faces and
+thread: "a result holds only its view's bodies" (a new body now stays in the view; a body outside
+the view in the result is still refused), and its "not covered" thread whose cut splits its body
+(it now keeps its view). In the amendment on picked-body features: Combine's "a result split into
+pieces holds new bodies and runs as `write`", "new bodies … are not taken into a view", and its
+"not covered" copies, patterns and splits and Split Body. This amendment replaces those.
+
+**The rule** (`fitsView`, `placedAsWrite`, `mergeInPlace`, `recompute/engine.ts`):
 
 - **No body with the feature's own ID prefix** (`<feature>:`) may exist, in the view or out of
   it (`hasOwnBodies`, as for `add`): every new ID is `<feature>:<n>`, picked by the feature's own
@@ -1321,15 +1330,22 @@ its target keeps its view. Patterns and mirrors of features stay `write` (the am
   (`features/bodies.ts:88`), and Split Body's mesh path, for a mesh's second side, which it adds
   with a `set` (`features/split-body.ts:94`, :96), so at the end. The two places differ for a mesh
   piece of the last view body when a body outside the view comes after that body in the walk: the
-  result can't tell them apart, so then the feature runs as `write` (remembered). A B-rep piece
-  there keeps the view. A new ID before the result's first view body (no evaluator makes one)
-  runs as `write`.
+  result can't tell them apart, so then the feature runs as `write` for that walk
+  (`placedAsWrite`). That depends on the bodies outside the view, so it is not remembered: the
+  view's entry stays cached under its key, and the next walk decides again (with the body after
+  it gone, the feature keeps its view and its versions are a cleared engine's). A mesh piece that
+  `splitSolids` splits off (a Combine of a mesh target, a mirror's or a pattern's join of meshes)
+  falls back the same way although `splitSolids` placed it right after its body: both have an
+  `origins` entry for that body and stand right after it in the result, so the result alone can't
+  tell them apart. A B-rep piece there keeps the view. A new ID before the result's first view
+  body (no evaluator makes one), an ID of a body outside the view and a result out of the view's
+  order run as `write`, remembered (`fitsView`: a property of the result for every evaluator
+  that keeps the rules).
 - **Keys and versions** of a new body are those of any body a feature makes: the version is the
   hash of the key that made it (`hashOf(key, id)`), and a view's key holds the view's versions
   and the inputs.
 
-The engine change is these checks and the merge: 59 lines of code added and 9 removed, comments
-aside.
+The engine change is these checks and the merge: ENGINE_LINES, comments aside.
 
 **What each new-body path reads** (audited for this change; file:line, `features/`; the reads of
 the in-place paths are in the amendment above):
@@ -1338,7 +1354,7 @@ the in-place paths are in the amendment above):
 |---|---|---|
 | Move, Scale (`transform.ts`, `scale.ts`) | a copy's ID `ctx.bodyId(i)` by the body's place in its list (`transform.ts:90`, `scale.ts:59`), `set` on the copy of the map (`withImages`, `transform.ts:96`, :99) | appended at the end |
 | Mirror (`transform.ts`) | copies as Move's; the join: each copy against its own original (`bodiesTouch`, :283), fused into it (:291, :298) or kept apart with `ctx.bodyId(extra++)` (:284, :285, appended); `splitSolids` (:311) | the original and its copy only; pieces of an original after it |
-| Patterns of bodies (`pattern.ts`) | each picked body looked up with its names (:407, :417); its instances at each placement, ID `ctx.bodyId(pairSlots(slot, place))` (:431, :432, appended); the join fuses them into the original (:444, :457) and `splitSolids` (:467); the join's warning compares the result with the number of bodies it was given (:410, :470; it read `ctx.bodies.size`, which a view notices); the layout: directions and axis by `lineOf` (:689, :697, :749), a path by `pathFromRefs` (:822: sketch curves through `ctx.output`, edges resolved); the report's centre from the picked bodies' boxes (:146), all bodies only when none is found (:159), and then the view has no `body` reference and the feature runs as `write` | the picked bodies; references passed over or resolved by name |
+| Patterns of bodies (`pattern.ts`) | each picked body looked up with its names (:407, :417); its instances at each placement, ID `ctx.bodyId(pairSlots(slot, place))` (:431, :432, appended); the join fuses them into the original (:444, :457) and `splitSolids` (:467); the join's warning compares the result with the number of bodies it was given (:410, :470; it read `ctx.bodies.size`, which a view notices); the layout: directions and axis by `lineOf` (:689, :697, :749), a path by `pathFromRefs` (:822: sketch curves through `ctx.output`, edges resolved); the report's centre from the picked bodies' boxes (:146), the bodies there are when none is found (:159): with no bodies picked but an edge direction, axis or path the view exists and this iterates the view's bodies, which is harmless because the evaluator throws "Pick the bodies to pattern." first (:612), the same under both | the picked bodies; references passed over or resolved by name |
 | Split Body (`split-body.ts`) | each picked body (:56, :69), the plane (`planeOf`, :58: a face resolved by name, which brings its body into the view; a plane passed over); `splitOne` of that body (:70); a B-rep result stays one compound under its ID (:77) for `splitSolids` (:116) to split; a mesh's smaller side gets the next `ctx.bodyId(n)` not in the map (:92, :93) and a `set` (:94) with an origin (:96) | the picked bodies; a B-rep piece right after its body; a mesh's side at the end, or `write` when it is of the last view body and a body outside the view follows that body |
 | Combine (`combine.ts`) | `splitSolids` of the cut target (:162) | as Split Body's B-rep pieces |
 | `splitSolids` (`bodies.ts`) | the IDs before it by iterating (:41); fresh IDs `ctx.bodyId(n)` not in the output (:47, :50, :51); a piece right after its body (:113) with an origin when the body existed before (:88) | the output holds the view's bodies and the new ones: the same fresh IDs as under `write` when no body has the feature's prefix |
@@ -1371,7 +1387,7 @@ ID it sets:
 engine gives no view to a `feature` reference either.
 
 **The proof** (`recompute/view-access-new-bodies.test.ts`; real OCCT and manifold, strict leaks,
-no clock, fixed seeds, 10 mm boxes). Four designs, each with boxes outside the views before,
+no clock, fixed seeds, 10 mm boxes). Five designs, each with boxes outside the views before,
 between and after the bodies the features name, and a slot cut through every box at the end
 (`write`: it reads them all, in order):
 
@@ -1383,28 +1399,53 @@ between and after the bodies the features name, and a slot cut through every box
 - splits: two boxes split by XZ with a box outside the view before and between them, then a box
   split with a box outside its view after it;
 - Combine cuts that split their targets: one with a box outside the view before, one with a box
-  outside the view between the target and the tool.
+  outside the view between the target and the tool;
+- patterns of bodies joined: a box's three instances, each touching the next, fused into it; and
+  a box's instance apart from it, so the fuse makes two solids and the instance is a piece right
+  after its box, before a box outside the view.
+
+Which features tell the placement rules apart (where the two places differ):
+
+- a new body at the end, not right after the view's last body: the Scale's and both Mirrors'
+  copies and the rectangular pattern (a body outside the view comes after the copied box). The
+  Move's copies and the circular pattern's instances are of the last body there is, so both places
+  are one for them;
+- a piece right after a view body that a later view body follows: the first split's piece of the
+  middle box;
+- a piece of the view's last body right after it: the second split, the second Combine and the
+  joined pattern with its instance apart. The first split's piece of the last box and the first
+  Combine's are of the last body there is: the same either way;
+- the mesh fall-back: the mesh split.
 
 The tests:
 
 - **Seeded edits**, 20 per design, at every step equal to a cleared engine (versions and
   `measure` boxes too) and an all-`write` engine (all but versions):
   - the rule's terms: a body that doesn't exist, and back; no bodies, and back; a body picked a
-    second time, and back; the copy off, and back on (copies);
+    second time, and back; the copy off, and back on (copies); the join off, and back on (the
+    joined pattern with its instance apart: the warning on its separate instance, a status the
+    comparison holds, appears and goes); the operation cycled cut, intersect, join and back to cut
+    (the first Combine);
   - the generic edits (insert, length, suppress, marker, reorder, delete, undo, parameter).
 - **Every placement**, each feature's new bodies where `write` puts them, and which features keep
-  the view: the three copies, both patterns, both splits, both Combine cuts.
+  the view: the four copies, the four patterns, both splits, both Combine cuts.
 - **The order a later feature reads**, without the cut (which splits every box):
   - the copies at the end of the map as it stood when each was made (the Move's after the last
     box, the Scale's of a middle box after a box outside its view), the joined Mirror's copy kept
     apart last;
   - a middle box's piece right after it, before the box outside the view;
   - the last box's at the end;
-  - a box's piece right after it with a box outside the view after it (a B-rep piece).
-- **A mesh split** (the 20 mm cube STL split by a construction plane): with a box outside the view
-  after it the split falls back to `write` once; with none it keeps its view. Same IDs either way.
+  - a box's piece right after it with a box outside the view after it (a B-rep piece);
+  - the joined pattern's instance apart, right after its box, before the box outside the view.
+- **A mesh split** (the 20 mm cube STL split by a construction plane), one engine over three
+  steps: a box outside the view after the mesh (the split tries its view, then runs as `write`);
+  the box gone (it keeps its view, from the cache, and its versions equal a cleared engine's);
+  the box back (`write` again, both entries from the cache). Same IDs throughout. Before the
+  fall-back was decided at each walk, the second step's versions of the mesh's two sides differed
+  from a cleared engine's.
 - **A collision control:** a box with the Move's own prefix (`mc:x`) sends the Move to `write` at
-  once (no fall-back), while the Scale and the Mirrors keep their views.
+  once (no fall-back), while the Scale and the Mirrors keep their views. This shows the check
+  fires; `mc:x` is not an ID the Move would pick, so it is no collision itself.
 - **Counters:** an edit of a box outside every view evaluates it and the cut; an edit of a copied
   box evaluates it, the Move copying it with another, the Mirrors of it, and the cut.
 - **The answers for features:** Mirror and the three patterns answer `view` for bodies and `write`
@@ -1412,6 +1453,11 @@ The tests:
 - In `recompute/view-access.test.ts`, a probe whose result adds a body after its view now keeps
   the view (evaluated once) and equals `write`; a probe that puts a new body before its view's
   bodies falls back.
+
+**Not covered** by a test (by reading only): a thread whose cut splits its body (no design small
+enough for the time budget); a mirror's join whose fused result splits; the fall-back of a mesh
+piece `splitSolids` splits off; a path pattern of bodies in a seeded design (it shares the other
+patterns' code; its answer is tested); previews; joints, annotations and sheets.
 
 **Taken out, one at a time** (the source changed, the filtered tests run, the source restored;
 every change failed at least one test):

@@ -1,1 +1,1 @@
-- 2026-11-27 · **Quicker edits in designs with many copied, patterned or split parts**: changing one part no longer redoes the moved, scaled or mirrored copies, the patterns of bodies, the splits of solid bodies and the Combine cuts that split a body of the other parts after it.
+- 2026-11-27 · **Quicker edits in designs with many copied, patterned or split parts**: changing one part no longer redoes the moved, scaled or mirrored copies, the patterns of bodies, the splits of solid bodies, or the Combines and threads that split a body, of the other parts after it.

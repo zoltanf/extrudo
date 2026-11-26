@@ -164,8 +164,8 @@ export interface ThreadOutputData {
 export const kernelThread: KernelFeatureDefinition<ThreadInputs> = {
   ...threadFeature,
   // Reads and cuts only the bodies of its faces (ADR-0024's amendment on `view` access): its cut
-  // has those bodies as participants, so it finds no other. A cut that splits a body makes new IDs,
-  // which the engine runs as `write`.
+  // has those bodies as participants, so it finds no other. A cut that splits a body keeps the
+  // view: `splitSolids` puts each piece right after its body, as under `write`.
   bodyAccess: () => 'view',
   evaluate(ctx): FeatureOutput {
     const settings = threadSettings(ctx.inputs);
