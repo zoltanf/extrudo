@@ -2,14 +2,17 @@
 // Mirror, instances of patterns of bodies, pieces by Split Body and by a Combine cut. Each goes
 // where `write` puts it: a copy or an instance (a `set` of a new ID) at the end of the whole map, a
 // piece `splitSolids` splits off right after its body, with bodies outside the view before,
-// between and after. Where that can't be told without the bodies outside the view (a piece of
-// the view's last body, with a body outside the view after it), the feature runs as `write`. A cut
-// through all of them after reads the order. Real OCCT and manifold, strict leaks, no clock.
+// between and after. Where that can't be told without the bodies outside the view (a mesh's side
+// Split Body made, of the view's last body, with a body outside the view after it), the feature
+// runs as `write`. A cut through all of them after reads the order. Real OCCT and manifold, strict
+// leaks, no clock.
 import {
+  type AttachmentId,
   circularPatternInputs,
   combineInputs,
   type FeatureId,
   type GeomRef,
+  importInputs,
   mirrorInputs,
   moveInputs,
   originPlaneRef,
@@ -19,7 +22,9 @@ import {
   splitBodyInputs,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
+import { bytesOf, fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import type { ImportedFile } from './types';
 import {
   BASE,
   box,
@@ -37,6 +42,7 @@ useKernel();
 const X_AXIS: GeomRef = { kind: 'axis', id: 'origin:x' };
 const Z_AXIS: GeomRef = { kind: 'axis', id: 'origin:z' };
 const XZ = originPlaneRef('origin:xz');
+const STL = 'att-stl' as AttachmentId;
 
 /** A box `l` × `w` × `h` mm centred at `x`, `y`. */
 const block = (id: string, x: number, l: number, w = 10, h = 10, y = 0) =>
@@ -104,7 +110,7 @@ function patterns() {
 /**
  * Two boxes split through XZ, a box outside the view before and one between them: the first's
  * pieces go right after it, the last's (no body after it) at the end. Then a box split with a box
- * outside its view after it: its pieces' place can't be told, so it runs as `write`.
+ * outside its view after it: its pieces right after it.
  */
 function splits(withCut = true) {
   return document('splits among bodies outside the view', [
@@ -122,7 +128,7 @@ function splits(withCut = true) {
 
 /**
  * A long box cut in two by a wall box (a Combine cut that splits its target), a box outside the
- * view before; then the same with a box outside the view after the target.
+ * view before; then the same with a box outside the view between the target and the tool.
  */
 function combines() {
   return document('combine cuts that split their targets', [
@@ -164,8 +170,6 @@ const DESIGNS: Design[] = [
     refsKey: 'bodies',
     kinds: [...BASE, 'twice', 'untwice', ...GENERIC_KINDS] as Kind[],
     flips: ['twice: view→view', 'untwice: view→view'],
-    // A reorder can put a box outside the view after the last box a split names.
-    fallBackOk: ['sp', 'sp2'],
     steps: 20,
   },
   {
@@ -176,7 +180,6 @@ const DESIGNS: Design[] = [
     rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
     kinds: [...BASE, 'twice', 'untwice', ...GENERIC_KINDS] as Kind[],
     flips: ['twice: view→view', 'untwice: view→view'],
-    fallBackOk: ['cb', 'cb2'],
     steps: 20,
   },
 ];
@@ -187,8 +190,8 @@ describe('view access: new bodies (ADR-0024)', () => {
   it.each([
     ['copies', copies, ['mc', 'sc', 'mic'], []],
     ['patterns', patterns, ['rp', 'cp'], []],
-    ['splits', splits, ['sp'], ['sp2']],
-    ['combine cuts', combines, ['cb'], ['cb2']],
+    ['splits', splits, ['sp', 'sp2'], []],
+    ['combine cuts', combines, ['cb', 'cb2'], []],
   ] as const)(
     '%s: each new body where write puts it; a place that needs the bodies outside the view: write',
     { timeout: 120_000 },
@@ -230,8 +233,57 @@ describe('view access: new bodies (ADR-0024)', () => {
       'mic:0',
     ]);
     // `b1`'s piece right after it (before `o1`); `b3`'s at the end, which is right after it.
-    const ids = await order(splits);
-    expect(ids?.slice(0, 6)).toEqual(['o0:0', 'b1:0', 'sp:0', 'o1:0', 'b3:0', 'sp:1']);
+    // `b5`'s piece right after it too, before `o2` (a B-rep piece: `splitSolids` placed it).
+    expect(await order(splits)).toEqual([
+      'o0:0',
+      'b1:0',
+      'sp:0',
+      'o1:0',
+      'b3:0',
+      'sp:1',
+      'b5:0',
+      'sp2:0',
+      'o2:0',
+    ]);
+  });
+
+  it('a mesh split by Split Body with a body outside the view after it: write; with none: view', {
+    timeout: 120_000,
+  }, async () => {
+    // A mesh's second side gets a `set` (the end of the map) and an `origins` entry, as a piece
+    // `splitSolids` places right after its body: with a body outside the view after the mesh the
+    // two places differ, and the result can't tell which.
+    const files = new Map<AttachmentId, ImportedFile>([
+      [STL, { bytes: bytesOf(cubeStl), mediaType: 'model/stl', fileName: 'cube.stl' }],
+    ]);
+    const options = { options: { files: (id: AttachmentId) => files.get(id) } };
+    const mesh = (after: boolean) =>
+      document('a mesh split', [
+        feature('imp', 'import', importInputs({ file: STL })),
+        feature('xp', 'offsetPlane', {
+          plane: { kind: 'ref', refs: [originPlaneRef('origin:yz')] },
+          distance: length('10 mm'),
+        }),
+        ...(after ? [box('o0', 60)] : []),
+        feature(
+          'ms',
+          'splitBody',
+          splitBodyInputs(['imp:0'], { kind: 'plane', id: 'xp' } as GeomRef),
+        ),
+      ]);
+    for (const after of [true, false]) {
+      const doc = mesh(after);
+      const [step] = await sequence([doc], options);
+      expect(step?.problems).toEqual([]);
+      expect(step?.result.features['ms' as FeatureId]?.status).toBe('ok');
+      expect(step?.result.bodies.map((b) => b.id)).toEqual(
+        after ? ['imp:0', 'o0:0', 'ms:0'] : ['imp:0', 'ms:0'],
+      );
+      expect(step?.result.stats.viewed).toEqual(after ? [] : ['ms']);
+      expect(fallbacks(step?.result as NonNullable<typeof step>['result'], doc)).toEqual(
+        after ? ['ms'] : [],
+      );
+    }
   });
 
   it('a body outside the view with the feature’s own ID prefix: write at once, the same result', {

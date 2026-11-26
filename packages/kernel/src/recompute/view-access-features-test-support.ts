@@ -489,7 +489,8 @@ export async function differential(
   });
 }
 
-export const sequence = (docs: readonly ExtrudoDocument[]) => sequenceOf(kernel, docs, OPTIONS);
+export const sequence = (docs: readonly ExtrudoDocument[], more: PairOptions = {}) =>
+  sequenceOf(kernel, docs, { ...OPTIONS, ...more });
 
 /**
  * Each design's proof: seeded edits (40 unless the design says) against a cleared engine
