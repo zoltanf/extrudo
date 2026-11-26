@@ -878,8 +878,15 @@ export class RecomputeEngine {
       const looked =
         access === 'view' && scope === undefined ? this.#viewOf(feature, bodies) : undefined;
       const viewKey = looked && keyOf(hashOf('view', looked.versions));
+      // Not when a body has the feature's own ID prefix: its fresh IDs (`<feature>:<n>`) are
+      // picked among the bodies it sees, so they could meet one outside the view (as for `add`).
       let view =
-        looked && viewKey !== undefined && !this.#readBodies(viewKey) ? looked.bodies : undefined;
+        looked &&
+        viewKey !== undefined &&
+        !this.#readBodies(viewKey) &&
+        !hasOwnBodies(bodies, feature.id)
+          ? looked.bodies
+          : undefined;
       const seen = adds
         ? new NoBodies()
         : (view ?? (scope === undefined ? bodies : ownBodies(bodies, script as FeatureId)));
@@ -942,7 +949,7 @@ export class RecomputeEngine {
       const misordered =
         view !== undefined &&
         entry.output?.bodies !== undefined &&
-        !inViewOrder(view, entry.output.bodies);
+        !fitsView(bodies, view, entry.output);
       if (
         ((seen instanceof NoBodies || seen instanceof BodyView) &&
           (seen.read || entry.retry === 'bodies')) ||
@@ -1912,15 +1919,19 @@ class BodyView extends Map<BodyId, ShapeHandle> {
 }
 
 /**
- * The design's bodies after a `view` feature whose result holds only view bodies (`inViewOrder`):
- * each body in order, a view body replaced by the result's body of that ID or left out when the
- * result has none. What `new Map(bodies)` with `set` and `delete` of view bodies gives.
+ * The design's bodies after a `view` feature whose result fits its view (`fitsView`): each body
+ * in walk order, a view body replaced by the result's body of that ID or left out when the result
+ * has none, and after it the new bodies the result holds right after it (pieces `splitSolids`
+ * placed after the body they came from); then the result's new bodies after its last view body,
+ * at the end, in its order (what a `set` of a new ID does). What `new Map(bodies)` changed by
+ * `set` and `delete` and taken apart by `splitSolids` gives under `write`.
  */
 function mergeInPlace(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
   view: BodyView,
   made: ReadonlyMap<BodyId, ShapeHandle>,
 ): ReadonlyMap<BodyId, ShapeHandle> {
+  const { after, trailing } = newBodies(view, made);
   // A plain map: an evaluator may hand back the view itself, whose look-ups would be noticed.
   const result = new Map(made);
   const out = new Map<BodyId, ShapeHandle>();
@@ -1929,27 +1940,63 @@ function mergeInPlace(
     else {
       const now = result.get(id);
       if (now !== undefined) out.set(id, now);
+      for (const piece of after.get(id) ?? []) out.set(piece, result.get(piece) as ShapeHandle);
     }
   }
+  for (const id of trailing) out.set(id, result.get(id) as ShapeHandle);
   return out;
 }
 
 /**
- * Whether a `view` result holds only view bodies, in the view's order: what a copy of
- * `ctx.bodies` changed by `set` and `delete` of view bodies gives when no ID is put back after its
- * `delete`, the only results `mergeInPlace` reproduces. A new ID (a piece `splitSolids` places
- * after the body it came from, where `set` would append it) or an ID outside the view (a fresh ID
- * picked among the view's only) is not.
+ * The new bodies of a `view` result (IDs that aren't the view's), by where they stand: `after` a
+ * view body when a view body comes after them in the result too, else `trailing` (after its last
+ * view body).
  */
-function inViewOrder(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>): boolean {
-  const order = new Map([...view.keys()].map((id, i) => [id, i]));
-  let last = -1;
+function newBodies(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>) {
+  const after = new Map<BodyId, BodyId[]>();
+  let group: BodyId[] = [];
+  let last: BodyId | undefined;
   for (const id of made.keys()) {
-    const at = order.get(id);
-    if (at === undefined || at < last) return false;
-    last = at;
+    if (!view.holds(id)) group.push(id);
+    else {
+      if (last !== undefined && group.length > 0) after.set(last, group);
+      group = [];
+      last = id;
+    }
   }
-  return true;
+  return { after, trailing: group, last };
+}
+
+/**
+ * Whether a `view` result can be merged in place (`mergeInPlace`): its view bodies in the view's
+ * order (no ID put back after its `delete` before a later view body), no ID of a body outside the
+ * view (it would replace a body the feature didn't see), no new body before its first view body,
+ * and its new bodies' places the same as under `write`. Those after its last view body go to the
+ * end; a piece of that last body (its `origins` entry) goes right after it under `write`, which is
+ * the end only when no body outside the view comes after it in the walk.
+ */
+function fitsView(
+  bodies: ReadonlyMap<BodyId, ShapeHandle>,
+  view: BodyView,
+  output: FeatureOutput,
+): boolean {
+  const made = output.bodies as ReadonlyMap<BodyId, ShapeHandle>;
+  const order = new Map([...view.keys()].map((id, i) => [id, i]));
+  let at = -1;
+  for (const id of made.keys()) {
+    const i = order.get(id);
+    if (i === undefined) {
+      if (bodies.has(id)) return false;
+      if (at < 0) return false;
+      continue;
+    }
+    if (i < at) return false;
+    at = i;
+  }
+  const { trailing, last } = newBodies(view, made);
+  if (last === undefined || !trailing.some((id) => output.origins?.get(id) === last)) return true;
+  const walk = [...bodies.keys()];
+  return walk.slice(walk.indexOf(last) + 1).every((id) => view.holds(id));
 }
 
 /** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */
