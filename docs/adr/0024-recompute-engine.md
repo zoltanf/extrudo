@@ -1138,3 +1138,126 @@ runs: median and range, ms, main → this), until the model is ready: committing
 first plate in its dialog 13,764 (13,678–13,913) → 795 (788–806); undoing it 336 (332–337) → 320
 (320–321); opening the design 13,505 (13,354–13,654) → 13,492 (13,143–13,609). The page's blocked
 time: commit 0 (0–69) → 0 (0–0), undo 0 → 0, open 455 (375–553) → 534 (384–603).
+
+## Amendment 2026-11-26: move, scale and mirror in place, Remove and Combine answer `view`
+
+**Decision.** Five features that take picked bodies answer `view` for the inputs that never add a
+body: Move and Scale without a copy, Mirror of bodies without a copy, Remove, and Combine. A
+copy, a mirror's join (it needs a copy) and a mirror of features stay `write`, and so do the
+patterns of bodies and Split Body, which always add bodies: a `view` result may hold only its
+view's bodies (the amendment above), and a rule for new ones is not part of this change (below).
+One engine rule changes: `#viewOf` passes over `axis`, `point` and `sketchEntity` references as it
+did planes (`PASSED_OVER`, `recompute/engine.ts`): an origin axis or point, a construction axis or
+point (`features/references.ts`, `lineOf` and `pointOf`, read through `constructionOf`, `ctx.output`
+:55) and a sketch line (`sketchLine`, `ctx.output` :133) read no body, and their feature is
+upstream. A straight edge or a vertex is resolved like any face, edge or vertex reference.
+
+**What each reads** (audited for this change; file:line, `features/`). Every reference is a
+top-level `ref` input (`bodies`; Combine's `target` and `tools`; Move's `axis`, `from`, `to`;
+Scale's `point`; Mirror's `plane`); none resolves a reference it computes, none searches the
+bodies, none reads anything document-level. Each returns `new Map(ctx.bodies)` changed by `set`
+(and Remove's and Combine's `delete` of the bodies they name), so it meets the merge rule; none
+deletes an ID and sets it again.
+
+| Feature | Reads | Under `view` |
+|---|---|---|
+| Move (`transform.ts`) | each picked body `ctx.bodies.has` (`existing`, :41, :48); the motion: the picked bodies' box centre (`centreOf`, `kernel.properties` of each, :163, :210), an axis (`lineOf`, :169), two points (`pointOf`, :175, :176); each picked body transformed (:81) and named from its table (:85); copy and `set` (`withImages`, :95, :96, :99) | picked bodies by `body` reference; an edge or vertex by exact name; an origin or construction axis or point, a sketch line: passed over |
+| Scale (`scale.ts`) | `existing` (:35); its factors (:36); the centre: a point or the picked bodies' box (:44, :94, :95); `kernel.scale` of each picked body and its names (:51, :52); `withImages` (:63) | as for Move |
+| Mirror (`transform.ts`) | a mirror of features returns before (:263); `existing` (:264); the plane (`planeOf`, :266: a face resolved, a plane passed over); `transformBodies` (:81, :85); `withImages` (:271); the join (:275 on) is reached only with a copy | picked bodies; a face plane by exact name |
+| Remove (`bodies.ts`) | its bodies (:132), each `has` (:133); copy and `delete` (:141, :142) | picked bodies |
+| Combine (`combine.ts`) | target and tools, each `has` (`bodyOf`, :64, :72, :73); the target refused as its own tool (:74); each looked up with its names (:77, :78); `bodiesTouch` between the target and each tool only (:84, `operation.ts:51`: a distance of two shapes); the booleans (:105, :116, :140); copy, `set` the target, `delete` the tools unless kept (:153, :155, :156); `splitSolids` (:162) | target and tools by `body` reference; a result split into pieces holds new bodies and runs as `write` |
+
+**Body references.** `#viewOf` takes each `body` reference's body; a picked body that doesn't exist
+makes the feature `write` (it fails the same way: a lost reference), a body picked twice is in the
+view once, a body picked as Combine's target and tool is in it once and the feature fails the same
+way under both. No picked-body feature picks "all bodies"; with none picked, Move, Scale, Mirror and
+Remove have no reference left (`write`); Combine still names its target.
+
+**Removed bodies.** Remove and Combine (tools not kept) delete bodies of their view from their
+copy; `mergeInPlace` leaves a view body the result doesn't hold out, so the next feature gets the
+map `write` gives it. The differential's later features and edits (a reorder, a suppress, a body
+picked again) read that map at every step.
+
+**Patterns and mirrors of features** stay `write`: they replay the chosen features' tools at
+each placement and join or cut them as the features did (`pattern.ts` `replayFeatures`, Mirror
+:263 → `mirrorFeatures`), finding the bodies a tool meets among all of them, which a view can't
+serve.
+
+**New bodies** (a copy, a pattern instance, a mirrored copy, a split piece) are not taken into a
+view. A rule for them would need: where a new body goes in the map (a `set` appends it, while a
+piece `splitSolids` splits off goes right after its body); fresh IDs that can't meet a body outside
+the view; and their versions from the view's key. That is more than this change makes.
+
+**The proof** (one file per feature, `recompute/view-access-move.test.ts`, `-scale`, `-mirror`,
+`-remove`, `-combine`, over `recompute/view-access-features-test-support.ts`; real OCCT and
+manifold, `strictLeaks`, no clock, fixed seeds; 10 mm boxes):
+
+- **Designs:** boxes moved freely, about the Z axis and from the origin to another box's corner;
+  boxes scaled about their centre and about another box's corner; boxes mirrored in an origin
+  plane and in another box's face, and twin boxes (`test-twin`) whose face, named on both, is the
+  mirror plane; boxes with some removed; targets joined, cut and intersected with tool boxes. In
+  each, a box that no feature names overlaps the first box (beside each Combine target): a
+  feature that searched the bodies it touches, or took out more than it names, would reach it
+  under `write` but not with a view.
+- **Edits:** 20 seeded per design. The rule's terms on the design's first feature, both ways: a
+  body no body is and back, no bodies and back (Combine and the twins' mirror keep a reference,
+  so they keep the view, and the test says so), a body picked twice and back; the copy turned on
+  and off (`view→write`, `write→view`); Move's mode cycling free, about an axis, point to point
+  to a box that comes into the view by its vertex (`view` throughout, asserted); the mirror's
+  plane cycling an origin plane and a face of a box outside the view (`view` throughout,
+  asserted); Combine's operation cycling and its tools kept and not, the target picked as a tool
+  and back; the twins swapping places and one suppressed and back. Then the generic edits.
+- **After every step:** the cached engine equals a cleared engine (versions and `measure` boxes
+  too) and an all-`write` engine (all but versions); no fall-back.
+- **Counters:** a box's size: the box and its feature, one mesh (Remove: none, the box is gone);
+  Move's distance and Scale's factor: the feature alone, one mesh.
+- **Taken out, one at a time** (the source changed, the filtered tests run, the source restored),
+  and the tests that failed: each feature's `bodyAccess` back to `write` (its differential and
+  counter; Mirror's twins too); Move's copy term (a copy as `view`: its differential); Mirror's copy term (its differential); the axis, point and sketch entity pass-over
+  (Move's differential and counter: its axis and points make it `write`); Remove deleting every
+  body it is given (its differential and counter: under `write` the box outside the view goes
+  too); Combine taking every other body as a tool (its differential and counter).
+
+**Not covered:** a body made by a copy, a pattern or a split in a view (they run as `write`); the
+patterns and mirrors of features; Split Body; previews; joints, annotations and sheets.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and
+number of evaluations. Versions differ in b3, the one of them with one of the five (a version is
+the key that made the body). The feature goldens are unchanged.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine. Kernel time and meshes
+sent for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes;
+the edit its distance to 6 mm), incremental with `have`, in Node, two runs each, main → this. Each
+plate moved 1 mm up, scaled 1.01, mirrored in XZ without a copy, or with a 20 mm box over its
+corner that a Remove takes out or that it is joined with.
+
+| Design | Edit | Evaluated / meshes sent | ms |
+|---|---|--:|--:|
+| 20 plates, moved | first | 21/20 → 2/1 | 2,224, 2,201 → 146, 141 |
+| | middle | 12/11 → 2/1 | 1,225, 1,220 → 142, 149 |
+| | last | 2/1 → 2/1 | 148, 146 → 140, 146 |
+| 20 plates, scaled | first | 21/20 → 2/1 | 2,235, 2,236 → 147, 139 |
+| | middle | 12/11 → 2/1 | 1,232, 1,224 → 145, 147 |
+| | last | 2/1 → 2/1 | 145, 144 → 139, 138 |
+| 20 plates, mirrored | first | 21/20 → 2/1 | 1,954, 1,909 → 131, 130 |
+| | middle | 12/11 → 2/1 | 1,093, 1,063 → 126, 125 |
+| | last | 2/1 → 2/1 | 130, 127 → 130, 127 |
+| 20 plates, a box removed | first | 21/1 → 1/1 | 60, 59 → 63, 60 |
+| | middle | 12/1 → 1/1 | 56, 56 → 54, 54 |
+| | last | 2/1 → 1/1 | 53, 53 → 55, 55 |
+| 20 plates, a box joined | first | 21/20 → 2/1 | 2,662, 2,650 → 164, 169 |
+| | middle | 12/11 → 2/1 | 1,483, 1,462 → 162, 162 |
+| | last | 2/1 → 2/1 | 165, 165 → 179, 161 |
+
+A Remove is cheap to evaluate again, so it saves evaluations there, not time.
+
+From scratch (every feature of those 64 designs, the fastest of two runs each, main → this):
+11,254 → 11,172 ms over 180 features; the largest increase of one feature +2.7 ms.
+
+In the app (the 20 moved plates as a file, production build, Chrome, 1280 × 800, 4 interleaved
+runs: median and range, ms, main → this), until the model is ready: committing an edit of the
+first plate in its dialog 2,145 (2,123–2,219) → 278 (266–281); undoing it 318 (316–320) → 320
+(320–322); opening the design 1,238 (1,203–1,364) → 1,159 (972–1,254). The page's blocked time:
+commit 0 → 0, undo 0 → 0, open 551 (533–587) → 471 (385–556).
