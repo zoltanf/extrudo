@@ -1165,13 +1165,23 @@ deletes an ID and sets it again.
 | Scale (`scale.ts`) | `existing` (:35); its factors (:36); the centre: a point or the picked bodies' box (:44, :94, :95); `kernel.scale` of each picked body and its names (:51, :52); `withImages` (:63) | as for Move |
 | Mirror (`transform.ts`) | a mirror of features returns before (:263); `existing` (:264); the plane (`planeOf`, :266: a face resolved, a plane passed over); `transformBodies` (:81, :85); `withImages` (:271); the join (:275 on) is reached only with a copy | picked bodies; a face plane by exact name |
 | Remove (`bodies.ts`) | its bodies (:132), each `has` (:133); copy and `delete` (:141, :142) | picked bodies |
-| Combine (`combine.ts`) | target and tools, each `has` (`bodyOf`, :64, :72, :73); the target refused as its own tool (:74); each looked up with its names (:77, :78); `bodiesTouch` between the target and each tool only (:84, `operation.ts:51`: a distance of two shapes); the booleans (:105, :116, :140); copy, `set` the target, `delete` the tools unless kept (:153, :155, :156); `splitSolids` (:162) | target and tools by `body` reference; a result split into pieces holds new bodies and runs as `write` |
+| Combine (`combine.ts`) | target and tools, each `has` (`bodyOf`, :64, :72, :73); the target refused as its own tool (:74); each looked up with its names (:77, :78); `bodiesTouch` between the target and each tool only (:84, `operation.ts:51`: a distance of two shapes); the booleans of the target with the tools (:105, :116, :140) and, to intersect, of the tools with each other (:137); the volume of the target before and of the result (`kernel.measure`, :120, :121, :143); copy, `set` the target, `delete` the tools unless kept (:153, :155, :156); the tools' shapes for a preview (`ctx.bodies.get`, :159); `splitSolids` (:162) | target and tools by `body` reference, and shapes made of them only; a result split into pieces holds new bodies and runs as `write` |
 
-**Body references.** `#viewOf` takes each `body` reference's body; a picked body that doesn't exist
-makes the feature `write` (it fails the same way: a lost reference), a body picked twice is in the
-view once, a body picked as Combine's target and tool is in it once and the feature fails the same
-way under both. No picked-body feature picks "all bodies"; with none picked, Move, Scale, Mirror and
-Remove have no reference left (`write`); Combine still names its target.
+**Body references.** `#viewOf` takes each `body` reference's body. A picked body that doesn't
+exist makes the feature `write`, and it gives the same error under both. A body picked twice is in
+the view once; a body picked as Combine's target and tool is in it once, and the feature fails the
+same way under both. No picked-body feature picks "all bodies". With no body picked (each then
+fails asking for its bodies, the same way under both), what is left decides:
+
+- Move keeps a view when its axis, `from` or `to` is an edge or a vertex, also one its current
+  mode doesn't use (an input the dialog left after a change of mode still counts); an origin or
+  construction axis or point, or a sketch line, leaves no reference, so it runs as `write`.
+- Scale keeps a view when its centre is a vertex; about its bodies' box or a construction or
+  origin point it runs as `write`.
+- Mirror keeps a view when its plane is a face; an origin or construction plane leaves none.
+- Combine keeps a view: it still names its target.
+- Remove's inputs refuse an empty list before any body access is asked, so its feature fails
+  without a view or a key; the proof doesn't edit Remove to no bodies.
 
 **Removed bodies.** Remove and Combine (tools not kept) delete bodies of their view from their
 copy; `mergeInPlace` leaves a view body the result doesn't hold out, so the next feature gets the
@@ -1193,30 +1203,52 @@ the view; and their versions from the view's key. That is more than this change 
 manifold, `strictLeaks`, no clock, fixed seeds; 10 mm boxes):
 
 - **Designs:** boxes moved freely, about the Z axis and from the origin to another box's corner;
-  boxes scaled about their centre and about another box's corner; boxes mirrored in an origin
-  plane and in another box's face, and twin boxes (`test-twin`) whose face, named on both, is the
-  mirror plane; boxes with some removed; targets joined, cut and intersected with tool boxes. In
-  each, a box that no feature names overlaps the first box (beside each Combine target): a
-  feature that searched the bodies it touches, or took out more than it names, would reach it
-  under `write` but not with a view.
-- **Edits:** 20 seeded per design. The rule's terms on the design's first feature, both ways: a
-  body no body is and back, no bodies and back (Combine and the twins' mirror keep a reference,
-  so they keep the view, and the test says so), a body picked twice and back; the copy turned on
-  and off (`view→write`, `write→view`); Move's mode cycling free, about an axis, point to point
-  to a box that comes into the view by its vertex (`view` throughout, asserted); the mirror's
-  plane cycling an origin plane and a face of a box outside the view (`view` throughout,
-  asserted); Combine's operation cycling and its tools kept and not, the target picked as a tool
-  and back; the twins swapping places and one suppressed and back. Then the generic edits.
+  boxes moved about a construction axis along another box's edge, about a sketch line on XY,
+  about a sketch line on another box's top face, and to a construction point on another box's
+  corner; boxes scaled about their centre and about another box's corner; boxes mirrored in an
+  origin plane and in another box's face, and twin boxes (`test-twin`) whose face, named on both,
+  is the mirror plane; boxes with some removed; targets joined, cut and intersected with tool
+  boxes. In each design but the twins' and the one about construction geometry, a box that no
+  feature names overlaps a box a feature names (Move's, Scale's and Mirror's first box, each
+  Combine target, and one of the removed boxes; Remove's design has one more over a box it keeps):
+  a feature that searched the bodies it touches, or also took those, would reach it under `write`
+  but not with a view.
+- **Edits:** 20 seeded per design (24 for Combine: its 21 kinds each once, in order, then three
+  seeded). The first pass takes each kind once, in the order listed, on the design's first
+  feature (the move about the construction axis in that design): a body no body is and back; no
+  bodies and back (not for Remove, whose inputs refuse it; Combine and the twins' mirror keep a
+  reference, so they keep the view, and the test says so); the first body picked a second time
+  and back (`twice`, `untwice`); the copy turned on and off (`view→write`, `write→view`); Move's
+  mode cycling free, about an axis, point to point to a box that comes into the view by its
+  vertex, and free again (`view` throughout, asserted); the mirror's plane to a face of a box
+  outside the view and back to the YZ plane (`view` throughout, asserted); Combine's operation
+  cycling join, cut, intersect and join, its tools kept and not kept, its target picked as a tool
+  and taken out again; the twins swapping places, and one suppressed and back. Then the generic
+  edits, each once, on the feature as those left it, and seeded edits for the remaining steps.
+- **Construction and sketch geometry** (Move): an edit of the box with the construction axis's
+  edge runs the box, the axis (`read`) and the move about it; an edit of the XY sketch, the
+  sketch and the move about its line; an edit of the box under the face's sketch, the box, that
+  sketch and the move about its line; an edit of the corner's box, the box, the construction point
+  and the move to it. Every `read` feature after an edited body runs again too (its key holds
+  every body before it), and so does each move about it; a box no feature refers to leaves the
+  move about the XY sketch's line alone. Every move keeps its view, and every step equals a
+  cleared and an all-`write` engine.
 - **After every step:** the cached engine equals a cleared engine (versions and `measure` boxes
   too) and an all-`write` engine (all but versions); no fall-back.
 - **Counters:** a box's size: the box and its feature, one mesh (Remove: none, the box is gone);
   Move's distance and Scale's factor: the feature alone, one mesh.
 - **Taken out, one at a time** (the source changed, the filtered tests run, the source restored),
   and the tests that failed: each feature's `bodyAccess` back to `write` (its differential and
-  counter; Mirror's twins too); Move's copy term (a copy as `view`: its differential); Mirror's copy term (its differential); the axis, point and sketch entity pass-over
-  (Move's differential and counter: its axis and points make it `write`); Remove deleting every
+  counter; Mirror's twins too); Move's copy term (a copy as `view`: its differential); Mirror's
+  copy term (its differential); the whole pass-over (Move's differential and counter: its axis
+  and points make it `write`); each of `axis`, `point` and `sketchEntity` taken out of it alone
+  (`sketchEntity`: the test of the moves about construction and sketch geometry, whose two
+  sketch-line moves are then not viewed; `axis`: that test, both Move designs' differentials and
+  the counter; `point`: that test, the first design's differential and the counter); the upstream features' keys left out of every key (a throwaway change: the test of the moves about construction and sketch geometry, a move
+  then kept from before its axis or sketch changed); Remove deleting every
   body it is given (its differential and counter: under `write` the box outside the view goes
-  too); Combine taking every other body as a tool (its differential and counter).
+  too); Remove also deleting the bodies that touch the ones it names (its differential and counter: under `write` the box over the removed one goes too); Combine
+  taking every other body as a tool (its differential and counter).
 
 **Not covered:** a body made by a copy, a pattern or a split in a view (they run as `write`); the
 patterns and mirrors of features; Split Body; previews; joints, annotations and sheets.
