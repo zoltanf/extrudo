@@ -875,9 +875,13 @@ export class RecomputeEngine {
         !hasOwnBodies(bodies, feature.id);
       // A feature that reads only the bodies its references name (ADR-0024's amendment on `view`
       // access) sees those and keys their versions; `write` when the view can't be worked out
-      // (`#viewOf`), inside an isolated expansion, and once its evaluation looked outside it.
+      // (`#viewOf`), inside an isolated expansion, and once its evaluation looked outside it. A
+      // `read` feature too (its amendment on `read` features): it changes no body, so it keys
+      // the bodies its references name, or every body before it as `read` did.
       const looked =
-        access === 'view' && scope === undefined ? this.#viewOf(feature, bodies) : undefined;
+        (access === 'view' || access === 'read') && scope === undefined
+          ? this.#viewOf(feature, bodies)
+          : undefined;
       const viewKey = looked && keyOf(hashOf('view', looked.versions));
       // Not when a body has the feature's own ID prefix: its fresh IDs (`<feature>:<n>`) are
       // picked among the bodies it sees, so they could meet one outside the view (as for `add`).
@@ -961,9 +965,9 @@ export class RecomputeEngine {
           (seen.read || entry.retry === 'bodies')) ||
         misfit;
       if (wrong || unplaced) {
-        // It read a body after all: its `add` or `view` answer was wrong for these inputs, or a
-        // view's result doesn't fit its view. Its result goes, and it runs as `write`, now and
-        // whenever these inputs come again. So does an error to try again once the bodies before
+        // It read a body after all: its `add` or `view` answer (or a `read` feature's view) was
+        // wrong for these inputs, or a view's result doesn't fit its view. Its result goes, and it
+        // runs as `write` (`read` keyed by every body), now and whenever these inputs come again. So does an error to try again once the bodies before
         // it change, as main's `write` key did. A result that only can't be placed here stays
         // cached under its view key, for a walk where it can be, and runs as `write` this walk.
         if (wrong) {
@@ -1556,10 +1560,11 @@ export class RecomputeEngine {
    * (`expand`, ADR-0077 §3) are this one.
    */
   /**
-   * The bodies a `view` feature sees (ADR-0024's amendment on `view` access): every body a `body`
-   * reference names and every body whose naming table holds the exact name of a face, edge or
-   * vertex reference, in walk order, with their versions for its key. `undefined`, so the feature
-   * runs as `write`, when it has no such reference, a reference of another kind, a body reference
+   * The bodies a `view` or `read` feature sees (ADR-0024's amendments on `view` access and on
+   * `read` features): every body a `body` reference names and every body whose naming table holds
+   * the exact name of a face, edge or vertex reference (a sketch's projections included), in walk
+   * order, with their versions for its key. `undefined`, so the feature runs as `write` (`read`
+   * keyed by every body before it), when it has no such reference, a reference of another kind, a body reference
    * to no body, a face, edge or vertex reference no body has by that name (lost, or found only by
    * a related name or a fingerprint), a body before it without a naming table, or a view body
    * without a version. A `plane`, `axis`, `point` or `sketchEntity` reference (an origin one, a
@@ -1571,8 +1576,14 @@ export class RecomputeEngine {
   ): { bodies: BodyView; versions: [BodyId, string][] } | undefined {
     const ids = new Set<BodyId>();
     for (const input of Object.values(feature.inputs)) {
-      if (input.kind !== 'ref') continue;
-      for (const ref of input.refs) {
+      // A sketch's projections are references too (as `featureDependencies` finds them).
+      const refs =
+        input.kind === 'ref'
+          ? input.refs
+          : input.kind === 'sketchData'
+            ? Object.values(input.sketch.projections ?? {}).map((p) => p.ref)
+            : [];
+      for (const ref of refs) {
         if (ref.kind === 'body') {
           if (!bodies.has(ref.id as BodyId)) return undefined;
           ids.add(ref.id as BodyId);

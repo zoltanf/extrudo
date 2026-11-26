@@ -125,11 +125,11 @@ describe('view access: the draft (ADR-0024)', () => {
   it('a draft about a plane on another body’s face runs again when that body changes', {
     timeout: 300_000,
   }, async () => {
-    // The plane reads the first plate (`read`), so its key moves with every body-writing feature
-    // before it, and the draft's key holds the plane's: an edit of the first plate reaches it.
+    // The plane is on the first plate's face (`read`, keyed by that plate's version), and the
+    // draft's key holds the plane's: an edit of the first plate reaches it.
     const doc = await onFacePlane();
     const steps = await sequence([doc, setInputs(doc, 'ex0', { distance: length('9 mm') })]);
-    expect(steps[0]?.result.stats.viewed).toEqual(['dr0', 'dr1', 'dr2']);
+    expect(steps[0]?.result.stats.viewed).toEqual(['dr0', 'cpf', 'dr1', 'dr2']);
     expect(steps[0]?.result.features['dr1' as FeatureId]?.status).toBe('ok');
     expect(steps[1]?.evaluated).toEqual(['ex0', 'dr0', 'cpf', 'dr1']);
     for (const step of steps) expect(step.problems).toEqual([]);

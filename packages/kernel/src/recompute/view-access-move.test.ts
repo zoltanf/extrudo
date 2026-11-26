@@ -191,22 +191,20 @@ describe('view access: Move (ADR-0024)', () => {
     for (const step of steps) {
       expect(step.problems).toEqual([]);
       expect(fallbacks(step.result, doc)).toEqual([]);
-      expect(step.result.stats.viewed).toEqual(['mva', 'mvs', 'mvf', 'mvp']);
+      expect(step.result.stats.viewed).toEqual(['ax', 'mva', 'mvs', 'sf', 'mvf', 'cpt', 'mvp']);
     }
     expect(steps[0]?.result.features['mva' as FeatureId]?.status).toBe('ok');
-    // A box nothing refers to. The axis, the face's sketch and the point read bodies (`read`: their
-    // keys hold every body before them), so they run again, and each move about them with them;
-    // the move about the XY sketch's line (that sketch reads none) doesn't.
-    expect(steps[1]?.evaluated).toEqual(['q0', 'ax', 'mva', 'sf', 'mvf', 'cpt', 'mvp']);
-    // The edge's box: the axis along it and the move about it, and the later `read` features
-    // and their moves as above.
-    expect(steps[3]?.evaluated).toEqual(['ea', 'ax', 'mva', 'sf', 'mvf', 'cpt', 'mvp']);
-    // The XY sketch: the move about its line; that move's new body is in the keys of the later
-    // `read` features, which run again with their moves.
-    expect(steps[5]?.evaluated).toEqual(['sl', 'mvs', 'sf', 'mvf', 'cpt', 'mvp']);
-    // The box whose face the second sketch is on: that sketch and the move about its line (and
-    // the point after them).
-    expect(steps[7]?.evaluated).toEqual(['fb', 'sf', 'mvf', 'cpt', 'mvp']);
+    // A box nothing refers to: it alone. The axis, the face's sketch and the point are `read`
+    // features keyed by the bodies their references name (ADR-0024's amendment on `read`
+    // features), so they and the moves about them stay.
+    expect(steps[1]?.evaluated).toEqual(['q0']);
+    // The edge's box: the axis along it and the move about it.
+    expect(steps[3]?.evaluated).toEqual(['ea', 'ax', 'mva']);
+    // The XY sketch: the move about its line.
+    expect(steps[5]?.evaluated).toEqual(['sl', 'mvs']);
+    // The box whose face the second sketch is on: that sketch and the move about its line.
+    expect(steps[7]?.evaluated).toEqual(['fb', 'sf', 'mvf']);
+    // The corner's box: the point on it and the move to it.
     expect(steps[9]?.evaluated).toEqual(['pb', 'cpt', 'mvp']);
   });
 
