@@ -21,7 +21,10 @@ import { centreOf, existing, type Image, imagesCsg, withImages } from './transfo
 
 export const kernelScale: KernelFeatureDefinition<ScaleInputs> = {
   ...scaleFeature,
-  bodyAccess: () => 'write',
+  // A scale in place reads and changes only the bodies it names (ADR-0024's amendment on `view`
+  // access): its centre is their box's or a point (origin, construction or a vertex). A copy adds
+  // bodies, so it stays `write`.
+  bodyAccess: (inputs) => (scaleSettings(inputs).copy ? 'write' : 'view'),
   evaluate: evaluateScale,
   csg: scaleCsg,
 };
