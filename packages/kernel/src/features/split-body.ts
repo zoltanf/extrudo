@@ -40,7 +40,10 @@ import { add, dot, length, scale, sub } from './vec';
 
 export const kernelSplitBody: KernelFeatureDefinition<SplitBodyInputs> = {
   ...splitBodyFeature,
-  bodyAccess: () => 'write',
+  // Reads and splits only the bodies it names (ADR-0024's amendments on `view` access): its plane
+  // is an origin or construction plane or a face, which the view holds; a piece's ID is the next
+  // `<feature>:<n>` free among its bodies.
+  bodyAccess: () => 'view',
   evaluate: evaluateSplitBody,
 };
 
