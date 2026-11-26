@@ -48,7 +48,10 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  */
 export const kernelShell: KernelFeatureDefinition<ShellInputs> = {
   ...shellFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only the bodies of its faces and the bodies it hollows (ADR-0024's
+  // amendment on `view` access): it resolves its face references, looks up those bodies and its
+  // picked ones, and returns a copy of the map it is given with them set.
+  bodyAccess: () => 'view',
   evaluate: evaluateShell,
 };
 

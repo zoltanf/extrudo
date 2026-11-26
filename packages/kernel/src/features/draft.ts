@@ -36,7 +36,9 @@ const RADIANS = Math.PI / 180;
 
 export const kernelDraft: KernelFeatureDefinition<DraftInputs> = {
   ...draftFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only the bodies of its faces (ADR-0024's amendment on `view` access): the
+  // neutral plane is an origin or construction plane (no body) or a face, which the view holds.
+  bodyAccess: () => 'view',
   evaluate: evaluateDraft,
 };
 

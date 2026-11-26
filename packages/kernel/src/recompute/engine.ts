@@ -936,7 +936,8 @@ export class RecomputeEngine {
         evaluated.push(feature.id);
         made = true;
       }
-      // A view's result whose bodies aren't in the view's order (an ID deleted and set again) is
+      // A view's result with a body outside the view, or with its view bodies out of the view's
+      // order (one put back after its `delete`, seen when a later view body comes before it), is
       // not what `mergeInPlace` assumes.
       const misordered =
         view !== undefined &&
@@ -1544,7 +1545,9 @@ export class RecomputeEngine {
    * vertex reference, in walk order, with their versions for its key. `undefined`, so the feature
    * runs as `write`, when it has no such reference, a reference of another kind, a body reference
    * to no body, a face, edge or vertex reference no body has by that name (lost, or found only by
-   * a related name or a fingerprint), or a body without a naming table or a version.
+   * a related name or a fingerprint), a body before it without a naming table, or a view body
+   * without a version. A `plane` reference (an origin plane or a construction plane's output)
+   * reads no body and is passed over.
    */
   #viewOf(
     feature: Feature,
@@ -1559,6 +1562,9 @@ export class RecomputeEngine {
           ids.add(ref.id as BodyId);
           continue;
         }
+        // A plane is an origin plane or a construction plane's output: no body is read, and a
+        // construction plane's key is in this feature's key already (an upstream feature).
+        if (ref.kind === 'plane') continue;
         if (ref.kind !== 'face' && ref.kind !== 'edge' && ref.kind !== 'vertex') return undefined;
         let found = false;
         for (const [id, shape] of bodies) {
@@ -1902,11 +1908,9 @@ class BodyView extends Map<BodyId, ShapeHandle> {
 }
 
 /**
- * The design's bodies after a `view` feature: each body in order, a view body replaced by the
- * result's body of that ID or left out when the result has none, a body outside the view replaced
- * when the result has one of its ID, then the result's new bodies in its order: what
- * `new Map(bodies)` with `set` and `delete` gives, but for a `delete` of a body outside the view
- * (the evaluator's copy of the view has none to delete).
+ * The design's bodies after a `view` feature whose result holds only view bodies (`inViewOrder`):
+ * each body in order, a view body replaced by the result's body of that ID or left out when the
+ * result has none. What `new Map(bodies)` with `set` and `delete` of view bodies gives.
  */
 function mergeInPlace(
   bodies: ReadonlyMap<BodyId, ShapeHandle>,
@@ -1917,28 +1921,29 @@ function mergeInPlace(
   const result = new Map(made);
   const out = new Map<BodyId, ShapeHandle>();
   for (const [id, shape] of bodies) {
-    const now = result.get(id);
-    if (now !== undefined) out.set(id, now);
-    else if (!view.holds(id)) out.set(id, shape);
+    if (!view.holds(id)) out.set(id, shape);
+    else {
+      const now = result.get(id);
+      if (now !== undefined) out.set(id, now);
+    }
   }
-  for (const [id, shape] of result) if (!out.has(id)) out.set(id, shape);
   return out;
 }
 
 /**
- * Whether a `view` result keeps its view's bodies in the view's order, before any other body:
- * what a copy of `ctx.bodies` changed by `set` and `delete` gives when no ID is put back after
- * its `delete`, the only results `mergeInPlace` reproduces.
+ * Whether a `view` result holds only view bodies, in the view's order: what a copy of
+ * `ctx.bodies` changed by `set` and `delete` of view bodies gives when no ID is put back after its
+ * `delete`, the only results `mergeInPlace` reproduces. A new ID (a piece `splitSolids` places
+ * after the body it came from, where `set` would append it) or an ID outside the view (a fresh ID
+ * picked among the view's only) is not.
  */
 function inViewOrder(view: BodyView, made: ReadonlyMap<BodyId, ShapeHandle>): boolean {
   const order = new Map([...view.keys()].map((id, i) => [id, i]));
   let last = -1;
-  let other = false;
   for (const id of made.keys()) {
     const at = order.get(id);
-    if (at === undefined) other = true;
-    else if (other || at < last) return false;
-    else last = at;
+    if (at === undefined || at < last) return false;
+    last = at;
   }
   return true;
 }

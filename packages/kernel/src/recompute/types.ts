@@ -94,11 +94,14 @@ export interface ImportedFile {
  *   of another body, or a reference resolved other than by its exact name makes the engine
  *   evaluate the feature again as `write`; a read by iterating gives the view's bodies and is
  *   not noticed, and neither is a `delete` of a body outside the view from the evaluator's copy.
- *   Its result must be a copy of `ctx.bodies` changed by `set` and `delete` only, with no ID put
- *   back after its `delete`: a result out of the view's order runs as `write` again.
- *   Treated as `write` inside an isolated expansion, when a reference has no exact match
- *   among the bodies (or is of another kind), and after an error to try again once the bodies
- *   before it change (`OutsideError` `retry: 'bodies'`), as `add` is.
+ *   Its result must be a copy of `ctx.bodies` changed by `set` and `delete` of view bodies only,
+ *   with no ID put back after its `delete`: a result out of the view's order, or with a body
+ *   outside the view (a new one too, a piece `splitSolids` split off), runs as `write` again.
+ *   A `plane` reference (an origin or construction plane) reads no body and takes no part in the
+ *   view. Treated as `write` inside an isolated expansion, when a face, edge or vertex reference
+ *   has no exact match among the bodies (or a reference is of another kind), and after an error
+ *   to try again once the bodies before it change (`OutsideError` `retry: 'bodies'`), as `add`
+ *   is.
  */
 export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view';
 
