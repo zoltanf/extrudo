@@ -420,13 +420,17 @@ the three single-edge chamfers tried on a box.
 - **Checked now** (`arguments-unchanged.test.ts`, each call must compute with its inputs, so a
   refusal can't pass for "unchanged"): `revolve`; a tapered `prism` over lines (its draft path),
   over an ellipse and over a closed B-spline (its loft path, `taperLoft`); `loft` (smooth, ruled,
-  to a point); `sweep` along sketch lines, twisted and scaled, and along a body's edge;
-  `threadSweep`, straight and tapered; `wrapOnCylinder`; `wrapOnCone`; `filletVariable`;
+  to a point, and closed through three sections in a ring, whose wires `BRepFill_CompatibleWires`
+  lines up); `sweep` along sketch lines, twisted and scaled, along a body's edge, and of a profile
+  with a hole (its pipes cut by a plain boolean); `path` of a body's edge and a sketch line that
+  meets it (`pathWire` hands both edges to `BRepBuilderAPI_MakeWire`); `threadSweep`, straight and
+  tapered; `wrapOnCylinder`; `wrapOnCone`; `filletVariable`;
   `shellFaces` (a shell with a wall set); the STEP writer with a colour (`writeStepXde`) and with
   a group (`writeStepAssembly`). Profiles are sketch faces (`planarFaces`), as a sketch's cached
   profile face reaches these calls; paths are sketch wires (`path`) or a body's edge.
-  `offsetProbe` is left out: no `Kernel` method reaches it (the facade's tests and the spike
-  harness only).
+  `offsetProbe` is left out: nothing in the repository calls it (its only other mention is its
+  declaration in `occt/types.ts`), and it builds on a full copy of its input
+  (`BRepBuilderAPI_Copy(*input, true, false)`).
 - **What the comparison sees, and what it doesn't.** The box of every face, edge and vertex,
   each enlarged by its own tolerance, and the description (sub-shapes, their types, sizes and
   neighbours): a tolerance raised or re-set, a sub-shape moved, added or taken away. Not: a
@@ -437,25 +441,32 @@ the three single-edge chamfers tried on a box.
   profile, path or body, used by the call, then used again, against a fresh one made the same way.
   Profile: a prism of it, a cut of that prism, a revolve, a loft to a small circle and a sweep along
   a line from its middle. Path: a sweep along it. Body: itself and a cut of it. Results compare bit for
-  bit (the description and boxes, `measure`, `properties` and the mesh of a copy; a refusal by its
-  message).
+  bit (the description and boxes, `measure`, `properties` and the mesh of a copy). A refusal would
+  compare nothing, so the fresh profile's results must all compute but two, listed with their
+  reason: the wavy ring and the profile with a hole can't be lofted to a circle (the loft crosses
+  itself; a loft section can't have a hole). Checked this way: the profile of every call above that
+  takes one (the loft's first and second sections, the closed loft's first, the straight and the
+  tapered thread's tooth, every sweep's and both wraps'); the paths of the plain and the twisted
+  sweep; the body and the sketch line of the two-piece path, and the body whose edge a path took;
+  the bodies of `filletVariable`, `shellFaces` and the two STEP writers.
 - **What wrote.** The tapered prism's loft path. Over an ellipse or a spline it re-set the profile's
   vertex and edge tolerances in place: 1e-7 became 1.0000000000000002e-7. Every later prism, cut,
   revolve, loft and sweep of that profile then carried the same value on the sub-shapes it shares
   with the profile, so their boxes per sub-shape differed from a fresh profile's by that much
   (`measure`, `properties` and the meshes did not). Which of its steps writes (`ThruSections`,
   built with its input mutable, or the sewing of the profile face into the solid) was not
-  narrowed down. Everything else on the list leaves its arguments as they were, and nothing
-  downstream of them differs.
+  narrowed down (the facade's comment at the copy says "its lofts and its sewing": it is one or the
+  other or both). Everything else on the list leaves its arguments as they were, and nothing of
+  what is checked downstream (above) differs.
 - **The change** (`extrudo_facade.cpp`, `prism`): the loft path takes a topology-only copy of the
   profile (`BRepBuilderAPI_Copy(base, false, true)`, as the booleans do since the amendment
   above). The copy keeps the sub-shapes' order, so the history's indices are the profile's. With
   main's build the two loft-path entries of each test fail; with this one every entry passes.
 - **From scratch:** the 64 designs in `fixtures/` give the same bodies, versions, statuses,
   reports, meshes (edge flags included) and `inspect` of every body as main's build.
-- **Cost:** none seen. A tapered prism of 10 mm at 0.1 rad, the median of five batches of 40 after
-  10 to warm up, two runs each (main's build → this): over a 20 × 10 mm ellipse 98.0, 98.4 →
-  94.6, 94.2 ms; over a closed B-spline 1,135, 1,128 → 1,135, 1,110 ms.
+- **Cost:** none seen. A tapered prism of 10 mm at 0.1 rad, per prism, the median of five batches
+  of 40 after 10 to warm up, two runs each (main's build → this): over a 20 × 10 mm ellipse 98.0,
+  98.4 → 94.6, 94.2 ms; over a closed B-spline 1,135, 1,128 → 1,135, 1,110 ms.
 - **The halves of a split, then a plain boolean** (a probe, not a test: it needs two builds). Split
   Body's two halves are two `common`s of the body. A box 40 × 30 × 20 mm, the test part (a box with
   rounded vertical edges and a hole) and a torus, each split at x = 3, a 4 mm cube cut from one

@@ -89,6 +89,28 @@ function ring(center: Vec2, radius: number): PlanarCurve {
   return { kind: 'spline', degree: 3, poles, knots };
 }
 
+/** A disc of radius `r` round (cx, cy) with a hole of radius `hole`: one face with a hole. */
+function annulus(cx: number, cy: number, r: number, hole: number): ShapeHandle {
+  const { faces } = kernel.planarFaces([circle([cx, cy], r), circle([cx, cy], hole)], XY, 1e-6);
+  const face = faces.find((f) => f.holes === 1);
+  kernel.release(...faces.filter((f) => f !== face).map((f) => f.shape));
+  if (!face) throw new Error('no face with a hole');
+  return face.shape;
+}
+
+/** The plane through the Z axis at `angle` (radians), its `x` pointing away from the axis. */
+const aroundZ = (angle: number): PlanarFrame => ({
+  origin: [0, 0, 0],
+  x: [Math.cos(angle), Math.sin(angle), 0],
+  normal: [-Math.sin(angle), Math.cos(angle), 0],
+});
+/** Three circles r 4 at 20 mm from the Z axis, a third of a turn apart: a closed loft's ring. */
+const RING = [0, 1, 2].map((k) => aroundZ((2 * Math.PI * k) / 3));
+const ringSection = (frame: PlanarFrame) => profile([circle([20, 0], 4)], frame);
+
+/** A sketch line on XZ from (15, 0, 3) up to (15, 0, 10): it meets the plate's edge at its top. */
+const lineOnPlate = () => path(XZ, [15, 3], [15, 10]);
+
 /** The largest face between `curves` in `frame`: a sketch's profile face, fresh. */
 function profile(curves: PlanarCurve[], frame: PlanarFrame = XY): ShapeHandle {
   const { faces } = kernel.planarFaces(curves, frame, 1e-6);
@@ -433,6 +455,27 @@ const MORE_CALLS: [string, () => ShapeHandle[], (s: ShapeHandle[]) => Out][] = [
     },
   ],
   [
+    'sweep of a profile with a hole (its pipes cut by a boolean)',
+    () => [annulus(0, 0, 3, 1.5), path(XZ, [0, 0], [0, 8], [6, 15])],
+    ([a, b]) => kernel.sweep(a as ShapeHandle, b as ShapeHandle),
+  ],
+  [
+    'loft, closed (three sections in a ring)',
+    () => RING.map(ringSection),
+    (sections) => kernel.loft(sections, { closed: true }),
+  ],
+  [
+    "path of a body's edge and a sketch line that meets it",
+    () => [plate(), lineOnPlate()],
+    ([a, b]) => {
+      const edge = edgeBetween(a as ShapeHandle, [15, 0, 0], [15, 0, 3]);
+      return kernel.path([
+        { kind: 'edge', shape: a as ShapeHandle, edge },
+        { kind: 'edge', shape: b as ShapeHandle, edge: 0 },
+      ]);
+    },
+  ],
+  [
     'threadSweep',
     () => [profile(lines([5, 0], [6, 0.4], [5, 0.8]), XZ)],
     ([a]) =>
@@ -669,6 +712,19 @@ describe('a profile, path or body used by a call gives later results as a fresh 
     cut: made((t) => t(kernel.cut(body, t(cubeIn(body))).shape)),
   });
 
+  /** The operations of a result that OCCT refused. */
+  const refused = (out: Record<string, object>) =>
+    Object.entries(out)
+      .filter(([, v]) => 'refused' in v)
+      .map(([k]) => k);
+  /** The later operations a profile can't take, by profile, and why. */
+  const REFUSED: Record<string, string[]> = {
+    // The wavy ring lofted to a small circle crosses itself (LoftError `crosses`), fresh or used.
+    'prism, tapered (a spline)': ['loft'],
+    // A loft section can't have a hole (LoftError `holes`).
+    'sweep of a profile with a hole': ['loft'],
+  };
+
   /** A call and the profile it takes (a fresh one each time), in its frame. */
   const PROFILES: [string, () => ShapeHandle, PlanarFrame, (face: ShapeHandle) => Out][] = [
     [
@@ -728,6 +784,58 @@ describe('a profile, path or body used by a call gives later results as a fresh 
       (a) => kernel.loft([a, { point: [0, 0, 15] }]),
     ],
     [
+      'loft: its second section',
+      () => profile([circle([0, 0], 5)], XY_HIGH),
+      XY_HIGH,
+      (a) => {
+        const bottom = profile([circle([0, 0], 8)]);
+        try {
+          return kernel.loft([bottom, a]);
+        } finally {
+          kernel.release(bottom);
+        }
+      },
+    ],
+    [
+      'loft, closed: its first section',
+      () => ringSection(RING[0] as PlanarFrame),
+      RING[0] as PlanarFrame,
+      (a) => {
+        const rest = RING.slice(1).map(ringSection);
+        try {
+          return kernel.loft([a, ...rest], { closed: true });
+        } finally {
+          kernel.release(...rest);
+        }
+      },
+    ],
+    [
+      'sweep, along sketch lines',
+      () => profile([circle([0, 0], 2)]),
+      XY,
+      (a) => {
+        const wire = path(XZ, [0, 0], [0, 8], [6, 15]);
+        try {
+          return kernel.sweep(a, wire);
+        } finally {
+          kernel.release(wire);
+        }
+      },
+    ],
+    [
+      'sweep of a profile with a hole',
+      () => annulus(0, 0, 3, 1.5),
+      XY,
+      (a) => {
+        const wire = path(XZ, [0, 0], [0, 8], [6, 15]);
+        try {
+          return kernel.sweep(a, wire);
+        } finally {
+          kernel.release(wire);
+        }
+      },
+    ],
+    [
       'sweep, twisted and scaled',
       () => profile(rect(-2, -1, 2, 1)),
       XY,
@@ -739,6 +847,12 @@ describe('a profile, path or body used by a call gives later results as a fresh 
           kernel.release(wire);
         }
       },
+    ],
+    [
+      'threadSweep',
+      () => profile(lines([5, 0], [6, 0.4], [5, 0.8]), XZ),
+      XZ,
+      (a) => kernel.threadSweep(a, { origin: [0, 0, 0], direction: [0, 0, 1] }, 1, 3, false),
     ],
     [
       'threadSweep, tapered',
@@ -760,16 +874,23 @@ describe('a profile, path or body used by a call gives later results as a fresh 
     ],
   ];
 
-  it.each(PROFILES)('%s: its profile afterwards', { timeout: 60_000 }, (_n, make, frame, call) => {
-    const fresh = make();
-    const used = make();
-    try {
-      release(call(used));
-      expect(fromProfile(used, frame)).toEqual(fromProfile(fresh, frame));
-    } finally {
-      kernel.release(fresh, used);
-    }
-  });
+  it.each(PROFILES)(
+    '%s: its profile afterwards',
+    { timeout: 60_000 },
+    (name, make, frame, call) => {
+      const fresh = make();
+      const used = make();
+      try {
+        release(call(used));
+        const want = fromProfile(fresh, frame);
+        // A refusal equal in both compares nothing: only the ones listed (with why) may refuse.
+        expect(refused(want)).toEqual(REFUSED[name] ?? []);
+        expect(fromProfile(used, frame)).toEqual(want);
+      } finally {
+        kernel.release(fresh, used);
+      }
+    },
+  );
 
   it('a sweep: its path afterwards (sketch lines, and a body whose edge it took)', {
     timeout: 60_000,
@@ -794,6 +915,51 @@ describe('a profile, path or body used by a call gives later results as a fresh 
       expect(fromBody(usedPlate)).toEqual(fromBody(freshPlate));
     } finally {
       kernel.release(freshPath, usedPath, freshPlate, usedPlate);
+    }
+  });
+
+  it('a twisted and scaled sweep: its path afterwards', { timeout: 60_000 }, () => {
+    const line = () => path(XZ, [0, 0], [0, 12]);
+    const fresh = line();
+    const used = line();
+    const bar = () => profile(rect(-2, -1, 2, 1));
+    const along = (wire: ShapeHandle) => made((t) => t(kernel.sweep(t(bar()), wire).shape));
+    try {
+      const first = bar();
+      release(kernel.sweep(first, used, { twist: 0.6, scale: 0.7 }));
+      kernel.release(first);
+      const want = along(fresh);
+      expect('refused' in want).toBe(false);
+      expect(along(used)).toEqual(want);
+    } finally {
+      kernel.release(fresh, used);
+    }
+  });
+
+  it("a path of a body's edge and a sketch line: the body and the line afterwards", {
+    timeout: 60_000,
+  }, () => {
+    const freshPlate = plate();
+    const usedPlate = plate();
+    const freshLine = lineOnPlate();
+    const usedLine = lineOnPlate();
+    const foot = () => profile([circle([15, 0], 1)]);
+    const alongLine = (wire: ShapeHandle) => made((t) => t(kernel.sweep(t(foot()), wire).shape));
+    try {
+      const edge = edgeBetween(usedPlate, [15, 0, 0], [15, 0, 3]);
+      const wire = kernel.path([
+        { kind: 'edge', shape: usedPlate, edge },
+        { kind: 'edge', shape: usedLine, edge: 0 },
+      ]);
+      const first = foot();
+      release(kernel.sweep(first, wire));
+      kernel.release(wire, first);
+      const want = alongLine(freshLine);
+      expect('refused' in want).toBe(false);
+      expect(alongLine(usedLine)).toEqual(want);
+      expect(fromBody(usedPlate)).toEqual(fromBody(freshPlate));
+    } finally {
+      kernel.release(freshPlate, usedPlate, freshLine, usedLine);
     }
   });
 
