@@ -153,7 +153,7 @@ export function testFeatures(): TestFeatures {
 
   define('test-grow', z.strictObject({ height: ExprInputSchema }), ({ kernel, bodies, value }) => {
     const [id, body] = first(bodies);
-    const { max } = kernel.measure(body).bbox;
+    const { max } = kernel.measureBox(body);
     using scope = kernel.scope();
     const block = scope.track(kernel.box([2, 2, value('height')], [0, 0, max[2]]));
     const fused = kernel.fuse(body, block).shape;
@@ -162,7 +162,7 @@ export function testFeatures(): TestFeatures {
 
   define('test-hole', z.strictObject({ radius: ExprInputSchema }), ({ kernel, bodies, value }) => {
     const [id, body] = first(bodies);
-    const { min, max } = kernel.measure(body).bbox;
+    const { min, max } = kernel.measureBox(body);
     const center: [number, number, number] = [
       (min[0] + max[0]) / 2,
       (min[1] + max[1]) / 2,

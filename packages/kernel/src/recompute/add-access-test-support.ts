@@ -219,10 +219,7 @@ export function client(kernel: Kernel, engine: Engine, stopped: readonly Feature
       const boxes = new Map<string, string>();
       for (const body of result.bodies) {
         const shape = engine.latestBody(body.id);
-        boxes.set(
-          body.id,
-          shape === undefined ? 'none' : JSON.stringify(kernel.measure(shape).bbox),
-        );
+        boxes.set(body.id, shape === undefined ? 'none' : JSON.stringify(kernel.measureBox(shape)));
       }
       return { result, held: now, boxes, sent: result.bodies.filter((b) => b.mesh).length };
     },

@@ -30,7 +30,7 @@ export function interferences(
   kernel: Kernel,
   bodies: readonly { id: BodyId; shape: ShapeHandle }[],
 ): Interference[] {
-  const boxes = bodies.map(({ shape }) => kernel.measure(shape).bbox);
+  const boxes = bodies.map(({ shape }) => kernel.measureBox(shape));
   const found: Interference[] = [];
   for (let i = 0; i < bodies.length; i++) {
     for (let j = i + 1; j < bodies.length; j++) {

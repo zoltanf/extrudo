@@ -212,7 +212,7 @@ function halfSpace(
   side: 'above' | 'below',
 ): NamedShape {
   const { kernel } = ctx;
-  const { bbox } = kernel.measure(shape);
+  const bbox = kernel.measureBox(shape);
   const centre = scale(add(bbox.min, bbox.max), 0.5);
   const { origin, normal } = frame;
   const offset = dot(sub(centre, origin), normal);

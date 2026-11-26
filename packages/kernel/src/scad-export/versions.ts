@@ -262,7 +262,7 @@ function context(
       if (bounds !== null) return bounds;
       bounds = undefined;
       for (const shape of before.values()) {
-        const { bbox } = source.kernel.measure(shape);
+        const bbox = source.kernel.measureBox(shape);
         bounds = bounds
           ? {
               min: bounds.min.map((v, i) => Math.min(v, bbox.min[i] as number)) as unknown as Vec3,

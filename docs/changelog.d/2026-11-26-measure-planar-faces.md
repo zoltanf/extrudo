@@ -1,0 +1,1 @@
+- 2026-11-26 · **Faster recomputes**: joins, cuts, holes, patterns and other features that find the bodies they touch recompute faster, and so does measuring some bodies with curved edges; results are unchanged.
