@@ -563,8 +563,9 @@ document, so that the same inputs may do better another time: the evaluator thro
   after the import too) tries again. `MissingFileError` (the bytes haven't reached the worker),
   "OpenSCAD isn't loaded in this kernel" (`#prepare`'s `openscad()`) and the compiler's "OpenSCAD
   isn't downloaded yet" (offline).
-- `bodies`, costly to ask again: the compile was stopped by its time (60 s) or memory limit, or
-  its worker died. Trying it on every recompute could cost a minute each time, so it is kept as
+- `bodies`, costly to ask again: the compile was stopped (its time or memory limit, a trap) or its
+  worker died. Trying it on every recompute would run the compile up to its limit each time,
+  so it is kept as
   main's `write` key kept it: an `add` evaluation that fails this way falls back to `write` for
   these inputs as one that read a body does (`#readsBodies`, then the entry under the key with
   the bodies before it; the fall-back's evaluation reuses what `prepare` gave, so nothing is
@@ -582,8 +583,12 @@ restart (an empty engine). Without the rule its key holds no bodies, so only its
 | OpenSCAD not downloaded (offline) | an edit before it | its own edit | the next recompute |
 | A compile stopped (time, memory, its worker) | an edit before it | its own edit | an edit before it |
 
-The import's `compileRetry` (`features/import.ts`) reads the compiler's own words ("isn't
-downloaded", "stopped"), as `compileOnce` already did to forget such a compile. An import's own
+The import's `compileRetry` (`features/import.ts`) reads the cause the compiler marks on a failed
+result (`ScadResult.cause`: `offline`, or `stopped` for its time or memory limit, a trap or its
+worker dying, set in `@extrudo/openscad`'s `compiler.ts` and `messages.ts` where it words them),
+and so does `compileOnce` to forget such a compile. It doesn't read the words: an error of the
+file's own may quote its output, "stopped" in an assert's message say (2026-11-26; they were read
+from the words before, `/stopped/`, which took such an error for a stopped compile). An import's own
 error (a file that isn't an STL, an OpenSCAD syntax error) is a plain `KernelError` and stays
 cached: evaluated, and compiled, once. No other feature throws an `OutsideError`: the import is
 the only evaluator that reads a file (`ctx.file`), and the plugin feature, whose expansion reads
@@ -601,7 +606,11 @@ recomputed once the cause is gone, then an edit before the import, on three engi
 (`allWrite`, and the engine's own source with the rule's lines taken out), this branch's without
 the rule, and this one. They assert the table (and count the compiles). A file that isn't an STL
 is evaluated once over the same document and an edit before it; an OpenSCAD syntax error is
-compiled once.
+compiled once, and so is an error of the file's own whose words hold "stopped" (on this engine
+and on main's, where the edit before it asks `compileOnce` again). With a plate after the import,
+a retry for a `next` cause, the cause still there or gone, evaluates the import alone: the plate
+answers `add`, so its key holds no bodies and it stays cached whether the import fails or
+computes.
 
 **Left `write`**, New Body features looked at (file:line, the read that keeps each there):
 thread (`thread.ts:180` resolves the face to thread, :214 copies every body for its cut, :220 the
@@ -687,11 +696,19 @@ extent, axis and profile terms, the sweep's profile and path terms, the loft's s
 counter). With that look-up the STEP import's `add` evaluation also left two shapes behind: the
 look-up throws after the piece before it was kept (`scope.keep`), so the strict leak check failed
 the first recompute; without strict leaks the engine would warn of the leak and fall back. A
-predicate changed in the source changes the cleared engine too, so the differential sees such a
-fault through its other checks: without the primitives' picked-bodies term the fall-backs (36 in
-the primitives design: `explicitBodies`' look-up is noticed), without their operation term the
-flips (the edit to a join left the box `add`: `operation: add→add`), without the revolve's extent term the fall-backs (a revolve to a
-body looks it up). A negative control in the same file keeps the fault in the engine under test
+predicate changed in the source changes the cleared engine too, so the comparison with it stays
+clean and the differential sees such a fault through its other checks (run again on the edits as
+they are now, 2026-11-26):
+- without the primitives' picked-bodies term: the fall-backs (36 in the primitives design:
+  `explicitBodies`' look-up is noticed) and the flips (`bodies: add→add`); the all-`write`
+  reference sees nothing, since the fall-back runs the box as `write`;
+- without their operation term: the flips (`operation: add→add`) and the all-`write` reference
+  (75 differences: under `add` the join onto B0 finds no body and makes a new one); no fall-back;
+- without the revolve's extent term: the flips (`to-object: add→add`) and the all-`write`
+  reference (statuses, origins, reports and the body IDs, from the first "to object" edit on);
+  no fall-back, since "to object" goes up to the XZ plane, which is no body look-up.
+
+A negative control in the same file keeps the fault in the engine under test
 only, as the extrude's control (2) does: a box joined to a box it overlaps, said to be `add`,
 finds no body to join (the iteration isn't noticed, no fall-back) and makes a new one, so the
 bodies, statuses, reports, a mesh and a box differ at once, against both references. The revolve
