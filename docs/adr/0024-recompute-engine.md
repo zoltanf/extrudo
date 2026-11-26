@@ -1345,7 +1345,8 @@ pieces holds new bodies and runs as `write`", "new bodies … are not taken into
   hash of the key that made it (`hashOf(key, id)`), and a view's key holds the view's versions
   and the inputs.
 
-The engine change is these checks and the merge: ENGINE_LINES, comments aside.
+The engine change is these checks and the merge: 83 lines of code added and 18 removed, comments
+aside (6 of the removed lines come back moved or indented anew).
 
 **What each new-body path reads** (audited for this change; file:line, `features/`; the reads of
 the in-place paths are in the amendment above):
@@ -1469,21 +1470,22 @@ every change failed at least one test):
 | a new ID before the first view body refused | the `lead` probe |
 | the view's order checked | the `reorder` probe |
 | the mesh fall-back (never `write`) | the mesh split |
-| the mesh term (any piece of the last view body with a body outside the view after it: `write`) | the seeded splits and Combine cuts, and their placements |
-| the `origins` term (pieces of the last view body at the end) | the seeded splits and Combine cuts, their placements, the order, the mesh split |
-| pieces after their body (dropped) | the seeded splits and Combine cuts, their placements, the order, the mesh split |
+| the mesh term (any piece of the last view body with a body outside the view after it: `write`) | the seeded splits, Combine cuts and joined patterns, and their placements |
+| the `origins` term (pieces of the last view body at the end) | the seeded splits, Combine cuts and joined patterns, their placements, the order, the mesh split |
+| pieces after their body (dropped) | the seeded splits, Combine cuts and joined patterns, their placements, the order, the mesh split |
+| the mesh fall-back remembered (its key into `#readsBodies`) | the mesh split (its second step's versions) |
 | Move's copy as `write` | the seeded copies, their placements, the counters |
 | Scale's copy as `write` | the copies' placements, the collision control, the counters |
 | Mirror's copy as `write` | the copies' placements, the collision control, the counters, the answers for features |
 | Mirror's `objects` term (features as `view`) | the answers for features |
-| the patterns' opt-in (`write`) | the seeded patterns, their placements, the answers for features |
+| the patterns' opt-in (`write`) | the seeded patterns and joined patterns, their placements, the answers for features |
 | the patterns' `objects` term (features as `view`) | the answers for features |
 | Split Body's opt-in (`write`) | the seeded splits, their placements, the mesh split |
 
 **Test time** (on one machine, each file's own time, run with the other `view-access` files):
-`view-access-new-bodies.test.ts` 31.9 s, new; `view-access.test.ts` 165.8 → 167.9 s (the probe
-that keeps its view); Move 5.6 → 5.0 s, Scale 1.5 → 1.7 s and Mirror 2.4 → 2.2 s (their copy edits
-now viewed); 368.5 → 403.9 s for the twelve files, +35.4 s.
+`view-access-new-bodies.test.ts` 38.1 s, new; `view-access.test.ts` 165.8 → 167.8 s (the probe
+that keeps its view); Move 5.6 → 5.3 s, Scale 1.5 → 1.4 s and Mirror 2.4 → 2.2 s (their copy edits
+now viewed); 368.5 → 408.2 s for the twelve files, +39.7 s.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
