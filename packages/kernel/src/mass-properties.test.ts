@@ -9,10 +9,10 @@
 // own error -- a chord stands in for the curve -- so 1e-4 is the agreement to
 // expect, and where a closed form exists (a frustum) it is checked too.
 // Real OCCT in Node.
-import { conicPoint, type Vec2 } from '@extrudo/core';
+import { conicPoint, type Vec2, type Vec3 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mirror } from './features/matrix';
+import { apply, mirror } from './features/matrix';
 import { circle } from './features/primitives';
 import { planarCurves } from './features/sketch';
 import { Kernel, type ShapeHandle } from './kernel';
@@ -185,39 +185,71 @@ describe('mass properties with a tolerance', () => {
   });
 });
 
+/**
+ * A coil as the coil feature builds it (ADR-0055): a circle of radius 0.75 mm, 6 mm from the
+ * axis in the plane through the axis, swept two turns of 4 mm up a helix about the line through
+ * (0, y, 0) along Z, `turns` turns. The swept circle's edges are rational, so the volume takes
+ * the rational branch, and its two caps are planar faces.
+ */
+const coil = (y: number, turns = 2): ShapeHandle => {
+  const { faces } = kernel.planarFaces(
+    [circle([6, 0], 0.75)],
+    { origin: [0, y, 0], x: [1, 0, 0], normal: [0, -1, 0] },
+    1e-4,
+  );
+  const section = faces[0]?.shape as ShapeHandle;
+  const helix = kernel.helix({
+    origin: [0, y, 0],
+    axis: [0, 0, 1],
+    start: [1, 0, 0],
+    radius: 6,
+    pitch: 4,
+    turns,
+  });
+  try {
+    return kernel.sweep(section, helix, { orientation: { binormal: [0, 0, 1] }, verify: false })
+      .shape;
+  } finally {
+    kernel.release(section, helix);
+  }
+};
+
+/** Pappus: the section's area times the length of the circle its centre turns on, per turn. */
+const pappus = (turns: number) => Math.PI * 0.75 ** 2 * 2 * Math.PI * 6 * turns;
+
+/**
+ * A conic profile (rho 0.4) closed by its chord, extruded 5 mm along its plane's normal. A face from
+ * planarFaces carries its plane's frame as a location, so a prism in a moved frame has located caps.
+ */
+const prism = (frame: PlanarFrame, rho = 0.4): ShapeHandle => {
+  const { faces } = kernel.planarFaces(
+    [
+      { kind: 'conic', start: [0, 0], shoulder: [15, 20], end: [30, 0], rho },
+      { kind: 'line', a: [30, 0], b: [0, 0] },
+    ],
+    frame,
+    1e-4,
+  );
+  const profile = faces[0]?.shape as ShapeHandle;
+  try {
+    const n = frame.normal;
+    return kernel.prism(profile, [5 * n[0], 5 * n[1], 5 * n[2]]).shape;
+  } finally {
+    kernel.release(...faces.map((face) => face.shape));
+  }
+};
+
+const [S7, C7] = [Math.sin(0.7), Math.cos(0.7)];
+/** A frame moved off the origin and turned about two axes. */
+const TURNED: PlanarFrame = {
+  origin: [12, -7, 3],
+  x: [Math.cos(0.4), Math.sin(0.4) * C7, Math.sin(0.4) * S7],
+  normal: [0, -S7, C7],
+};
+/** A reflection: `transform` rebuilds the geometry and leaves the planes on indirect frames. */
+const MIRROR = mirror([4, 1, 0], [1, 2, 0.5]);
+
 describe('the volume of a body with a rational edge', () => {
-  /**
-   * A coil as the coil feature builds it (ADR-0055): a circle of radius 0.75 mm, 6 mm from the
-   * axis in the plane through the axis, swept two turns of 4 mm up a helix about the line through
-   * (0, y, 0) along Z, `turns` turns. The swept circle's edges are rational, so the volume takes
-   * the rational branch, and its two caps are planar faces.
-   */
-  const coil = (y: number, turns = 2) => {
-    const { faces } = kernel.planarFaces(
-      [circle([6, 0], 0.75)],
-      { origin: [0, y, 0], x: [1, 0, 0], normal: [0, -1, 0] },
-      1e-4,
-    );
-    const section = faces[0]?.shape as ShapeHandle;
-    const helix = kernel.helix({
-      origin: [0, y, 0],
-      axis: [0, 0, 1],
-      start: [1, 0, 0],
-      radius: 6,
-      pitch: 4,
-      turns,
-    });
-    try {
-      return kernel.sweep(section, helix, { orientation: { binormal: [0, 0, 1] }, verify: false })
-        .shape;
-    } finally {
-      kernel.release(section, helix);
-    }
-  };
-
-  // Pappus: the section's area times the length of the circle its centre turns on, per turn.
-  const pappus = (turns: number) => Math.PI * 0.75 ** 2 * 2 * Math.PI * 6 * turns;
-
   it('gives the same volume wherever the body is, equal to the reference', () => {
     const reference = pappus(2);
     const shapes = [0, 5, -20].map((y) => coil(y));
@@ -256,35 +288,11 @@ describe('the volume of a body with a rational edge', () => {
   });
 
   it('gives a planar face with a rational edge the same share moved, turned or mirrored', () => {
-    // A conic profile closed by its chord, extruded 5 mm along its plane's normal. A face from
-    // planarFaces carries its plane's frame as a location, so the moved prism's caps are located
-    // faces; `transform` rebuilds the geometry, and a reflection leaves the planes on indirect
-    // frames, whose normal points the other way.
-    const prism = (frame: PlanarFrame) => {
-      const { faces } = kernel.planarFaces(
-        [
-          { kind: 'conic', start: [0, 0], shoulder: [15, 20], end: [30, 0], rho: 0.4 },
-          { kind: 'line', a: [30, 0], b: [0, 0] },
-        ],
-        frame,
-        1e-4,
-      );
-      const profile = faces[0]?.shape as ShapeHandle;
-      try {
-        const n = frame.normal;
-        return kernel.prism(profile, [5 * n[0], 5 * n[1], 5 * n[2]]).shape;
-      } finally {
-        kernel.release(...faces.map((face) => face.shape));
-      }
-    };
-    const plain = prism({ origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] });
-    const [s, c] = [Math.sin(0.7), Math.cos(0.7)];
-    const moved = prism({
-      origin: [12, -7, 3],
-      x: [Math.cos(0.4), Math.sin(0.4) * c, Math.sin(0.4) * s],
-      normal: [0, -s, c],
-    });
-    const mirrored = kernel.transform(moved, mirror([4, 1, 0], [1, 2, 0.5])).shape;
+    // The moved prism's caps are located faces; the mirrored one's planes are on indirect frames,
+    // whose normal points the other way.
+    const plain = prism(XY);
+    const moved = prism(TURNED);
+    const mirrored = kernel.transform(moved, MIRROR).shape;
     try {
       const reference = kernel.measure(plain).volume;
       for (const shape of [moved, mirrored]) {
@@ -297,3 +305,121 @@ describe('the volume of a body with a rational edge', () => {
     }
   });
 });
+
+describe('the centre of mass of a body with a rational edge', () => {
+  // Not tested here (ADR-0063's amendment says so): the second pass's failure branch (the
+  // fixed-order moments stand) and a curved face whose Gauss–Kronrod integral fails (the whole
+  // shape goes to the bounded integral). No shape among those tried makes OCCT fail there.
+
+  it('is the closed form for a coil, wherever it is', () => {
+    // A screw motion keeps volume (its Jacobian is r), so the tube's centre is the section's
+    // r-weighted radius R + a²/4R turned through the angle the coil covers, and half its rise.
+    // With a whole or half number of turns both caps lie in one plane through the average of the
+    // vertices, so their cones weigh nothing; the 2.25 and 2.75-turn cases are the ones whose caps
+    // count (planar cones).
+    const cases = [
+      [0, 2.25],
+      [5, 2.25],
+      [-7, 2.75],
+      [-20, 1.5],
+      [3, 0.5],
+    ] as const;
+    for (const [y, turns] of cases) {
+      const shape = coil(y, turns);
+      try {
+        const angle = 2 * Math.PI * turns;
+        const radius = 6 + 0.75 ** 2 / (4 * 6);
+        const expected = [
+          (radius * Math.sin(angle)) / angle,
+          y + (radius * (1 - Math.cos(angle))) / angle,
+          4 * turns * 0.5,
+        ];
+        const { centroid, volume } = kernel.properties(shape);
+        // The swept surface approximates the exact tube: its centre is within 1e-5 mm of the closed
+        // form here (measured), and 1e-4 mm leaves a margin while catching a planar cone weighed
+        // wrongly (2.7e-2 mm with its centre at ½ instead of ¾).
+        expectNear(centroid as Vec3, expected as readonly number[], 1e-4);
+        expect(volume).toBe(kernel.measure(shape).volume);
+      } finally {
+        kernel.release(shape);
+      }
+    }
+  });
+
+  it("is the profile's area centroid for a conic prism, moved, turned or mirrored", () => {
+    const local = prismCentre(0.4);
+    const shapes = [prism(XY), prism(TURNED)];
+    shapes.push(kernel.transform(shapes[1] as ShapeHandle, MIRROR).shape);
+    try {
+      const [plain, moved, mirrored] = shapes.map((shape) => kernel.properties(shape).centroid);
+      expectNear(plain as Vec3, local as readonly number[], 1e-6);
+      // The same centre carried by the frame and by the reflection.
+      const { origin, x, normal } = TURNED;
+      const y = cross3(normal, x);
+      const at = (k: number) =>
+        (origin[k] as number) +
+        (plain as Vec3)[0] * (x[k] as number) +
+        (plain as Vec3)[1] * (y[k] as number) +
+        (plain as Vec3)[2] * (normal[k] as number);
+      const placed: Vec3 = [at(0), at(1), at(2)];
+      expectNear(moved as Vec3, placed as readonly number[], 1e-9);
+      const reflected = apply(MIRROR, placed);
+      expectNear(mirrored as Vec3, reflected as readonly number[], 1e-9);
+    } finally {
+      kernel.release(...shapes);
+    }
+  });
+
+  it('is the area centroid for a conic prism of rho 0.95, within 1e-5 of its box diagonal', () => {
+    // A flatter shoulder: the fixed-order integral of this wall is off by about 1e-4 of the
+    // volume, so the centre comes from the second, Gauss–Kronrod pass (each integral asked for
+    // CENTRE_EPS = 1e-5). Its error here was measured at 8e-10 mm; the tolerance, 1e-5 times the
+    // box diagonal (3.6e-4 mm), is a margin over that, not a bound. Without the second pass the
+    // centre is 4.7e-3 mm out (the fixed-order moments; measured in a native build).
+    const shape = prism(XY, 0.95);
+    try {
+      const { centroid, volume } = kernel.properties(shape);
+      const { min, max } = kernel.measureBox(shape);
+      const diagonal = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
+      expectNear(centroid, prismCentre(0.95), 1e-5 * diagonal);
+      expect(volume).toBe(kernel.measure(shape).volume);
+    } finally {
+      kernel.release(shape);
+    }
+  });
+});
+
+const cross3 = (a: readonly number[], b: readonly number[]): Vec3 => [
+  (a[1] as number) * (b[2] as number) - (a[2] as number) * (b[1] as number),
+  (a[2] as number) * (b[0] as number) - (a[0] as number) * (b[2] as number),
+  (a[0] as number) * (b[1] as number) - (a[1] as number) * (b[0] as number),
+];
+
+/** Each coordinate of `actual` within `tolerance` mm of `expected`. */
+function expectNear(actual: Vec3, expected: readonly number[], tolerance: number): void {
+  for (let k = 0; k < 3; k++) {
+    expect(
+      Math.abs((actual[k] as number) - (expected[k] as number)),
+      `coordinate ${k}`,
+    ).toBeLessThan(tolerance);
+  }
+}
+
+/** The area centroid of the region under the prism's conic (sampled densely), at half its height. */
+function prismCentre(rho: number): Vec3 {
+  const outline: Vec2[] = [];
+  for (let i = 0; i <= 20000; i++)
+    outline.push(conicPoint([0, 0], [15, 20], [30, 0], rho, i / 20000));
+  let area = 0;
+  let mx = 0;
+  let my = 0;
+  for (let i = 0; i < outline.length; i++) {
+    const a = outline[i] as Vec2;
+    const b = outline[(i + 1) % outline.length] as Vec2;
+    const cross = a[0] * b[1] - b[0] * a[1];
+    area += cross / 2;
+    mx += ((a[0] + b[0]) * cross) / 6;
+    my += ((a[1] + b[1]) * cross) / 6;
+  }
+  return [mx / area, my / area, 2.5];
+}

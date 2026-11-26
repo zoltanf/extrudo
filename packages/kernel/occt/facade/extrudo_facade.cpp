@@ -125,6 +125,7 @@
 #include <BRepAlgoAPI_Section.hxx>
 #include <BRepGProp_Domain.hxx>
 #include <BRepGProp_Face.hxx>
+#include <BRepGProp_Vinert.hxx>
 #include <BRepGProp_VinertGK.hxx>
 #include <Contap_Contour.hxx>
 #include <Contap_Line.hxx>
@@ -362,10 +363,13 @@ public:
     return false;
   }
 
-  /** A solid's volume, integrated to MASS_EPS where that is the better form. */
-  static void integrateVolume(const TopoDS_Shape& shape, GProp_GProps& props) {
+  /**
+   * A solid's volume, integrated to MASS_EPS where that is the better form, and
+   * its centre of mass when `centre` is set (`properties` reads it).
+   */
+  static void integrateVolume(const TopoDS_Shape& shape, GProp_GProps& props, bool centre = false) {
     if (hasRationalCurve(shape)) {
-      rationalVolume(shape, props);
+      rationalVolume(shape, props, centre);
     } else if (needsTolerance(shape)) {
       BRepGProp::VolumeProperties(shape, props, MASS_EPS, false);
     } else {
@@ -374,50 +378,105 @@ public:
   }
 
   /**
-   * The volume of a shape with a rational edge (`integrateVolume`): the sum
-   * BRepGProp::VolumePropertiesGK makes — the shape's location as the system's,
-   * every FORWARD or REVERSED face with a surface integrated by Gauss–Kronrod to
-   * MASS_EPS about the average of the shape's vertices, nothing but the mass
-   * asked for — with each planar face's share taken exactly: the signed cone
-   * from that point over the face, (C − P)·N · A / 3, its area A and centre C
-   * from the bounded area integral (exact on a plane bounded by a conic, see
-   * integrateArea). A curved face is integrated as OCCT integrates it. A shape
-   * without vertices goes to VolumePropertiesGK whole.
+   * A curved face's agreement for rationalVolume's centre: the fixed-order Gauss
+   * mass of the face may differ from its Gauss–Kronrod mass by at most this times
+   * the shape's volume, or the shape's centre is integrated by Gauss–Kronrod.
    */
-  static void rationalVolume(const TopoDS_Shape& shape, GProp_GProps& props) {
+  static constexpr double CENTRE_AGREEMENT = 1e-9;
+
+  /**
+   * The relative error bound gaussKronrodCentre asks of each Gauss–Kronrod
+   * integral (the centre of a shape whose curved faces disagree); the volume
+   * keeps MASS_EPS. OCCT reports the reached error of the mass integral only,
+   * so the centre's bound is what is asked, not what is checked.
+   */
+  static constexpr double CENTRE_EPS = 1e-5;
+
+  /** How far gaussKronrodCentre moves the cones' apex off the vertex average: this times the box diagonal. */
+  static constexpr double CENTRE_APEX = 0.1;
+
+  /** Whether a face takes part in a volume sum: it has a surface and is FORWARD or REVERSED, as in OCCT's sum. */
+  static bool summedFace(const TopoDS_Face& face) {
+    TopLoc_Location location;
+    if (BRep_Tool::Surface(face, location).IsNull()) return false;
+    return face.Orientation() == TopAbs_FORWARD || face.Orientation() == TopAbs_REVERSED;
+  }
+
+  /**
+   * A planar face's signed cone from `apex`: its volume (C − P)·N · A / 3 and its
+   * centre P + ¾(C − P) (returned relative to the apex), with A and the centroid C
+   * from the bounded area integral, N the plane's normal as the face's
+   * orientation turns it. (The area integral's returned error is not checked: on
+   * a plane bounded by conics it is exact, see integrateArea.)
+   */
+  static void planarCone(const TopoDS_Face& face, const BRepAdaptor_Surface& surface, const gp_Pnt& apex,
+                         double& volume, gp_XYZ& centre) {
+    GProp_GProps area;
+    BRepGProp::SurfaceProperties(face, area, MASS_EPS, false);
+    const gp_Ax3 axes = surface.Plane().Position();
+    gp_Dir normal = axes.Direction();
+    if (!axes.Direct()) normal.Reverse();
+    if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+    volume = gp_Vec(apex, area.CentreOfMass()).Dot(gp_Vec(normal)) * area.Mass() / 3.0;
+    centre = 0.75 * (area.CentreOfMass().XYZ() - apex.XYZ());
+  }
+
+  /**
+   * The volume of a shape with a rational edge (`integrateVolume`), and its
+   * centre of mass when `centre` is set.
+   *
+   * The volume is the sum BRepGProp::VolumePropertiesGK makes, written out: the
+   * shape's location as the system's, every face summedFace takes as the signed
+   * cone from one apex P, the average of the shape's vertices, a curved face's
+   * mass by BRepGProp_VinertGK to MASS_EPS (asked; its returned error is not
+   * checked, as OCCT's sum doesn't) and a planar face's cone exact (planarCone),
+   * added in face order with GProp_GProps::Add. The centre changes none of that.
+   * A curved face whose integral fails (OCCT's −1: no boundary curve, or a
+   * Kronrod pass it couldn't do) gives the whole shape to the bounded integral
+   * (BRepGProp::VolumeProperties to MASS_EPS: volume and centre, never a part of
+   * a sum).
+   *
+   * The centre: the planar cones' first moments plus, for each curved face, the
+   * first moment of OCCT's fixed-order Gauss integral (BRepGProp_Vinert) about P,
+   * divided by the volume — as long as each curved face's fixed-order mass
+   * agrees with its Gauss–Kronrod mass to CENTRE_AGREEMENT of the volume. At the
+   * first face that disagrees, the shape's centre is integrated again by
+   * gaussKronrodCentre; if that fails, the fixed-order moments stand.
+   *
+   * A shape without vertices goes to VolumePropertiesGK whole; no feature makes
+   * one (an edge has vertices), so it is kept only as OCCT's own call.
+   */
+  static void rationalVolume(const TopoDS_Shape& shape, GProp_GProps& props, bool centre) {
     gp_XYZ sum(0, 0, 0);
     int vertices = 0;
     for (TopExp_Explorer v(shape, TopAbs_VERTEX); v.More(); v.Next(), ++vertices) {
       sum += BRep_Tool::Pnt(TopoDS::Vertex(v.Current())).XYZ();
     }
     if (vertices == 0) {
-      BRepGProp::VolumePropertiesGK(shape, props, MASS_EPS);
+      BRepGProp::VolumePropertiesGK(shape, props, MASS_EPS, false, false, centre);
       return;
     }
     gp_Pnt origin(0, 0, 0);
     origin.Transform(shape.Location());
-    props = GProp_GProps(origin);
-    const gp_Pnt centre(sum / vertices);
+    const gp_Pnt apex(sum / vertices);
     BRepGProp_VinertGK curved;
     BRepGProp_Face face(false);
     BRepGProp_Domain domain;
-    curved.SetLocation(centre);
+    curved.SetLocation(apex);
+    props = GProp_GProps(origin);
+    gp_XYZ moment(0, 0, 0);
+    std::vector<TopoDS_Face> curvedFaces;
+    std::vector<double> curvedMass;
     for (TopExp_Explorer f(shape, TopAbs_FACE); f.More(); f.Next()) {
       const TopoDS_Face& current = TopoDS::Face(f.Current());
-      TopLoc_Location location;
-      if (BRep_Tool::Surface(current, location).IsNull()) continue;
-      const TopAbs_Orientation orientation = current.Orientation();
-      if (orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) continue;
+      if (!summedFace(current)) continue;
       BRepAdaptor_Surface surface(current, false);
       if (surface.GetType() == GeomAbs_Plane) {
-        GProp_GProps area;
-        BRepGProp::SurfaceProperties(current, area, MASS_EPS, false);
-        const gp_Ax3 axes = surface.Plane().Position();
-        gp_Dir normal = axes.Direction();
-        if (!axes.Direct()) normal.Reverse();
-        if (orientation == TopAbs_REVERSED) normal.Reverse();
-        const double share = gp_Vec(centre, area.CentreOfMass()).Dot(gp_Vec(normal)) * area.Mass() / 3.0;
-        props.Add(PlanarShare(centre, share));
+        double share;
+        gp_XYZ cone;
+        planarCone(current, surface, apex, share, cone);
+        props.Add(FaceMass(apex, share, gp_XYZ(0, 0, 0)));
+        moment += share * cone;
         continue;
       }
       face.Load(current);
@@ -428,9 +487,90 @@ public:
         domain.Init(current);
         error = curved.Perform(face, domain, MASS_EPS, false, false);
       }
-      if (error < 0.) return;
+      if (error < 0.) {
+        BRepGProp::VolumeProperties(shape, props, MASS_EPS, false);
+        return;
+      }
       props.Add(curved);
+      if (centre) {
+        curvedFaces.push_back(current);
+        curvedMass.push_back(curved.Mass());
+      }
     }
+    if (!centre) return;
+    const double volume = props.Mass();
+    if (!(std::abs(volume) > 0.)) return;
+    bool agree = true;
+    for (size_t i = 0; i < curvedFaces.size(); ++i) {
+      BRepGProp_Vinert fixed;
+      fixed.SetLocation(apex);
+      face.Load(curvedFaces[i]);
+      if (curvedFaces[i].NbChildren() == 0) {
+        fixed.Perform(face);
+      } else {
+        domain.Init(curvedFaces[i]);
+        fixed.Perform(face, domain);
+      }
+      if (agree && !(std::abs(fixed.Mass() - curvedMass[i]) <= CENTRE_AGREEMENT * std::abs(volume))) {
+        agree = false;
+        gp_Pnt again;
+        if (gaussKronrodCentre(shape, apex, CENTRE_APEX, CENTRE_EPS, again)) {
+          props = GProp_GProps(origin);
+          props.Add(FaceMass(origin, volume, again.XYZ() - origin.XYZ()));
+          return;
+        }
+      }
+      moment += fixed.Mass() * (fixed.CentreOfMass().XYZ() - apex.XYZ());
+    }
+    props = GProp_GProps(origin);
+    props.Add(FaceMass(origin, volume, apex.XYZ() + moment / volume - origin.XYZ()));
+  }
+
+  /**
+   * The centre of mass of a shape with a rational edge by Gauss–Kronrod with the
+   * centre flag (each integral asked for `eps`), every face summedFace takes as the
+   * signed cone from one apex: `apex` moved by `fraction` of the shape's box
+   * diagonal along an uneven direction, planar faces' cones exact (planarCone). The
+   * apex is one point for every face because BRepGProp_VinertGK takes its
+   * location as the cones' apex (its point mode's extra point only offsets the
+   * centre it reports): a face can't be integrated about another apex and added.
+   * False when an integral fails (OCCT's −1).
+   */
+  static bool gaussKronrodCentre(const TopoDS_Shape& shape, const gp_Pnt& apex, double fraction, double eps,
+                                 gp_Pnt& centreOfMass) {
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box, false);
+    const double size = box.IsVoid() ? 0.0 : std::sqrt(box.SquareExtent());
+    const gp_Pnt moved(apex.XYZ() + gp_XYZ(0.5773, 0.5779, 0.5767) * (fraction * size));
+    BRepGProp_VinertGK curved;
+    BRepGProp_Face face(false);
+    BRepGProp_Domain domain;
+    curved.SetLocation(moved);
+    GProp_GProps sum(moved);
+    for (TopExp_Explorer f(shape, TopAbs_FACE); f.More(); f.Next()) {
+      const TopoDS_Face& current = TopoDS::Face(f.Current());
+      if (!summedFace(current)) continue;
+      BRepAdaptor_Surface surface(current, false);
+      if (surface.GetType() == GeomAbs_Plane) {
+        double share;
+        gp_XYZ cone;
+        planarCone(current, surface, moved, share, cone);
+        sum.Add(FaceMass(moved, share, cone));
+        continue;
+      }
+      face.Load(current);
+      double error;
+      if (current.NbChildren() == 0) {
+        error = curved.Perform(face, eps, true, false);
+      } else {
+        domain.Init(current);
+        error = curved.Perform(face, domain, eps, true, false);
+      }
+      if (error < 0.) return false;
+      sum.Add(curved);
+    }
+    centreOfMass = sum.CentreOfMass();
+    return true;
   }
 
   /**
@@ -2761,14 +2901,23 @@ public:
     }
   }
 
-  /** measure()'s box of `shape` into out[0..5]: min x, y, z, max x, y, z (zeros for an empty box). */
-  static void looseBox(const TopoDS_Shape& shape, double* out) {
-    Bnd_Box box;
-    BRepBndLib::Add(shape, box, false);
-    if (box.IsVoid()) {
-      for (int i = 0; i < 6; ++i) out[i] = 0.0;
-    } else {
-      box.Get(out[0], out[1], out[2], out[3], out[4], out[5]);
+  /**
+   * properties()'s box alone, read with measured(2..7) (0 and 1 read 0): the
+   * same code (tightBox), so the same values, without the volume, area and
+   * centre integrals. For a caller that needs only the exact box.
+   */
+  bool exactBox(int shape) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Measure failed: unknown shape.") != 0;
+    try {
+      measured_[0] = 0.0;
+      measured_[1] = 0.0;
+      tightBox(*s, measured_ + 2);
+      return true;
+    } catch (...) {
+      failFromException("Measure failed");
+      return false;
     }
   }
 
@@ -2792,7 +2941,7 @@ public:
       const bool edges = TopExp_Explorer(*s, TopAbs_EDGE).More();
       GProp_GProps props;
       if (solids) {
-        integrateVolume(*s, props);
+        integrateVolume(*s, props, true);
         measured_[0] = props.Mass();
       }
       if (faces) {
@@ -2815,12 +2964,7 @@ public:
       measured_[9] = centre.X();
       measured_[10] = centre.Y();
       measured_[11] = centre.Z();
-      Bnd_Box box;
-      BRepBndLib::AddOptimal(*s, box, false, false);
-      addSurfacelessFaces(*s, box);
-      if (!box.IsVoid()) {
-        box.Get(measured_[2], measured_[3], measured_[4], measured_[5], measured_[6], measured_[7]);
-      }
+      tightBox(*s, measured_ + 2);
       return true;
     } catch (...) {
       failFromException("Measure failed");
@@ -8019,10 +8163,33 @@ private:
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
   }
 
-  /** A planar face's share of rationalVolume's sum about `location`: its mass, no centre or inertia. */
-  class PlanarShare : public GProp_GProps {
+  /** measure()'s box of `shape` into out[0..5]: min x, y, z, max x, y, z (zeros for an empty box). */
+  static void looseBox(const TopoDS_Shape& shape, double* out) {
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box, false);
+    if (box.IsVoid()) {
+      for (int i = 0; i < 6; ++i) out[i] = 0.0;
+    } else {
+      box.Get(out[0], out[1], out[2], out[3], out[4], out[5]);
+    }
+  }
+
+  /** properties()'s box of `shape` into out[0..5] (zeros for an empty box): exact, from the geometry without tolerances. */
+  static void tightBox(const TopoDS_Shape& shape, double* out) {
+    for (int i = 0; i < 6; ++i) out[i] = 0.0;
+    Bnd_Box box;
+    BRepBndLib::AddOptimal(shape, box, false, false);
+    addSurfacelessFaces(shape, box);
+    if (!box.IsVoid()) box.Get(out[0], out[1], out[2], out[3], out[4], out[5]);
+  }
+
+  /** One item of a volume sum about `location`: a mass and its centre relative to the location, no inertia. */
+  class FaceMass : public GProp_GProps {
    public:
-    PlanarShare(const gp_Pnt& location, double volume) : GProp_GProps(location) { dim = volume; }
+    FaceMass(const gp_Pnt& location, double volume, const gp_XYZ& centre) : GProp_GProps(location) {
+      dim = volume;
+      g.SetXYZ(centre);
+    }
   };
 
   /** A progress indicator that breaks the OCCT algorithm it is passed to once a deadline is past. */

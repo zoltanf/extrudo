@@ -477,6 +477,7 @@ export class RecomputeEngine {
         const shape = this.#latest.get(id);
         if (!shape || id in out.bodies) continue;
         try {
+          // `properties`: its volume is 0 for a shape without a solid, as Print Info reports it.
           const { volume, bbox } = this.#kernel.properties(shape);
           out.bodies[id] = { volume, box: { min: [...bbox.min], max: [...bbox.max] } };
         } catch (error) {

@@ -42,7 +42,7 @@ export function interferences(
       const { volume } = kernel.measure(common);
       if (volume > INTERFERENCE_VOLUME) {
         // The box a person is shown: exact, not `measure`'s loose one (ADR-0035, 2026-11-24).
-        found.push({ a: a.id, b: b.id, volume, box: kernel.properties(common).bbox });
+        found.push({ a: a.id, b: b.id, volume, box: kernel.exactBox(common) });
       }
     }
   }

@@ -212,12 +212,12 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
 function bodiesBox(ctx: EvalContext, shape: ShapeHandle): { min: Vec3; max: Vec3 } {
   const solids = ctx.kernel.solids(shape);
   try {
-    if (solids.length < 2) return ctx.kernel.properties(shape).bbox;
+    if (solids.length < 2) return ctx.kernel.exactBox(shape);
     // Loops, not spreads: a large assembly's solids overflow an argument list.
     const min: [number, number, number] = [Infinity, Infinity, Infinity];
     const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
     for (const solid of solids) {
-      const box = ctx.kernel.properties(solid).bbox;
+      const box = ctx.kernel.exactBox(solid);
       for (const k of [0, 1, 2] as const) {
         min[k] = Math.min(min[k], box.min[k]);
         max[k] = Math.max(max[k], box.max[k]);

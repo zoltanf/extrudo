@@ -2015,6 +2015,20 @@ export class Kernel {
   }
 
   /**
+   * `properties`' box alone, from the same code, so the same values: exact, from the geometry
+   * without tolerances (a mesh body: manifold-3d's box, which `properties` reports too). For a
+   * caller that needs only the box a person is shown or a body's size, which then pays for no
+   * volume, area or centre integral. Where one of `properties`' integrals throws, this doesn't:
+   * the box alone is asked for.
+   */
+  exactBox(shape: ShapeHandle): Measurements['bbox'] {
+    if (this.isMesh(shape)) return this.measureBox(shape);
+    if (!this.#facade.exactBox(shape)) throw new KernelError(this.#facade.lastError());
+    const m = (i: number) => this.#facade.measured(i);
+    return { min: [m(2), m(3), m(4)], max: [m(5), m(6), m(7)] };
+  }
+
+  /**
    * What the Measure tool shows of a shape (P2-13): volume of its solids,
    * area of its faces, length of its edges when it has no faces, the centre
    * of mass of the highest of those (a vertex's point), and a tight box
