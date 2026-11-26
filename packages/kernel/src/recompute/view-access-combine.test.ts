@@ -50,9 +50,16 @@ const DESIGNS: Design[] = [
       'keep-tools',
       'keep-tools',
       'twice',
+      'tool-is-target',
+      'tool-is-target',
       ...GENERIC_KINDS,
     ] as Kind[],
-    flips: ['combine-op: view→view', 'keep-tools: view→view', 'twice: view→view'],
+    flips: [
+      'combine-op: view→view',
+      'keep-tools: view→view',
+      'twice: view→view',
+      'tool-is-target: view→view',
+    ],
     steps: 20,
   },
 ];
