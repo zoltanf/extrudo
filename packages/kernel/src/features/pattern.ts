@@ -57,6 +57,7 @@ import { deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type {
+  BodyAccess,
   EvalContext,
   FeatureOutput,
   KernelFeatureDefinition,
@@ -405,6 +406,8 @@ function patternBodies(
   const { kernel } = ctx;
   const ids = existingBodies(ctx, settings.bodies, 'pattern');
   const bodies = new Map(ctx.bodies);
+  // How many bodies it was given (a copy's size: a view's size is not to be asked).
+  const before = bodies.size;
   const names = new Map<BodyId, TopoNames>();
   const previewTools: PreviewTool[] = [];
   const warnings: string[] = [];
@@ -464,7 +467,7 @@ function patternBodies(
       ? splitSolids(ctx, scope, { bodies, names, previewTools })
       : { bodies, names, previewTools },
   );
-  if (settings.join && result.bodies.size > ctx.bodies.size) {
+  if (settings.join && result.bodies.size > before) {
     warnings.push(
       "Some instances don't touch their body, so they are separate bodies. Bring them closer, or turn Join off.",
     );
@@ -699,9 +702,20 @@ function rectangularRows(
   return { first, second };
 }
 
+/**
+ * A pattern of bodies reads and changes only the bodies it names and adds their instances
+ * (ADR-0024's amendments on `view` access): its directions, axis or path are origin or
+ * construction ones, sketch curves, or edges, which the view holds; an instance's ID is
+ * `<feature>:<n>` by its slot and its body's place in the list. A pattern of features replays them
+ * on whatever they meet, so it stays `write`.
+ */
+function bodiesAccess(settings: PatternObjectSettings): BodyAccess {
+  return settings.objects === 'bodies' ? 'view' : 'write';
+}
+
 export const kernelRectangularPattern: KernelFeatureDefinition<RectangularPatternInputs> = {
   ...rectangularPatternFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => bodiesAccess(rectangularSettings(inputs)),
   evaluate(ctx) {
     const settings = rectangularSettings(ctx.inputs);
     const { first, second } = rectangularRows(ctx, settings);
@@ -739,7 +753,7 @@ function circularTurns(
 
 export const kernelCircularPattern: KernelFeatureDefinition<CircularPatternInputs> = {
   ...circularPatternFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => bodiesAccess(circularSettings(inputs)),
   evaluate(ctx) {
     const settings = circularSettings(ctx.inputs);
     const { axis, count, angle } = circularTurns(ctx, settings);
@@ -800,7 +814,7 @@ function patternCsg(
 
 export const kernelPathPattern: KernelFeatureDefinition<PathPatternInputs> = {
   ...pathPatternFeature,
-  bodyAccess: () => 'write',
+  bodyAccess: (inputs) => bodiesAccess(pathSettings(inputs)),
   evaluate(ctx) {
     const settings = pathSettings(ctx.inputs);
     const count = wholeCount(valueOr(ctx, 'count', 3), 'Count');
