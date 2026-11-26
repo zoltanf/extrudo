@@ -290,12 +290,14 @@ describe('view access: new bodies (ADR-0024)', () => {
     }
   });
 
-  it('a mesh split by Split Body with a body outside the view after it: write; with none: view', {
+  it('a mesh split by Split Body with a body outside the view after it: write, not remembered', {
     timeout: 120_000,
   }, async () => {
     // A mesh's second side gets a `set` (the end of the map) and an `origins` entry, as a piece
     // `splitSolids` places right after its body: with a body outside the view after the mesh the
-    // two places differ, and the result can't tell which.
+    // two places differ, and the result can't tell which. That depends on the bodies outside the
+    // view, so it is decided again at each walk: the box after the mesh gone, the split keeps its
+    // view (and its versions are a cleared engine's); the box back, `write` again.
     const files = new Map<AttachmentId, ImportedFile>([
       [STL, { bytes: bytesOf(cubeStl), mediaType: 'model/stl', fileName: 'cube.stl' }],
     ]);
@@ -314,19 +316,24 @@ describe('view access: new bodies (ADR-0024)', () => {
           splitBodyInputs(['imp:0'], { kind: 'plane', id: 'xp' } as GeomRef),
         ),
       ]);
-    for (const after of [true, false]) {
-      const doc = mesh(after);
-      const [step] = await sequence([doc], options);
-      expect(step?.problems).toEqual([]);
-      expect(step?.result.features['ms' as FeatureId]?.status).toBe('ok');
-      expect(step?.result.bodies.map((b) => b.id)).toEqual(
+    const docs = [mesh(true), mesh(false), mesh(true)];
+    const steps = await sequence(docs, options);
+    steps.forEach((step, i) => {
+      const after = i !== 1;
+      // Equal to a cleared engine, versions included, and to an all-`write` one.
+      expect(step.problems, `step ${i}`).toEqual([]);
+      expect(step.result.features['ms' as FeatureId]?.status).toBe('ok');
+      expect(step.result.bodies.map((b) => b.id)).toEqual(
         after ? ['imp:0', 'o0:0', 'ms:0'] : ['imp:0', 'ms:0'],
       );
-      expect(step?.result.stats.viewed).toEqual(after ? [] : ['ms']);
-      expect(fallbacks(step?.result as NonNullable<typeof step>['result'], doc)).toEqual(
-        after ? ['ms'] : [],
-      );
-    }
+      expect(step.result.stats.viewed, `step ${i}`).toEqual(after ? [] : ['ms']);
+    });
+    // Tried as a view, then evaluated as `write`; then both from the cache.
+    expect(
+      fallbacks(steps[0]?.result as NonNullable<(typeof steps)[0]>['result'], docs[0] as never),
+    ).toEqual(['ms']);
+    expect(steps[1]?.evaluated).not.toContain('ms');
+    expect(steps[2]?.evaluated).not.toContain('ms');
   });
 
   it('a body outside the view with the feature’s own ID prefix: write at once, the same result', {
