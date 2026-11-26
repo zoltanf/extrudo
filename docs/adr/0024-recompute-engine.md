@@ -761,7 +761,9 @@ references name. For such a feature the engine works out its view before evaluat
   reference to no body, a face, edge or vertex reference that no body has by that exact name (lost,
   or found only by a related name or a fingerprint), or a view body without a naming table or a
   version; also inside an isolated expansion, as for `add`, and when an evaluation with these
-  inputs and this view looked outside it before (`#readsBodies`, shared with `add`). `add`'s own
+  inputs and this view looked outside it before (`#readsBodies`, shared with `add`) or failed
+  with an error to try again once the bodies before it change (an `OutsideError` with `retry:
+  'bodies'`, as for `add`; neither the fillet nor the chamfer throws one). `add`'s own
   ID-prefix check doesn't apply: a `view` result is merged by ID (below).
 
 The evaluator gets the view as `ctx.bodies` (a `BodyView`). Its key's last part is the view's
@@ -888,4 +890,36 @@ geometry on faces); a fillet whose edge has an exact match on a body a pattern o
 (the view holds both, `closest` decides as it does today: not in the designs); previews; joints,
 annotations and sheets (they read the bodies at the marker, not a feature's view).
 
-MEASURED
+**Measured.** Kernel time and meshes sent for an edit of the first, a middle and the last plate
+(its distance to 6 mm) and fillet (its radius to 0.7 mm), incremental with `have`, in Node, two
+runs each, each version's own code: main (with `add` for the extrude) → slice 2 (`add` for more
+features) → this. The plates of the 30- and 100-plate designs (200 × 120 × 5 mm, 30 holes each),
+each with a fillet of four edges, 0.5 mm.
+
+| Design | Edit | Evaluated / meshes sent | ms |
+|---|---|--:|--:|
+| 20 plates | first plate | 21/20 → 21/20 → 2/1 | 2,262, 2,268 → 2,231, 2,237 → 150, 153 |
+| | middle plate | 12/11 → 12/11 → 2/1 | 1,248, 1,249 → 1,264, 1,245 → 145, 143 |
+| | last plate | 2/1 → 2/1 → 2/1 | 148, 147 → 145, 144 → 149, 145 |
+| | first fillet | 20/20 → 20/20 → 1/1 | 2,245, 2,210 → 2,252, 2,218 → 120, 130 |
+| | middle fillet | 11/11 → 11/11 → 1/1 | 1,266, 1,259 → 1,250, 1,235 → 125, 121 |
+| | last fillet | 1/1 → 1/1 → 1/1 | 120, 118 → 117, 117 → 131, 123 |
+| 100 plates | first plate | 101/100 → 101/100 → 2/1 | 11,095, 11,057 → 11,199, 11,004 → 198, 198 |
+| | middle plate | 52/51 → 52/51 → 2/1 | 5,629, 5,671 → 5,743, 5,610 → 189, 190 |
+| | last plate | 2/1 → 2/1 → 2/1 | 181, 179 → 181, 178 → 194, 192 |
+| | first fillet | 100/100 → 100/100 → 1/1 | 10,903, 11,139 → 10,883, 10,879 → 164, 165 |
+| | middle fillet | 51/51 → 51/51 → 1/1 | 5,612, 5,641 → 5,611, 5,601 → 171, 170 |
+| | last fillet | 1/1 → 1/1 → 1/1 | 162, 166 → 162, 165 → 169, 173 |
+
+The last plate's and the last fillet's edits evaluate the same features in all three. With 100
+plates they take 180 → 193 ms and 164 → 171 ms (medians of the two runs, main → this; 20 plates:
+148 → 147 and 119 → 127 ms): every fillet's view is worked out on every walk (its four
+references against every body's naming table) and merged in place (a copy of the bodies), so
+like `add`'s merge it grows with the bodies before each fillet. Not looked into further.
+
+From scratch (every feature of the 64 designs in `fixtures/`, the fastest of two runs each,
+main → slice 2 → this): 11,209 → 11,258 → 11,258 ms over 180 features; the largest change is
+the bottle cap's first thread, 6,286 → 6,325 → 6,314 ms (the runs of the boolean copies round gave
+6,263–6,291 ms for it); the seven fillets and chamfers 47.9 → 47.7 → 48.0 ms.
+
+APP
