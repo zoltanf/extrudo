@@ -2885,8 +2885,8 @@ to, every PR touching the top of `## Unreleased`). **`scripts/changelog-collect.
 under `## Unreleased` (newest first by the date in the line, ties by file name)
 and deletes them; it creates the section above the first `## v` heading when a
 release renamed it. **`scripts/check-changelog.mjs`** runs in `pnpm lint` and
-CI's check job (`--base "origin/<base_ref>"` on pull requests; the check job's
-checkout is `fetch-depth: 0` so the three-dot diff has the merge base).
+CI's first unit-test shard (`--base "origin/<base_ref>"` on pull requests; that
+shard's checkout is `fetch-depth: 0` so the three-dot diff has the merge base).
 **Rules a change must keep:** a fragment is `YYYY-MM-DD-<slug>.md` (the date the
 change was finished, a kebab-case slug; `README.md` in the folder is the
 permanent explainer and is never collected) and its content is exactly one line

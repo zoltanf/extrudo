@@ -152,7 +152,7 @@ jobs:
       # diff has the merge base (ADR-0089); the other jobs keep the shallow default.
       - uses: actions/checkout@v5
         with:
-          fetch-depth: ${{ matrix.shard == 1 && 0 || 1 }}
+          fetch-depth: ${{ matrix.shard != 1 && 1 || 0 }} # `== 1 && 0 || 1` is always 1: 0 is falsy
 
       - name: A pull request must not edit docs/CHANGELOG.md (ADR-0089)
         if: matrix.shard == 1 && github.event_name == 'pull_request'
