@@ -39,6 +39,7 @@ import { loadManifold } from '../manifold';
 import type { ShapeDescription } from '../naming/description';
 import { loadOcct } from '../occt/load';
 import {
+  accessOf,
   atStep,
   choice,
   client,
@@ -57,15 +58,7 @@ import {
 } from './add-access-test-support';
 import { RecomputeEngine } from './engine';
 import { type EvalContext, type KernelFeatureDefinition, OutsideError } from './types';
-import {
-  accessOf,
-  document,
-  plate,
-  platesOf,
-  slot,
-  twin,
-  twinRegistry,
-} from './view-access-test-support';
+import { document, plate, platesOf, slot, twin, twinRegistry } from './view-access-test-support';
 
 let kernel: Kernel;
 beforeAll(async () => {
@@ -188,7 +181,10 @@ function chamfers() {
   ]);
 }
 
-/** A plate with two fillets, the second on edges the first left (named after it), and plates beside. */
+/**
+ * A plate with two fillets, the second on edges the first left (named after it), and plates
+ * beside.
+ */
 async function twoFillets() {
   const doc = document('a body with two fillets', [
     ...plate(0, 0, '5 mm'),

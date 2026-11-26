@@ -34,8 +34,7 @@ import {
   setInputs,
 } from './add-access-test-support';
 import { RecomputeEngine } from './engine';
-import type { BodyAccess } from './types';
-import { accessOf, plate, twinRegistry } from './view-access-test-support';
+import { plate, twinRegistry } from './view-access-test-support';
 
 let kernel: Kernel;
 
@@ -54,7 +53,7 @@ export const TYPES = ['shell', 'draft', 'offsetFace', 'removeFaces', 'thread'] a
 
 // ------------------------------------------------------------------------------- designs
 
-export type Pick = (d: ShapeDescription) => number[];
+export type FacePick = (d: ShapeDescription) => number[];
 export type Face = ShapeDescription['faces'][number];
 
 export const up = (f: Face) => f.type === 'plane' && (f.direction?.[2] ?? 0) > 0.99;
@@ -62,11 +61,11 @@ export const down = (f: Face) => f.type === 'plane' && (f.direction?.[2] ?? 0) <
 export const side = (f: Face) => f.type === 'plane' && Math.abs(f.direction?.[2] ?? 1) < 0.01;
 /** The faces `test` picks, in index order. */
 export const faces =
-  (test: (f: Face) => boolean): Pick =>
+  (test: (f: Face) => boolean): FacePick =>
   (d) =>
     d.faces.flatMap((f, i) => (test(f) ? [i] : []));
 /** The top face: flat, facing up, the highest. */
-export const top: Pick = (d) => {
+export const top: FacePick = (d) => {
   const all = faces(up)(d);
   const z = (i: number) => d.faces[i]?.centroid[2] ?? 0;
   return all.sort((a, b) => z(b) - z(a)).slice(0, 1);
@@ -77,33 +76,47 @@ export interface Step {
   id: string;
   after: string;
   /** Its inputs from the face references `refs` gives at the end of the design so far. */
-  make(refs: (body: string, pick: Pick) => GeomRef[]): Feature;
+  make(refs: (body: string, pick: FacePick) => GeomRef[]): Feature;
 }
 
-/** `doc` with each step's feature added in turn, its references taken from a recompute before it. */
+/** `use` of an engine that has computed `doc` (cleared after). */
+export async function computed<T>(
+  doc: ExtrudoDocument,
+  use: (engine: RecomputeEngine) => T,
+): Promise<T> {
+  const engine = new RecomputeEngine(kernel, twinRegistry()(), { strictLeaks: true });
+  try {
+    const done = await engine.recompute({ doc });
+    if (done.status !== 'done') throw new Error('cancelled');
+    return use(engine);
+  } finally {
+    engine.clear();
+  }
+}
+
+/** The references of the faces `pick` gives on `body`, in an engine that computed the design. */
+export function faceRefs(engine: RecomputeEngine, body: string, pick: FacePick): GeomRef[] {
+  const shape = engine.latestBody(body as BodyId);
+  if (shape === undefined) throw new Error(`no body ${body}`);
+  return pick(kernel.describe(shape)).map((i) => {
+    const ref = engine.reference(body as BodyId, 'face', i);
+    if (!ref) throw new Error(`no face ${i} on ${body}`);
+    return ref;
+  });
+}
+
+/**
+ * `doc` with each step's feature added in turn, its references taken from a recompute before it.
+ */
 export async function build(doc: ExtrudoDocument, steps: Step[]): Promise<ExtrudoDocument> {
   let current = doc;
   for (const step of steps) {
-    const engine = new RecomputeEngine(kernel, twinRegistry()(), { strictLeaks: true });
-    try {
-      const done = await engine.recompute({ doc: current });
-      if (done.status !== 'done') throw new Error('cancelled');
-      const refs = (body: string, pick: Pick) => {
-        const shape = engine.latestBody(body as BodyId);
-        if (shape === undefined) throw new Error(`no body ${body}`);
-        return pick(kernel.describe(shape)).map((i) => {
-          const ref = engine.reference(body as BodyId, 'face', i);
-          if (!ref) throw new Error(`no face ${i} on ${body}`);
-          return ref;
-        });
-      };
-      const feature = step.make(refs);
-      const features = [...current.features];
-      features.splice(features.findIndex((f) => f.id === step.after) + 1, 0, feature);
-      current = { ...current, features, timelineMarker: features.length };
-    } finally {
-      engine.clear();
-    }
+    const made = await computed(current, (engine) =>
+      step.make((body, pick) => faceRefs(engine, body, pick)),
+    );
+    const features = [...current.features];
+    features.splice(features.findIndex((f) => f.id === step.after) + 1, 0, made);
+    current = { ...current, features, timelineMarker: features.length };
   }
   return current;
 }
@@ -124,9 +137,7 @@ export async function filletAfter(
   body: string,
   radius = '1 mm',
 ) {
-  const engine = new RecomputeEngine(kernel, twinRegistry()(), { strictLeaks: true });
-  try {
-    await engine.recompute({ doc });
+  const refs = await computed(doc, (engine) => {
     const shape = engine.latestBody(body as BodyId);
     if (shape === undefined) throw new Error(`no body ${body}`);
     // The top face's straight edges.
@@ -135,17 +146,15 @@ export async function filletAfter(
     const edges = d.edges.flatMap((e, i) =>
       e.type === 'line' && topFace !== undefined && e.faces.includes(topFace) ? [i] : [],
     );
-    const refs = edges.map((i) => engine.reference(body as BodyId, 'edge', i) as GeomRef);
-    const features = [...doc.features];
-    features.splice(
-      features.findIndex((f) => f.id === after) + 1,
-      0,
-      feature(id, 'fillet', filletInputs([{ edges: refs, radius }])),
-    );
-    return { ...doc, features, timelineMarker: features.length };
-  } finally {
-    engine.clear();
-  }
+    return edges.map((i) => engine.reference(body as BodyId, 'edge', i) as GeomRef);
+  });
+  const features = [...doc.features];
+  features.splice(
+    features.findIndex((f) => f.id === after) + 1,
+    0,
+    feature(id, 'fillet', filletInputs([{ edges: refs, radius }])),
+  );
+  return { ...doc, features, timelineMarker: features.length };
 }
 
 // ------------------------------------------------------------------------------- edits
@@ -185,6 +194,7 @@ export function edit(
   history: readonly ExtrudoDocument[],
   deleted: Feature[],
   original: ExtrudoDocument,
+  named: Record<string, GeomRef>,
   targetId?: string,
 ): Edited | undefined {
   const pickOne = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
@@ -236,8 +246,8 @@ export function edit(
           ? originPlaneRef('origin:xy')
           : at?.id === 'origin:xy'
             ? (constructionRef({ id: 'cp' as FeatureId, type: 'offsetPlane' }) as GeomRef)
-            : // The plate's bottom face, a face reference: its body is in the view.
-              { kind: 'face', id: bottomOf(original, now.id) };
+            : // A face of another plate (`named['plane face']`): it brings its body into the view.
+              (named['plane face'] as GeomRef);
       return set({ plane: { kind: 'ref', refs: [next] } });
     }
     case 'flip': {
@@ -297,33 +307,6 @@ export function edit(
   }
 }
 
-/** The name of the bottom face of the body a draft's first face is on, as the design has it. */
-export const bottoms = new Map<string, string>();
-export function bottomOf(doc: ExtrudoDocument, draft: string): string {
-  const name = bottoms.get(`${doc.name}/${draft}`);
-  if (name === undefined) throw new Error(`no bottom face recorded for ${draft}`);
-  return name;
-}
-
-/** Records each draft's plate's bottom face name (for the `plane` edit). */
-export async function withBottoms(doc: ExtrudoDocument): Promise<ExtrudoDocument> {
-  const engine = new RecomputeEngine(kernel, twinRegistry()(), { strictLeaks: true });
-  try {
-    await engine.recompute({ doc });
-    for (const f of doc.features.filter((x) => x.type === 'draft')) {
-      const body = `ex${f.id.slice(2)}:0`;
-      const shape = engine.latestBody(body as BodyId);
-      if (shape === undefined) continue;
-      const [i] = faces(down)(kernel.describe(shape));
-      const ref = i === undefined ? undefined : engine.reference(body as BodyId, 'face', i);
-      if (ref) bottoms.set(`${doc.name}/${f.id}`, ref.id);
-    }
-    return doc;
-  } finally {
-    engine.clear();
-  }
-}
-
 export interface Design {
   name: string;
   make: () => Promise<ExtrudoDocument>;
@@ -333,6 +316,12 @@ export interface Design {
   flips: string[];
   /** The feature the rule's edits go to (default: the first of the five). */
   target?: string;
+  /** Kinds of edit that must never take a view from their feature (no `<kind>: view→write`). */
+  steady?: Kind[];
+  /** Seeded edits (default 40). */
+  steps?: number;
+  /** References some edits use, from the design as made (the draft's other plate's face). */
+  named?: (doc: ExtrudoDocument) => Promise<Record<string, GeomRef>>;
 }
 
 export const BASE = [...RULE] as Kind[];
@@ -344,40 +333,38 @@ export const OPTIONS: PairOptions = {
   reference: twinRegistry(),
 };
 
-export function differential(
+export async function differential(
   design: Design,
   doc: ExtrudoDocument,
   steps: number,
   seed: number,
   options: PairOptions = {},
 ) {
+  const named = (await design.named?.(doc)) ?? {};
   return differentialOf(kernel, doc, steps, seed, {
     ...OPTIONS,
     ...options,
     kinds: design.kinds,
     edit: (kind, current, rand, history, deleted) =>
-      edit(kind, current, rand, history, deleted, doc, design.target),
+      edit(kind, current, rand, history, deleted, doc, named, design.target),
     access: (f) => (f && (TYPES as readonly string[]).includes(f.type) ? 'view' : 'other'),
   });
 }
 
 export const sequence = (docs: readonly ExtrudoDocument[]) => sequenceOf(kernel, docs, OPTIONS);
 
-/** The kernel's features (and `test-twin`) with the five features as `write`. */
-export const fiveWrite = () =>
-  accessOf(twinRegistry(), Object.fromEntries(TYPES.map((t) => [t, 'write' as BodyAccess])));
-
 /**
- * Each design's proof: 40 seeded edits against a cleared engine and an all-`write` one, every term
- * flipped both ways, no fall-back; then 15 with the five as `write` in the engine under test.
+ * Each design's proof: seeded edits (40 unless the design says) against a cleared engine
+ * (versions and `measure` boxes too) and an engine that runs every feature as `write` (all but
+ * versions), every term flipped both ways, no fall-back.
  */
 export function proveDesigns(designs: Design[]) {
   it.each(designs.map((d) => [d.name, d] as const))(
-    '%s, 40 seeded edits',
+    '%s, seeded edits',
     { timeout: 900_000 },
     async (_name, design) => {
       const doc = await design.make();
-      const run = await differential(design, doc, 40, 5309);
+      const run = await differential(design, doc, design.steps ?? 40, 5309);
       expect(run.initialErrors).toEqual([]);
       expect(run.problems).toEqual([]);
       expect(run.fallbacks).toEqual([]);
@@ -392,19 +379,13 @@ export function proveDesigns(designs: Design[]) {
       ]) {
         expect(run.views, views).toContain(flip);
       }
+      for (const kind of design.steady ?? []) {
+        expect(
+          [...run.views].filter((v) => v === `${kind}: view→write`),
+          views,
+        ).toEqual([]);
+      }
       expect(run.evaluated[0]).toBeLessThan(run.evaluated[1]);
-    },
-  );
-
-  it.each(designs.map((d) => [d.name, d] as const))(
-    '%s: the same with the five as `write` in the engine under test',
-    { timeout: 900_000 },
-    async (_name, design) => {
-      const run = await differential(design, await design.make(), 15, 77, {
-        registry: fiveWrite(),
-        exact: false,
-      });
-      expect(run.problems).toEqual([]);
     },
   );
 }

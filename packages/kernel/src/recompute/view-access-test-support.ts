@@ -1,8 +1,8 @@
 /**
  * Test support for `view` body access (ADR-0024's amendment on `view` access): plates and slots,
- * a document of them, the `test-twin` feature (two bodies with the same names), and a registry
- * with some types' access replaced. Used by `view-access.test.ts` and
- * `view-access-features.test.ts`. Not part of the app.
+ * a document of them, and the `test-twin` feature (two bodies with the same names). Used by
+ * `view-access.test.ts`, `view-access-features-test-support.ts` and the feature files over it.
+ * Not part of the app.
  */
 import {
   createDocument,
@@ -13,7 +13,6 @@ import {
   extrudeInputs,
   type Feature,
   type FeatureId,
-  FeatureRegistry,
   originPlaneRef,
   profileRefId,
   sketchInputs,
@@ -24,9 +23,12 @@ import { detectProfiles } from '@extrudo/sketch/profiles';
 import { kernelFeatures } from '../features/index';
 import { positionalNames } from '../naming/names';
 import { choice, length } from './add-access-test-support';
-import type { BodyAccess, EvalContext, KernelFeatureDefinition } from './types';
+import type { EvalContext, KernelFeatureDefinition } from './types';
 
-/** A 60 × 40 mm plate at `x`, `y` with two holes of radius `r`: its sketch `sk<i>`, its extrude `ex<i>`. */
+/**
+ * A 60 × 40 mm plate at `x`, `y` with two holes of radius `r`: its sketch `sk<i>`, its extrude
+ * `ex<i>`.
+ */
 export function plate(i: number | string, x: number, distance: string, r = 5, y = 0): Feature[] {
   const b = new SketchBuilder();
   b.line(x, y, x + 60, y);
@@ -151,18 +153,3 @@ export const twin = (id: string, x: string): Feature => ({
     tag: choice('T'),
   },
 });
-
-/** `base`'s features with some types' `bodyAccess` replaced. */
-export function accessOf(
-  base: () => FeatureRegistry<KernelFeatureDefinition>,
-  access: Record<string, BodyAccess>,
-) {
-  return () => {
-    const registry = new FeatureRegistry<KernelFeatureDefinition>();
-    for (const d of base().list()) {
-      const to = access[d.type];
-      registry.register(to === undefined ? d : ({ ...d, bodyAccess: () => to } as typeof d));
-    }
-    return registry;
-  };
-}

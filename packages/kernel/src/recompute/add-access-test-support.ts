@@ -165,19 +165,34 @@ export function allWrite(
   };
 }
 
-/** The kernel's features, with one feature type's `bodyAccess` replaced. */
-export function withAccess(type: string, access: (inputs: never) => BodyAccess) {
+/**
+ * `base`'s features with some types' `bodyAccess` replaced: by an answer, or by a function of the
+ * inputs.
+ */
+export function accessOf(
+  base: () => FeatureRegistry<KernelFeatureDefinition>,
+  access: Record<string, BodyAccess | ((inputs: never) => BodyAccess)>,
+) {
   return () => {
     const registry = new FeatureRegistry<KernelFeatureDefinition>();
-    for (const definition of kernelFeatures().list()) {
+    for (const definition of base().list()) {
+      const to = access[definition.type];
       registry.register(
-        definition.type === type
-          ? ({ ...definition, bodyAccess: access } as unknown as KernelFeatureDefinition)
-          : definition,
+        to === undefined
+          ? definition
+          : ({
+              ...definition,
+              bodyAccess: typeof to === 'function' ? to : () => to,
+            } as unknown as KernelFeatureDefinition),
       );
     }
     return registry;
   };
+}
+
+/** The kernel's features, with one feature type's `bodyAccess` replaced. */
+export function withAccess(type: string, access: (inputs: never) => BodyAccess) {
+  return accessOf(kernelFeatures, { [type]: access });
 }
 
 // ------------------------------------------------------------------------------- comparison

@@ -290,7 +290,7 @@ a sketch's profiles by distances reads no body before it.
   profile or text. Everything else is `write` as before: join, cut and intersect, picked bodies,
   "through all", "to object", face profiles.
 
-**What the extrude reads under that predicate** (audited on this branch; file:line):
+**What the extrude reads under that predicate** (audited for this change; file:line):
 
 - `extrudeSettings(ctx.inputs)` (`features/extrude.ts:242`) and the expression values
   (`distanceOf` :567, `taperOf` :577, the symmetric half :292): inputs and values, in the key.
@@ -486,7 +486,7 @@ loft and the import answer `add` too, each for the inputs its predicate allows; 
   `splitSolids`, after a piece was kept, so it left shapes behind (see the checks below) and the
   file would be parsed again as `write`.
 
-**What they read under those predicates** (audited on this branch; file:line; `features/` unless
+**What they read under those predicates** (audited for this change; file:line; `features/` unless
 said; the shared helpers as listed for the extrude: `explicitBodies` `operation.ts:91` returns at
 once for no picked bodies, `operate` → `newBodies` `operation.ts:333` iterates the empty map and
 names bodies with `ctx.bodyId` (:341, :356), `splitSolids` `bodies.ts:38`/:41 iterates, and its
@@ -842,7 +842,7 @@ version is the hash of the key that made the shape, and a `view` key holds its v
 and the view is worked out again on every walk from the naming tables, so a body that gains or
 loses a matching name changes the view's ID list and the key.
 
-**What the fillet and the chamfer read** (audited on this branch; file:line, `features/`):
+**What the fillet and the chamfer read** (audited for this change; file:line, `features/`):
 
 | Read | Fillet | Chamfer | Under `view` |
 |---|---|---|---|
@@ -1014,17 +1014,20 @@ the rule above says. None of the five was left `write`. Two engine rules change,
   amendment above (a body outside the view merged as `write` merges it) no longer holds: such a
   result is now refused. `mergeInPlace` replaces or drops view bodies and keeps every other body.
 - **A `plane` reference takes no part in the view** (`#viewOf`). It is an origin plane or a
-  construction plane's output (`features/references.ts:90-93`, `constructionOf` :47 reads
-  `ctx.output`): no body is read, and a construction plane is an upstream feature whose key is
-  already in the feature's key. Before, any reference other than a face, edge, vertex or body
+  construction plane's output (`features/references.ts:90-93`; `constructionOf` reads
+  `ctx.output` at :55): no body is read, and a construction plane is an upstream feature whose key
+  is already in the feature's key. A construction plane built on a face of a body answers `read`,
+  so its key moves with every body-writing feature before it, and a draft about it runs again on
+  any such edit, as it did under `write`: the view saves nothing there, and costs nothing. Before, any reference other than a face, edge, vertex or body
   made the feature `write`. Axes and points would follow the same argument; no `view` feature
   needs them, so they still answer `write`.
 
-**What each reads** (audited on this branch; file:line, `features/`). Every reference is a
+**What each reads** (audited for this change; file:line, `features/`). Every reference is a
 top-level `ref` input (`faces`; the shell's `bodies` and `wallFaces<n>`; the draft's `plane`), so
 `#viewOf` sees them all; none resolves a reference it computes. No global state, no document-level
 read. Each returns `new Map(ctx.bodies)` changed by `set` (and the thread's cut by `delete`), so it
-meets the merge rule.
+meets the merge rule; none deletes an ID and sets it again. The engine's order check catches that
+only when a later view body follows the ID put back, so a new `view` feature must not do it at all.
 
 | Feature | Reads | Under `view` |
 |---|---|---|
@@ -1032,7 +1035,7 @@ meets the merge rule.
 | Draft (`draft.ts`) | settings and angle (:47, :52); the neutral plane (`planeOf`, :63: a face is resolved, `references.ts:79`; an origin plane or a construction plane's output reads no body, :90-93); each face (:69); `get` (:78), `kernel.draft` (:81), `withHistory` with that body's names (:87); copy and `set` (:94, :97) | a face plane by exact name, in the view; a `plane` plane takes no part in it |
 | Offset faces (`offset-face.ts`) | settings and distance (:64, :66); each face (:76); `get` (:85); the rounds it keeps, `roundsNextTo` (:88): `get`, names, `kernel.tangentFaces` and `surfaceGeometry` of the same body (:137, :138, :142, :146); `kernel.offsetFaces` (:89); names (:100); copy and `set` (:106) | the body of each face only |
 | Remove faces (`remove-faces.ts`) | its faces (:39), each resolved (:45); `get` and the face count (:51, :52); `get`, `kernel.removeFaces`, the description for a message (:60, :63, :66); names (:71); copy and `set` (:78) | the body of each face only |
-| Thread (`thread.ts`) | settings and numbers (:171, :172); each face (:183), `kernel.threadFace` of its own body (:184); a sleeve that fills it, fused with that body and its names (:188, :190, :191); the tools, own geometry (:207, :211); a context for the cut whose `bodies` is a plain copy of the view with the filled bodies (:217, :218); the cut, `operate` with the faces' bodies as participants (:223) | the faces' bodies only, see below |
+| Thread (`thread.ts`) | settings and numbers (:171, :172); each face (:183), `kernel.threadFace` of its own body (:184); a sleeve that fills it, fused with that body and its names (:188, :190, :191; `sleeveOf` describes and names the same body, :917, :932); the tools, own geometry (:207, :211); a context for the cut whose `bodies` is a plain copy of the view with the filled bodies (:217, :218); the cut, `operate` with the faces' bodies as participants (:223) | the faces' bodies only, see below |
 
 The thread's cut (`operation.ts`): with participants and `cut`, `touching` is empty
 (:146-147: no search among the bodies); each participant is looked up with its names (:161,
@@ -1050,33 +1053,52 @@ real OCCT and manifold, `strictLeaks`, no clock, fixed seeds):
   by a body reference, one after a fillet, a slot cut through all of them after); twin bodies
   with the same names (`test-twin`) and a shell of a face named on both; plates with drafts about
   XY; plates with offset faces, one next to a fillet whose round it keeps; plates with a hole
-  filled each and a cut after; studs with a thread each and a plate between.
-- **Edits:** 40 seeded per design. The rule's terms on the design's first feature, both ways: a
-  face no body has by its name and back, no faces and back; the shell's picked body added and
-  taken out (`view` both), one that doesn't exist and back (`write` and back); the draft's plane
-  cycling XY, a construction plane and the plate's own bottom face (`view` throughout); the
-  twins swapping places and one suppressed and back. Then the features' own inputs (flip,
+  filled each and a cut after; studs with a thread each (one thinner than the thread, built up to
+  it first: the fill, and the cut's plain-copy context), a plate between and a 1 mm box through
+  the first stud where its thread is cut, which no thread names: a cut that searched the bodies
+  it touches would cut it under `write` but not with a view. A construction plane on the first
+  plate's top face (`read`) that the second plate is drafted about.
+- **Edits:** 40 seeded per design (20 for the threads, short coarse ones: pitch 2 mm, 3 mm long).
+  The rule's terms on the design's first feature (the second plate's draft for the drafts), both
+  ways: a face no body has by its name and back, no faces and back; the shell's picked body added
+  and taken out (`view` both), one that doesn't exist and back (`write` and back); the draft's
+  plane cycling XY, a construction plane and the first plate's bottom face, outside the draft's
+  view until it is the plane (`view` throughout: the test asserts that no `plane` edit took
+  the view away, `plane: view→write`; one made to a draft another edit had already left `write`
+  stays `write`); the twins swapping places and one suppressed and back. Then the features' own inputs (flip,
   keep rounds, hand, extent) and the generic edits.
 - **After every step**, as for the fillet: the cached engine equals a cleared engine (versions
-  and `measure` boxes included) and an all-`write` engine; no fall-back. Then 15 edits per design
-  with the five forced to `write` in the engine under test against a cleared engine with views.
-- **Counters:** an edit of one plate (or stud) evaluates it and its feature (and the cut after,
-  which reads every body), one mesh when nothing reads it after; an edit of the feature's own
-  number evaluates it alone; no fall-back. A draft about a construction plane runs again when the
-  plane changes.
+  and `measure` boxes included) and an engine running every feature as `write` (all but
+  versions, which are keys); no fall-back. The comparison with the all-`write` engine at every
+  step is what shows `view` = `write`; a separate run with the five forced to `write` in the
+  engine under test was dropped as the same check.
+- **Counters** (exact, no fall-back): the shells, a plate's distance: the plate, its shell and
+  the cut after (which reads every body); the shell's thickness: the shell and the cut. The
+  drafts, a plate's distance: the plate and its draft, one mesh; the draft's angle: the draft,
+  one mesh. Offset faces likewise (the plate and its offset; the offset's distance: the offset),
+  one mesh each. Remove faces, a plate's distance: the plate, its removal and the cut after (it
+  has no number to edit). The threads, the first stud's height: the stud and its thread, one mesh; the
+  thread's length: the thread, one mesh. A draft about a construction plane runs again when the
+  plane changes; one about a plane on the first plate's face when the first plate changes (the
+  plate, its draft, the plane and the second plate's draft). The threads' box: still six faces;
+  the thin stud's thread warns that it was built up.
 - **The engine rules** in `recompute/view-access.test.ts`: a probe whose result replaces a body
   outside its view, and one that adds a new body, are each dropped and run as `write`,
   remembered.
 - **Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
   each feature's `bodyAccess` back to `write` (its counter; the draft's construction-plane test
   too); the `plane` rule (the draft's counter and construction-plane test); the result rule (the
-  probes of a replaced and a new body); `body` references in the view (the shells' differential).
+  probes of a replaced and a new body); `body` references in the view (the shells' differential);
+  the thread's participants (the cut's `[...bodies]` left out, so it searches the bodies it
+  touches): MUTATION-THREAD.
 
 **Not covered:** a thread whose cut splits its body (it runs as `write`, by the result rule; no
 design has one); axes and points as references of a `view` feature; previews; joints,
 annotations and sheets.
 
-**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/` with
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders (not `scripts/`, whose one
+design runs a script and has none of the five) with
 main's engine and this one give the same body IDs, meshes bit for bit, statuses, reports,
 `inspect` of every body and number of evaluations. Versions differ in the four designs with one
 of the five (b4, b5, b6, b9): a version is the key that made the body, and those bodies are now
@@ -1107,7 +1129,7 @@ face offset by 0.5 mm; one hole's wall removed), the edit its distance to 6 mm; 
 | | middle | 12/11 → 2/1 | 13,978, 13,892 → 1,273, 1,264 |
 | | last | 2/1 → 2/1 | 1,295, 1,268 → 1,279, 1,270 |
 
-From scratch (every feature of the 64 designs, the fastest of two runs each, main → this):
+From scratch (every feature of those 64 designs, the fastest of two runs each, main → this):
 11,271 → 11,235 ms over 180 features; the largest increase of one feature +2.7 ms; the six
 instances of the five features 7,652 → 7,622 ms.
 

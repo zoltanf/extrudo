@@ -936,8 +936,9 @@ export class RecomputeEngine {
         evaluated.push(feature.id);
         made = true;
       }
-      // A view's result with a body outside the view, or its bodies out of the view's order (an ID
-      // deleted and set again), is not what `mergeInPlace` assumes.
+      // A view's result with a body outside the view, or with its view bodies out of the view's
+      // order (one put back after its `delete`, seen when a later view body comes before it), is
+      // not what `mergeInPlace` assumes.
       const misordered =
         view !== undefined &&
         entry.output?.bodies !== undefined &&
@@ -1544,7 +1545,9 @@ export class RecomputeEngine {
    * vertex reference, in walk order, with their versions for its key. `undefined`, so the feature
    * runs as `write`, when it has no such reference, a reference of another kind, a body reference
    * to no body, a face, edge or vertex reference no body has by that name (lost, or found only by
-   * a related name or a fingerprint), or a body without a naming table or a version.
+   * a related name or a fingerprint), a body before it without a naming table, or a view body
+   * without a version. A `plane` reference (an origin plane or a construction plane's output)
+   * reads no body and is passed over.
    */
   #viewOf(
     feature: Feature,
