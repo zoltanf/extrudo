@@ -247,6 +247,7 @@ export type Kind =
   | 'tool-is-target'
   | 'tool-not-target'
   | 'untwice'
+  | 'join'
   | (typeof GENERIC_KINDS)[number];
 
 export const LOST: GeomRef = { kind: 'face', id: 'f[nowhere]' };
@@ -334,6 +335,12 @@ export function edit(
       return set({
         operation: choice(was === 'join' ? 'cut' : was === 'cut' ? 'intersect' : 'join'),
       });
+    }
+    case 'join': {
+      // A mirror's or a pattern's join of each copy into its original, on and off.
+      if (now?.type !== 'mirror' && !now?.type.endsWith('Pattern')) return undefined;
+      const on = (now.inputs.join as { value?: boolean } | undefined)?.value === true;
+      return set({ join: { kind: 'bool', value: !on } });
     }
     case 'keep-tools': {
       if (now?.type !== 'combine') return undefined;

@@ -1,11 +1,20 @@
 // New bodies in a `view` result (ADR-0024's amendment on new bodies): copies by Move, Scale and
-// Mirror, instances of patterns of bodies, pieces by Split Body and by a Combine cut. Each goes
-// where `write` puts it: a copy or an instance (a `set` of a new ID) at the end of the whole map, a
-// piece `splitSolids` splits off right after its body, with bodies outside the view before,
-// between and after. Where that can't be told without the bodies outside the view (a mesh's side
-// Split Body made, of the view's last body, with a body outside the view after it), the feature
-// runs as `write`. A cut through all of them after reads the order. Real OCCT and manifold, strict
-// leaks, no clock.
+// Mirror, instances of patterns of bodies (joined too), pieces by Split Body and by a Combine.
+// Each goes where `write` puts it: a copy or an instance (a `set` of a new ID) at the end of the
+// whole map, a piece `splitSolids` splits off right after its body, with bodies outside the view
+// before, between and after. Where that can't be told without the bodies outside the view (a
+// mesh's side Split Body made, of the view's last body, with a body outside the view after it),
+// the feature runs as `write` for that walk. A cut through all of them after reads the order.
+//
+// Which features tell the placement rules apart (where the two places differ):
+// - a new body at the end, not right after the view's last body: `sc`, `mic`, `mij`, `rp` (a body
+//   outside the view comes after the copied box). `mc` and `cp` copy the last body there is, so
+//   both places are the same for them;
+// - a piece right after a view body that a later view body follows: `sp`'s piece of `b1`;
+// - a piece of the view's last body right after it (its `origins` entry): `sp2`, `cb2`, `pa`. The
+//   pieces of `b3` (`sp`) and of `a` (`cb`) are of the last body there is: the same either way;
+// - the mesh fall-back: the mesh split.
+// Real OCCT and manifold, strict leaks, no clock.
 import {
   type AttachmentId,
   circularPatternInputs,
@@ -42,6 +51,7 @@ import { document, slot } from './view-access-test-support';
 useKernel();
 
 const X_AXIS: GeomRef = { kind: 'axis', id: 'origin:x' };
+const Y_AXIS: GeomRef = { kind: 'axis', id: 'origin:y' };
 const Z_AXIS: GeomRef = { kind: 'axis', id: 'origin:z' };
 const XZ = originPlaneRef('origin:xz');
 const STL = 'att-stl' as AttachmentId;
@@ -152,6 +162,43 @@ function combines() {
   ]);
 }
 
+/**
+ * Patterns of bodies with a join: a box's three instances 10 mm apart, each touching the next,
+ * fused into it (one body); another box's instance 20 mm off, apart from it, so the fuse makes two
+ * solids, the instance a piece right after its box, before the box outside the view after it.
+ */
+function patternJoins(withCut = true) {
+  return document('patterns of bodies joined', [
+    box('b0', 0),
+    box('o0', 20),
+    feature(
+      'pj',
+      'rectangularPattern',
+      rectangularPatternInputs({
+        bodies: ['b0:0'],
+        direction1: Y_AXIS,
+        count1: '3',
+        distance1: '10 mm',
+        join: true,
+      }),
+    ),
+    box('b1', 60),
+    box('o1', 100),
+    feature(
+      'pa',
+      'rectangularPattern',
+      rectangularPatternInputs({
+        bodies: ['b1:0'],
+        direction1: Y_AXIS,
+        count1: '2',
+        distance1: '20 mm',
+        join: true,
+      }),
+    ),
+    ...(withCut ? cut() : []),
+  ]);
+}
+
 const DESIGNS: Design[] = [
   {
     name: 'copies among bodies outside the view',
@@ -186,8 +233,27 @@ const DESIGNS: Design[] = [
     target: 'cb',
     refsKey: 'tools',
     rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
-    kinds: [...BASE, 'twice', 'untwice', ...GENERIC_KINDS] as Kind[],
-    flips: ['twice: view→view', 'untwice: view→view'],
+    // The operation cycles cut, intersect, join and back to cut.
+    kinds: [
+      ...BASE,
+      'combine-op',
+      'combine-op',
+      'combine-op',
+      'twice',
+      'untwice',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: ['combine-op: view→view', 'twice: view→view', 'untwice: view→view'],
+    steps: 20,
+  },
+  {
+    name: 'patterns of bodies joined',
+    make: async () => patternJoins(),
+    target: 'pa',
+    refsKey: 'bodies',
+    // The join off (instances as bodies of their own, at the end) and on again.
+    kinds: [...BASE, 'join', 'join', 'twice', 'untwice', ...GENERIC_KINDS] as Kind[],
+    flips: ['join: view→view', 'twice: view→view', 'untwice: view→view'],
     steps: 20,
   },
 ];
@@ -200,6 +266,7 @@ describe('view access: new bodies (ADR-0024)', () => {
     ['patterns', patterns, ['rp', 'cp'], []],
     ['splits', splits, ['sp', 'sp2'], []],
     ['combine cuts', combines, ['cb', 'cb2'], []],
+    ['pattern joins', patternJoins, ['pj', 'pa'], []],
   ] as const)(
     '%s: each new body where write puts it; a place that needs the bodies outside the view: write',
     { timeout: 120_000 },
@@ -213,10 +280,11 @@ describe('view access: new bodies (ADR-0024)', () => {
       expect(fallbacks(step?.result as NonNullable<typeof step>['result'], doc)).toEqual([
         ...written,
       ]);
-      // The mirror's join warns that one copy stays apart.
+      // The mirror's join warns that one copy stays apart, the second pattern's that its instance
+      // is a body of its own.
       for (const id of [...viewed, ...written]) {
         expect(step?.result.features[id as FeatureId]?.status, id).toBe(
-          id === 'mij' ? 'warning' : 'ok',
+          id === 'mij' || id === 'pa' ? 'warning' : 'ok',
         );
       }
     },
@@ -231,7 +299,8 @@ describe('view access: new bodies (ADR-0024)', () => {
       return step?.result.bodies.map((b) => b.id);
     };
     // Each copy at the end of the map as it stands when the copy is made: the move's after `b1`
-    // (the last body then), the scale's of `b1` (a body in the middle by then) after `o2`.
+    // (the last body then, so the end and right after it are one place), the scale's of `b1` (a
+    // body in the middle by then) after `o2`, the mirrors' of `b0` and `b1` after that.
     expect(await order(copies)).toEqual([
       'o0:0',
       'b0:0',
@@ -257,6 +326,8 @@ describe('view access: new bodies (ADR-0024)', () => {
       'sp2:0',
       'o2:0',
     ]);
+    // The joined instance apart from `b1` is a piece right after it, before `o1`.
+    expect(await order(patternJoins)).toEqual(['b0:0', 'o0:0', 'b1:0', 'pa:0', 'o1:0']);
   });
 
   it('mirrors and patterns of features answer write; of bodies, view', () => {
@@ -339,7 +410,8 @@ describe('view access: new bodies (ADR-0024)', () => {
   it('a body outside the view with the feature’s own ID prefix: write at once, the same result', {
     timeout: 120_000,
   }, async () => {
-    // A box whose ID starts with the move's own (`mc:`).
+    // A box whose ID starts with the move's own (`mc:`). This shows the check fires; `mc:x` is
+    // not an ID the move would pick, so it isn't a collision itself.
     const doc = copies();
     const features = [box('mc:x', -80), ...doc.features];
     const clash = { ...doc, features, timelineMarker: features.length };
