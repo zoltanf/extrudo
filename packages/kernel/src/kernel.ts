@@ -1997,6 +1997,24 @@ export class Kernel {
   }
 
   /**
+   * `measure`'s box alone, from the same code, so the same values: for a caller that needs only
+   * the box (a body look-up, an extent, a placement), which then pays for no volume or area
+   * integral. A caller that reads a volume or an area uses `measure`.
+   */
+  measureBox(shape: ShapeHandle): Measurements['bbox'] {
+    if (this.isMesh(shape)) {
+      const box = this.#manifoldOf(shape).boundingBox();
+      return {
+        min: [box.min[0], box.min[1], box.min[2]],
+        max: [box.max[0], box.max[1], box.max[2]],
+      };
+    }
+    if (!this.#facade.measureBox(shape)) throw new KernelError(this.#facade.lastError());
+    const m = (i: number) => this.#facade.measured(i);
+    return { min: [m(2), m(3), m(4)], max: [m(5), m(6), m(7)] };
+  }
+
+  /**
    * What the Measure tool shows of a shape (P2-13): volume of its solids,
    * area of its faces, length of its edges when it has no faces, the centre
    * of mass of the highest of those (a vertex's point), and a tight box

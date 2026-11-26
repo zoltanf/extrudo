@@ -11,12 +11,15 @@ import {
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { touchingBodies } from './features/operation';
 import { Kernel } from './kernel';
+import { loadManifold } from './manifold';
 import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
 import { DEFAULT_TESSELLATION } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
+import type { EvalContext } from './recompute/types';
 import { KernelService } from './service';
 import { measureStoredShape, storedShapeToStep } from './stored-shape';
 import { buildTestPart } from './test-part';
@@ -335,5 +338,75 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
       const step = kernel.writeStep([{ shape: both, name: 'Shape' }]);
       scope.track(kernel.readStep(step));
     }).toThrow(/triangles/);
+  });
+});
+
+describe('measureBox', () => {
+  beforeAll(async () => {
+    kernel.enableMeshes(await loadManifold());
+  });
+
+  /** A cube `size` mm a side at `at`, as a mesh body (P4-06). */
+  const meshCube = (size: number, at: [number, number, number]) => {
+    const [x, y, z] = at;
+    const [u, v, w] = [x + size, y + size, z + size];
+    // biome-ignore format: the eight corners
+    const positions = new Float64Array([x, y, z, u, y, z, u, v, z, x, v, z, x, y, w, u, y, w, u, v, w, x, v, w]);
+    // biome-ignore format: two triangles per side
+    const indices = new Uint32Array([
+      0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 2, 3, 7, 2, 7, 6, 1, 2, 6, 1, 6, 5, 3, 0, 4,
+      3, 4, 7,
+    ]);
+    return kernel.meshFrom({ positions, indices });
+  };
+
+  it("gives measure's box exactly, before and after the shape is meshed, and for a mesh body", () => {
+    using scope = kernel.scope();
+    const shapes = [
+      scope.track(kernel.cylinder(5, 10, [3, -2, 1])),
+      scope.track(buildTestPart(kernel)),
+    ];
+    for (const shape of shapes) {
+      const box = kernel.measureBox(shape);
+      expect(box).toEqual(kernel.measure(shape).bbox);
+      kernel.mesh(shape, DEFAULT_TESSELLATION);
+      expect(kernel.measureBox(shape)).toEqual(box);
+    }
+    const mesh = scope.track(meshCube(10, [2, 3, 4]));
+    expect(kernel.measureBox(mesh)).toEqual(kernel.measure(mesh).bbox);
+  });
+
+  it('is what the look-up of the bodies an operation touches asks for: only boxes', () => {
+    using scope = kernel.scope();
+    const near = scope.track(kernel.box([10, 10, 10]));
+    const far = scope.track(kernel.box([10, 10, 10], [100, 0, 0]));
+    const mesh = scope.track(meshCube(10, [0, 30, 0]));
+    // A tool of two solids, so the bodies are asked solid by solid: one meets the box, the other
+    // the mesh body.
+    const tool = scope.track(
+      kernel.compound([
+        scope.track(kernel.cylinder(2, 20, [5, 5, -5])),
+        scope.track(kernel.cylinder(2, 20, [5, 35, -5])),
+      ]),
+    );
+    const ctx = {
+      kernel,
+      bodies: new Map([
+        ['a:0', near],
+        ['b:0', far],
+        ['m:0', mesh],
+      ]),
+    } as unknown as EvalContext;
+    const measure = vi.spyOn(kernel, 'measure');
+    const boxes = vi.spyOn(kernel, 'measureBox');
+    try {
+      expect(touchingBodies(ctx, scope, tool)).toEqual(['a:0', 'm:0']);
+      expect(measure).not.toHaveBeenCalled();
+      // The tool's box, each body's and each of the tool's two solids'.
+      expect(boxes).toHaveBeenCalledTimes(6);
+    } finally {
+      measure.mockRestore();
+      boxes.mockRestore();
+    }
   });
 });

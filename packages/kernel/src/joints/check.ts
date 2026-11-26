@@ -196,7 +196,7 @@ export async function checkJoint(
     .filter((id) => !request.moving.includes(id))
     .map((id) => ({ id, shape: shape(id) }));
   if (moving.length === 0) throw new KernelError(`${joint.name} moves no body.`);
-  const boxOf = (h: ShapeHandle): Box => kernel.measure(h).bbox;
+  const boxOf = (h: ShapeHandle): Box => kernel.measureBox(h);
   const movingBoxes = moving.map((m) => boxOf(m.shape));
   const search = jointSearch(minGap);
   const otherBoxes = others.map((o) => grow(boxOf(o.shape), search));

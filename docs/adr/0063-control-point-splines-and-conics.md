@@ -697,3 +697,60 @@ of 2026-11-15).
 |---|---|
 | `packages/core/src/sketch/curves.ts` | `SparseRow`, `denseRow`; `fitSpline` and `tangentFit` build sparse rows; `solveBanded(rows, rhs)`; `splineSampling`, `splinePolylinePieces` (below) |
 | `packages/core/src/sketch/curves.test.ts` | the digests and the 20,000-point fit |
+
+## Amendment, 2026-11-26 — a planar face's share of a rational volume
+
+The rule of the 2026-10-07 amendment stays: a shape with a rational edge
+(`hasRationalCurve`) has its volume integrated by Gauss–Kronrod to `MASS_EPS`.
+What changes is how that sum is made, and only for planar faces.
+
+### Decision
+
+- `integrateVolume`'s rational branch is the facade's own **`rationalVolume`**: the
+  sum `BRepGProp::VolumePropertiesGK` makes, written out — the system's location is
+  the shape's own (`Location()` applied to the origin), every FORWARD or REVERSED face
+  that has a surface contributes, each about **one point, the average of the shape's
+  vertices** (OCCT's `roughBaryCenter`, the point `volumePropertiesGK` integrates about
+  whatever location the properties object has), with no centre or inertia asked for.
+  A **curved** face is integrated exactly as OCCT integrates it (`BRepGProp_VinertGK`
+  over `BRepGProp_Face`, with `BRepGProp_Domain` for a face with edges, at `MASS_EPS`).
+  A **planar** face's share is taken exactly: the signed cone from that point over the
+  face, `(C − P)·N · A / 3`, with its area `A` and centre `C` from the bounded area
+  integral (exact on a plane bounded by a conic, as `integrateArea` already relies on)
+  and `N` the plane's normal as the face's orientation turns it. A shape without
+  vertices goes to `VolumePropertiesGK` whole, as before.
+- The centre `properties` reports for such a shape is the average of its vertices, not
+  its centre of mass: `VolumePropertiesGK` was called without the centre flag and gave
+  that, and this sum keeps it. Known; it is open as a task of its own.
+- The non-rational branches (`needsTolerance`'s bounded integral, the fixed order) are
+  unchanged, and so are `integrateArea` and the lengths.
+
+### Rejected
+
+- **Each face measured on its own and the results added.** A face measured alone is
+  integrated about its own vertices, so a planar face's share comes out as zero and the
+  sum is wrong whenever a plane does not pass through the shape's vertex average (an
+  oblique cylinder of a circle swept along a line: two thirds of its volume).
+- **A location for the whole shape** (`GProp_GProps(point)`): `VolumePropertiesGK`
+  ignores it and integrates about the vertex average.
+- **The bounded integral or a looser bound for a rational shape**: the 2026-10-07
+  amendment's reasons stand (the bounded integral is not exact on a conic's prism).
+- **A second rule for curved faces** (the bounded integral first, Gauss–Kronrod only
+  where its value is not near zero): no shape in the fixtures or among the ones compared
+  below needs it; not added.
+
+### Results (2026-11-26)
+
+| File | What |
+|---|---|
+| `packages/kernel/occt/facade/extrudo_facade.cpp` | `rationalVolume`, `PlanarShare` (private); `integrateVolume`'s rational branch calls it |
+| `packages/kernel/src/mass-properties.test.ts` | a coil of two whole turns at three positions: the same volume, equal to Pappus's to three decimals; a coil of 2.25 turns at three positions, whose caps' shares are each about 1 % of the volume: within 1e-5 of Pappus's (a share left out or with its sign turned is 1–5 % out); a conic prism in a moved and turned frame (located caps) and mirrored by `transform` (planes on indirect frames): the unmoved prism's volume to 1e-12 |
+
+Compared once with an ad hoc script outside the repository, main's build against this
+one on one machine (Node), `measure` and `properties` and a STEP round trip of: conic
+prisms (rho 0.3, 0.4, 0.8, at the origin and moved), a conic turned 270° (planar caps
+with conic edges), circles swept along one and two arcs, coils of 2 and 1.5 turns at
+several positions. The conic shapes' volumes differ by at most 7e-15 relative, the swept
+circles' and the coils' are bit-identical, the areas are bit-identical. The conic checks
+of the 2026-10-07 amendment (`sketch-conic.test.ts`, `mass-properties.test.ts`) pass
+unchanged. The volume of a rational shape is faster.

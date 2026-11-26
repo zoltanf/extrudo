@@ -398,7 +398,7 @@ function inclinedSide(
   // How far along u each corner of the profile's box meets the plane.
   const reachAt = (p: Vec3, dir: Vec3) =>
     dot(sub(target.point, p), target.normal) / dot(dir, target.normal);
-  const { bbox } = ctx.kernel.measure(base.source.shape);
+  const bbox = ctx.kernel.measureBox(base.source.shape);
   let ts = corners(bbox.min, bbox.max).map((p) => reachAt(p, u));
   if (mayFlip && ts.every((t) => t < -LENGTH_EPS)) {
     u = scale(u, -1);
@@ -491,10 +491,10 @@ function objectSide(
 ): Side {
   const { kernel } = ctx;
   // Far enough to reach past every body and the profile from anywhere among them.
-  let lo = kernel.measure(base.source.shape).bbox.min;
-  let hi = kernel.measure(base.source.shape).bbox.max;
+  let lo = kernel.measureBox(base.source.shape).min;
+  let hi = kernel.measureBox(base.source.shape).max;
   for (const body of ctx.bodies.values()) {
-    const { bbox } = kernel.measure(body);
+    const bbox = kernel.measureBox(body);
     lo = [Math.min(lo[0], bbox.min[0]), Math.min(lo[1], bbox.min[1]), Math.min(lo[2], bbox.min[2])];
     hi = [Math.max(hi[0], bbox.max[0]), Math.max(hi[1], bbox.max[1]), Math.max(hi[2], bbox.max[2])];
   }
@@ -522,7 +522,7 @@ function objectSide(
 
 /** How far past `point` along unit `u` a shape's box reaches (mm; negative: wholly behind). */
 function extentAlong(ctx: EvalContext, shape: ShapeHandle, point: Vec3, u: Vec3): number {
-  const { bbox } = ctx.kernel.measure(shape);
+  const bbox = ctx.kernel.measureBox(shape);
   return Math.max(...corners(bbox.min, bbox.max).map((c) => dot(sub(c, point), u)));
 }
 
@@ -551,7 +551,7 @@ function throughAll(
   }
   let far = 0;
   for (const shape of shapes) {
-    const { bbox } = ctx.kernel.measure(shape);
+    const bbox = ctx.kernel.measureBox(shape);
     for (const c of corners(bbox.min, bbox.max)) {
       far = Math.max(far, dot(sub(c, base.plane.point), along));
     }
@@ -696,7 +696,7 @@ function trimmer(
   role: string,
 ): NamedShape {
   const { kernel } = ctx;
-  const { bbox } = kernel.measure(near);
+  const bbox = kernel.measureBox(near);
   const center = scale(add(bbox.min, bbox.max), 0.5);
   const size =
     2 * (length(sub(bbox.max, bbox.min)) + Math.abs(dot(sub(center, plane.point), plane.normal))) +

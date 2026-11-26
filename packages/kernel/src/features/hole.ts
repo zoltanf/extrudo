@@ -120,10 +120,10 @@ export const kernelHole: KernelFeatureDefinition<HoleInputs> = {
     // Boxes first: an exact distance only for a body whose box meets the hole's.
     const bodies = [...ctx.bodies.values()].map((shape) => ({
       shape,
-      box: ctx.kernel.measure(shape).bbox,
+      box: ctx.kernel.measureBox(shape),
     }));
     const misses = parts.filter((part) => {
-      const box = ctx.kernel.measure(part.shape).bbox;
+      const box = ctx.kernel.measureBox(part.shape);
       return !bodies.some(
         (body) => boxesTouch(body.box, box) && bodiesTouch(ctx, body.shape, part.shape),
       );
@@ -275,7 +275,7 @@ const length2 = (v: Vec3) => dot(v, v);
 function throughLength(ctx: EvalContext, places: readonly Place[], direction: Vec3): number {
   let reach = 0;
   for (const shape of ctx.bodies.values()) {
-    const { min, max } = ctx.kernel.measure(shape).bbox;
+    const { min, max } = ctx.kernel.measureBox(shape);
     for (const corner of corners(min as Vec3, max as Vec3)) {
       for (const place of places) reach = Math.max(reach, dot(sub(corner, place.at), direction));
     }

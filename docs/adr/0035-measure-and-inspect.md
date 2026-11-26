@@ -487,3 +487,56 @@ the three single-edge chamfers tried on a box.
   Both are tests now (`arguments-unchanged.test.ts`; the engine's fails without that loop). It
   stays exempt like `mesh`: making it work on a copy would mesh every body for every quick view,
   and passing it the view's angle is a facade change for a path the engine already covers.
+
+## Amendment (2026-11-26): a box without the integrals
+
+- **The call.** The facade's `measureBox(shape)` gives `measure`'s box alone, read with
+  `measured(2..7)` as there (0 and 1 read 0): both go through one static helper, `looseBox`
+  (`BRepBndLib::Add(shape, box, false)`, zeros for an empty box), so the two boxes are the same
+  numbers. `Kernel.measureBox(shape)` returns it (a mesh body: manifold-3d's `boundingBox`, as in
+  `measure`). It integrates no volume or area.
+- **The rule.** A caller that reads only the box calls `measureBox`; one that reads a volume or an
+  area calls `measure` (and takes the box from there when it needs both). The rule of the
+  2026-11-24 amendment stands: a box that feeds a feature's result, an export's geometry or a box
+  filter is this loose box (`measure` or `measureBox`, the same numbers); a box shown to a person or
+  recorded as a body's size comes from `properties`.
+- **The callers** (every `Kernel.measure` and `measureBox` outside tests; the FreeCAD import's
+  `build.measure(id)` is its own cache of `measureBodies`, and `performance.measure` is the
+  browser's):
+
+| Caller | Reads | Calls |
+|---|---|---|
+| `features/operation.ts:303, 306, 317` (`touchingBodies`: the tool's box, each body's, each tool solid's) | box | `measureBox` |
+| `features/operation.ts:347` (`newBodies`: the order of new solids) | box | `measureBox` |
+| `features/operation.ts:231, 235, 236` (a pass that removed the body; whether a cut changed anything) | volume | `measure` |
+| `features/bodies.ts:63` (`splitSolids`: the largest piece keeps the ID; the order) | volume, box | `measure` |
+| `features/extrude.ts:401, 494, 495, 497, 525, 554, 699` (through all, to object, the reach past a face) | box | `measureBox` |
+| `features/revolve.ts:373, 521, 523` (the half-space's size, the reach) | box | `measureBox` |
+| `features/revolve.ts:342, 344` (which side of the axis a profile lies on) | area | `measure` |
+| `features/pattern.ts:162, 231, 295` (instances' boxes, grouping, the interference graph) | box | `measureBox` |
+| `features/hole.ts:123, 126, 278` (holes that reach no body; the depth through all) | box | `measureBox` |
+| `features/rib.ts:242, 428` (the slab's size, the piece's extent) | box | `measureBox` |
+| `features/split-body.ts:215` (the cutting boxes' size) | box | `measureBox` |
+| `features/split-body.ts:82, 139, 154, 171` (which side is larger, empty pieces) | volume | `measure` |
+| `features/combine.ts:78` (whether a result is empty) | volume | `measure` |
+| `features/import.ts:448` (pieces of an import: the largest first, then their order) | volume, box | `measure` |
+| `joints/check.ts:199` (the clearance check's boxes) | box | `measureBox` |
+| `interference.ts:33` (pairs whose boxes meet) | box | `measureBox` |
+| `interference.ts:42` (the overlap's volume) | volume | `measure` |
+| `scad-export/versions.ts:265` (the bounds a "through all" reaches) | box | `measureBox` |
+| `scad-export/testing.ts:97` (test support: volumes) | volume | `measure` |
+| `recompute/testing.ts:156, 165`, `recompute/add-access-test-support.ts:207` (test support: boxes) | box | `measureBox` |
+| `test-part.ts:52` (the debug page's test part) | volume, area, box | `measure` |
+| `kernel.ts:2027` (`properties` of a mesh body) | volume, area, box | `measure` |
+| `apps/web/src/agent/kernelTesting.ts:89` (the agent host's body volume) | volume | `measure` |
+
+- **Results.** The box is the same numbers by construction (one helper) and by test
+  (`measure-box.test.ts`: `measureBox` equals `measure`'s box on a cylinder and the test part,
+  before and after meshing; `touchingBodies` asks `measureBox` for the tool's box and each body's
+  and never calls `measure`). Compared once with an ad hoc script outside the repository, main's code and build against
+  this branch's, on one machine: the 65 designs in `fixtures/` recomputed from scratch give the
+  same statuses, bodies, names, versions, reports and meshes, and the same `inspect` of every body
+  but one number pair (the sweep fixture's body: volume 6.1e-16 and centre 1.8e-16 relative, its
+  planar faces' shares, ADR-0063's amendment of this date). An operation's body
+  look-up, and every other caller in the table that reads only a box, is faster. The WASM file: 21,398,444 → 21,401,769 bytes, 6,914,948 →
+  6,915,548 gzipped (`gzip -9`), main's CI build against this one's.

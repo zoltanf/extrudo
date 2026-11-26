@@ -12,6 +12,8 @@
 import { conicPoint, type Vec2 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { mirror } from './features/matrix';
+import { circle } from './features/primitives';
 import { planarCurves } from './features/sketch';
 import { Kernel, type ShapeHandle } from './kernel';
 import { loadOcct } from './occt/load';
@@ -179,6 +181,119 @@ describe('mass properties with a tolerance', () => {
       }
     } finally {
       kernel.release(low.shape, high.shape);
+    }
+  });
+});
+
+describe('the volume of a body with a rational edge', () => {
+  /**
+   * A coil as the coil feature builds it (ADR-0055): a circle of radius 0.75 mm, 6 mm from the
+   * axis in the plane through the axis, swept two turns of 4 mm up a helix about the line through
+   * (0, y, 0) along Z, `turns` turns. The swept circle's edges are rational, so the volume takes
+   * the rational branch, and its two caps are planar faces.
+   */
+  const coil = (y: number, turns = 2) => {
+    const { faces } = kernel.planarFaces(
+      [circle([6, 0], 0.75)],
+      { origin: [0, y, 0], x: [1, 0, 0], normal: [0, -1, 0] },
+      1e-4,
+    );
+    const section = faces[0]?.shape as ShapeHandle;
+    const helix = kernel.helix({
+      origin: [0, y, 0],
+      axis: [0, 0, 1],
+      start: [1, 0, 0],
+      radius: 6,
+      pitch: 4,
+      turns,
+    });
+    try {
+      return kernel.sweep(section, helix, { orientation: { binormal: [0, 0, 1] }, verify: false })
+        .shape;
+    } finally {
+      kernel.release(section, helix);
+    }
+  };
+
+  // Pappus: the section's area times the length of the circle its centre turns on, per turn.
+  const pappus = (turns: number) => Math.PI * 0.75 ** 2 * 2 * Math.PI * 6 * turns;
+
+  it('gives the same volume wherever the body is, equal to the reference', () => {
+    const reference = pappus(2);
+    const shapes = [0, 5, -20].map((y) => coil(y));
+    try {
+      const [first, ...rest] = shapes.map((shape) => kernel.measure(shape).volume);
+      expect(first).toBeCloseTo(reference, 3);
+      for (const volume of rest) {
+        expect(Math.abs(volume - (first as number)) / (first as number)).toBeLessThan(1e-12);
+      }
+      for (const shape of shapes) {
+        expect(kernel.properties(shape).volume).toBe(kernel.measure(shape).volume);
+      }
+    } finally {
+      kernel.release(...shapes);
+    }
+  });
+
+  it("takes a planar face's share of the volume exactly", () => {
+    // A quarter turn more puts the two caps in different planes, away from the vertex average the
+    // sum is taken about, so each cap's share is about 1 % of the volume: a share left out or with
+    // its sign turned is an error of 1 to 5 %, far above the bound (the sweep itself is within
+    // 1e-6 of the closed form).
+    const shapes = [0, 5, -20].map((y) => coil(y, 2.25));
+    try {
+      for (const shape of shapes) {
+        const { volume } = kernel.measure(shape);
+        expect(Math.abs(volume - pappus(2.25)) / pappus(2.25)).toBeLessThan(1e-5);
+        expect(kernel.properties(shape).volume).toBe(volume);
+        // The swept circle's edges are B-splines (`describe` tells the curve type, not whether it
+        // is rational).
+        expect(kernel.describe(shape).edges.some((edge) => edge.type === 'bspline')).toBe(true);
+      }
+    } finally {
+      kernel.release(...shapes);
+    }
+  });
+
+  it('gives a planar face with a rational edge the same share moved, turned or mirrored', () => {
+    // A conic profile closed by its chord, extruded 5 mm along its plane's normal. A face from
+    // planarFaces carries its plane's frame as a location, so the moved prism's caps are located
+    // faces; `transform` rebuilds the geometry, and a reflection leaves the planes on indirect
+    // frames, whose normal points the other way.
+    const prism = (frame: PlanarFrame) => {
+      const { faces } = kernel.planarFaces(
+        [
+          { kind: 'conic', start: [0, 0], shoulder: [15, 20], end: [30, 0], rho: 0.4 },
+          { kind: 'line', a: [30, 0], b: [0, 0] },
+        ],
+        frame,
+        1e-4,
+      );
+      const profile = faces[0]?.shape as ShapeHandle;
+      try {
+        const n = frame.normal;
+        return kernel.prism(profile, [5 * n[0], 5 * n[1], 5 * n[2]]).shape;
+      } finally {
+        kernel.release(...faces.map((face) => face.shape));
+      }
+    };
+    const plain = prism({ origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] });
+    const [s, c] = [Math.sin(0.7), Math.cos(0.7)];
+    const moved = prism({
+      origin: [12, -7, 3],
+      x: [Math.cos(0.4), Math.sin(0.4) * c, Math.sin(0.4) * s],
+      normal: [0, -s, c],
+    });
+    const mirrored = kernel.transform(moved, mirror([4, 1, 0], [1, 2, 0.5])).shape;
+    try {
+      const reference = kernel.measure(plain).volume;
+      for (const shape of [moved, mirrored]) {
+        const { volume } = kernel.measure(shape);
+        expect(Math.abs(volume - reference) / reference).toBeLessThan(1e-12);
+        expect(kernel.properties(shape).volume).toBe(volume);
+      }
+    } finally {
+      kernel.release(plain, moved, mirrored);
     }
   });
 });
