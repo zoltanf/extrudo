@@ -1,0 +1,1 @@
+- 2026-11-26 · **Faster measuring**: joins, cuts and the other features that look up the bodies they touch read only the bodies' boxes, and the volume of a body with rational curved edges takes each flat face's share exactly; the numbers stay the same.

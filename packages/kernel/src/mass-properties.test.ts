@@ -189,7 +189,7 @@ describe('the volume of a body with a rational edge', () => {
    * A coil as the coil feature builds it (ADR-0055): a circle of radius 0.75 mm, 6 mm from the
    * axis in the plane through the axis, swept two turns of 4 mm up a helix about the line through
    * (0, y, 0) along Z. The swept circle's edges are rational, so the volume takes the rational
-   * branch; whole turns put both caps in one plane through the axis.
+   * branch, and its two caps are planar faces.
    */
   const coil = (y: number) => {
     const { faces } = kernel.planarFaces(
