@@ -1090,7 +1090,7 @@ real OCCT and manifold, `strictLeaks`, no clock, fixed seeds):
   too); the `plane` rule (the draft's counter and construction-plane test); the result rule (the
   probes of a replaced and a new body); `body` references in the view (the shells' differential);
   the thread's participants (the cut's `[...bodies]` left out, so it searches the bodies it
-  touches): MUTATION-THREAD.
+  touches): the threads' differential, their counter and the box test.
 
 **Not covered:** a thread whose cut splits its body (it runs as `write`, by the result rule; no
 design has one); axes and points as references of a `view` feature; previews; joints,
