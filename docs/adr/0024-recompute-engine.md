@@ -652,9 +652,9 @@ without its `extent === 'angle'` term, in the engine under test and in the clear
 from the bodies the evaluator iterates, so under `add` it is too small and the revolve fails, the
 same way in both engines and without a fall-back. The comparison with the cleared engine is clean
 at both steps, the one with the all-`write` engine differs at the edit (statuses), and with the
-kernel's own predicate both are clean. The proofs take longer: both files 295 s → 496 s here
-(4 cores, one run each; the coils' differential 106 s → 197 s, the lofts' 87 s → 194 s; every
-differential keeps its 900 s timeout).
+kernel's own predicate both are clean. The proofs take longer: both files 294 s → 520 s here
+(4 cores, the two files side by side, the same machine; the coils' differential 106 s → 198 s, the
+lofts' 87 s → 194 s, which also computes more now; every differential keeps its 900 s timeout).
 
 **No fall-back, counted exactly.** `fallbacks` counts a feature evaluated twice in one recompute.
 It used to allow as many evaluations as the document held the ID, since the seeded insert could
