@@ -61,6 +61,10 @@ export const TYPES = [
   'mirror',
   'remove',
   'combine',
+  'rectangularPattern',
+  'circularPattern',
+  'pathPattern',
+  'splitBody',
 ] as const;
 
 // ------------------------------------------------------------------------------- designs
@@ -454,6 +458,8 @@ export interface Design {
   refsKey?: string;
   /** The rule's flips that must happen (default: each of `lose`, `find`, `empty`, `fill`). */
   rule?: string[];
+  /** Features that may fall back to `write` after trying a view. */
+  fallBackOk?: string[];
 }
 
 export const BASE = [...RULE] as Kind[];
@@ -499,7 +505,10 @@ export function proveDesigns(designs: Design[]) {
       const run = await differential(design, doc, design.steps ?? 40, 5309);
       expect(run.initialErrors).toEqual([]);
       expect(run.problems).toEqual([]);
-      expect(run.fallbacks).toEqual([]);
+      // A feature the design names may run as `write` after a view try (its new bodies' places
+      // can't be told without bodies outside the view): the comparison still holds at every step.
+      const allowed = design.fallBackOk ?? [];
+      expect(run.fallbacks.filter((f) => !allowed.some((id) => f.endsWith(`: ${id}`)))).toEqual([]);
       for (const kind of design.kinds) expect(run.kinds).toContain(kind);
       const views = [...run.views].join('; ');
       for (const flip of [
