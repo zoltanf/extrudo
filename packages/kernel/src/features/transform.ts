@@ -221,14 +221,11 @@ export function centreOf(
 
 export const kernelMirror: KernelFeatureDefinition<MirrorInputs> = {
   ...mirrorFeature,
-  // A mirror of bodies without a copy reads and changes only the bodies it names (ADR-0024's
-  // amendment on `view` access): its plane is an origin or construction plane or a face, which
-  // the view holds. A copy (and a join, which needs one) adds bodies, and a mirror of features
-  // replays them on whatever they met, so those stay `write`.
-  bodyAccess: (inputs) => {
-    const settings = mirrorSettings(inputs);
-    return settings.objects === 'bodies' && !settings.copy ? 'view' : 'write';
-  },
+  // A mirror of bodies reads and changes only the bodies it names and adds their copies
+  // (ADR-0024's amendments on `view` access): its plane is an origin or construction plane or a
+  // face, which the view holds; a join fuses each copy into its own original. A mirror of features
+  // replays them on whatever they met, so it stays `write`.
+  bodyAccess: (inputs) => (mirrorSettings(inputs).objects === 'bodies' ? 'view' : 'write'),
   evaluate: evaluateMirror,
   csg: mirrorCsg,
 };
