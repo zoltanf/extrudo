@@ -764,6 +764,9 @@ function probeRegistry() {
           case 'resolve-guess':
             ctx.resolve(JSON.parse(value('guess')) as GeomRef);
             break;
+          case 'new':
+            out.set(ctx.bodyId(), ctx.kernel.box([1, 1, 1], [0, 0, 50]));
+            break;
           case 'stray':
             out.set(other, ctx.kernel.box([1, 1, 1], [0, 0, 50]));
             break;
@@ -856,6 +859,8 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
     ['a reference no body has', 'resolve-lost'],
     ['a reference found by its fingerprint only (in the view)', 'resolve-guess'],
     ['a result with a view body deleted and set again (out of the view’s order)', 'reorder'],
+    ['a result that replaces a body outside the view by its ID', 'stray'],
+    ['a result with a new body', 'new'],
     ['an error to try again once the bodies change (`OutsideError`, `bodies`)', 'outside'],
   ])('%s: dropped, run as `write`, remembered', { timeout: 120_000 }, async (_n, mode) => {
     const doc = await probed(mode);
@@ -911,28 +916,6 @@ describe('view access: a read outside the view is caught (the fall-back)', () =>
       OUTSIDE.on = true;
       viewEngine.clear();
       fresh.clear();
-    }
-  });
-
-  it('a result that replaces a body outside the view by its ID takes its place, as `write` does', {
-    timeout: 120_000,
-  }, async () => {
-    // Not a read: the result doesn't depend on that body.
-    const [step] = await sequence([await probed('stray')], {
-      registry: probeRegistry(),
-      reference: probeRegistry(),
-    });
-    expect(step?.result.stats.viewed).toContain('probe');
-    const viewEngine = new RecomputeEngine(kernel, probeRegistry()(), { strictLeaks: true });
-    const writeEngine = new RecomputeEngine(kernel, probeWrite()(), { strictLeaks: true });
-    try {
-      const doc = await probed('stray');
-      const a = await client(kernel, viewEngine).run(doc);
-      const b = await client(kernel, writeEngine).run(doc);
-      expect(differences(a, b)).toEqual([]);
-    } finally {
-      viewEngine.clear();
-      writeEngine.clear();
     }
   });
 
