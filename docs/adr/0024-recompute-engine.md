@@ -1075,3 +1075,44 @@ real OCCT and manifold, `strictLeaks`, no clock, fixed seeds):
 **Not covered:** a thread whose cut splits its body (it runs as `write`, by the result rule; no
 design has one); axes and points as references of a `view` feature; previews; joints,
 annotations and sheets.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/` with
+main's engine and this one give the same body IDs, meshes bit for bit, statuses, reports,
+`inspect` of every body and number of evaluations. Versions differ in the four designs with one
+of the five (b4, b5, b6, b9): a version is the key that made the body, and those bodies are now
+made under `view` keys. The feature goldens are unchanged.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine. Kernel time and meshes
+sent for an edit of the first, a middle and the last of 20 bodies, incremental with `have`, in
+Node, two runs each, main → this. Plates of 200 × 120 × 5 mm with 30 holes, each with the
+feature (a shell of 1 mm opening its top face; a draft of 3° of its four sides about XY; its top
+face offset by 0.5 mm; one hole's wall removed), the edit its distance to 6 mm; studs of Ø8 ×
+10 mm with a 5 mm thread each, the edit a height of 12 mm.
+
+| Design | Edit | Evaluated / meshes sent | ms |
+|---|---|--:|--:|
+| 20 plates, shells | first | 21/20 → 2/1 | 14,478, 14,285 → 742, 743 |
+| | middle | 12/11 → 2/1 | 8,251, 7,847 → 748, 748 |
+| | last | 2/1 → 2/1 | 803, 748 → 748, 746 |
+| 20 plates, drafts | first | 21/20 → 2/1 | 2,087, 2,094 → 140, 139 |
+| | middle | 12/11 → 2/1 | 1,160, 1,162 → 140, 136 |
+| | last | 2/1 → 2/1 | 151, 140 → 136, 134 |
+| 20 plates, offset faces | first | 21/20 → 2/1 | 9,528, 9,385 → 500, 501 |
+| | middle | 12/11 → 2/1 | 5,254, 5,183 → 504, 498 |
+| | last | 2/1 → 2/1 | 507, 501 → 508, 501 |
+| 20 plates, a hole filled | first | 21/20 → 2/1 | 3,493, 3,429 → 207, 206 |
+| | middle | 12/11 → 2/1 | 1,914, 1,890 → 207, 201 |
+| | last | 2/1 → 2/1 | 207, 204 → 201, 201 |
+| 20 studs, threads | first | 21/20 → 2/1 | 25,472, 25,280 → 1,276, 1,266 |
+| | middle | 12/11 → 2/1 | 13,978, 13,892 → 1,273, 1,264 |
+| | last | 2/1 → 2/1 | 1,295, 1,268 → 1,279, 1,270 |
+
+From scratch (every feature of the 64 designs, the fastest of two runs each, main → this):
+11,271 → 11,235 ms over 180 features; the largest increase of one feature +2.7 ms; the six
+instances of the five features 7,652 → 7,622 ms.
+
+In the app (20 plates with shells as a file, production build, Chrome, 1280 × 800, 4 interleaved
+runs: median and range, ms, main → this), until the model is ready: committing an edit of the
+first plate in its dialog 13,764 (13,678–13,913) → 795 (788–806); undoing it 336 (332–337) → 320
+(320–321); opening the design 13,505 (13,354–13,654) → 13,492 (13,143–13,609). The page's blocked
+time: commit 0 (0–69) → 0 (0–0), undo 0 → 0, open 455 (375–553) → 534 (384–603).
