@@ -29,7 +29,8 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  */
 export const kernelRemoveFaces: KernelFeatureDefinition<RemoveFacesInputs> = {
   ...removeFacesFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only the bodies of its faces (ADR-0024's amendment on `view` access).
+  bodyAccess: () => 'view',
   evaluate: evaluateRemoveFaces,
 };
 
