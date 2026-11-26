@@ -1383,8 +1383,14 @@ public:
         return store(swept);
       }
       // A side made from an ellipse or a B-spline can't be tilted by DraftAngle
-      // (P4-12): offset the profile and loft a ruled solid instead.
-      if (taperNeedsLoft(builder, base)) return taperLoft(base, along, taper);
+      // (P4-12): offset the profile and loft a ruled solid instead, from a
+      // topology-only copy of it (ADR-0035's amendment of 2026-11-25): its lofts
+      // and its sewing re-set the profile's vertex and edge tolerances in place,
+      // and a later prism of a sketch's cached profile face would inherit them.
+      // The copy keeps the sub-shapes' order, so the history's indices stand.
+      if (taperNeedsLoft(builder, base)) {
+        return taperLoft(BRepBuilderAPI_Copy(base, false, true).Shape(), along, taper);
+      }
       return taperSweep(builder, base, swept, along, taper);
     } catch (...) {
       return failFromException("Extrude failed");

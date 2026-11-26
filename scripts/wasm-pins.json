@@ -1,7 +1,7 @@
 {
   "occt": {
-    "tag": "occt-dc33b597dd53",
-    "sha256": "161323001580925f770e3e40b9439c875b4f6f08f9ac6083f2af97af80d070ff"
+    "tag": "occt-76e49169280e",
+    "sha256": "4b0e3bcfdec1772ac98b6853c303fc0213ccd52f282bdd1e7a01d2daaf064996"
   },
   "openscad": {
     "tag": "openscad-5fb8abc2c626",
