@@ -1,0 +1,1 @@
+- 2026-11-26 · **Quicker edits in designs with many shelled, drafted, threaded or face-edited parts**: changing one part no longer redoes the shells, drafts, offset faces, removed faces and threads of the parts after it.
