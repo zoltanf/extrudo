@@ -9,9 +9,9 @@
 import { originPlaneRef, primitiveInputs } from '@extrudo/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Kernel, KernelError, type ShapeHandle, type WrapFrame } from './kernel';
+import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
 import type { PlanarCurve, PlanarFrame, Vec2 } from './planar';
-import { type BodyMesh, sameMesh } from './mesh';
 import { DEFAULT_TESSELLATION, RecomputeEngine } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
 import { buildTestPart } from './test-part';
