@@ -132,7 +132,7 @@ jobs:
     name: Typecheck, lint, unit and memory tests
     needs: [occt, planegcs, openscad]
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
-    timeout-minutes: 45 # the tests alone take ~23 min
+    timeout-minutes: 70 # the tests alone take ~27 min, ~45 on a slow runner
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
