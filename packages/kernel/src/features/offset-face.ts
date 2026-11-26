@@ -53,7 +53,9 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  */
 export const kernelOffsetFace: KernelFeatureDefinition<OffsetFaceInputs> = {
   ...offsetFaceFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only the bodies of its faces (ADR-0024's amendment on `view` access): the
+  // rounds it keeps are faces of the same bodies.
+  bodyAccess: () => 'view',
   evaluate: evaluateOffsetFace,
 };
 
