@@ -719,9 +719,9 @@ What changes is how that sum is made, and only for planar faces.
   integral (exact on a plane bounded by a conic, as `integrateArea` already relies on)
   and `N` the plane's normal as the face's orientation turns it. A shape without
   vertices goes to `VolumePropertiesGK` whole, as before.
-- The centre `properties` reads from the same sum is what OCCT's gives: each share
-  carries the location and no centre of its own, as a face integrated without the
-  centre flag does.
+- The centre `properties` reports for such a shape is the average of its vertices, not
+  its centre of mass: `VolumePropertiesGK` was called without the centre flag and gave
+  that, and this sum keeps it. Known; it is open as a task of its own.
 - The non-rational branches (`needsTolerance`'s bounded integral, the fixed order) are
   unchanged, and so are `integrateArea` and the lengths.
 
@@ -744,12 +744,13 @@ What changes is how that sum is made, and only for planar faces.
 | File | What |
 |---|---|
 | `packages/kernel/occt/facade/extrudo_facade.cpp` | `rationalVolume`, `PlanarShare` (private); `integrateVolume`'s rational branch calls it |
-| `packages/kernel/src/mass-properties.test.ts` | a coil (a circle swept two turns, rational edges, two planar caps) placed at three positions: the volume is Pappus's to three decimals and the same at each position to 1e-12, `properties` gives `measure`'s |
+| `packages/kernel/src/mass-properties.test.ts` | a coil of two whole turns at three positions: the same volume, equal to Pappus's to three decimals; a coil of 2.25 turns at three positions, whose caps' shares are each about 1 % of the volume: within 1e-5 of Pappus's (a share left out or with its sign turned is 1–5 % out); a conic prism in a moved and turned frame (located caps) and mirrored by `transform` (planes on indirect frames): the unmoved prism's volume to 1e-12 |
 
-Compared with main's build, volumes and centres from `measure` and `properties`, and
-after a STEP round trip: conic prisms (rho 0.3, 0.4, 0.8, at the origin and moved), a
-conic turned 270° (planar caps with conic edges), circles swept along one and two arcs,
-coils. The conic shapes' volumes differ by at most
-7e-15 relative (their caps' shares), the swept circles and coils not at all, the areas
-not at all. The conic checks of the 2026-10-07 amendment (`sketch-conic.test.ts`,
-`mass-properties.test.ts`) pass unchanged. The volume of a rational shape is faster.
+Compared once with an ad hoc script outside the repository, main's build against this
+one on one machine (Node), `measure` and `properties` and a STEP round trip of: conic
+prisms (rho 0.3, 0.4, 0.8, at the origin and moved), a conic turned 270° (planar caps
+with conic edges), circles swept along one and two arcs, coils of 2 and 1.5 turns at
+several positions. The conic shapes' volumes differ by at most 7e-15 relative, the swept
+circles' and the coils' are bit-identical, the areas are bit-identical. The conic checks
+of the 2026-10-07 amendment (`sketch-conic.test.ts`, `mass-properties.test.ts`) pass
+unchanged. The volume of a rational shape is faster.

@@ -533,9 +533,10 @@ the three single-edge chamfers tried on a box.
 - **Results.** The box is the same numbers by construction (one helper) and by test
   (`measure-box.test.ts`: `measureBox` equals `measure`'s box on a cylinder and the test part,
   before and after meshing; `touchingBodies` asks `measureBox` for the tool's box and each body's
-  and never calls `measure`). The 65 designs in `fixtures/` recomputed from scratch give the same
-  statuses, bodies, names, versions, reports and meshes as main's build, and the same `inspect`
-  of every body but one number pair (the sweep fixture's body: volume 6.1e-16 and centre 1.8e-16
-  relative, its planar faces' shares, ADR-0063's amendment of this date). An operation's body
-  look-up, and every other caller in the table that reads only a box, is faster. WASM: +3.3 kB raw,
-  +0.6 kB gzip.
+  and never calls `measure`). Compared once with an ad hoc script outside the repository, main's code and build against
+  this branch's, on one machine: the 65 designs in `fixtures/` recomputed from scratch give the
+  same statuses, bodies, names, versions, reports and meshes, and the same `inspect` of every body
+  but one number pair (the sweep fixture's body: volume 6.1e-16 and centre 1.8e-16 relative, its
+  planar faces' shares, ADR-0063's amendment of this date). An operation's body
+  look-up, and every other caller in the table that reads only a box, is faster. The WASM file: 21,398,444 → 21,401,769 bytes, 6,914,948 →
+  6,915,548 gzipped (`gzip -9`), main's CI build against this one's.
