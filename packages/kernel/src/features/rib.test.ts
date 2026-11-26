@@ -7,6 +7,7 @@
 // it with `pnpm vitest run -u packages/kernel/src/features/rib` and review the
 // diff.
 import {
+  coilInputs,
   type ExtrudeInputOptions,
   extrudeInputs,
   type Feature,
@@ -290,6 +291,56 @@ describe('rib on an L-bracket', { timeout: 300_000 }, () => {
     });
     // Nothing changed: the bracket is as it was.
     expect(shapeOf().volume).toBeCloseTo(BRACKET, 3);
+  });
+
+  it("takes the side of the bodies' centre of mass, a body with a rational edge included", async () => {
+    // A coil (a swept circle: rational edges) beside the bracket, two whole turns about an axis
+    // along Y at (80, −56.4) in the XZ plane. Its vertices all lie R + a off the axis, so the
+    // average of its vertices is 23 mm off its centre of mass, and that is enough to carry the two
+    // bodies' volume-weighted centre across the diagonal's line: by the vertices' average it lies
+    // on the bracket's open side, by the centre of mass on its corner side, where the rib closes.
+    const { features } = bracket();
+    const coil = {
+      ...testFeature('C', 'coil'),
+      inputs: coilInputs({
+        plane: XZ,
+        numbers: {
+          diameter: '40 mm',
+          revolutions: '2',
+          height: '20 mm',
+          size: '6 mm',
+          x: '80 mm',
+          y: '-56.4 mm',
+        },
+      }),
+    };
+    const line = ribLine(DIAGONAL.from, DIAGONAL.to);
+    const before = ok(await run([...features, coil]));
+    expect(before.bodies.map((b) => b.id)).toEqual(['LE:0', 'C:0']);
+    // The premise, from the two bodies themselves: which side of 7x + 5z = 235 (the diagonal's
+    // line in the XZ plane, the corner at the origin on its smaller side) each centre is on.
+    const side = (p: readonly number[]) => 7 * (p[0] as number) + 5 * (p[2] as number) - 235;
+    const parts = ['LE:0', 'C:0'].map((id) => {
+      const shape = engine.latestBody(id as never) as ShapeHandle;
+      const { volume, centroid } = kernel.properties(shape);
+      const points = kernel.describe(shape).vertices.map((v) => v.point);
+      const average = [0, 1, 2].map(
+        (k) => points.reduce((t, p) => t + (p[k] as number), 0) / points.length,
+      );
+      return { volume, centroid, average, rational: id === 'C:0' };
+    });
+    const weighted = (pick: (p: (typeof parts)[number]) => readonly number[]) => {
+      const total = parts.reduce((t, p) => t + p.volume, 0);
+      return [0, 1, 2].map(
+        (k) => parts.reduce((t, p) => t + (pick(p)[k] as number) * p.volume, 0) / total,
+      );
+    };
+    expect(side(weighted((p) => p.centroid))).toBeLessThan(-5);
+    expect(side(weighted((p) => (p.rational ? p.average : p.centroid)))).toBeGreaterThan(5);
+    engine.clear();
+    ok(await run([...features, coil, line.feature, rib(line.line)]));
+    expect(round3(data()?.towards)).toEqual([-0.814, 0, -0.581]);
+    expect(shapeOf().volume).toBeCloseTo(BRACKET + TRIANGLE * 2, 3);
   });
 
   it('refuses a line that lies inside the body', async () => {

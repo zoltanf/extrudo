@@ -310,9 +310,13 @@ describe('the centre of mass of a body with a rational edge', () => {
   it('is the closed form for a coil, wherever it is', () => {
     // A screw motion keeps volume (its Jacobian is r), so the tube's centre is the section's
     // r-weighted radius R + a²/4R turned through the angle the coil covers, and half its rise.
+    // With a whole or half number of turns both caps lie in one plane through the average of the
+    // vertices, so their cones weigh nothing; the 2.25 and 2.75-turn cases are the ones whose caps
+    // count (planar cones).
     const cases = [
       [0, 2.25],
       [5, 2.25],
+      [-7, 2.75],
       [-20, 1.5],
       [3, 0.5],
     ] as const;
@@ -327,7 +331,9 @@ describe('the centre of mass of a body with a rational edge', () => {
           4 * turns * 0.5,
         ];
         const { centroid, volume } = kernel.properties(shape);
-        // The swept surface is within a few µm of the exact tube.
+        // The swept surface approximates the exact tube: its centre is within 1e-5 mm of the closed
+        // form here (measured), and 1e-4 mm leaves a margin while catching a planar cone weighed
+        // wrongly (2.7e-2 mm with its centre at ½ instead of ¾).
         expectNear(centroid as Vec3, expected as readonly number[], 1e-4);
         expect(volume).toBe(kernel.measure(shape).volume);
       } finally {
@@ -360,13 +366,16 @@ describe('the centre of mass of a body with a rational edge', () => {
     }
   });
 
-  it('is the area centroid for a conic prism of rho 0.95', () => {
+  it('is the area centroid for a conic prism of rho 0.95, within the stated bound', () => {
     // A flatter shoulder: the fixed-order integral of this wall is off by about 1e-4 of the
-    // volume, so the centre comes from the Gauss–Kronrod pass (the fixed-order one is 5e-3 mm out).
+    // volume, so the centre comes from the Gauss–Kronrod pass, whose stated accuracy is 1e-5
+    // (CENTRE_EPS) times the box diagonal. Without that pass the centre is 5.7e-3 mm out.
     const shape = prism(XY, 0.95);
     try {
       const { centroid, volume } = kernel.properties(shape);
-      expectNear(centroid, prismCentre(0.95), 1e-6);
+      const { min, max } = kernel.measureBox(shape);
+      const diagonal = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]);
+      expectNear(centroid, prismCentre(0.95), 1e-5 * diagonal);
       expect(volume).toBe(kernel.measure(shape).volume);
     } finally {
       kernel.release(shape);

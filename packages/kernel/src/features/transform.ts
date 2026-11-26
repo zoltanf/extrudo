@@ -204,7 +204,7 @@ export function centreOf(
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   for (const id of ids) {
-    const box = ctx.kernel.properties(ctx.bodies.get(id) as ShapeHandle).bbox;
+    const box = ctx.kernel.exactBox(ctx.bodies.get(id) as ShapeHandle);
     for (let k = 0; k < 3; k++) {
       min[k] = Math.min(min[k] as number, box.min[k] as number);
       max[k] = Math.max(max[k] as number, box.max[k] as number);

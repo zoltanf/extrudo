@@ -280,7 +280,7 @@ export async function checkJoint(
       if (commons >= MAX_JOINT_COMMONS) return;
       commons++;
       const common = scope.track(kernel.common(pair.place(), pair.o.shape));
-      const v = Math.max(0, kernel.properties(common.shape).volume);
+      const v = Math.max(0, kernel.measure(common.shape).volume);
       volume += v;
       if (v > INTERFERENCE_VOLUME) {
         faces.push(

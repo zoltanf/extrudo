@@ -88,7 +88,7 @@ export async function kernelHost(doc: ExtrudoDocument, designId = doc.id) {
       const shape = engine.latestBody(entry.id);
       const measured = shape ? kernel.measure(shape) : undefined;
       // The box as the app's host gives it (`inspect`, exact), not `measure`'s loose one.
-      const box = shape ? kernel.properties(shape).bbox : undefined;
+      const box = shape ? kernel.exactBox(shape) : undefined;
       return {
         id: entry.id,
         name: entry.meta.name,

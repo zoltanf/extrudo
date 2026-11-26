@@ -98,7 +98,7 @@ function evaluatePlaceOnBed(ctx: EvalContext<PlaceOnBedInputs>): FeatureOutput {
   );
   let lowest = 0;
   for (const image of images) {
-    lowest = Math.min(lowest, ctx.kernel.properties(image.named.shape).bbox.min[2]);
+    lowest = Math.min(lowest, ctx.kernel.exactBox(image.named.shape).min[2]);
   }
   if (lowest < -BELOW) {
     ctx.warn(

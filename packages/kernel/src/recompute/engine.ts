@@ -477,7 +477,8 @@ export class RecomputeEngine {
         const shape = this.#latest.get(id);
         if (!shape || id in out.bodies) continue;
         try {
-          const { volume, bbox } = this.#kernel.properties(shape);
+          const { volume } = this.#kernel.measure(shape);
+          const bbox = this.#kernel.exactBox(shape);
           out.bodies[id] = { volume, box: { min: [...bbox.min], max: [...bbox.max] } };
         } catch (error) {
           if (!(error instanceof KernelError)) throw error;

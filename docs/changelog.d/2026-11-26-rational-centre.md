@@ -1,1 +1,1 @@
-- 2026-11-26 · **Measure's centre of a body with conic or coil edges is its centre of mass**: it was the average of the body's vertices.
+- 2026-11-26 · **Measure's centre of a body with conic or coil edges is its centre of mass**: it was the average of the body's vertices; a rib next to such a body chooses its side by that centre.
