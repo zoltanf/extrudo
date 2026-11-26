@@ -76,6 +76,12 @@ export type ScadResult =
       ok: false;
       /** What went wrong, worded for the user. */
       error: string;
+      /**
+       * Set where the cause was outside the file, so another try may do better: `offline`, the WASM
+       * couldn't be fetched; `stopped`, the compile was stopped (its time or memory limit, a trap,
+       * its worker dying). Absent for the file's own errors, whatever their words.
+       */
+      cause?: 'offline' | 'stopped';
       warnings: string[];
       parameters?: ScadParameter[];
       ms: number;

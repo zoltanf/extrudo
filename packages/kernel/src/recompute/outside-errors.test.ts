@@ -62,7 +62,7 @@ const FILES: Record<string, ImportedFile> = {
   },
 };
 
-/** A plate (sk0, ex0) and an import of `file` after it. */
+/** A plate (sk0, ex0), an import of `file` after it, and another plate (sk1, ex1) after that. */
 function design(file: AttachmentId): ExtrudoDocument {
   const features: Feature[] = [
     ...plateFeatures(0, -200, '4 mm', false),
@@ -73,6 +73,7 @@ function design(file: AttachmentId): ExtrudoDocument {
       suppressed: false,
       inputs: importInputs({ file }),
     },
+    ...plateFeatures(1, 200, '4 mm', false),
   ];
   const record = FILES[file] as ImportedFile;
   return {
@@ -95,11 +96,16 @@ function design(file: AttachmentId): ExtrudoDocument {
 const editedBefore = (d: ExtrudoDocument) => setInputs(d, 'ex0', { distance: length('5 mm') });
 
 /**
- * A stand-in for OpenSCAD's compiler: `fail` answers each compile while it is set (in the words of
- * `@extrudo/openscad`'s compiler), else a 3MF of two closed parts. Counts the compiles asked.
+ * A stand-in for OpenSCAD's compiler: `fail` answers each compile while it is set, with `cause` as
+ * `@extrudo/openscad`'s compiler marks a compile it couldn't run or stopped (and in its words),
+ * else a 3MF of two closed parts. Counts the compiles asked.
  */
 function compiler() {
-  const state = { fail: undefined as string | undefined, compiles: 0 };
+  const state = {
+    fail: undefined as string | undefined,
+    cause: undefined as 'offline' | 'stopped' | undefined,
+    compiles: 0,
+  };
   const model = bytesOf(twoParts3mf);
   const c: ScadCompiler = {
     compile(_request: ScadRequest): Promise<ScadResult> {
@@ -107,7 +113,13 @@ function compiler() {
       return Promise.resolve(
         state.fail === undefined
           ? { ok: true, model, warnings: [], ms: 1 }
-          : { ok: false, error: state.fail, warnings: [], ms: 1 },
+          : {
+              ok: false,
+              error: state.fail,
+              ...(state.cause && { cause: state.cause }),
+              warnings: [],
+              ms: 1,
+            },
       );
     },
     parameters: () => Promise.resolve({ ok: true, parameters: [] }),
@@ -168,6 +180,14 @@ const NEXT: Record<Mode, [string, string]> = {
   before: ['error', 'error'],
   this: ['ok', 'ok'],
 };
+/**
+ * What a recompute of the same document evaluates after the import failed for a `next` cause, the
+ * cause still there or gone: this engine the import alone (it kept no entry for it). The plate
+ * after it answers `add`, so its key holds no bodies and it stays a cache hit whether the import
+ * failed or computed. The other two kept the import's error, so nothing runs.
+ */
+const RETRIED: Record<Mode, string[]> = { main: [], before: [], this: ['imp'] };
+
 const ON_EDIT: Record<Mode, [string, string]> = {
   main: ['error', 'ok'],
   before: ['error', 'error'],
@@ -184,8 +204,10 @@ describe('an import that failed for a cause outside the document tries again', (
         status: 'error',
         message: 'The file cube.stl is missing from this design.',
       });
+      expect((await e.run(d)).evaluated).toEqual(RETRIED[mode]);
       files.set(STL, FILES[STL] as ImportedFile);
       const again = await e.run(d);
+      expect(again.evaluated).toEqual(RETRIED[mode]);
       const edited = await e.run(editedBefore(d));
       expect([again.status?.status, edited.status?.status]).toEqual(NEXT[mode]);
     } finally {
@@ -204,8 +226,10 @@ describe('an import that failed for a cause outside the document tries again', (
         status: 'error',
         message: "OpenSCAD isn't loaded in this kernel, so .scad files can't be compiled here.",
       });
+      expect((await e.run(d)).evaluated).toEqual(RETRIED[mode]);
       loaded = true;
       const again = await e.run(d);
+      expect(again.evaluated).toEqual(RETRIED[mode]);
       const edited = await e.run(editedBefore(d));
       expect([again.status?.status, edited.status?.status]).toEqual(NEXT[mode]);
       expect(state.compiles).toBe(mode === 'before' ? 0 : 1);
@@ -222,15 +246,19 @@ describe('an import that failed for a cause outside the document tries again', (
       const { compiler: c, state } = compiler();
       state.fail =
         "OpenSCAD isn't downloaded yet: connect to the internet once to compile blocks.scad.";
+      state.cause = 'offline';
       const e = await engine(mode, files, () => c);
       try {
         const d = design(SCAD);
         expect((await e.run(d)).status).toEqual({ status: 'error', message: state.fail });
+        // Still offline: this engine asks the compiler again, the others don't.
+        expect((await e.run(d)).evaluated).toEqual(RETRIED[mode]);
         state.fail = undefined;
         const again = await e.run(d);
+        expect(again.evaluated).toEqual(RETRIED[mode]);
         const edited = await e.run(editedBefore(d));
         expect([again.status?.status, edited.status?.status]).toEqual(NEXT[mode]);
-        expect(state.compiles).toBe(mode === 'before' ? 1 : 2);
+        expect(state.compiles).toBe({ main: 2, before: 1, this: 3 }[mode]);
       } finally {
         e.close();
       }
@@ -241,11 +269,13 @@ describe('an import that failed for a cause outside the document tries again', (
     'a compile stopped by its time: tried again after an edit before it, as main (%s)',
     { timeout: 120_000 },
     async (mode) => {
-      // Each try may take a minute, so not on every recompute: once the bodies before it change.
+      // Each try runs the compile up to its limit, so not on every recompute: once the bodies
+      // before it change.
       const files = new Map([[SCAD, FILES[SCAD] as ImportedFile]]);
       const { compiler: c, state } = compiler();
       state.fail =
         'blocks.scad took longer than 60 s to compile, so Extrudo stopped it: simplify the model (a lower $fn, fewer minkowski steps).';
+      state.cause = 'stopped';
       const e = await engine(mode, files, () => c);
       try {
         const d = design(SCAD);
@@ -282,6 +312,32 @@ describe("an import's own error stays cached", () => {
       e.close();
     }
   });
+
+  it.each(['main', 'this'] as const)(
+    'an OpenSCAD file\'s own error that says "stopped": compiled once (%s)',
+    { timeout: 120_000 },
+    async (mode) => {
+      // The file's own words (an assert's message, quoted in the error), not the compiler stopping
+      // it: the compiler leaves `cause` out, so the error is cached like any of the file's own, by
+      // the engine and by the import's compiles (`compileOnce`): main's engine evaluates the
+      // import again after an edit before it, and the compile it asks for is the one it kept.
+      const files = new Map([[SCAD, FILES[SCAD] as ImportedFile]]);
+      const { compiler: c, state } = compiler();
+      state.fail = 'blocks.scad, line 1: assertion failed: "the feed stopped too early".';
+      const e = await engine(mode, files, () => c);
+      try {
+        const d = design(SCAD);
+        expect((await e.run(d)).status).toEqual({ status: 'error', message: state.fail });
+        expect((await e.run(d)).evaluated).toEqual([]);
+        const edited = await e.run(editedBefore(d));
+        expect(edited.status).toEqual({ status: 'error', message: state.fail });
+        expect(edited.evaluated).toEqual(mode === 'this' ? ['ex0'] : ['ex0', 'imp', 'ex1']);
+        expect(state.compiles).toBe(1);
+      } finally {
+        e.close();
+      }
+    },
+  );
 
   it("an OpenSCAD file's own error (a syntax error): compiled once", {
     timeout: 120_000,

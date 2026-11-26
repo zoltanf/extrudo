@@ -79,9 +79,10 @@ export function explainRun(
       ? name
       : `${message.file && message.file !== baseOf(scadPath(name)) ? `${name} (${message.file})` : name}, line ${message.line}`;
 
-  const fail = (error: string): ScadResult => ({
+  const fail = (error: string, cause?: 'stopped'): ScadResult => ({
     ok: false,
     error,
+    ...(cause && { cause }),
     warnings: worded(messages, at, name),
     ...extra,
     ms,
@@ -91,9 +92,10 @@ export function explainRun(
     if (raw.heapBytes >= limits.heapMaxBytes * 0.9) {
       return fail(
         `${name} needed more than ${size(limits.heapMaxBytes)} of memory to compile, so Extrudo stopped it: simplify the model (a lower $fn, fewer minkowski steps).`,
+        'stopped',
       );
     }
-    return fail(`OpenSCAD stopped while compiling ${name}: ${raw.trap}.`);
+    return fail(`OpenSCAD stopped while compiling ${name}: ${raw.trap}.`, 'stopped');
   }
   // A file OpenSCAD only warns about and goes on without: the model it makes
   // is not the file's, so it is an error here.

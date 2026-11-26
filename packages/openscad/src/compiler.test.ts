@@ -84,6 +84,13 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
     );
   });
 
+  it("marks no cause on the file's own error, whatever its words", async () => {
+    // `cause` says the compile couldn't run or was stopped; the import reads it, never the words.
+    const result = await compiler.compile(scad('assert(false, "the feed stopped");\ncube(1);'));
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('stopped') });
+    expect(result).not.toHaveProperty('cause');
+  });
+
   it('refuses a 2D result and an empty one', async () => {
     expect(await compiler.compile(scad('square(10);'))).toMatchObject({
       ok: false,
@@ -150,6 +157,7 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
         ok: false,
         error:
           'part.scad took longer than 2 s to compile, so Extrudo stopped it: simplify the model (a lower $fn, fewer minkowski steps).',
+        cause: 'stopped',
       });
       const after = await quick.compile(scad('cube(2);'));
       expect(model(after)[0]?.volume).toBeCloseTo(8, 9);
@@ -170,6 +178,7 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
         ok: false,
         error:
           'part.scad needed more than 64 MB of memory to compile, so Extrudo stopped it: simplify the model (a lower $fn, fewer minkowski steps).',
+        cause: 'stopped',
       });
     } finally {
       small.dispose();
@@ -223,6 +232,7 @@ describe('a compiler whose worker could not download the WASM (ADR-0071 §4)', (
     expect(await compiler.compile(scad('cube(1);', { fileName: 'gear.scad' }))).toMatchObject({
       ok: false,
       error: "OpenSCAD isn't downloaded yet: connect to the internet once to compile gear.scad.",
+      cause: 'offline',
     });
     online = true;
     expect((await compiler.compile(scad('cube(1);'))).ok).toBe(true);
