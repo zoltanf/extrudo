@@ -83,7 +83,7 @@ export class WorkerCompiler implements ScadCompiler {
 
   dispose(): void {
     this.#stop();
-    this.#settle(failure('The OpenSCAD compiler was stopped.'));
+    this.#settle(failure('The OpenSCAD compiler was stopped.', 0, 'stopped'));
   }
 
   #compile(request: ScadRequest): Promise<ScadResult> {
@@ -99,6 +99,7 @@ export class WorkerCompiler implements ScadCompiler {
           failure(
             `${request.fileName} took longer than ${seconds} s to compile, so Extrudo stopped it: simplify the model (a lower $fn, fewer minkowski steps).`,
             this.#timeoutMs,
+            'stopped',
           ),
         );
       }, this.#timeoutMs);
@@ -117,17 +118,17 @@ export class WorkerCompiler implements ScadCompiler {
         this.#settle(
           'raw' in reply
             ? explainRun(reply.raw, pending.request, { heapMaxBytes: this.#heapMaxBytes })
-            : failure(
-                reply.offline
-                  ? offlineMessage(pending.request.fileName)
-                  : `OpenSCAD couldn't start: ${reply.failure}`,
-              ),
+            : reply.offline
+              ? failure(offlineMessage(pending.request.fileName), 0, 'offline')
+              : failure(`OpenSCAD couldn't start: ${reply.failure}`),
         );
       },
       fail: (message) => {
         this.#stop();
         const name = this.#pending?.request.fileName ?? 'the file';
-        this.#settle(failure(`OpenSCAD stopped while compiling ${name}: ${message}.`));
+        this.#settle(
+          failure(`OpenSCAD stopped while compiling ${name}: ${message}.`, 0, 'stopped'),
+        );
       },
     });
     return this.#worker;
@@ -148,6 +149,6 @@ export class WorkerCompiler implements ScadCompiler {
   }
 }
 
-function failure(error: string, ms = 0): ScadResult {
-  return { ok: false, error, warnings: [], ms };
+function failure(error: string, ms = 0, cause?: 'offline' | 'stopped'): ScadResult {
+  return { ok: false, error, ...(cause && { cause }), warnings: [], ms };
 }
