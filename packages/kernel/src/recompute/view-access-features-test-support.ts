@@ -15,6 +15,7 @@ import {
   type GeomRef,
   type Input,
   originPlaneRef,
+  primitiveInputs,
   type RefInput,
 } from '@extrudo/core';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -49,7 +50,18 @@ export function useKernel() {
   });
 }
 
-export const TYPES = ['shell', 'draft', 'offsetFace', 'removeFaces', 'thread'] as const;
+export const TYPES = [
+  'shell',
+  'draft',
+  'offsetFace',
+  'removeFaces',
+  'thread',
+  'move',
+  'scale',
+  'mirror',
+  'remove',
+  'combine',
+] as const;
 
 // ------------------------------------------------------------------------------- designs
 
@@ -104,6 +116,38 @@ export function faceRefs(engine: RecomputeEngine, body: string, pick: FacePick):
     return ref;
   });
 }
+
+/** The references of the edges `pick` gives on `body`, in an engine that computed the design. */
+export function edgeRefs(
+  engine: RecomputeEngine,
+  body: string,
+  pick: (d: ShapeDescription) => number[],
+): GeomRef[] {
+  const shape = engine.latestBody(body as BodyId);
+  if (shape === undefined) throw new Error(`no body ${body}`);
+  return pick(kernel.describe(shape)).map((i) => {
+    const ref = engine.reference(body as BodyId, 'edge', i);
+    if (!ref) throw new Error(`no edge ${i} on ${body}`);
+    return ref;
+  });
+}
+
+/** The reference of vertex `index` of `body`, in an engine that computed the design. */
+export function vertexRef(engine: RecomputeEngine, body: string, index: number): GeomRef {
+  const ref = engine.reference(body as BodyId, 'vertex', index);
+  if (!ref) throw new Error(`no vertex ${index} on ${body}`);
+  return ref;
+}
+
+/** A 10 mm box centred at `x`, `y` on XY, a new body `<id>:0`. */
+export const box = (id: string, x: number, y = 0): Feature =>
+  feature(
+    id,
+    'box',
+    primitiveInputs('box', {
+      numbers: { length: '10 mm', width: '10 mm', height: '10 mm', x: `${x} mm`, y: `${y} mm` },
+    }),
+  );
 
 /**
  * `doc` with each step's feature added in turn, its references taken from a recompute before it.
@@ -160,12 +204,19 @@ export async function filletAfter(
 // ------------------------------------------------------------------------------- edits
 
 /**
- * The terms of the rule for a view, each both ways, on the design's first feature of `TYPES`: a
- * face no body has by its name and back (`lose`, `find`), no faces and back (`empty`, `fill`);
- * per design: a body picked to hollow and back, one that doesn't exist and back (`pick-body`,
- * `unpick-body`, `lose-body`, `found-body`); the neutral plane cycling XY, a construction plane
- * and a face of the plate (`plane`); the twins swapping places and one suppressed and back. Then
- * the features' own inputs and the generic edits.
+ * The edits, each applied to the design's target (`Design.target`, by default its first feature
+ * of `TYPES`) unless it says otherwise. The rule's terms: the first reference of `Design.refsKey`
+ * (default `faces`) made one no body has (a face name, or a `body` reference to no body) and back
+ * (`lose`, `find`), no references and back (`empty`, `fill`), the first one picked twice and back
+ * (`twice`, `untwice`). The shell's: a body picked to hollow and back, one that doesn't exist and
+ * back (`pick-body`, `unpick-body`, `lose-body`, `found-body`). The draft's neutral plane cycling
+ * XY, a construction plane and a named face (`plane`). Move, Scale and Mirror: the copy on and off
+ * (`copy`), Move's mode cycling free, about the named axis, from and to the named points
+ * (`mode`), the mirror plane between the YZ plane and a named face (`mirror-plane`). Combine: the
+ * operation cycling (`combine-op`), the tools kept and not (`keep-tools`), the target picked as a
+ * tool and back (`tool-is-target`, `tool-not-target`). The twins swapping places (`swap`), one
+ * suppressed and back (`twin-off`, `twin-on`). A random draft's flip, offset's kept rounds,
+ * thread's hand or extent, extrude's operation; then the generic edits.
  */
 export const RULE = ['lose', 'find', 'empty', 'fill'] as const;
 export type Kind =
@@ -183,9 +234,20 @@ export type Kind =
   | 'twin-off'
   | 'twin-on'
   | 'operation'
+  | 'copy'
+  | 'mode'
+  | 'twice'
+  | 'mirror-plane'
+  | 'combine-op'
+  | 'keep-tools'
+  | 'tool-is-target'
+  | 'tool-not-target'
+  | 'untwice'
   | (typeof GENERIC_KINDS)[number];
 
 export const LOST: GeomRef = { kind: 'face', id: 'f[nowhere]' };
+/** A body reference to no body. */
+export const LOST_BODY: GeomRef = { kind: 'body', id: 'gone:0' };
 
 export function edit(
   kind: Kind,
@@ -196,30 +258,93 @@ export function edit(
   original: ExtrudoDocument,
   named: Record<string, GeomRef>,
   targetId?: string,
+  key = 'faces',
 ): Edited | undefined {
   const pickOne = <T>(xs: readonly T[]) => xs[Math.floor(rand() * xs.length)];
   const target = original.features.find((f) =>
     targetId === undefined ? (TYPES as readonly string[]).includes(f.type) : f.id === targetId,
   );
   const now = target && doc.features.find((f) => f.id === target.id);
-  const list = now && (now.inputs.faces as RefInput | undefined)?.refs;
-  const own = target && (target.inputs.faces as RefInput | undefined)?.refs;
+  const list = now && (now.inputs[key] as RefInput | undefined)?.refs;
+  const own = target && (target.inputs[key] as RefInput | undefined)?.refs;
+  const lost = own?.[0]?.kind === 'body' ? LOST_BODY : LOST;
+  const refs = (list: GeomRef[]) => ({ [key]: { kind: 'ref' as const, refs: list } });
   const set = (more: Feature['inputs']): Edited | undefined =>
     now && { doc: setInputs(doc, now.id, more), feature: now.id };
   const of = (type: string) => doc.features.filter((f) => f.type === type);
   switch (kind) {
     case 'lose':
-      if (!list?.length || list[0]?.id === LOST.id) return undefined;
-      return set({ faces: { kind: 'ref', refs: [LOST, ...list.slice(1)] } });
+      if (!list?.length || list[0]?.id === lost.id) return undefined;
+      return set(refs([lost, ...list.slice(1)]));
     case 'find':
       if (!own || !list || JSON.stringify(list) === JSON.stringify(own)) return undefined;
-      return set({ faces: { kind: 'ref', refs: own } });
+      return set(refs(own));
     case 'empty':
-      return list?.length ? set({ faces: { kind: 'ref', refs: [] } }) : undefined;
+      return list?.length ? set(refs([])) : undefined;
     case 'fill':
-      return own && list && list.length === 0
-        ? set({ faces: { kind: 'ref', refs: own } })
-        : undefined;
+      return own && list && list.length === 0 ? set(refs(own)) : undefined;
+    case 'twice':
+      // The first reference picked a second time.
+      if (!list?.length || list.length > new Set(list.map((r) => r.id)).size) return undefined;
+      return set(refs([...list, list[0] as GeomRef]));
+    case 'untwice':
+      // Each reference once again.
+      if (!list || list.length === new Set(list.map((r) => r.id)).size) return undefined;
+      return set(refs(list.filter((r, i) => list.findIndex((x) => x.id === r.id) === i)));
+    case 'copy': {
+      if (!now) return undefined;
+      const on = (now.inputs.copy as { value?: boolean } | undefined)?.value;
+      // A mirror copies unless told not to.
+      const copying = on ?? now.type === 'mirror';
+      return set({ copy: { kind: 'bool', value: !copying } });
+    }
+    case 'mode': {
+      if (now?.type !== 'move') return undefined;
+      const was = (now.inputs.mode as EnumInput | undefined)?.value ?? 'free';
+      if (was === 'free') {
+        return set({
+          mode: choice('rotate'),
+          axis: { kind: 'ref', refs: [named.axis as GeomRef] },
+          angle: { kind: 'expr', expr: '15 deg', unit: 'angle' },
+        });
+      }
+      if (was === 'rotate') {
+        return set({
+          mode: choice('point-to-point'),
+          from: { kind: 'ref', refs: [named.from as GeomRef] },
+          to: { kind: 'ref', refs: [named.to as GeomRef] },
+        });
+      }
+      return set({ mode: choice('free') });
+    }
+    case 'mirror-plane': {
+      if (now?.type !== 'mirror') return undefined;
+      const at = (now.inputs.plane as RefInput).refs[0];
+      const next: GeomRef =
+        at?.kind === 'face' ? originPlaneRef('origin:yz') : (named['mirror face'] as GeomRef);
+      return set({ plane: { kind: 'ref', refs: [next] } });
+    }
+    case 'combine-op': {
+      if (now?.type !== 'combine') return undefined;
+      const was = (now.inputs.operation as EnumInput | undefined)?.value ?? 'join';
+      return set({
+        operation: choice(was === 'join' ? 'cut' : was === 'cut' ? 'intersect' : 'join'),
+      });
+    }
+    case 'keep-tools': {
+      if (now?.type !== 'combine') return undefined;
+      const on = (now.inputs.keepTools as { value?: boolean } | undefined)?.value === true;
+      return set({ keepTools: { kind: 'bool', value: !on } });
+    }
+    case 'tool-is-target':
+    case 'tool-not-target': {
+      // The target picked as a tool too (an error under both), and taken out of the tools again.
+      if (now?.type !== 'combine' || !list) return undefined;
+      const target = (now.inputs.target as RefInput).refs[0] as GeomRef;
+      const has = list.some((r) => r.id === target.id);
+      if (has === (kind === 'tool-is-target')) return undefined;
+      return set(refs(has ? list.filter((r) => r.id !== target.id) : [...list, target]));
+    }
     case 'pick-body':
     case 'unpick-body':
     case 'lose-body':
@@ -281,7 +406,7 @@ export function edit(
       const swapped = setInputs(setInputs(doc, 'ta', { x: b.inputs.x as Input }), 'tb', {
         x: a.inputs.x as Input,
       });
-      return { doc: swapped, feature: 'st' as FeatureId };
+      return { doc: swapped, feature: (targetId ?? 'st') as FeatureId };
     }
     case 'twin-off':
     case 'twin-on': {
@@ -292,7 +417,7 @@ export function edit(
           ...doc,
           features: doc.features.map((f) => (f === b ? { ...f, suppressed: !f.suppressed } : f)),
         },
-        feature: 'st' as FeatureId,
+        feature: (targetId ?? 'st') as FeatureId,
       };
     }
     case 'operation': {
@@ -314,14 +439,21 @@ export interface Design {
   kinds: Kind[];
   /** Flips that must happen, besides the rule's four. */
   flips: string[];
-  /** The feature the rule's edits go to (default: the first of the five). */
+  /** The feature the rule's edits go to (default: the design's first feature of `TYPES`). */
   target?: string;
   /** Kinds of edit that must never take a view from their feature (no `<kind>: view→write`). */
   steady?: Kind[];
   /** Seeded edits (default 40). */
   steps?: number;
-  /** References some edits use, from the design as made (the draft's other plate's face). */
+  /**
+   * References some edits use, from the design as made: the draft's `plane face`, the mirror's
+   * `mirror face`, Move's `axis`, `from` and `to`.
+   */
   named?: (doc: ExtrudoDocument) => Promise<Record<string, GeomRef>>;
+  /** The input whose references the rule's edits change (default `faces`). */
+  refsKey?: string;
+  /** The rule's flips that must happen (default: each of `lose`, `find`, `empty`, `fill`). */
+  rule?: string[];
 }
 
 export const BASE = [...RULE] as Kind[];
@@ -346,7 +478,7 @@ export async function differential(
     ...options,
     kinds: design.kinds,
     edit: (kind, current, rand, history, deleted) =>
-      edit(kind, current, rand, history, deleted, doc, named, design.target),
+      edit(kind, current, rand, history, deleted, doc, named, design.target, design.refsKey),
     access: (f) => (f && (TYPES as readonly string[]).includes(f.type) ? 'view' : 'other'),
   });
 }
@@ -371,10 +503,12 @@ export function proveDesigns(designs: Design[]) {
       for (const kind of design.kinds) expect(run.kinds).toContain(kind);
       const views = [...run.views].join('; ');
       for (const flip of [
-        'lose: view→write',
-        'find: write→view',
-        'empty: view→write',
-        'fill: write→view',
+        ...(design.rule ?? [
+          'lose: view→write',
+          'find: write→view',
+          'empty: view→write',
+          'fill: write→view',
+        ]),
         ...design.flips,
       ]) {
         expect(run.views, views).toContain(flip);
@@ -398,14 +532,17 @@ export type CountRow = readonly [
   Feature['inputs'],
   string,
   Feature['inputs'] | undefined,
+  /** The meshes each edit sends, when not the edited body's alone (`[]`: it is removed). */
+  (readonly string[])?,
 ];
 
 /** Exact counters: an edit of one body evaluates it, its feature (and a later cut), one mesh. */
 export function countEdits(rows: readonly CountRow[]) {
-  it.each(rows)(
+  it.each(rows.map((row) => [row[0], row] as const))(
     '%s: an edit of one body evaluates it and its feature, one mesh',
     { timeout: 300_000 },
-    async (_name, make, body, size, own, number) => {
+    async (_name, row) => {
+      const [, make, body, size, own, number, meshes] = row;
       const doc = await make();
       const docs = [doc, setInputs(doc, body, size as Feature['inputs'])];
       if (number) docs.push(doc, setInputs(doc, own, number as Feature['inputs']));
@@ -422,8 +559,9 @@ export function countEdits(rows: readonly CountRow[]) {
       if (numbered) expect(numbered.evaluated).toEqual([own, ...later]);
       const sent = (s: typeof sized) => s?.result.bodies.filter((b) => b.mesh).map((b) => b.id);
       if (later.length === 0) {
-        expect(sent(sized)).toEqual([`${body}:0`]);
-        if (numbered) expect(sent(numbered)).toEqual([`${body}:0`]);
+        const expected = meshes ?? [`${body}:0`];
+        expect(sent(sized)).toEqual(expected);
+        if (numbered) expect(sent(numbered)).toEqual(expected);
       }
     },
   );

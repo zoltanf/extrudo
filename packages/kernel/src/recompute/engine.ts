@@ -1547,8 +1547,8 @@ export class RecomputeEngine {
    * runs as `write`, when it has no such reference, a reference of another kind, a body reference
    * to no body, a face, edge or vertex reference no body has by that name (lost, or found only by
    * a related name or a fingerprint), a body before it without a naming table, or a view body
-   * without a version. A `plane` reference (an origin plane or a construction plane's output)
-   * reads no body and is passed over.
+   * without a version. A `plane`, `axis`, `point` or `sketchEntity` reference (an origin one, a
+   * construction feature's output or a sketch's) reads no body and is passed over.
    */
   #viewOf(
     feature: Feature,
@@ -1563,9 +1563,10 @@ export class RecomputeEngine {
           ids.add(ref.id as BodyId);
           continue;
         }
-        // A plane is an origin plane or a construction plane's output: no body is read, and a
-        // construction plane's key is in this feature's key already (an upstream feature).
-        if (ref.kind === 'plane') continue;
+        // A plane, an axis or a point is an origin one or a construction feature's output, and a
+        // sketch entity a sketch's: no body is read, and that feature's key is in this feature's
+        // key already (an upstream feature).
+        if (PASSED_OVER.has(ref.kind)) continue;
         if (ref.kind !== 'face' && ref.kind !== 'edge' && ref.kind !== 'vertex') return undefined;
         let found = false;
         for (const [id, shape] of bodies) {
@@ -1879,6 +1880,9 @@ class NoBodies extends Map<BodyId, ShapeHandle> {
     return this.noticed();
   }
 }
+
+/** Reference kinds that name no body: `#viewOf` passes them over. */
+const PASSED_OVER: ReadonlySet<string> = new Set(['plane', 'axis', 'point', 'sketchEntity']);
 
 /**
  * The bodies a `view` feature sees (ADR-0024's amendment on `view` access). A look-up of a body

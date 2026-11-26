@@ -110,7 +110,10 @@ export function isIdentity(matrix: Matrix12): boolean {
 
 export const kernelMove: KernelFeatureDefinition<MoveInputs> = {
   ...moveBodiesFeature,
-  bodyAccess: () => 'write',
+  // A move in place reads and changes only the bodies it names (ADR-0024's amendment on `view`
+  // access): its axis or points are an origin or construction axis or point, a sketch line, or an
+  // edge or vertex, which the view holds. A copy adds bodies, so it stays `write`.
+  bodyAccess: (inputs) => (moveSettings(inputs).copy ? 'write' : 'view'),
   evaluate: evaluateMove,
   csg: moveCsg,
 };
@@ -217,7 +220,14 @@ export function centreOf(
 
 export const kernelMirror: KernelFeatureDefinition<MirrorInputs> = {
   ...mirrorFeature,
-  bodyAccess: () => 'write',
+  // A mirror of bodies without a copy reads and changes only the bodies it names (ADR-0024's
+  // amendment on `view` access): its plane is an origin or construction plane or a face, which
+  // the view holds. A copy (and a join, which needs one) adds bodies, and a mirror of features
+  // replays them on whatever they met, so those stay `write`.
+  bodyAccess: (inputs) => {
+    const settings = mirrorSettings(inputs);
+    return settings.objects === 'bodies' && !settings.copy ? 'view' : 'write';
+  },
   evaluate: evaluateMirror,
   csg: mirrorCsg,
 };

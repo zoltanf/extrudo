@@ -29,7 +29,10 @@ import { bodiesTouch } from './operation';
 
 export const kernelCombine: KernelFeatureDefinition<CombineInputs> = {
   ...combineFeature,
-  bodyAccess: () => 'write',
+  // Reads and changes only its target and tools (ADR-0024's amendment on `view` access): it looks
+  // them up, asks whether they touch each other, sets the target and deletes the tools in a copy
+  // of the map. A result split into pieces has new bodies, which the engine runs as `write`.
+  bodyAccess: () => 'view',
   evaluate: evaluateCombine,
   csg: combineCsg,
 };
