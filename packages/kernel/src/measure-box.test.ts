@@ -11,12 +11,14 @@ import {
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { touchingBodies } from './features/operation';
 import { Kernel } from './kernel';
 import { type BodyMesh, sameMesh } from './mesh';
 import { loadOcct } from './occt/load';
 import { DEFAULT_TESSELLATION } from './recompute/engine';
 import { testDocument, testFeature, testFeatures } from './recompute/testing';
+import type { EvalContext } from './recompute/types';
 import { KernelService } from './service';
 import { measureStoredShape, storedShapeToStep } from './stored-shape';
 import { buildTestPart } from './test-part';
@@ -335,5 +337,46 @@ describe('faces given as triangles, not as surfaces (ADR-0035, 2026-11-25)', () 
       const step = kernel.writeStep([{ shape: both, name: 'Shape' }]);
       scope.track(kernel.readStep(step));
     }).toThrow(/triangles/);
+  });
+});
+
+describe('measureBox', () => {
+  it("gives measure's box exactly, mesh or not", () => {
+    using scope = kernel.scope();
+    const shapes = [
+      scope.track(kernel.cylinder(5, 10, [3, -2, 1])),
+      scope.track(buildTestPart(kernel)),
+    ];
+    for (const shape of shapes) {
+      const box = kernel.measureBox(shape);
+      expect(box).toEqual(kernel.measure(shape).bbox);
+      kernel.mesh(shape, DEFAULT_TESSELLATION);
+      expect(kernel.measureBox(shape)).toEqual(box);
+    }
+  });
+
+  it('is what the look-up of the bodies an operation touches asks for: only boxes', () => {
+    using scope = kernel.scope();
+    const near = scope.track(kernel.box([10, 10, 10]));
+    const far = scope.track(kernel.box([10, 10, 10], [100, 0, 0]));
+    const tool = scope.track(kernel.cylinder(2, 20, [5, 5, -5]));
+    const ctx = {
+      kernel,
+      bodies: new Map([
+        ['a:0', near],
+        ['b:0', far],
+      ]),
+    } as unknown as EvalContext;
+    const measure = vi.spyOn(kernel, 'measure');
+    const boxes = vi.spyOn(kernel, 'measureBox');
+    try {
+      expect(touchingBodies(ctx, scope, tool)).toEqual(['a:0']);
+      expect(measure).not.toHaveBeenCalled();
+      // The tool's box and each body's.
+      expect(boxes).toHaveBeenCalledTimes(3);
+    } finally {
+      measure.mockRestore();
+      boxes.mockRestore();
+    }
   });
 });

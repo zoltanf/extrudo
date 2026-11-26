@@ -239,7 +239,7 @@ function unionBox(ctx: EvalContext<RibInputs>): { min: Vec3; max: Vec3 } {
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
   for (const shape of ctx.bodies.values()) {
-    const { bbox } = ctx.kernel.measure(shape);
+    const bbox = ctx.kernel.measureBox(shape);
     for (let k = 0; k < 3; k++) {
       min[k] = Math.min(min[k] as number, bbox.min[k] as number);
       max[k] = Math.max(max[k] as number, bbox.max[k] as number);
@@ -425,7 +425,7 @@ function reaches(
   towards: Vec3,
   L: number,
 ): boolean {
-  const { min, max } = kernel.measure(piece).bbox;
+  const { min, max } = kernel.measureBox(piece);
   const corner = sub(line.a, scale(line.u, L));
   let s0 = Infinity;
   let s1 = -Infinity;

@@ -123,7 +123,9 @@
 #include <BRepTopAdaptor_Tool.hxx>
 #include <BRepAdaptor_Curve2d.hxx>
 #include <BRepAlgoAPI_Section.hxx>
+#include <BRepGProp_Domain.hxx>
 #include <BRepGProp_Face.hxx>
+#include <BRepGProp_VinertGK.hxx>
 #include <Contap_Contour.hxx>
 #include <Contap_Line.hxx>
 #include <Contap_Point.hxx>
@@ -363,11 +365,71 @@ public:
   /** A solid's volume, integrated to MASS_EPS where that is the better form. */
   static void integrateVolume(const TopoDS_Shape& shape, GProp_GProps& props) {
     if (hasRationalCurve(shape)) {
-      BRepGProp::VolumePropertiesGK(shape, props, MASS_EPS);
+      rationalVolume(shape, props);
     } else if (needsTolerance(shape)) {
       BRepGProp::VolumeProperties(shape, props, MASS_EPS, false);
     } else {
       BRepGProp::VolumeProperties(shape, props);
+    }
+  }
+
+  /**
+   * The volume of a shape with a rational edge (`integrateVolume`): the sum
+   * BRepGProp::VolumePropertiesGK makes — the shape's location as the system's,
+   * every FORWARD or REVERSED face with a surface integrated by Gauss–Kronrod to
+   * MASS_EPS about the average of the shape's vertices, nothing but the mass
+   * asked for — with each planar face's share taken exactly: the signed cone
+   * from that point over the face, (C − P)·N · A / 3, its area A and centre C
+   * from the bounded area integral (exact on a plane bounded by a conic, see
+   * integrateArea). A curved face is integrated as OCCT integrates it. A shape
+   * without vertices goes to VolumePropertiesGK whole.
+   */
+  static void rationalVolume(const TopoDS_Shape& shape, GProp_GProps& props) {
+    gp_XYZ sum(0, 0, 0);
+    int vertices = 0;
+    for (TopExp_Explorer v(shape, TopAbs_VERTEX); v.More(); v.Next(), ++vertices) {
+      sum += BRep_Tool::Pnt(TopoDS::Vertex(v.Current())).XYZ();
+    }
+    if (vertices == 0) {
+      BRepGProp::VolumePropertiesGK(shape, props, MASS_EPS);
+      return;
+    }
+    gp_Pnt origin(0, 0, 0);
+    origin.Transform(shape.Location());
+    props = GProp_GProps(origin);
+    const gp_Pnt centre(sum / vertices);
+    BRepGProp_VinertGK curved;
+    BRepGProp_Face face(false);
+    BRepGProp_Domain domain;
+    curved.SetLocation(centre);
+    for (TopExp_Explorer f(shape, TopAbs_FACE); f.More(); f.Next()) {
+      const TopoDS_Face& current = TopoDS::Face(f.Current());
+      TopLoc_Location location;
+      if (BRep_Tool::Surface(current, location).IsNull()) continue;
+      const TopAbs_Orientation orientation = current.Orientation();
+      if (orientation != TopAbs_FORWARD && orientation != TopAbs_REVERSED) continue;
+      BRepAdaptor_Surface surface(current, false);
+      if (surface.GetType() == GeomAbs_Plane) {
+        GProp_GProps area;
+        BRepGProp::SurfaceProperties(current, area, MASS_EPS, false);
+        const gp_Ax3 axes = surface.Plane().Position();
+        gp_Dir normal = axes.Direction();
+        if (!axes.Direct()) normal.Reverse();
+        if (orientation == TopAbs_REVERSED) normal.Reverse();
+        const double share = gp_Vec(centre, area.CentreOfMass()).Dot(gp_Vec(normal)) * area.Mass() / 3.0;
+        props.Add(PlanarShare(centre, share));
+        continue;
+      }
+      face.Load(current);
+      double error;
+      if (current.NbChildren() == 0) {
+        error = curved.Perform(face, MASS_EPS, false, false);
+      } else {
+        domain.Init(current);
+        error = curved.Perform(face, domain, MASS_EPS, false, false);
+      }
+      if (error < 0.) return;
+      props.Add(curved);
     }
   }
 
@@ -2669,19 +2731,44 @@ public:
       // (ADR-0035's amendment of 2026-11-24). A face with no surface (a face read from a file
       // without its geometry) still uses its triangulation, as before. Every BRepBndLib::Add here
       // passes false for the same reason.
-      Bnd_Box box;
-      BRepBndLib::Add(*s, box, false);
       measured_[0] = volume.Mass();
       measured_[1] = area.Mass();
-      if (box.IsVoid()) {
-        for (int i = 2; i < 8; ++i) measured_[i] = 0.0;
-      } else {
-        box.Get(measured_[2], measured_[3], measured_[4], measured_[5], measured_[6], measured_[7]);
-      }
+      looseBox(*s, measured_ + 2);
       return true;
     } catch (...) {
       failFromException("Measure failed");
       return false;
+    }
+  }
+
+  /**
+   * measure()'s box alone, read with measured(2..7) as there (0 and 1 are 0):
+   * the same code, so the same values, without the volume and area integrals.
+   * For a caller that needs only the box.
+   */
+  bool measureBox(int shape) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Measure failed: unknown shape.") != 0;
+    try {
+      measured_[0] = 0.0;
+      measured_[1] = 0.0;
+      looseBox(*s, measured_ + 2);
+      return true;
+    } catch (...) {
+      failFromException("Measure failed");
+      return false;
+    }
+  }
+
+  /** measure()'s box of `shape` into out[0..5]: min x, y, z, max x, y, z (zeros for an empty box). */
+  static void looseBox(const TopoDS_Shape& shape, double* out) {
+    Bnd_Box box;
+    BRepBndLib::Add(shape, box, false);
+    if (box.IsVoid()) {
+      for (int i = 0; i < 6; ++i) out[i] = 0.0;
+    } else {
+      box.Get(out[0], out[1], out[2], out[3], out[4], out[5]);
     }
   }
 
@@ -7931,6 +8018,12 @@ private:
   static double nowMs() {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
   }
+
+  /** A planar face's share of rationalVolume's sum about `location`: its mass, no centre or inertia. */
+  class PlanarShare : public GProp_GProps {
+   public:
+    PlanarShare(const gp_Pnt& location, double volume) : GProp_GProps(location) { dim = volume; }
+  };
 
   /** A progress indicator that breaks the OCCT algorithm it is passed to once a deadline is past. */
   class MeshDeadline : public Message_ProgressIndicator {

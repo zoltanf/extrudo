@@ -209,6 +209,7 @@ export interface FacadeBinding {
   count(shape: number, kind: number): number;
   isValid(shape: number): boolean;
   measure(shape: number): boolean;
+  measureBox(shape: number): boolean;
   measured(index: number): number;
   properties(shape: number): boolean;
   surfaceGeometry(shape: number, face: number): number;

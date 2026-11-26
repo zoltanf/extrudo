@@ -159,7 +159,7 @@ function sourceCentre(ctx: EvalContext, settings: PatternObjectSettings): Vec3 {
   const boxes: { min: Vec3; max: Vec3 }[] = [];
   for (const shape of shapes) {
     try {
-      const { min, max } = ctx.kernel.measure(shape).bbox;
+      const { min, max } = ctx.kernel.measureBox(shape);
       const at = (v: readonly number[], k: number) => v[k] ?? 0;
       boxes.push({
         min: [at(min, 0), at(min, 1), at(min, 2)],
@@ -228,7 +228,7 @@ export function mergeTools(
 ): NamedShape {
   const { kernel } = ctx;
   if (parts.length === 1) return parts[0] as NamedShape;
-  const boxes = parts.map((p) => kernel.measure(p.shape).bbox);
+  const boxes = parts.map((p) => kernel.measureBox(p.shape));
   const heavy = parts.map((p) => isHeavyTool(kernel, p.shape));
   const boxOnly = op === 'pattern' || op === 'mirror';
   // Groups of instances that interfere: boxes that meet, then the exact distance.
@@ -292,7 +292,7 @@ export function toolSet(
     const only = parts[0] as NamedShape;
     return { ...only, passes: [only], interferes: false };
   }
-  const boxes = parts.map((p) => kernel.measure(p.shape).bbox);
+  const boxes = parts.map((p) => kernel.measureBox(p.shape));
   // Who meets whom: boxes that meet (no exact distance, see above).
   const meets: number[][] = parts.map(() => []);
   let interfering = false;

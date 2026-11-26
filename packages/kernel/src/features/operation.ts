@@ -300,10 +300,10 @@ export const boxesTouch = (a: Box, b: Box): boolean =>
  */
 export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeHandle): BodyId[] {
   const { kernel } = ctx;
-  const toolBox = kernel.measure(tool).bbox;
+  const toolBox = kernel.measureBox(tool);
   const near: { id: BodyId; shape: ShapeHandle; box: Box }[] = [];
   for (const [id, shape] of ctx.bodies) {
-    const box = kernel.measure(shape).bbox;
+    const box = kernel.measureBox(shape);
     if (boxesTouch(box, toolBox)) near.push({ id, shape, box });
   }
   if (near.length === 0) return [];
@@ -314,7 +314,7 @@ export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeH
   if (solids.length < 2) {
     return near.filter(({ shape }) => touches(shape, tool)).map(({ id }) => id);
   }
-  const parts = solids.map((shape) => ({ shape, box: kernel.measure(shape).bbox }));
+  const parts = solids.map((shape) => ({ shape, box: kernel.measureBox(shape) }));
   return near
     .filter(({ shape, box }) =>
       parts.some((part) => boxesTouch(box, part.box) && touches(shape, part.shape)),
@@ -344,7 +344,7 @@ export function newBodies(
     return { bodies, names };
   }
   const placed = solids.map((solid) => {
-    const { min, max } = kernel.measure(solid).bbox;
+    const { min, max } = kernel.measureBox(solid);
     return { solid, center: scale(add(min, max), 0.5) };
   });
   placed.sort((a, b) => compareGeometry(a.center, b.center));

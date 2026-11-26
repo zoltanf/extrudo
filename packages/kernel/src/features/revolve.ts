@@ -370,7 +370,7 @@ function halfPlane(
   const { kernel } = ctx;
   let reach = 0;
   for (const part of parts) {
-    const { min, max } = kernel.measure(part.source.shape).bbox;
+    const { min, max } = kernel.measureBox(part.source.shape);
     const center = scale(add(min, max), 0.5);
     reach = Math.max(reach, length(sub(max, min)) + length(sub(center, axis.origin)));
   }
@@ -518,9 +518,9 @@ function sweepToObject(
   });
   scope.track(tool.shape);
   // Big enough to cross the whole ring and every body.
-  let reach = length(sub(kernel.measure(tool.shape).bbox.max, kernel.measure(tool.shape).bbox.min));
+  let reach = length(sub(kernel.measureBox(tool.shape).max, kernel.measureBox(tool.shape).min));
   for (const body of ctx.bodies.values()) {
-    const { min, max } = kernel.measure(body).bbox;
+    const { min, max } = kernel.measureBox(body);
     reach = Math.max(reach, length(sub(max, axis.origin)), length(sub(min, axis.origin)));
   }
   const target = trimTarget(

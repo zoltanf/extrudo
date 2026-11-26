@@ -12,6 +12,7 @@
 import { conicPoint, type Vec2 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { circle } from './features/primitives';
 import { planarCurves } from './features/sketch';
 import { Kernel, type ShapeHandle } from './kernel';
 import { loadOcct } from './occt/load';
@@ -179,6 +180,55 @@ describe('mass properties with a tolerance', () => {
       }
     } finally {
       kernel.release(low.shape, high.shape);
+    }
+  });
+});
+
+describe('the volume of a body with a rational edge', () => {
+  /**
+   * A coil as the coil feature builds it (ADR-0055): a circle of radius 0.75 mm, 6 mm from the
+   * axis in the plane through the axis, swept two turns of 4 mm up a helix about the line through
+   * (0, y, 0) along Z. The swept circle's edges are rational, so the volume takes the rational
+   * branch; whole turns put both caps in one plane through the axis.
+   */
+  const coil = (y: number) => {
+    const { faces } = kernel.planarFaces(
+      [circle([6, 0], 0.75)],
+      { origin: [0, y, 0], x: [1, 0, 0], normal: [0, -1, 0] },
+      1e-4,
+    );
+    const section = faces[0]?.shape as ShapeHandle;
+    const helix = kernel.helix({
+      origin: [0, y, 0],
+      axis: [0, 0, 1],
+      start: [1, 0, 0],
+      radius: 6,
+      pitch: 4,
+      turns: 2,
+    });
+    try {
+      return kernel.sweep(section, helix, { orientation: { binormal: [0, 0, 1] }, verify: false })
+        .shape;
+    } finally {
+      kernel.release(section, helix);
+    }
+  };
+
+  it("takes a planar face's share of the volume exactly, wherever the body is", () => {
+    // Pappus: the section's area times the length of the circle its centre turns on, per turn.
+    const reference = Math.PI * 0.75 ** 2 * 2 * Math.PI * 6 * 2;
+    const shapes = [0, 5, -20].map(coil);
+    try {
+      const [first, ...rest] = shapes.map((shape) => kernel.measure(shape).volume);
+      expect(first).toBeCloseTo(reference, 3);
+      for (const volume of rest) {
+        expect(Math.abs(volume - (first as number)) / (first as number)).toBeLessThan(1e-12);
+      }
+      for (const shape of shapes) {
+        expect(kernel.properties(shape).volume).toBe(kernel.measure(shape).volume);
+      }
+    } finally {
+      kernel.release(...shapes);
     }
   });
 });
