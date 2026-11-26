@@ -865,7 +865,13 @@ fails it too (1.35 mm).
 
 ### From scratch
 
-FROM_SCRATCH_PLACEHOLDER
+Compared once with an ad hoc script outside the repository, main's code and build against this
+branch's, on one machine: the 65 designs in `fixtures/` recomputed from scratch give the same
+statuses, bodies, names, versions, reports and meshes, and the same `inspect` of every one of
+their 81 bodies, volumes included, but one centre: the sweep fixture's body
+(`p4-01-sweep-loft-coil`, a body with a rational edge), from (19.961, 0.512, 32.620) to
+(12.885, 0.000, 33.228) mm, which the volume centroid of a fine tessellation of the body
+(deflection 0.002 mm) confirms to 1.4e-3 mm. The golden tables are unchanged.
 
 ### Who reads the centre
 
