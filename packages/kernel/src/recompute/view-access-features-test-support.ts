@@ -17,6 +17,7 @@ import {
   originPlaneRef,
   primitiveInputs,
   type RefInput,
+  type SketchDataInput,
 } from '@extrudo/core';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { Kernel } from '../kernel';
@@ -248,6 +249,13 @@ export type Kind =
   | 'tool-not-target'
   | 'untwice'
   | 'join'
+  | 'size-face'
+  | 'size-before'
+  | 'size-between'
+  | 'size-after'
+  | 'reshape'
+  | 'project'
+  | 'unproject'
   | (typeof GENERIC_KINDS)[number];
 
 export const LOST: GeomRef = { kind: 'face', id: 'f[nowhere]' };
@@ -335,6 +343,53 @@ export function edit(
       return set({
         operation: choice(was === 'join' ? 'cut' : was === 'cut' ? 'intersect' : 'join'),
       });
+    }
+    case 'size-face':
+    case 'size-before':
+    case 'size-between':
+    case 'size-after': {
+      // A `read` design's boxes by role: the one its face is on (`fb`), one nothing refers to
+      // before it (`o0`), between it and the target (`o1`), after the target (`o2`). Its length
+      // 10 mm ↔ 12 mm; the change is the target's, for its flips.
+      const id = {
+        'size-face': 'fb',
+        'size-before': 'o0',
+        'size-between': 'o1',
+        'size-after': 'o2',
+      }[kind];
+      const box = doc.features.find((f) => f.id === id);
+      if (!box || !targetId) return undefined;
+      const was = (box.inputs.length as { expr?: string } | undefined)?.expr;
+      const next = was === '10 mm' ? '12 mm' : '10 mm';
+      return {
+        doc: setInputs(doc, box.id, { length: { kind: 'expr', expr: next, unit: 'length' } }),
+        feature: targetId as FeatureId,
+      };
+    }
+    case 'reshape':
+    case 'project':
+    case 'unproject': {
+      // The target sketch's circles 3 mm ↔ 2.5 mm; or a projection `pj` of `named.edge` (an edge
+      // of another box) added, and taken out again.
+      const input = now?.inputs.sketch as SketchDataInput | undefined;
+      if (!now || input?.kind !== 'sketchData') return undefined;
+      const sketch = input.sketch;
+      const projected = (sketch.projections ?? {}) as Record<string, unknown>;
+      const has = projected.pj !== undefined;
+      if (kind === 'reshape') {
+        const entities = Object.fromEntries(
+          Object.entries(sketch.entities).map(([id, e]) => [
+            id,
+            e.type === 'circle' ? { ...e, radius: e.radius === 3 ? 2.5 : 3 } : e,
+          ]),
+        );
+        return set({ sketch: { ...input, sketch: { ...sketch, entities } } });
+      }
+      if ((kind === 'project') === has || !named.edge) return undefined;
+      const { pj: _gone, ...rest } = projected;
+      const projections =
+        kind === 'project' ? { ...rest, pj: { ref: named.edge, curves: {} } } : rest;
+      return set({ sketch: { ...input, sketch: { ...sketch, projections } as never } });
     }
     case 'join': {
       // A mirror's or a pattern's join of each copy into its original, on and off.

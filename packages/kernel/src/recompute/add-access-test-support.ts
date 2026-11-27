@@ -137,8 +137,9 @@ export const choice = <T extends string>(value: T) => ({ kind: 'enum' as const, 
 export const refs = <T>(list: T[]) => ({ kind: 'ref' as const, refs: list });
 
 /**
- * The features of `registry` with every `add` answer turned into `write`: main's engine before
- * `add` existed (ADR-0024's amendment on `add` access), the reference that sees what a cleared
+ * The features of `registry` with every `add`, `view` and `read` answer turned into `write`: an
+ * engine keying every feature that reads bodies by every body before it (ADR-0024's amendments on
+ * `add` and `view` access and on `read` features), the reference that sees what a cleared
  * engine with the same predicates can't (an `add` evaluation that only iterates the bodies sees
  * none in both).
  */
@@ -156,7 +157,10 @@ export function allWrite(
               ...definition,
               bodyAccess: (inputs: never) => {
                 const answer = access.call(definition, inputs);
-                return answer === 'add' || answer === 'view' ? 'write' : answer;
+                // `read` as `write`: keyed by every body before it, as `read` was before its views.
+                return answer === 'add' || answer === 'view' || answer === 'read'
+                  ? 'write'
+                  : answer;
               },
             } as KernelFeatureDefinition),
       );
