@@ -2065,3 +2065,52 @@ In the app (the 20 plates with a revolve cut each as a file, production build, C
 edit of the first plate in its dialog 4,378 (4,368–4,386) → 296 (285–299); undoing it 322
 (321–322) → 322 (320–322); opening the design 4,094 (3,939–4,177) → 3,999 (3,910–4,221). The
 page's blocked time: commit 0 → 0, undo 0 → 0, open 544 (420–617) → 596 (525–619).
+
+## Amendment 2026-11-27: tools built on a body (rule R)
+
+**Decision (rule R).** A `touch` feature's tool key holds, beside its inputs, values and upstream
+keys, the versions of the bodies its face, edge and vertex references name by their exact names
+(`#named`, the walk `#viewOf` already makes over a feature's references). Those bodies are in its
+view as well (with the ones it picks). So a tool built on a body (an extrude of a face, a box
+placed on a face, a revolve about an edge, a sweep along edges, an emboss onto a face) is kept, and
+its answers used and handed to the evaluator, only while that body is unchanged: a new version is
+another tool key, no tool kept, an evaluation with every body as at first. A reference with no
+exact match (lost, or found only by a related name or a fingerprint), or of a kind the view can't
+carry, keeps today's key, as for `view`. The engine change: ENGINE_LINES (the reference walk shared
+with `#viewOf`, the tool key, the view; `pickedBodies` folded into it).
+
+**Opted in** (each after an audit of its tool, below):
+1. the extrude of a body's face (`touches`: a `face` profile, by a distance, an automatic join, cut
+   or intersect, or a picked join);
+2. primitives and coils placed on a face (`operationAccess`'s `byReference`, which `touch` takes and
+   `add` doesn't: a new body on a face stays `write`);
+3. a revolve about a body's straight edge or of its face (by an angle), a sweep of a body's face or
+   along its edges, a loft through a body's faces or vertices;
+4. the emboss: an emboss (a join) answers `touch`, a deboss (a cut) `view`. Its tool is built on
+   its faces' body, and `operate` takes that body as its participant: a deboss cuts it alone and
+   doesn't ask the touch test (the `view` rule as it is, its face reference bringing the body in);
+   an emboss joins it and lists every body its tool touches in its report.
+
+**What each reads** (audited for this change; file:line, `features/`):
+
+| Feature | The tool reads, besides upstream outputs | Built on |
+|---|---|---|
+| Extrude, face profile | `facePart` (`sources.ts:152`): the face resolved by name (:153), described (:154), its edges' sources from that body's names (:158–162) | the face's body |
+| Primitives, coil on a face | `planeFrame` (`primitives.ts:277`): the face resolved (:279), refused if a mesh (:282), described (:283); the coil calls it (`coil.ts:205`) | the face's body |
+| Revolve | `axisOf` (`revolve.ts:274`): an edge resolved and described (:286, :287); profiles through `partsOf` (:237) and `uniteParts` (:238), a face profile as the extrude's | the edge's and the face's bodies |
+| Sweep | `baseOf` (`sweep.ts:100`, a face profile as the extrude's); the path's edges resolved (`pieceOf`, :228) | those bodies |
+| Loft | sections through `partsOf` (`loft.ts:115`, faces as the extrude's) and `pointOf` (:127: a vertex resolved) | those bodies |
+| Emboss | its face resolved (`emboss.ts:155`; several faces, :273, one body only), that body (:157, :280); the tool laid on the face (`layTangent`, :166, `faceHit` of that face, :430), moved, wrapped or projected onto it (`toolOn`, :235; `flatTool`, `wrappedTool`, `projectedTool`, :494, :534, :628; the face's surface, :795); the exact distance of that body and the tool (:183, :330); `operate` with that body as participant (:190, :337) | the faces' body |
+
+No tool above reads another body: what it samples is the face, edge or vertex it names, of the
+body that reference names. Each then calls `operate` and `splitSolids` as before.
+
+**What no longer holds.** In the amendment on operations, "the engine keeps each such feature's
+tool by its tool key (… everything but the bodies)" and "face profiles (the tool reads that body)
+stay `write`": the tool key holds the versions of the bodies the tool is built on, and face
+profiles answer `touch`. In the amendment on the other operations, its "Not in" "any tool built on
+a body's face, edge or vertex with automatic participants or a picked join" and "emboss": they
+answer as above. This amendment replaces those.
+
+**Still `write`:** through-all and to-object with automatic participants (rule B, a later step),
+the hole, the rib, a new body on a face.
