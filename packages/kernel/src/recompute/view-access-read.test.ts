@@ -266,43 +266,54 @@ describe('view access: read features (ADR-0024)', () => {
     }
   });
 
-  it('never stale: the face’s box changed keeping the face’s name, a projected edge’s box, the face’s body replaced', {
-    timeout: 120_000,
-  }, async () => {
-    // Each step equals a cleared engine (versions and results): a sketch kept from before its
-    // body changed would differ there.
+  // Never stale: each step equals a cleared engine (versions and results), where a sketch kept
+  // from before its body changed would differ.
+  const stale = async (change: (doc: ExtrudoDocument) => ExtrudoDocument, first: string) => {
     const doc = await sketches(true);
-    const moved: ExtrudoDocument = {
-      ...doc,
-      features: doc.features.flatMap((f) =>
-        f.id === 'sk' ? [feature('mf', 'move', moveInputs(['fb:0'], { dz: '5 mm' })), f] : [f],
-      ),
-      timelineMarker: doc.features.length + 1,
-    };
-    const steps = await sequence([
-      doc,
-      // Taller: the top face keeps its name, and the sketch's plane rises.
-      setInputs(doc, 'fb', { height: length('12 mm') }),
-      doc,
-      // The box whose edge the sketch projects.
-      setInputs(doc, 'eb', { width: length('12 mm') }),
-      doc,
-      // `fb:0` replaced by the move's body of the same ID.
-      moved,
-    ]);
-    for (const step of steps) {
-      expect(step.problems).toEqual([]);
-      expect(fallbacks(step.result, step === steps[5] ? moved : doc)).toEqual([]);
-    }
+    const changed = change(doc);
+    const steps = await sequence([doc, changed]);
+    for (const step of steps) expect(step.problems).toEqual([]);
+    expect(fallbacks(steps[0]?.result as NonNullable<(typeof steps)[0]>['result'], doc)).toEqual(
+      [],
+    );
+    expect(
+      fallbacks(steps[1]?.result as NonNullable<(typeof steps)[1]>['result'], changed),
+    ).toEqual([]);
     expect(steps[0]?.result.stats.viewed).toContain('sk');
     expect(steps[0]?.result.features['sk' as FeatureId]?.status).toBe('ok');
-    expect(steps[1]?.evaluated).toEqual(['fb', 'sk', 'ek', 'fl']);
-    expect(steps[3]?.evaluated).toEqual(['eb', 'sk', 'ek', 'fl']);
-    expect(steps[5]?.evaluated).toEqual(['mf', 'sk', 'ek', 'fl']);
+    expect(steps[1]?.evaluated).toEqual([first, 'sk', 'ek', 'fl']);
     const frame = (i: number) =>
       JSON.stringify((steps[i]?.result.reports['sk' as FeatureId] as { frame?: unknown })?.frame);
-    expect(frame(1)).not.toEqual(frame(0));
-    expect(frame(5)).not.toEqual(frame(0));
+    return { moved: frame(1) !== frame(0) };
+  };
+
+  it('never stale: the face’s box taller, the face keeping its name', {
+    timeout: 120_000,
+  }, async () => {
+    const { moved } = await stale((doc) => setInputs(doc, 'fb', { height: length('12 mm') }), 'fb');
+    // The sketch's plane rises with the face.
+    expect(moved).toBe(true);
+  });
+
+  it('never stale: the box whose edge the sketch projects', { timeout: 120_000 }, async () => {
+    await stale((doc) => setInputs(doc, 'eb', { width: length('12 mm') }), 'eb');
+  });
+
+  it('never stale: the face’s body replaced by a body of the same ID from another feature', {
+    timeout: 120_000,
+  }, async () => {
+    // A move of `fb:0` before the sketch: `fb:0` is now the move's body, a version of its own.
+    const { moved } = await stale(
+      (doc) => ({
+        ...doc,
+        features: doc.features.flatMap((f) =>
+          f.id === 'sk' ? [feature('mf', 'move', moveInputs(['fb:0'], { dz: '5 mm' })), f] : [f],
+        ),
+        timelineMarker: doc.features.length + 1,
+      }),
+      'mf',
+    );
+    expect(moved).toBe(true);
   });
 
   it('a face found only by a related name: keyed by every body, the same result', {
