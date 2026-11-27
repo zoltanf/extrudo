@@ -340,7 +340,7 @@ export function reachAlong(
   return far;
 }
 
-/** An extrude's through-all length past `reachAlong`'s distance: 0 for none, else 5% more (≥ 1 mm). */
+/** An extrude's through-all length from `reachAlong`'s: 0 for none, else 5% more (≥ 1 mm). */
 export const throughMargin = (far: number): number =>
   far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
 
