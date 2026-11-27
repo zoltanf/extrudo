@@ -25,8 +25,9 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import { kernelFeatures } from '../features';
-import { fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import { choice, fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
 import {
+  BASE,
   box,
   computed,
   type Design,
@@ -169,8 +170,128 @@ const DESIGNS: Design[] = FAMILIES.filter((family) => family !== 'coil').map((fa
   steps: 18,
 }));
 
+/** `family`'s design with `fb` picked and `operation` (a picked cut, or a picked join). */
+const picked = (family: string, operation: 'cut' | 'join') =>
+  setInputs(design(family), 'cut', {
+    bodies: { kind: 'ref', refs: [{ kind: 'body', id: 'fb:0' }] },
+    operation: choice(operation),
+  });
+
+/**
+ * A box `pk` on top of `fb` (10 mm up), cut by a 4 mm box placed on `fb`'s top face, `pk` picked:
+ * `fb` is in the view by the face reference, not picked; boxes before, between and after.
+ */
+async function onFace(): Promise<ExtrudoDocument> {
+  const parts = document('a box', [box('fb', 0)]);
+  const face = await computed(parts, (engine) => faceRefs(engine, 'fb:0', top)[0] as GeomRef);
+  return document('a picked cut placed on another body’s face', [
+    box('o0', -40),
+    box('fb', 0),
+    feature('pk', 'box', { ...box('pk', 0).inputs, offset: length('10 mm') }),
+    box('o1', 20),
+    feature(
+      'cut',
+      'box',
+      primitiveInputs('box', {
+        plane: face,
+        numbers: { length: '4 mm', width: '4 mm', height: '6 mm' },
+        operation: 'cut',
+        bodies: ['pk:0'],
+      } as never),
+    ),
+    box('o2', 40),
+  ]);
+}
+
+/** The edits of a design that picks its bodies from the start. */
+const PICKED_KINDS = [
+  ...BASE,
+  'twice',
+  'untwice',
+  'size-face',
+  'size-before',
+  'nudge',
+  'nudge',
+  'op-cycle',
+  'op-cycle',
+  'op-cycle',
+  'op-cycle',
+  ...GENERIC_KINDS,
+] as Kind[];
+
+const PICKED: Design[] = [
+  ...(
+    [
+      ['a picked box cut on a plane', 'primitive', 'cut'],
+      ['a picked revolve join', 'revolve', 'join'],
+      ['a picked sweep cut', 'sweep', 'cut'],
+    ] as const
+  ).map(
+    ([name, family, operation]): Design => ({
+      name: `${name}, a box moved into its way and out`,
+      make: async () => picked(family, operation),
+      target: 'cut',
+      refsKey: 'bodies',
+      // No bodies picked: automatic, `touch`, a view too.
+      rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
+      kinds: PICKED_KINDS,
+      flips: [
+        'twice: view→view',
+        'untwice: view→view',
+        'size-face: view→view',
+        'size-before: view→view',
+        'nudge: view→view',
+        'op-cycle: view→view',
+        'op-cycle: view→write',
+        'op-cycle: write→view',
+      ],
+      steps: 24,
+    }),
+  ),
+  {
+    name: 'a picked box cut placed on another body’s face, that body and others edited',
+    make: onFace,
+    target: 'cut',
+    refsKey: 'bodies',
+    // No bodies picked: automatic with a tool on a face, `write` (the default rule's flips).
+    kinds: PICKED_KINDS,
+    flips: [
+      'twice: view→view',
+      'size-face: view→view',
+      'size-before: view→view',
+      'nudge: view→view',
+      'op-cycle: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+    ],
+    steps: 24,
+  },
+];
+
 describe('view access: the other operations (ADR-0024)', () => {
   proveDesigns(DESIGNS);
+  proveDesigns(PICKED);
+
+  it('a picked cut placed on another body’s face: that body runs it, an unrelated one doesn’t', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = await onFace();
+    const docs = [
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+      setInputs(doc, 'fb', { height: length('12 mm') }),
+    ];
+    const run = await sequence(docs);
+    run.forEach((step, i) => {
+      expect(step.problems, `step ${i}`).toEqual([]);
+      expect(fallbacks(step.result, docs[i] as ExtrudoDocument), `step ${i}`).toEqual([]);
+    });
+    expect(run[0]?.result.features['cut' as FeatureId]?.status).toBe('ok');
+    expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+    expect(run[1]?.evaluated).toEqual(['o0']);
+    // The face's box taller: its face rises, and the cut with it.
+    expect(run[2]?.evaluated).toEqual(['fb', 'cut']);
+  });
 
   it.each(FAMILIES)(
     '%s: a box nothing touches alone; the cut box and a box come to touch run the cut',

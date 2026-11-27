@@ -114,13 +114,12 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
 
 /**
  * Whether an extrude joins, cuts or intersects the bodies its tool touches and reads no other
- * (`touch`, ADR-0024's amendment on operations): automatic participants, or a join of picked
- * bodies (its report lists every body the tool touches; the picked ones are in its view too)
- * (`touchingBodies` asks every body, and the engine asks again only bodies it hasn't asked this
- * tool), every side by a
- * distance (`through-all` and `to-object` measure every body), and every profile a sketch's
- * profile or text, so the tool reads no body (a face profile is a body's face, and the engine
- * keeps a tool by everything but the bodies).
+ * (`touch`, ADR-0024's amendments on operations): automatic participants, or a join of picked
+ * bodies (its report lists every body the tool touches; the picked ones are in its view too;
+ * `touchingBodies` asks every body, and the engine asks again only bodies it hasn't asked this
+ * tool); every side by a distance (`through-all` and `to-object` measure every body); and every
+ * profile a sketch's profile or text, so the tool reads no body (a face profile is a body's face,
+ * and the engine keeps a tool by everything but the bodies).
  */
 export function touches(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);

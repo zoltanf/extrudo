@@ -628,4 +628,44 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[1]?.result.features['jn' as FeatureId]?.status).toBe('error');
     expect(run[1]?.evaluated).toEqual(['jn']);
   });
+
+  it('touch: a picked join that misses its picked box and touches another: the answers it hands over', {
+    timeout: 120_000,
+  }, async () => {
+    // The slot touches `cb` (not picked) and misses `pb` (picked): a new body, `cb` in its report.
+    // With a kept tool the cut's evaluation is told which bodies it touches: `pb` must come out
+    // "not touched" (in the view, as a picked body, but apart from the tool), or it would be fused
+    // with a tool apart from it.
+    const base = document('a picked join apart from its body', [
+      box('o0', -40),
+      box('pb', 0),
+      box('cb', 20),
+      ...joined('jn', [12, -1, 28, 1]),
+    ]);
+    const doc = setInputs(base, 'jn', { bodies: bodies('pb:0') });
+    const run = await steps([
+      doc,
+      setInputs(doc, 'cb', { height: length('12 mm') }),
+      at(doc, 'pb', 8),
+      at(doc, 'pb', -20),
+    ]);
+    expect(run[0]?.result.features['jn' as FeatureId]?.status).toBe('warning');
+    expect(run[1]?.evaluated).toEqual(['cb', 'jn']);
+    expect(run[1]?.result.bodies.map((b) => b.id)).toEqual(['o0:0', 'pb:0', 'cb:0', 'jn:0']);
+    // In the slot's way: joined.
+    expect(run[2]?.evaluated).toEqual(['pb', 'jn']);
+    expect(run[2]?.result.bodies.map((b) => b.id)).toEqual(['o0:0', 'pb:0', 'cb:0']);
+    expect(run[3]?.evaluated).toEqual(['pb', 'jn']);
+  });
+
+  it('touch: a to-object body left from an earlier extent is in the view (sound, a run more)', {
+    timeout: 120_000,
+  }, async () => {
+    // `toObject` names `o0` but the extent is a distance again: the engine takes every `body`
+    // reference as picked, so `o0` is in the cut's view and its edit runs the cut too.
+    const doc = setInputs(touching(), 'cut', { toObject: bodies('o0:0') });
+    const run = await steps([doc, setInputs(doc, 'o0', { length: length('12 mm') })]);
+    expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+    expect(run[1]?.evaluated).toEqual(['o0', 'cut']);
+  });
 });

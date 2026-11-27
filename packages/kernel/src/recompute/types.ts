@@ -112,13 +112,16 @@ export interface ImportedFile {
  *   own ID prefix exists already, and after an error
  *   to try again once the bodies before it change (`OutsideError` `retry: 'bodies'`), as `add`
  *   is.
- * - `touch` (ADR-0024's amendment on operations): joins, cuts or intersects the bodies its tool
- *   touches and reads no other (an extrude with automatic participants by distances). Its view is
- *   the bodies the tool touches: the engine keeps the tool by everything but the bodies and asks
- *   it again of each body whose version it hasn't asked about (`touchingBodies`); the first walk
- *   evaluates with every body and keys the result by the bodies it touched (`output.touched`).
- *   Then as `view`. Answer it only for inputs whose tool reads no body and whose evaluation reads
- *   the others only through `touchingBodies`.
+ * - `touch` (ADR-0024's amendments on operations): joins, cuts or intersects the bodies its tool
+ *   touches (automatic participants, or a join of picked bodies) and reads no other but the ones
+ *   it picks: an extrude, revolve, sweep, loft, coil or primitive whose tool reads no body
+ *   (`operationAccess`). Its view is the bodies the tool touches and the ones it picks: the
+ *   engine keeps the tool by everything but the bodies and asks it again of each body whose
+ *   version it hasn't asked about (`touchingBodies`), and hands the evaluator those answers
+ *   (`EvalContext.touched`); the first walk evaluates with every body and keys the result by the
+ *   bodies it touched (`output.touched`). Then as `view`. Answer it only for inputs whose tool
+ *   reads no body and whose evaluation reads the others only through `touchingBodies` and
+ *   `explicitBodies`.
  */
 export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view' | 'touch';
 

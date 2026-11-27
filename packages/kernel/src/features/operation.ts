@@ -86,9 +86,10 @@ export interface OperationSettings {
  * An operation feature's body access (ADR-0024's amendments on `add` access and on operations):
  * `add` for a new body with no picked bodies; `view` for a cut or intersect of picked bodies (they
  * and the bodies its other references name are the view); `touch` for a join, cut or intersect of
- * the bodies its tool touches (automatic, or a join of picked bodies); else `write`. `tool`: whether
- * its tool reads no body (`readsNone`: every reference upstream or none, so the tool is a function
- * of the inputs and upstream keys), and whether it measures every body (`everyBody`: `write`).
+ * the bodies its tool touches (automatic, or a join of picked bodies) when its tool reads no body;
+ * else `write`. `tool`: whether its tool reads no body (`readsNone`: every reference upstream or
+ * none, so the tool is a function of the inputs and upstream keys), and whether it measures every
+ * body (`everyBody`: `write`).
  */
 export function operationAccess(
   settings: { operation: BodyOperation; bodies: readonly string[] },
@@ -99,7 +100,8 @@ export function operationAccess(
   if (picked && (settings.operation === 'cut' || settings.operation === 'intersect')) return 'view';
   if (!tool.readsNone) return 'write';
   if (settings.operation === 'new-body') return picked ? 'write' : 'add';
-  return !picked || settings.operation === 'join' ? 'touch' : 'write';
+  // Automatic participants, or picked ones joined (a picked cut or intersect is `view` above).
+  return 'touch';
 }
 
 /** The bodies named in `bodies`, or undefined for "automatic". */
