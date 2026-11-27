@@ -2169,7 +2169,7 @@ bodies; previews.
 
 **Test time** (on one machine, under load from other work, run with the other `view-access` files):
 `view-access-built.test.ts` 13.9 s, new; `view-access-operations.test.ts` 31.3 s (was 22.9 s on the
-last step's run, with three answers and two designs changed); `view-access-operation.test.ts`
+last step's run; its answers and two of its tests changed); `view-access-operation.test.ts`
 14.0 s (was 12.5 s): about +24 s.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
