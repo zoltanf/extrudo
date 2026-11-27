@@ -23,6 +23,7 @@ import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import { kernelFeatures } from '../features';
+import { reachAlong } from '../features/operation';
 import {
   bytesOf,
   type Done,
@@ -342,6 +343,22 @@ describe('view access: up to an object (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['o1', 'cut']);
     expect(touching(run, 1)).toEqual(['fb:0', 'o1:0']);
     expect(run[2]?.evaluated).toEqual(['o0']);
+  });
+
+  it('the reach is unclamped: boxes wholly behind give their extent, so the box round them is exact', () => {
+    // Along -x from the origin, boxes at x 5 to 9 reach -5: the box round them starts at x 5, as
+    // every box's minimum gives it. Clamped at 0 it would start at the origin.
+    const boxes = [
+      { min: [5, 1, 2], max: [6, 3, 4] },
+      { min: [7, -1, 0], max: [9, 2, 3] },
+    ];
+    // `+ 0` makes a -0 a 0: the box's minimum comes back as -(-0) where a box starts at 0, which
+    // only enters the target's size through a subtraction.
+    const far = (along: number[]) => (reachAlong(boxes, [0, 0, 0], along) as number) + 0;
+    expect([-far([-1, 0, 0]) + 0, far([1, 0, 0])]).toEqual([5, 9]);
+    expect([-far([0, -1, 0]) + 0, far([0, 1, 0])]).toEqual([-1, 3]);
+    expect([-far([0, 0, -1]) + 0, far([0, 0, 1])]).toEqual([0, 4]);
+    expect(reachAlong([], [0, 0, 0], [1, 0, 0])).toBeUndefined();
   });
 
   it('answers: touch up to a face, a vertex or a plane, write up to a body or with none', () => {
