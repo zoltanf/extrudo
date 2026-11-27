@@ -773,7 +773,7 @@ for (const path of [
   '/docs/tools/trim/',
   '/docs/api/',
   '/docs/api/features/extrude/',
-])
+]) {
   test(`the docs page ${path} passes an axe audit in both themes`, async ({ page }) => {
     for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme });
@@ -797,6 +797,7 @@ for (const path of [
         .toEqual([]);
     }
   });
+}
 
 test('an old link to a design goes on to the app with its route', async ({ page }) => {
   await page.route(`${APP_URL}/**`, (route) =>
@@ -1067,17 +1068,16 @@ test('every text on the landing, features and download pages meets WCAG AA contr
   expect(failures, 'text under WCAG AA contrast against its painted background').toEqual([]);
 });
 
-test('the landing, features and download pages pass an axe audit under both system themes', async ({
-  page,
-}) => {
-  // NFR-07, like e2e/a11y.spec.ts for the app: WCAG 2.1 A and AA. The page is dark
-  // whatever the system theme (ADR-0057 amendment, 2026-10-05); both schemes are
-  // emulated to prove it.
-  // This is a net for the rules axe can judge; it deliberately does **not** judge text
-  // over the body's gradient (`--x-glow`), which it reports as *incomplete* instead of
-  // passing or failing, so the measurement of every text against its painted
-  // background above covers contrast.
-  for (const path of ['/', '/features/', '/download/'])
+// NFR-07, like e2e/a11y.spec.ts for the app: WCAG 2.1 A and AA. The page is dark
+// whatever the system theme (ADR-0057 amendment, 2026-10-05); both schemes are
+// emulated to prove it.
+// This is a net for the rules axe can judge; it deliberately does **not** judge text
+// over the body's gradient (`--x-glow`), which it reports as *incomplete* instead of
+// passing or failing, so the measurement of every text against its painted
+// background above covers contrast.
+// One test per page, as the docs audit above.
+for (const path of ['/', '/features/', '/download/']) {
+  test(`the site page ${path} passes an axe audit under both system themes`, async ({ page }) => {
     for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme });
       await page.goto(`${host.url}${path}`);
@@ -1102,4 +1102,5 @@ test('the landing, features and download pages pass an axe audit under both syst
         )
         .toEqual([]);
     }
-});
+  });
+}

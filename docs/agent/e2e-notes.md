@@ -24,11 +24,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
 
-- **A timed-out test reports a second, misleading error.** On a timeout Playwright runs
-  `afterEach` while the test body still waits, so a `startStaticHost` closed there makes
-  the pending `page.goto` fail with `net::ERR_CONNECTION_REFUSED`: read the timeout as the
-  cause. Keep a test to a few page audits (the docs axe audit is one test per page; all
-  fourteen in one test took 22-28 s of 30 s in CI and timed out under load).
+- **A timed-out test reports a second, misleading error.** After a
+  timeout Playwright runs `afterEach` while the test body is still running,
+  so `startStaticHost`'s `close` there stops the host, and a `page.goto`
+  still running or issued then fails with `net::ERR_CONNECTION_REFUSED`:
+  read the timeout as the cause. Keep a test to a few page audits (the site
+  spec's axe audits are one test per page; the fourteen docs audits in one
+  test took 22-28 s of 30 s in CI and timed out under load).
 
 - **Undo right after Finish Sketch reopens the sketch** (ADR-0010's
   2026-11-06 amendment): the first `Control+z` changes nothing in the
@@ -2627,10 +2629,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   "Input", "Type", "Required or default", "What it does"), its face roles and its
   example code, the sidebar link that navigates (`aria-current="page"` on the page's
   own entry), **no `script` element at all** and no policy violation
-  (`watchPolicy`), plus an axe audit of both themes on seven docs pages, one test per page. The pages come from `docs/api/**.md` at build time, so run `pnpm
-  api:generate` before `pnpm build` when the Markdown changed, and the unit tests
-  are `apps/site/src/docs.test.ts` (every file becomes a page, links point to
-  pages, the sidebar's order).
+  (`watchPolicy`), plus an axe audit of both themes on seven docs pages, one
+  test per page. The pages come from `docs/api/**.md` at build time, so run
+  `pnpm api:generate` before `pnpm build` when the Markdown changed, and the
+  unit tests are `apps/site/src/docs.test.ts` (every file becomes a page,
+  links point to pages, the sidebar's order).
 
 - **Features, download and FAQ e2e** (`e2e/site.spec.ts`, ADR-0057's amendment of
   2026-10-11): `/features/` is a second page of the site (`apps/site/features/index.html`;
