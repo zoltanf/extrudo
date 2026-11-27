@@ -1904,3 +1904,137 @@ In the app (the 20 plates with a sketch and a cut as a file, production build, C
 edit of the first plate in its dialog 2,528 (2,527–2,534) → 196 (195–203); undoing it 324
 (321–324) → 322 (321–323); opening the design 1,820 (1,724–2,078) → 1,818 (1,639–2,198). The
 page's blocked time: commit 0 → 0, undo 0 → 0, open 462 (415–475) → 540 (439–628).
+
+## Amendment 2026-11-27: the other operations keyed by the bodies they touch or pick
+
+**Decision.** Every operation feature that goes through `operate` answers by one rule
+(`operationAccess`, `features/operation.ts:93`): `add` for a new body with no picked bodies; `view`
+for a cut or intersect of picked bodies; `touch` for a join, cut or intersect of the bodies its
+tool touches (automatic participants, or a join of picked bodies) when the tool reads no body; else
+`write`. A tool that measures every body (a revolve to an object) is `write` whatever it picks.
+
+- **Picked joins** (the extrude's, and every family's) answer `touch`. Their report lists every
+  body the tool touches, so the touch test stays; the bodies they pick are added to the view (the
+  engine takes the feature's `body` references, `pickedBodies`), so `explicitBodies` finds them,
+  and a picked body that isn't there keeps today's key (the feature's error). `operate` now sets
+  `touched` for a join of picked bodies too, also when it touches none of them (a new body).
+- **Revolve, sweep, loft, coil, primitives** answer through `operationAccess`, each with when its
+  tool reads no body (the conditions their `add` answers already had).
+- **The evaluator takes the engine's answers.** With a kept tool, the engine hands the evaluator
+  what it asked that tool of each body version (`EvalContext.touched`); `touchingBodies` takes those
+  answers instead of asking again (the same tool key builds the same tool, a version is one shape).
+  Without it, a touched body that changed was asked twice (by the engine, then by the evaluator):
+  measured on 20 plates with a coil cut each, an edit of the last plate went 850 → 1,244 ms.
+
+The engine change for this amendment: 27 lines of code added and 5 removed, comments aside (the
+picked bodies in the view, and the answers handed to the evaluator). No facade change, no change to
+results.
+
+**What each reads** (audited for this change; file:line, `features/`; what `operate` reads is in
+the amendment on operations):
+
+| Feature | The tool reads | `touch` when | `view` (picked cut, intersect) |
+|---|---|---|---|
+| Revolve (`revolve.ts`) | its axis: an origin or construction axis or a sketch line (`lineOf`, :280), or an edge resolved (:286); its profiles (`baseOf`: a sketch's through `ctx.output` or a face resolved); an angle, or `to-object`, which sizes its target from every body (`sweepToObject`, :509, :533) | an angle, the axis an `axis` or `sketchEntity`, every profile a sketch's | not `to-object` (an edge axis or a face profile is in the view by its reference) |
+| Sweep (`sweep.ts`) | its profiles (`baseOf`, :100); its path: sketch curves through `ctx.output` (:238) or edges resolved (:228) | every profile a sketch's, the path sketch curves | always |
+| Loft (`loft.ts`) | its sections: profiles through `ctx.output` (:135), points (`pointOf`, :125: a construction point upstream, a vertex resolved), faces | every section a profile, point or sketch entity | always |
+| Coil (`coil.ts`) | its placement (`planeFrame`, :205: an origin or construction plane, or a face resolved, `primitives.ts:279`) | on a plane | always |
+| Primitives (`primitives.ts`) | as the coil (`planeFrame`, :263, :277–295) | on a plane | always |
+
+Each then calls `explicitBodies` (:261, :107, :94, :165, :121), `operate` (:266, :113, :99, :170,
+:126) and `splitSolids`. No evaluator above reads the bodies otherwise.
+
+**Not in** (still `write`): hole, emboss and rib (they read the bodies themselves), `through-all`
+and `to-object` with automatic participants, and any tool built on a body's face, edge or vertex
+with automatic participants or a picked join (the tool key holds no body; the plan in the private
+folder weighs a tool key with the referenced bodies' versions for those).
+
+**What no longer holds.** In the amendment on operations, "a join of picked bodies stays `write`"
+and its "Not in" list's revolves, sweeps, lofts, coils and primitives: they answer as above.
+This amendment replaces those.
+
+**The proof.** Shared with the extrude (one code path for every family: the touch test asked
+again, the key, the view, a failed ask, an evicted tool, the order and version terms, the report
+before the ask), tested once in `recompute/view-access-operation.test.ts`. Per family, in
+`recompute/view-access-operations.test.ts` (real OCCT and manifold, strict leaks, no clock, a
+fixed seed): one small design each, a box `fb` its tool cuts, a box `o1` 20 mm off that `nudge`
+moves into the tool's way, boxes before and after.
+
+- **Seeded edits** (18 each; the revolve, sweep, loft and box cut; the coil's left out for time, its
+  answer the same `operationAccess`): the cut box and the boxes before and after 10 → 12 mm and
+  back; the box between moved into the tool's way and out; the operation cut → intersect → join →
+  new body → cut; the generic edits. At every step equal to a cleared engine (versions included)
+  and to today's keys, no fall-back.
+- **Counters** (each of the five): a box nothing touches runs alone; the cut box runs the cut; a box
+  come into the tool's way runs the cut; gone somewhere new, the cut's first result from the cache.
+- **A picked revolve cut** is keyed by the bodies it picks: a box in its way but not picked runs
+  alone.
+- **The answers:** for each family, `touch`, `view`, `write` and `add` for the inputs above.
+- **A box cut placed on a body's face** keeps every-body keys: moving that body moves the tool into
+  another box's way.
+- **Picked joins** (`view-access-operation.test.ts`): a seeded design (24 edits: a body that doesn't
+  exist and back, no bodies and back, a body picked twice and back, the cut box and the box before
+  resized, the box it touches but doesn't pick moved in and out, the operation cycle, the generic
+  edits); counters (a box nothing touches alone; a box come into the slot's way runs the join and
+  is listed in its report, not joined; the picked box moved off: a new body and its warning); the
+  picked box suppressed: the join's error, as a cleared engine's, no fall-back.
+- **The answers handed over:** a touched box made taller is asked its exact distance once (by the
+  engine); the cut run again takes that answer.
+
+**Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
+
+| Taken out | Tests that failed |
+|---|---|
+| the picked bodies in a `touch` view | the picked-join counters (a look-up outside the view: a fall-back) |
+| a picked body missing keeps today's key | the picked box suppressed (a fall-back) |
+| a join of picked bodies as `touch` (`touches`) | the seeded picked join, the extrude's answers, the picked-join counters |
+| `touched` set for a join of picked bodies | the seeded picked join, the picked-join counters (versions) |
+| `touched` set for a join that touches none of its picked bodies | the join that touches nothing (versions) |
+| `view` for a picked cut or intersect (`operationAccess`) | the picked revolve cut, the answers |
+| `touch` at all (`operationAccess`) | the four seeded families, the five counters, the answers |
+| the revolve's axis term; its profile term; its `to-object` term | the answers |
+| the sweep's path term; the loft's sections term; the coil's plane term | the answers |
+| the primitives' plane term | the answers, the box cut on a body's face (stale: its tool kept from before the body moved) |
+| the answers handed to the evaluator | the report-order test (the exact distance asked twice) |
+
+Not caught, by reading only: the engine recording the touched bodies (not the view's) as the
+tool's answers. The two differ only for a picked body the tool doesn't touch, which is in the view
+anyway, so nothing depends on it.
+
+**Not covered** by a test (by reading only): the coil's seeded proof (its counters and answers are
+tested); a sweep of a face profile or along edges, a loft through a vertex, a revolve about an
+edge, picked (their `view` is the existing rule over their references); mesh bodies; a tool of
+several solids (a pattern's); previews.
+
+**Test time** (on one machine, under load from other work): `view-access-operations.test.ts`
+TT_NEW s, new; `view-access-operation.test.ts` TT_OLD s with the picked joins and the answers
+handed over (was 9.8 s).
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and
+number of evaluations. Versions differ in 17, each with a box or cylinder (or, in the
+sweep-loft-coil benchmark, a coil) that joins or cuts, now keyed by the bodies it touches (in the
+hinge, a picked join and a picked cut): b4, b5, b6, b7, the sweep-loft-coil benchmark and the
+spool holder; the annotate, offset-face, overhang, remove-faces, section, simplify-for-print and
+four sheet demos; the hinge component. No fixture has a revolve, sweep or loft that joins or cuts. The feature
+goldens are unchanged. Every feature of those designs, the fastest of four runs each, main → this:
+10,615 → 10,629 ms over 180 features; the largest increase of one feature +10.1 ms (b9's 6.2 s
+thread, which this change doesn't reach; its runs spread by about ±100 ms).
+
+**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
+time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
+edit its distance to 6 mm), incremental with `have`, in Node, two runs each, main → this. Each plate
+has: a boss on its top face joined to the plate it picks; a revolve cut (a ring about a sketch line
+along the plate, two grooves across it); a sweep cut (a 3 mm circle up a line); a loft cut (a
+10 × 8 mm square to a 4 mm one 8 mm up); a coil cut (Ø12, one turn); a box cut (6 × 6 mm).
+
+| Design | First | Middle | Last | Evaluated / meshes, first |
+|---|--:|--:|--:|--:|
+| a picked join | 2,396 → 172 | 1,336 → 164 | 168 → 168 | 22/20 → 3/1 |
+| a revolve cut | 4,585 → 274 | 2,559 → 268 | 270 → 266 | 21/20 → 2/1 |
+| a sweep cut | 2,892 → 182 | 1,612 → 176 | 174 → 174 | 21/20 → 2/1 |
+| a loft cut | 6,852 → 375 | 3,767 → 392 | 380 → 374 | 21/20 → 2/1 |
+| a coil cut | 16,912 → 857 | 9,302 → 849 | 852 → 850 | 21/20 → 2/1 |
+| a box cut | 3,296 → 204 | 1,834 → 197 | 199 → 202 | 21/20 → 2/1 |
+
