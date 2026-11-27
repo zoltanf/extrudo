@@ -113,7 +113,7 @@ export interface ImportedFile {
  *   to try again once the bodies before it change (`OutsideError` `retry: 'bodies'`), as `add`
  *   is.
  */
-export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view';
+export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view' | 'touch';
 
 /**
  * A feature definition as the kernel sees it: core's data part plus the
@@ -293,6 +293,11 @@ export interface FeatureOutput {
    * sketch's `SketchReport`: its frame and projections). JSON-like.
    */
   report?: unknown;
+  /**
+   * A `touch` feature's tool and the bodies it touched among every body it was given, in their
+   * order (`operate`): what the engine asks the bodies again on a later walk.
+   */
+  touched?: { tool: ShapeHandle; bodies: readonly BodyId[] };
   /** Turns the status to `warning`. */
   warnings?: readonly string[];
   /**

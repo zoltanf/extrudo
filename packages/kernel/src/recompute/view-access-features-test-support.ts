@@ -257,6 +257,7 @@ export type Kind =
   | 'project'
   | 'unproject'
   | 'op-cycle'
+  | 'nudge'
   | 'reach'
   | (typeof GENERIC_KINDS)[number];
 
@@ -392,6 +393,18 @@ export function edit(
       const projections =
         kind === 'project' ? { ...rest, pj: { ref: named.edge, curves: {} } } : rest;
       return set({ sketch: { ...input, sketch: { ...sketch, projections } as never } });
+    }
+    case 'nudge': {
+      // A `touch` design's box between (`o1`) moved into the tool's way (12 mm) and out (20 mm).
+      const box = doc.features.find((f) => f.id === 'o1');
+      if (!box || !targetId) return undefined;
+      const was = (box.inputs.x as { expr?: string } | undefined)?.expr;
+      return {
+        doc: setInputs(doc, 'o1', {
+          x: { kind: 'expr', expr: was === '12 mm' ? '20 mm' : '12 mm', unit: 'length' },
+        }),
+        feature: targetId as FeatureId,
+      };
     }
     case 'op-cycle':
     case 'reach': {

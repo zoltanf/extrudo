@@ -15,6 +15,7 @@
  * shared by the entries of every feature it passes through, and goes back to
  * the kernel when the last entry holding it is evicted.
  */
+
 import {
   type Annotation,
   type AnnotationId,
@@ -55,6 +56,7 @@ import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
 import { resolveAnnotation as annotationAt } from '../annotations/resolve';
 import { type SmoothFaces, smoothFaces } from '../features/offset-face';
+import { touchingBodies } from '../features/operation';
 import { kernelSurface, removeFacesPick } from '../features/remove-faces';
 import type { SmoothKind, SubShapeKind } from '../history';
 import { resolveJoint } from '../joints/frames';
@@ -216,6 +218,14 @@ export class RecomputeEngine {
    * more `add` evaluation that falls back again, never a different result.
    */
   readonly #readsBodies = new Set<string>();
+  /**
+   * A `touch` feature's tool by its tool key (everything but the bodies), the entry it came from
+   * (the tool lives as long as that entry) and whether it touches a body, by the body's version.
+   */
+  readonly #touched = new Map<
+    string,
+    { entry: Entry; tool: ShapeHandle; answers: Map<string, boolean> }
+  >();
   /** Which feature made each body shape, for mesh errors. */
   readonly #makers = new Map<ShapeHandle, FeatureId>();
   /** Naming table of each body shape the cache holds (ADR-0005). */
@@ -671,6 +681,7 @@ export class RecomputeEngine {
     for (const entry of this.#entries.values()) this.#drop(entry);
     this.#entries.clear();
     this.#readsBodies.clear();
+    this.#touched.clear();
     this.#runs.clear();
     this.#latest = new Map();
     this.#atMarker = undefined;
@@ -880,10 +891,20 @@ export class RecomputeEngine {
       // (`#viewOf`), inside an isolated expansion, and once its evaluation looked outside it. A
       // `read` feature too (its amendment on `read` features): it changes no body, so it keys
       // the bodies its references name, or every body before it as `read` did.
+      // A feature that changes only the bodies its tool touches (`touch`, the amendment on
+      // operations) sees those and keys their versions, once a walk has shown its tool: the
+      // bodies are asked again against that tool (`#touching`).
+      const toolKey =
+        access === 'touch' && scope === undefined && !hasOwnBodies(bodies, feature.id)
+          ? keyOf('touch')
+          : undefined;
+      const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
       const looked =
         (access === 'view' || access === 'read') && scope === undefined
           ? this.#viewOf(feature, bodies)
-          : undefined;
+          : memo && this.#entries.get(memo.entry.key) === memo.entry
+            ? this.#touching(bodies, memo)
+            : undefined;
       const viewKey = looked && keyOf(hashOf('view', looked.versions));
       // Not when a body has the feature's own ID prefix: its fresh IDs (`<feature>:<n>`) are
       // picked among the bodies it sees, so they could meet one outside the view (as for `add`).
@@ -928,8 +949,10 @@ export class RecomputeEngine {
         return found;
       };
       const outputs = new Map(dependencies.map((id, i) => [id, upstream[i]?.output]));
-      // Whether this walk evaluated it (a cache hit's entry may be another walk's too).
+      // Whether this walk evaluated it (a cache hit's entry may be another walk's too), and whether
+      // a `touch` feature's evaluation asked every body.
       let made = false;
+      let asked = false;
       if (entry) {
         hit(entry);
       } else {
@@ -946,9 +969,40 @@ export class RecomputeEngine {
           (id) => byId.get(id)?.name,
           doc,
           prepared,
+          // A `touch` feature evaluated with every body: keyed by the bodies it touched, as if
+          // with a view of them, its result cut down to those and the new ones.
+          toolKey !== undefined && !view
+            ? (output) => {
+                const touched =
+                  output.touched && this.#viewOfIds(bodies, new Set(output.touched.bodies));
+                const viewed = touched && keyOf(hashOf('view', touched.versions));
+                if (!touched || !viewed || this.#readBodies(viewed) || !output.bodies) return;
+                view = touched.bodies;
+                asked = true;
+                const kept = [...output.bodies].filter(
+                  ([id]) => view?.holds(id) || !bodies.has(id),
+                );
+                return { key: viewed, bodies: new Map(kept) };
+              }
+            : undefined,
         );
         evaluated.push(feature.id);
         made = true;
+        key = entry.key;
+      }
+      if (toolKey !== undefined && view && entry.output?.touched) {
+        // The tool and the answers so far; an evaluation with every body asked every body.
+        const answers = memo?.answers ?? new Map<string, boolean>();
+        for (const [id, shape] of asked ? bodies : []) {
+          const version = this.#versions.get(shape);
+          if (version !== undefined) answers.set(version, view.holds(id));
+        }
+        this.#touched.delete(toolKey);
+        this.#touched.set(toolKey, { entry, tool: entry.output.touched.tool, answers });
+        for (const old of this.#touched.keys()) {
+          if (this.#touched.size <= (this.#options.maxEntries ?? 256)) break;
+          this.#touched.delete(old);
+        }
       }
       // A view's result that `mergeInPlace` can't take (`fitsView`: a property of the result for
       // any evaluator that keeps the rules), or whose new bodies' places under `write` depend on
@@ -1023,9 +1077,9 @@ export class RecomputeEngine {
         for (const [piece, source] of entry.output.origins) origins.set(piece, source);
       }
       if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
-      if ((access === 'write' || access === 'add' || access === 'view') && entry.output.bodies) {
+      if (access !== 'none' && access !== 'read' && entry.output.bodies) {
         // An isolated feature's result replaces only the bodies it saw; an `add` result goes
-        // after the bodies before it; a `view` result takes its bodies' places.
+        // after the bodies before it; a `view` result (a `touch` one too) takes its bodies' places.
         const after = adds
           ? mergeBodies(bodies, new Map(), entry.output.bodies)
           : view
@@ -1330,6 +1384,9 @@ export class RecomputeEngine {
     featureName: (id: FeatureId) => string | undefined,
     doc: ExtrudoDocument,
     prepared?: Prepared,
+    rekey?: (
+      output: FeatureOutput,
+    ) => { key: string; bodies: Map<BodyId, ShapeHandle> } | undefined,
   ): Entry {
     const kernel = this.#kernel;
     const references = this.#references(feature, bodies);
@@ -1411,6 +1468,12 @@ export class RecomputeEngine {
     }
     if (status.status !== 'ok' && issues.size > 0)
       status = { ...status, refs: [...issues.values()] };
+    // A result keyed again by what it read (a `touch` feature evaluated with every body).
+    const re = output && rekey?.(output);
+    if (output && re) {
+      key = re.key;
+      output = { ...output, bodies: re.bodies };
+    }
 
     const handles = output ? outputHandles(output) : [];
     const fresh = handles.filter((h) => !this.#refs.has(h));
@@ -1434,6 +1497,12 @@ export class RecomputeEngine {
       this.#makers.set(h, feature.id);
     }
     const entry: Entry = { key, status, output, handles, ...(retry && { retry }) };
+    // An entry already under the key it was keyed again by holds the same result.
+    const there = re && this.#entries.get(key);
+    if (there) {
+      this.#drop(entry);
+      return there;
+    }
     // Not the document's answer (the bytes not there yet, say): the next recompute asks again.
     if (retry !== 'next') this.#entries.set(key, entry);
     return entry;
@@ -1610,6 +1679,11 @@ export class RecomputeEngine {
       }
     }
     if (ids.size === 0) return undefined;
+    return this.#viewOfIds(bodies, ids);
+  }
+
+  /** A view of the bodies `ids` names, in walk order, with their versions; undefined without one. */
+  #viewOfIds(bodies: ReadonlyMap<BodyId, ShapeHandle>, ids: ReadonlySet<BodyId>) {
     const view = new BodyView();
     const versions: [BodyId, string][] = [];
     for (const [id, shape] of bodies) {
@@ -1620,6 +1694,37 @@ export class RecomputeEngine {
       versions.push([id, version]);
     }
     return { bodies: view, versions };
+  }
+
+  /**
+   * The bodies a `touch` feature's tool touches, asked again (ADR-0024's amendment on
+   * operations): a body whose version this tool was asked of keeps its answer (a version is one
+   * shape); the others are asked as the evaluator asks (`touchingBodies`), boxes first.
+   */
+  #touching(
+    bodies: ReadonlyMap<BodyId, ShapeHandle>,
+    memo: { tool: ShapeHandle; answers: Map<string, boolean> },
+  ) {
+    // Bounded: a long session's edits leave answers for versions no walk will meet again.
+    if (memo.answers.size > 8 * bodies.size + 256) memo.answers.clear();
+    const ask = new Map<BodyId, ShapeHandle>();
+    for (const [id, shape] of bodies) {
+      const version = this.#versions.get(shape);
+      if (version === undefined) return undefined;
+      if (!memo.answers.has(version)) ask.set(id, shape);
+    }
+    if (ask.size > 0) {
+      using scope = this.#kernel.scope();
+      const ctx = { kernel: this.#kernel, bodies: ask } as unknown as EvalContext;
+      const hit = new Set(touchingBodies(ctx, scope, memo.tool));
+      for (const [id, shape] of ask)
+        memo.answers.set(this.#versions.get(shape) as string, hit.has(id));
+    }
+    const ids = new Set<BodyId>();
+    for (const [id, shape] of bodies) {
+      if (memo.answers.get(this.#versions.get(shape) as string)) ids.add(id);
+    }
+    return this.#viewOfIds(bodies, ids);
   }
 
   #references(feature: Feature, bodies: ReadonlyMap<BodyId, ShapeHandle>) {
@@ -2020,7 +2125,8 @@ function newPlaces(
  * Whether a `view` result can be merged in place (`mergeInPlace`), from the result alone: its view
  * bodies in the view's order (no ID put back after its `delete` before a later view body), no ID
  * of a body outside the view (it would replace a body the feature didn't see), and no new body
- * before its first view body. Only the second looks at the bodies outside the view, and only
+ * before its first view body (a view of none, a join that touched nothing, puts its new bodies at
+ * the end, as `write` does). Only the second looks at the bodies outside the view, and only
  * an evaluator that breaks the rules (an ID that isn't its own `<feature>:` prefix) trips it.
  */
 function fitsView(
@@ -2035,7 +2141,7 @@ function fitsView(
     const i = order.get(id);
     if (i === undefined) {
       if (bodies.has(id)) return false;
-      if (at < 0) return false;
+      if (at < 0 && order.size > 0) return false;
       continue;
     }
     if (i < at) return false;

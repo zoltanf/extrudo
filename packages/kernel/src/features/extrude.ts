@@ -90,7 +90,8 @@ interface Side {
  */
 export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
   ...extrudeFeature,
-  bodyAccess: (inputs) => (addsOnly(inputs) ? 'add' : cutsPicked(inputs) ? 'view' : 'write'),
+  bodyAccess: (inputs) =>
+    addsOnly(inputs) ? 'add' : cutsPicked(inputs) ? 'view' : touches(inputs) ? 'touch' : 'write',
   evaluate: evaluateExtrude,
   csg: extrudeCsg,
 };
@@ -108,6 +109,24 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
     (settings.operation === 'cut' || settings.operation === 'intersect') &&
     settings.bodies.length > 0 &&
     settings.sides.every((side) => side.extent === 'distance' || side.extent === 'through-all')
+  );
+}
+
+/**
+ * Whether an extrude joins, cuts or intersects the bodies its tool touches and reads no other
+ * (`touch`, ADR-0024's amendment on operations): automatic participants (`touchingBodies` asks
+ * every body, and the engine asks again only bodies it hasn't asked this tool), every side by a
+ * distance (`through-all` and `to-object` measure every body), and every profile a sketch's
+ * profile or text, so the tool reads no body (a face profile is a body's face, and the engine
+ * keeps a tool by everything but the bodies).
+ */
+export function touches(inputs: ExtrudeInputs): boolean {
+  const settings = extrudeSettings(inputs);
+  return (
+    settings.operation !== 'new-body' &&
+    settings.bodies.length === 0 &&
+    settings.sides.every((side) => side.extent === 'distance') &&
+    settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity')
   );
 }
 

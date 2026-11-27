@@ -134,7 +134,9 @@ export function operate(
   participants: BodyId[] | undefined,
   warnings: string[],
   words: OperationWords,
-): Pick<FeatureOutput, 'bodies' | 'names' | 'previewTools'> & { report: OperationReport } {
+): Pick<FeatureOutput, 'bodies' | 'names' | 'previewTools' | 'touched'> & {
+  report: OperationReport;
+} {
   const { kernel } = ctx;
   const operation = settings.operation;
   if (operation === 'new-body') {
@@ -146,6 +148,8 @@ export function operate(
   const touching =
     participants && operation !== 'join' ? [] : touchingBodies(ctx, scope, tool.shape);
   const report: OperationReport = { touching };
+  // Asked of every body: the tool and what it touched, for a `touch` key (ADR-0024).
+  const touched = participants ? {} : { touched: { tool: tool.shape, bodies: touching } };
   const targets = participants ?? touching;
   const set = 'passes' in tool && tool.interferes ? tool : undefined;
   // Kept only on success: a failure below must release the tool with the scope.
@@ -186,7 +190,7 @@ export function operate(
     const [first, ...rest] = joining;
     if (first === undefined) {
       warnings.push(`Nothing to join to, so the ${words.noun} made a new body.`);
-      return { ...newBodies(ctx, scope, tool, words), previewTools: preview(), report };
+      return { ...newBodies(ctx, scope, tool, words), previewTools: preview(), report, ...touched };
     }
     // (A tool set of overlapping instances is only made for cuts: joins fuse them first.)
     if (set) throw new KernelError(`Overlapping instances can't be joined in passes.`);
@@ -204,6 +208,7 @@ export function operate(
       names: new Map([[first, joined.names]]),
       previewTools: preview(),
       report,
+      ...touched,
     });
   }
 
@@ -270,7 +275,7 @@ export function operate(
     bodies.set(id, scope.keep(result.shape));
     names.set(id, result.names);
   }
-  return nameMeshBodies(ctx, { bodies, names, previewTools: preview(), report });
+  return nameMeshBodies(ctx, { bodies, names, previewTools: preview(), report, ...touched });
 }
 
 /** A box as `Kernel.measure` gives it (loose: it never cuts into the shape). */

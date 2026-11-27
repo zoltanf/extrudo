@@ -954,8 +954,8 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
     timeout: 120_000,
   }, async () => {
     const broken = await faultyEngine([
-      '    if (ids.size === 0) return undefined;\n    const view = new BodyView();',
-      '    if (ids.size === 0) return undefined;\n    ids.delete([...ids].at(-1) as BodyId);\n    const view = new BodyView();',
+      '    if (ids.size === 0) return undefined;\n    return this.#viewOfIds(bodies, ids);',
+      '    if (ids.size === 0) return undefined;\n    ids.delete([...ids].at(-1) as BodyId);\n    return this.#viewOfIds(bodies, ids);',
     ]);
     try {
       const doc = await acrossTwo();
