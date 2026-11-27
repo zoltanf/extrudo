@@ -53,8 +53,6 @@ export interface ExtrudeOutputData {
 /** The far caps' roles of sides cut back by an object, until `trimSweep` checks them. */
 const FAR = ['cap:far', 'cap:far2'] as const;
 
-/** Lengths (mm) at or below which an extrude has none. */
-
 /** How an extrude speaks of itself (the shared operation code, `operation.ts`). */
 const WORDS: OperationWords = { noun: 'extrude', check: 'Check its direction and distance.' };
 
