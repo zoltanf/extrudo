@@ -21,7 +21,7 @@ import { type NamedShape, namedSweep, type SweepSource } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate } from './operation';
+import { explicitBodies, type OperationWords, operate, operationAccess } from './operation';
 import type { SketchOutputData } from './sketch';
 import { baseOf } from './sources';
 import { dot, length, scale, sub, unit } from './vec';
@@ -51,7 +51,15 @@ export const PROFILE_PLACEMENT = (pathLength: number) => Math.max(0.01 * pathLen
  */
 export const kernelSweep: KernelFeatureDefinition<SweepInputs> = {
   ...sweepFeature,
-  bodyAccess: (inputs) => (sweepAddsOnly(inputs) ? 'add' : 'write'),
+  bodyAccess: (inputs) => {
+    const settings = sweepSettings(inputs);
+    // A face profile or a path of body edges is a body's: its tool reads that body.
+    return operationAccess(settings, {
+      readsNone:
+        settings.profiles.every((ref) => ref.kind === 'profile') &&
+        settings.path.every((ref) => ref.kind === 'sketchEntity'),
+    });
+  },
   evaluate: evaluateSweep,
 };
 

@@ -133,6 +133,21 @@ const joined = (id: string, rect: [number, number, number, number]) =>
     f.id === id ? { ...f, inputs: { ...f.inputs, operation: choice('join') } } : f,
   );
 
+/**
+ * A join of a picked box `fb`: a slot reaching from it towards `o1` (20 mm off: `nudge` moves it
+ * to 12 mm, into the slot's way, touched but not picked), boxes before and after.
+ */
+function pickedJoin(): ExtrudoDocument {
+  const doc = document('a join of a picked body', [
+    box('o0', -40),
+    box('fb', 0),
+    box('o1', 20),
+    ...joined('jn', [-8, -1, 14, 1]),
+    box('o2', 40),
+  ]);
+  return setInputs(doc, 'jn', { bodies: bodies('fb:0') });
+}
+
 const DESIGNS: Design[] = [
   {
     name: 'cuts of picked bodies, a box in the way it doesn’t pick',
@@ -194,6 +209,38 @@ const DESIGNS: Design[] = [
       'op-cycle: write→view',
       'reach: view→write',
       'reach: write→view',
+    ],
+    steps: 24,
+  },
+  {
+    name: 'a join of a picked box, a box it touches but doesn’t pick moved in and out',
+    make: async () => pickedJoin(),
+    target: 'jn',
+    refsKey: 'bodies',
+    // No bodies picked: a join of the bodies it touches, `touch` too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
+    kinds: [
+      ...BASE,
+      'twice',
+      'untwice',
+      'size-face',
+      'size-before',
+      'nudge',
+      'nudge',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: [
+      'twice: view→view',
+      'untwice: view→view',
+      'size-face: view→view',
+      'nudge: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+      'op-cycle: view→view',
     ],
     steps: 24,
   },
@@ -366,7 +413,8 @@ describe('view access: operations (ADR-0024)', () => {
     expect(access({ operation: 'join' })).toBe('touch');
     expect(access({ operation: 'intersect' })).toBe('touch');
     expect(access({ operation: 'cut', bodies: ['b:0'] })).toBe('view');
-    expect(access({ operation: 'join', bodies: ['b:0'] })).toBe('write');
+    expect(access({ operation: 'join', bodies: ['b:0'] })).toBe('touch');
+    expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('write');
     expect(access({ operation: 'cut', extent: 'through-all' })).toBe('write');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');
     expect(access({ operation: 'cut' }, { kind: 'face', id: 'f[top]' })).toBe('write');
@@ -471,6 +519,11 @@ describe('view access: operations (ADR-0024)', () => {
         await engine.recompute({ doc: grown }, (id) => log.push(`feature ${id ?? '-'}`));
         // The box, then the cut reported, then its exact distance to the box asked.
         expect(log.slice(0, 3)).toEqual(['feature nb', 'feature cc', 'distance']);
+        // The box the cut touches made taller: asked once, by the engine; the cut, run again with
+        // it, takes that answer (`EvalContext.touched`).
+        log.length = 0;
+        await engine.recompute({ doc: setInputs(grown, 'ob', { height: length('12 mm') }) });
+        expect(log).toEqual(['distance']);
       });
     } finally {
       engine.clear();
@@ -539,5 +592,80 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['cut']);
     expect(run[2]?.evaluated).toEqual([]);
     expect(run[3]?.evaluated).toEqual(['o0']);
+  });
+
+  it('touch: a picked join: a box it touches but doesn’t pick runs it, an unrelated one doesn’t', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = pickedJoin();
+    const run = await steps([
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+      at(doc, 'o1', 12),
+      at(doc, 'fb', -30),
+    ]);
+    expect(run[0]?.result.stats.viewed).toEqual(['jn']);
+    expect(run[1]?.evaluated).toEqual(['o0']);
+    // In the slot's way: listed among the bodies it touches (its report), not joined.
+    expect(run[2]?.evaluated).toEqual(['o1', 'jn']);
+    expect(
+      (run[2]?.result.reports['jn' as FeatureId] as { touching?: string[] } | undefined)?.touching,
+    ).toEqual(['fb:0', 'o1:0']);
+    // The picked box off the slot: the join makes a new body and says so.
+    expect(run[3]?.evaluated).toEqual(['fb', 'jn']);
+    expect(run[3]?.result.features['jn' as FeatureId]?.status).toBe('warning');
+  });
+
+  it('touch: the picked box of a join gone (suppressed): its error, as a cleared engine’s, no fall-back', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = pickedJoin();
+    const gone = {
+      ...doc,
+      features: doc.features.map((f) => (f.id === 'fb' ? { ...f, suppressed: true } : f)),
+    };
+    const run = await steps([doc, gone]);
+    expect(run[1]?.result.features['jn' as FeatureId]?.status).toBe('error');
+    expect(run[1]?.evaluated).toEqual(['jn']);
+  });
+
+  it('touch: a picked join that misses its picked box and touches another: the answers it hands over', {
+    timeout: 120_000,
+  }, async () => {
+    // The slot touches `cb` (not picked) and misses `pb` (picked): a new body, `cb` in its report.
+    // With a kept tool the cut's evaluation is told which bodies it touches: `pb` must come out
+    // "not touched" (in the view, as a picked body, but apart from the tool), or it would be fused
+    // with a tool apart from it.
+    const base = document('a picked join apart from its body', [
+      box('o0', -40),
+      box('pb', 0),
+      box('cb', 20),
+      ...joined('jn', [12, -1, 28, 1]),
+    ]);
+    const doc = setInputs(base, 'jn', { bodies: bodies('pb:0') });
+    const run = await steps([
+      doc,
+      setInputs(doc, 'cb', { height: length('12 mm') }),
+      at(doc, 'pb', 8),
+      at(doc, 'pb', -20),
+    ]);
+    expect(run[0]?.result.features['jn' as FeatureId]?.status).toBe('warning');
+    expect(run[1]?.evaluated).toEqual(['cb', 'jn']);
+    expect(run[1]?.result.bodies.map((b) => b.id)).toEqual(['o0:0', 'pb:0', 'cb:0', 'jn:0']);
+    // In the slot's way: joined.
+    expect(run[2]?.evaluated).toEqual(['pb', 'jn']);
+    expect(run[2]?.result.bodies.map((b) => b.id)).toEqual(['o0:0', 'pb:0', 'cb:0']);
+    expect(run[3]?.evaluated).toEqual(['pb', 'jn']);
+  });
+
+  it('touch: a to-object body left from an earlier extent is in the view (sound, a run more)', {
+    timeout: 120_000,
+  }, async () => {
+    // `toObject` names `o0` but the extent is a distance again: the engine takes every `body`
+    // reference as picked, so `o0` is in the cut's view and its edit runs the cut too.
+    const doc = setInputs(touching(), 'cut', { toObject: bodies('o0:0') });
+    const run = await steps([doc, setInputs(doc, 'o0', { length: length('12 mm') })]);
+    expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+    expect(run[1]?.evaluated).toEqual(['o0', 'cut']);
   });
 });

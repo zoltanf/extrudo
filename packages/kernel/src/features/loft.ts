@@ -13,7 +13,7 @@ import { type NamedShape, namedLoft, type SweepSource } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate } from './operation';
+import { explicitBodies, type OperationWords, operate, operationAccess } from './operation';
 import { pointOf } from './references';
 import type { SketchOutputData } from './sketch';
 import { coplanar, type Plane, partsOf } from './sources';
@@ -34,7 +34,15 @@ type Section = (SweepSource & { plane: Plane }) | { point: Vec3 };
  */
 export const kernelLoft: KernelFeatureDefinition<LoftInputs> = {
   ...loftFeature,
-  bodyAccess: (inputs) => (loftAddsOnly(inputs) ? 'add' : 'write'),
+  bodyAccess: (inputs) => {
+    const settings = loftSettings(inputs);
+    // A face or a vertex section is a body's: its tool reads that body.
+    return operationAccess(settings, {
+      readsNone: settings.sections.every(
+        (ref) => ref.kind === 'profile' || ref.kind === 'point' || ref.kind === 'sketchEntity',
+      ),
+    });
+  },
   evaluate: evaluateLoft,
 };
 

@@ -411,9 +411,12 @@ export function edit(
     }
     case 'op-cycle':
     case 'reach': {
-      // The target extrude's operation cut → intersect → join → new body → cut; or its first
-      // side's extent distance ↔ through-all.
-      if (now?.type !== 'extrude') return undefined;
+      // The target's operation cut → intersect → join → new body → cut (an extrude, revolve,
+      // sweep, loft, coil or primitive); or an extrude's first side's extent distance ↔ through-all.
+      if (now === undefined) return undefined;
+      if (kind === 'reach' && now.type !== 'extrude') return undefined;
+      // An extrude without the input is a new body; another feature has it set.
+      if (now.type !== 'extrude' && now.inputs.operation?.kind !== 'enum') return undefined;
       if (kind === 'reach') {
         const was = (now.inputs.extent as EnumInput | undefined)?.value ?? 'distance';
         return set({ extent: choice(was === 'distance' ? 'through-all' : 'distance') });

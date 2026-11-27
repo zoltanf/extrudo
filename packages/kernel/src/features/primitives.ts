@@ -39,7 +39,7 @@ import {
 } from '../scad-export/ir';
 import { operationCsg } from '../scad-export/operation';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate } from './operation';
+import { explicitBodies, type OperationWords, operate, operationAccess } from './operation';
 import { planeOf } from './references';
 import { add, cross, dot, scale, unit } from './vec';
 
@@ -107,7 +107,11 @@ function primitive<I extends PrimitiveInputs>(
   };
   return {
     ...feature,
-    bodyAccess: (inputs) => (primitiveAddsOnly(inputs) ? 'add' : 'write'),
+    // On a face, `planeFrame` resolves it among the bodies: its tool reads that body.
+    bodyAccess: (inputs) => {
+      const settings = primitiveSettings(inputs);
+      return operationAccess(settings, { readsNone: settings.plane.kind === 'plane' });
+    },
     evaluate(ctx): FeatureOutput {
       const settings = primitiveSettings(ctx.inputs);
       const numbers = numbersOf(ctx, type, settings);
