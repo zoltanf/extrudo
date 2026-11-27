@@ -2223,7 +2223,14 @@ edit its distance to 6 mm), incremental with `have`, in Node, two runs each, mai
 |---|--:|--:|--:|--:|
 | its top face extruded 2 mm, joined | 7,706 → 446 | 4,270 → 438 | 432 → 434 | 21/20 → 2/1 |
 | a 6 mm box cut placed on its top face | 2,717 → 190 | 1,515 → 186 | 185 → 178 | 21/20 → 2/1 |
-| an 8 mm circle embossed onto its top face | 2,552 → 176 | 1,420 → 168 | 171 → 170 | 21/20 → 2/1 |
+| an 8 mm circle embossed onto its top face | 2,592 → 175 | 1,443 → 170 | 177 → 170 | 21/20 → 2/1 |
+
+The emboss row was measured again with the emboss as `view` (as `touch` it was 181, 174 and
+175 ms, the same counts). On the same emboss plates, a 20 mm box before them moved from far off
+to over the first plate's embossed circle (in the emboss's way, apart from the plate): main 2,517
+ms, 21 features evaluated and 21 meshes sent; the emboss as `touch` 136 ms, 2/2 (the box and that
+emboss); as `view` 15 ms, 1/1 (the box). No fixture has an emboss, so the from-scratch comparison
+above doesn't change.
 
 In the app (the 20 plates with their faces extruded as a file, production build, Chrome,
 1280 × 800, 4 interleaved runs: median and range, ms, main → this), until the model is ready:
