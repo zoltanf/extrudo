@@ -249,6 +249,11 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
    * it answered, so a tool whose size comes from the bodies' boxes asks here alone.
    */
   reach?: (point: Vec3, along: Vec3, bodies?: readonly BodyId[]) => number | undefined;
+  /**
+   * For a `touch` feature (rule B): how far from `point` the lowest and highest corners of every
+   * body's box before it lie at most (`farOver`), from the engine's boxes; keyed as `reach` is.
+   */
+  farthest?: (point: Vec3) => number | undefined;
   feature: Feature;
   /** The inputs, checked against the definition's schema. */
   inputs: I;

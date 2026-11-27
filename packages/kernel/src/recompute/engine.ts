@@ -56,7 +56,7 @@ import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
 import { resolveAnnotation as annotationAt } from '../annotations/resolve';
 import { type SmoothFaces, smoothFaces } from '../features/offset-face';
-import { reachOver, touchingBodies } from '../features/operation';
+import { farOver, reachOver, touchingBodies } from '../features/operation';
 import { kernelSurface, removeFacesPick } from '../features/remove-faces';
 import { corners } from '../features/vec';
 import type { SmoothKind, SubShapeKind } from '../history';
@@ -179,8 +179,8 @@ type Channel = 'recompute' | 'preview';
 /** What a definition's `prepare` resolved to, or what it threw (ADR-0071 §3). */
 type Prepared = { value: unknown } | { error: unknown };
 
-/** A `touch` evaluator's call of `ctx.reach` (ADR-0024's rule B). */
-type Probe = { point: Vec3; along: Vec3; ids?: readonly BodyId[] };
+/** A `touch` evaluator's call of `ctx.reach`, or of `ctx.farthest` (no `along`; ADR-0024's rule B). */
+type Probe = { point: Vec3; along?: Vec3; ids?: readonly BodyId[] };
 /** A feature's calls of `ctx.reach` and their hash, worked out once (none: no calls, no hash). */
 type Asked = { list: readonly Probe[]; hash: string };
 const askedOf = (list: readonly Probe[]): Asked => ({
@@ -964,20 +964,18 @@ export class RecomputeEngine {
       let calls: Asked | undefined;
       const madeCalls = () => (calls ??= askedOf(recorded));
       const answers: (number | null)[] = [];
+      const ask = (probe: Probe) => {
+        const answer = this.#reach(bodies, probe);
+        recorded.push(probe);
+        answers.push(answer ?? null);
+        return answer;
+      };
       const reach =
         bare === undefined
           ? undefined
-          : (point: Vec3, along: Vec3, ids?: readonly BodyId[]) => {
-              const probe: Probe = {
-                point: [...point],
-                along: [...along],
-                ...(ids && { ids: [...ids] }),
-              };
-              const answer = this.#reach(bodies, probe);
-              recorded.push(probe);
-              answers.push(answer ?? null);
-              return answer;
-            };
+          : (point: Vec3, along: Vec3, ids?: readonly BodyId[]) =>
+              ask({ point: [...point], along: [...along], ...(ids && { ids: [...ids] }) });
+      const farthest = bare === undefined ? undefined : (point: Vec3) => ask({ point: [...point] });
       const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
       let looked =
         (access === 'view' || access === 'read') && scope === undefined
@@ -1094,6 +1092,7 @@ export class RecomputeEngine {
               }
             : undefined,
           reach,
+          farthest,
         );
         // What an evaluation with every body asked of the boxes keys its tool from now on.
         if (whole) {
@@ -1520,6 +1519,7 @@ export class RecomputeEngine {
     ) => { key: string; bodies: Map<BodyId, ShapeHandle> } | undefined,
     touched?: (body: BodyId) => boolean | undefined,
     reach?: EvalContext['reach'],
+    farthest?: EvalContext['farthest'],
   ): Entry {
     const kernel = this.#kernel;
     const references = this.#references(feature, bodies);
@@ -1551,6 +1551,7 @@ export class RecomputeEngine {
       kernel,
       ...(touched && { touched }),
       ...(reach && { reach }),
+      ...(farthest && { farthest }),
       feature,
       inputs,
       bodies,
@@ -1860,7 +1861,7 @@ export class RecomputeEngine {
       }
       sets.push(set);
     }
-    return reachOver(sets, point, along);
+    return along ? reachOver(sets, point, along) : farOver(sets, point);
   }
 
   /**

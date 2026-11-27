@@ -1467,15 +1467,15 @@ describe('the comparison catches a wrong `add` here too (negative control)', () 
     expect(fallbacks(step?.result as never, d)).toEqual([]);
   });
 
-  it('a revolve to a plane said to be `add` in both engines: only the all-`write` engine sees it', {
+  it('a revolve to a plane said to be `add` in both engines: its read of every body is noticed', {
     timeout: 300_000,
   }, async () => {
     // The revolve's predicate without its `extent === 'angle'` term, in the engine under test and
     // in the cleared reference alike (as if the kernel had the fault). A revolve to a plane sizes
-    // the plane from every body it iterates, which the fall-back doesn't notice: under `add` it
-    // sees none, so the plane is too small to reach r5 (at x 150) and the revolve fails, in both
-    // engines the same way and without a fall-back. Main's engine (every `add` a `write`) sees
-    // the bodies and makes the revolve.
+    // the plane from every body's box: under `add` it would see none, and the plane would be too
+    // small to reach r5 (at x 150). Since ADR-0024's amendment on up to an object it reads the
+    // boxes through `everyBodyBox`, whose `size` read `NoBodies` notices: the revolve runs as
+    // `write` (one fall-back) and makes the revolve, as main's engine does.
     const wrong = withAccess('revolve', (inputs: RevolveInputs) => {
       const s = revolveSettings(inputs);
       return s.operation === 'new-body' &&
@@ -1496,10 +1496,8 @@ describe('the comparison catches a wrong `add` here too (negative control)', () 
       reference: wrong,
       options: ENGINE,
     });
-    expect(faulty.map((s) => s.problems.filter((p) => !p.startsWith('write: ')))).toEqual([[], []]);
-    expect(faulty[0]?.problems).toEqual([]);
-    expect(faulty[1]?.problems).toContain('write: statuses');
-    expect(fallbacks(faulty[1]?.result as never, edited)).toEqual([]);
+    expect(faulty.map((s) => s.problems)).toEqual([[], []]);
+    expect(fallbacks(faulty[1]?.result as never, edited)).toEqual(['r5']);
     // With the kernel's own predicate (a revolve to an object is `write`), clean against both.
     const right = await sequence(kernel, [d, edited], { options: ENGINE });
     expect(right.map((s) => s.problems)).toEqual([[], []]);
