@@ -1593,7 +1593,7 @@ export class RecomputeEngine {
           continue;
         }
         // A plane, an axis or a point is an origin one or a construction feature's output, and a
-        // sketch entity a sketch's: no body is read, and that feature's key is in this feature's
+        // sketch entity or profile a sketch's: no body is read, and that feature's key is in this feature's
         // key already (an upstream feature).
         if (PASSED_OVER.has(ref.kind)) continue;
         if (ref.kind !== 'face' && ref.kind !== 'edge' && ref.kind !== 'vertex') return undefined;
@@ -1910,8 +1910,17 @@ class NoBodies extends Map<BodyId, ShapeHandle> {
   }
 }
 
-/** Reference kinds that name no body: `#viewOf` passes them over. */
-const PASSED_OVER: ReadonlySet<string> = new Set(['plane', 'axis', 'point', 'sketchEntity']);
+/**
+ * Reference kinds that name no body: `#viewOf` passes them over. A sketch's profile, like its
+ * entities, is that sketch's output (`ctx.output`), whose key is upstream.
+ */
+const PASSED_OVER: ReadonlySet<string> = new Set([
+  'plane',
+  'axis',
+  'point',
+  'sketchEntity',
+  'profile',
+]);
 
 /**
  * The bodies a `view` or `read` feature sees (ADR-0024's amendments on `view` access and on `read`

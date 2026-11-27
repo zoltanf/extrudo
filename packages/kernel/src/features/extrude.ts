@@ -90,10 +90,26 @@ interface Side {
  */
 export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
   ...extrudeFeature,
-  bodyAccess: (inputs) => (addsOnly(inputs) ? 'add' : 'write'),
+  bodyAccess: (inputs) => (addsOnly(inputs) ? 'add' : cutsPicked(inputs) ? 'view' : 'write'),
   evaluate: evaluateExtrude,
   csg: extrudeCsg,
 };
+
+/**
+ * Whether an extrude cuts or intersects only the bodies it picks (`view`, ADR-0024's amendment on
+ * operations): picked bodies (`explicitBodies` looks up those alone, and `operate` asks no other
+ * whether it touches the tool), every side by a distance or `through-all` (which measures the
+ * picked bodies alone, `throughAll`), never `to-object` (`objectSide` sizes its target from every
+ * body). A join stays `write`: its report lists every body the tool touches.
+ */
+export function cutsPicked(inputs: ExtrudeInputs): boolean {
+  const settings = extrudeSettings(inputs);
+  return (
+    (settings.operation === 'cut' || settings.operation === 'intersect') &&
+    settings.bodies.length > 0 &&
+    settings.sides.every((side) => side.extent === 'distance' || side.extent === 'through-all')
+  );
+}
 
 /**
  * Whether an extrude only adds bodies and reads none before it (`add`, ADR-0024's amendment on

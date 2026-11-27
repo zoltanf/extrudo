@@ -256,6 +256,8 @@ export type Kind =
   | 'reshape'
   | 'project'
   | 'unproject'
+  | 'op-cycle'
+  | 'reach'
   | (typeof GENERIC_KINDS)[number];
 
 export const LOST: GeomRef = { kind: 'face', id: 'f[nowhere]' };
@@ -390,6 +392,21 @@ export function edit(
       const projections =
         kind === 'project' ? { ...rest, pj: { ref: named.edge, curves: {} } } : rest;
       return set({ sketch: { ...input, sketch: { ...sketch, projections } as never } });
+    }
+    case 'op-cycle':
+    case 'reach': {
+      // The target extrude's operation cut → intersect → join → new body → cut; or its first
+      // side's extent distance ↔ through-all.
+      if (now?.type !== 'extrude') return undefined;
+      if (kind === 'reach') {
+        const was = (now.inputs.extent as EnumInput | undefined)?.value ?? 'distance';
+        return set({ extent: choice(was === 'distance' ? 'through-all' : 'distance') });
+      }
+      const was = (now.inputs.operation as EnumInput | undefined)?.value ?? 'new-body';
+      const next = { cut: 'intersect', intersect: 'join', join: 'new-body', 'new-body': 'cut' }[
+        was as 'cut'
+      ];
+      return set({ operation: choice(next) });
     }
     case 'join': {
       // A mirror's or a pattern's join of each copy into its original, on and off.
