@@ -28,11 +28,14 @@ import { kernelFeatures } from '../features';
 import { fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
 import {
   box,
+  computed,
   type Design,
+  faceRefs,
   feature,
   type Kind,
   proveDesigns,
   sequence,
+  top,
   useKernel,
 } from './view-access-features-test-support';
 import { document } from './view-access-test-support';
@@ -262,5 +265,33 @@ describe('view access: the other operations (ADR-0024)', () => {
         primitiveInputs('cylinder', { operation: 'new-body', ...picked } as never),
       ),
     ).toBe('write');
+  });
+
+  it('a box cut placed on a body’s face is keyed by every body: its tool moves with that body', {
+    timeout: 120_000,
+  }, async () => {
+    // A 4 mm box sunk 3 mm into `fb`'s top face; `o1` at 16 mm. With `fb` at 12 mm the cut (on its
+    // face) reaches `o1` too: an answer kept from the cut at 0 would miss it.
+    const parts = document('a box', [box('fb', 0)]);
+    const face = await computed(parts, (engine) => faceRefs(engine, 'fb:0', top)[0] as GeomRef);
+    const doc = document('a box cut on a body’s face', [
+      box('fb', 0),
+      box('o1', 16),
+      feature(
+        'pc',
+        'box',
+        primitiveInputs('box', {
+          plane: face,
+          numbers: { length: '4 mm', width: '4 mm', height: '6 mm', offset: '-3 mm' },
+          operation: 'cut',
+        } as never),
+      ),
+    ]);
+    const docs = [doc, setInputs(doc, 'fb', { x: length('12 mm') })];
+    const run = await sequence(docs);
+    for (const step of run) expect(step.problems).toEqual([]);
+    expect(run[0]?.result.features['pc' as FeatureId]?.status).toBe('ok');
+    expect(run[0]?.result.stats.viewed).toEqual([]);
+    expect(run[1]?.evaluated).toEqual(['fb', 'pc']);
   });
 });
