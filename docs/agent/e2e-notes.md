@@ -205,7 +205,12 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   a new violation fails with its node HTML. Add an entry to `KNOWN` only with
   a reason. Toasts behind a modal dialog are inert for assistive tech (and
   for `getByRole`): say results inside the dialog (the Versions dialog's
-  status line "Versions status").
+  status line "Versions status"). The project screens are three tests per
+  theme: the shell test builds the document along its audits, the dialogs
+  and the panels tests start from the same one (`bracketAssembly`: the
+  bracket, a box, two components), and the panels test selects the Home tab
+  that Export used to leave behind. Moving an audit to another test must
+  keep the page it sees, toolbar tab and document included.
 
 ### `e2e/annotations.spec.ts`
 
