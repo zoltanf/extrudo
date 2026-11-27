@@ -121,9 +121,11 @@ export interface ImportedFile {
  *   versions of the bodies it is built on (rule R) and asks it again of each body whose version it
  *   hasn't asked about (`touchingBodies`), and hands the evaluator those answers
  *   (`EvalContext.touched`); the first walk evaluates with every body and keys the result by the
- *   bodies it touched (`output.touched`). Then as `view`. Answer it only for inputs whose tool
- *   reads no body but through such references, and whose evaluation reads the others only
- *   through `touchingBodies` and `explicitBodies`.
+ *   bodies it touched (`output.touched`). Then as `view`. A tool sized from the bodies' boxes (an
+ *   extrude through all) asks `EvalContext.reach`, and the engine keys it by what it asked and the
+ *   answers (rule B). Answer it only for inputs whose tool reads no body but through such
+ *   references and `reach`, and whose evaluation reads the others only through `touchingBodies`
+ *   and `explicitBodies`.
  */
 export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view' | 'touch';
 

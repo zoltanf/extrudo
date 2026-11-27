@@ -90,8 +90,9 @@ export interface OperationSettings {
  * `touch` when its tool reads bodies only through its face, edge or vertex references (rule R: the
  * engine keeps the tool by those bodies' versions); else `write`. `tool`: what each answer needs,
  * `add` (the tool reads no body: every reference upstream or none) and `touch` (it reads none, or
- * only through such references: true wherever `add` is); and whether it measures every body
- * (`everyBody`: `write`).
+ * only through such references: true wherever `add` is); and whether it sizes its tool from every
+ * body other than through `EvalContext.reach` (`everyBody`: `write`; a revolve to an object sizes
+ * its target from every body, `sweepToObject`).
  */
 export function operationAccess(
   settings: { operation: BodyOperation; bodies: readonly string[] },
