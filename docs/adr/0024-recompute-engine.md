@@ -1908,7 +1908,7 @@ page's blocked time: commit 0 → 0, undo 0 → 0, open 462 (415–475) → 540 
 ## Amendment 2026-11-27: the other operations keyed by the bodies they touch or pick
 
 **Decision.** Every operation feature that goes through `operate` answers by one rule
-(`operationAccess`, `features/operation.ts:93`): `add` for a new body with no picked bodies; `view`
+(`operationAccess`, `features/operation.ts:94`): `add` for a new body with no picked bodies; `view`
 for a cut or intersect of picked bodies; `touch` for a join, cut or intersect of the bodies its
 tool touches (automatic participants, or a join of picked bodies) when the tool reads no body; else
 `write`. A tool that measures every body (a revolve to an object) is `write` whatever it picks.
@@ -1935,13 +1935,13 @@ the amendment on operations):
 
 | Feature | The tool reads | `touch` when | `view` (picked cut, intersect) |
 |---|---|---|---|
-| Revolve (`revolve.ts`) | its axis: an origin or construction axis or a sketch line (`lineOf`, :280), or an edge resolved (:286); its profiles (`baseOf`: a sketch's through `ctx.output` or a face resolved); an angle, or `to-object`, which sizes its target from every body (`sweepToObject`, :509, :533) | an angle, the axis an `axis` or `sketchEntity`, every profile a sketch's | not `to-object` (an edge axis or a face profile is in the view by its reference) |
+| Revolve (`revolve.ts`) | its axis: an origin or construction axis or a sketch line (`lineOf`, :280), or an edge resolved (:286); its profiles (`partsOf`, `uniteParts`, :237, :238: a sketch's through `ctx.output` or a face resolved); an angle, or `to-object`, which sizes its target from every body (`sweepToObject`, :509, :533) | an angle, the axis an `axis` or `sketchEntity`, every profile a sketch's | not `to-object` (an edge axis or a face profile is in the view by its reference) |
 | Sweep (`sweep.ts`) | its profiles (`baseOf`, :100); its path: sketch curves through `ctx.output` (:238) or edges resolved (:228) | every profile a sketch's, the path sketch curves | always |
-| Loft (`loft.ts`) | its sections: profiles through `ctx.output` (:135), points (`pointOf`, :125: a construction point upstream, a vertex resolved), faces | every section a profile, point or sketch entity | always |
+| Loft (`loft.ts`) | its sections: profiles and faces (`partsOf`, :115: a sketch's through `ctx.output`, a face resolved), points (`pointOf`, :127: a construction point upstream, a vertex resolved), sketch points (`sketchPoint`, :128, :133–137: through `ctx.output`) | every section a profile, point or sketch entity | always |
 | Coil (`coil.ts`) | its placement (`planeFrame`, :205: an origin or construction plane, or a face resolved, `primitives.ts:279`) | on a plane | always |
 | Primitives (`primitives.ts`) | as the coil (`planeFrame`, :263, :277–295) | on a plane | always |
 
-Each then calls `explicitBodies` (:261, :107, :94, :165, :121), `operate` (:266, :113, :99, :170,
+Each then calls `explicitBodies` (:261, :107, :96, :165, :121), `operate` (:266, :113, :101, :170,
 :126) and `splitSolids`. No evaluator above reads the bodies otherwise.
 
 **Not in** (still `write`): hole, emboss and rib (they read the bodies themselves), `through-all`
@@ -1979,7 +1979,23 @@ moves into the tool's way, boxes before and after.
   is listed in its report, not joined; the picked box moved off: a new body and its warning); the
   picked box suppressed: the join's error, as a cleared engine's, no fall-back.
 - **The answers handed over:** a touched box made taller is asked its exact distance once (by the
-  engine); the cut run again takes that answer.
+  engine); the cut run again takes that answer. A picked join whose tool misses its picked box and
+  touches another: that other box edited (still touched), the picked box moved into the tool's way
+  and away, every step equal to a cleared engine: the answers it hands over say the picked box is
+  not touched.
+- **Picked from the start** (`view-access-operations.test.ts`, seeded, 24 edits each: a body that
+  doesn't exist and back, no bodies and back, a body picked twice and back, boxes resized, a box
+  moved into the tool's way and out, the operation cycle, the generic edits): a box cut of a picked
+  box on a plane; a revolve join of a picked box; a sweep cut of a picked box; a box cut of a picked
+  box placed on another box's face (that box is in the view by the face reference: its edit runs the
+  cut, an unrelated box's doesn't, counters too). The loft's and the coil's picked paths, and the
+  picked cuts of the others whose tool is on an edge or a vertex, are the same `operationAccess` and
+  the same `view` over their references: covered by reading and by the answers test.
+- **A leftover to-object reference:** the engine takes every `body` reference of a `touch` feature
+  as picked (`pickedBodies`), so a `toObject` left from an earlier extent (extrude, revolve) puts
+  that body into the view: its edit runs the feature too, and when it is gone the feature is keyed
+  by every body. Sound (a cached and a cleared engine go the same way), a run more than needed;
+  tested with an extrude cut.
 
 **Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
 
@@ -1996,19 +2012,20 @@ moves into the tool's way, boxes before and after.
 | the sweep's path term; the loft's sections term; the coil's plane term | the answers |
 | the primitives' plane term | the answers, the box cut on a body's face (stale: its tool kept from before the body moved) |
 | the answers handed to the evaluator | the report-order test (the exact distance asked twice) |
+| `view` for a picked cut or intersect, again with the picked designs | the four picked seeded designs, the face-placed counters, the picked revolve cut, the answers |
+| the picked bodies in a `touch` view, again | the picked-join counters, the picked join that misses its picked box, the leftover to-object body |
 
-Not caught, by reading only: the engine recording the touched bodies (not the view's) as the
-tool's answers. The two differ only for a picked body the tool doesn't touch, which is in the view
-anyway, so nothing depends on it.
+| the touched bodies recorded as the tool's answers (the view's instead) | the picked join that misses its picked box: it would be told that box is touched, and fuse it with a tool apart from it |
 
 **Not covered** by a test (by reading only): the coil's seeded proof (its counters and answers are
-tested); a sweep of a face profile or along edges, a loft through a vertex, a revolve about an
+tested); the loft's and the coil's picked paths; a sweep of a face profile or along edges, a loft through a vertex, a revolve about an
 edge, picked (their `view` is the existing rule over their references); mesh bodies; a tool of
 several solids (a pattern's); previews.
 
 **Test time** (on one machine, under load from other work, run with the other recompute files):
-`view-access-operations.test.ts` 24.1 s, new; `view-access-operation.test.ts` 13.0 s with the
-picked joins and the answers handed over (was 9.8 s): about +27 s.
+`view-access-operations.test.ts` 31.2 s, new (24.1 s before the picked designs);
+`view-access-operation.test.ts` 13.7 s with the picked joins and the answers handed over (was
+9.8 s): about +35 s.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
