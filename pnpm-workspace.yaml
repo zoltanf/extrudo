@@ -9,3 +9,11 @@ allowBuilds:
   electron: false
   # electron-builder's Squirrel.Windows helper; we build NSIS, not Squirrel.
   electron-winstaller: false
+overrides:
+  # electron-builder 26 (packaging only, nothing of it ships) still asks for
+  # minimatch 10 and 9, which GHSA-g3hv-75wg-m249 covers; 11.0.1 is the first
+  # fixed release. Both parents only use `new Minimatch`, `.set`, `.negate`,
+  # `.match` and `minimatch(path, pattern, { matchBase })`, which 11 keeps. Drop
+  # these when electron-builder's own ranges allow 11.
+  app-builder-lib>minimatch: ^11.0.1
+  '@electron/universal>minimatch': ^11.0.1
