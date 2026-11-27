@@ -2247,12 +2247,16 @@ answers are) and hands a `touch` evaluator `EvalContext.reach(point, along, bodi
 boxes of every body before the feature (or of the bodies named) reach past `point` along `along`,
 plus the margin. Both sides compute it with one function, `reachAlong` (`features/operation.ts`),
 which the evaluator also calls when the engine hands it no `reach`. The engine records the calls an
-evaluation with every body made (`#probes`, by the tool key of rule R), and on a later walk works
-out their answers again from the boxes it holds. The calls and their answers are in the tool key
+evaluation with every body made and their answers (`#probes`, by the tool key of rule R). It keeps
+them as long as it keeps that tool: refreshed on every walk that keeps it, bounded by `maxEntries`
+as the tools are, and never an empty list (a tool that asked nothing keys as before). On a later
+walk it works out their answers again from the boxes it holds, after reporting the feature (a box
+for a new version is the feature's kernel work). A failure there keeps no calls, so the
+evaluation with every body asks again and fails as a cleared engine's would. The calls and their answers are in the tool key
 and in the view key. So a kept tool, and its answers, are used only while what it took from the
 boxes is the same. A body grown past the reach, or the body that set the reach gone, gives another
 tool key: no tool is kept, the feature is evaluated with every body as at first, and that
-evaluation's calls key the tool from then on. The engine change: 54 lines of code added and 5 removed, comments aside. No
+evaluation's calls key the tool from then on. The engine change: 82 lines of code added and 9 removed, comments aside (54 and 5 before the fix round: the calls kept as the tool is, the guarded reach at key time, the check). No
 facade change, no change to results or to body placement.
 
 **Why the reach, and not every body's box, in the key.** With every body's box in the key, the key
@@ -2268,8 +2272,10 @@ in Node, two runs, main → this): a walk with nothing changed 14.1, 12.2 → 12
 - The calls an evaluation makes depend on the tool key of rule R and on the answers to the calls
   before them, and on nothing else. The tool key holds the inputs, the upstream keys and the
   built-on bodies' versions, so it fixes the profile's plane and the direction. An evaluation
-  stops at the first call answered "no bodies". The tool depends on the tool key and on all the
-  answers. So two evaluations under one tool key whose calls got the same answers make the same
+  stops at the first call answered "no bodies" (`noBodies`), or at a 0 answer
+  (`nothingToGoThrough`: one side, or side 1 of two sides, before side 2 is asked; a symmetric
+  extrude asks both directions first). Either stop depends on the answers so far alone. The tool
+  depends on the tool key and on all the answers. So two evaluations under one tool key whose calls got the same answers make the same
   calls and build the same tool (by induction over the calls).
 - A tool is kept under (tool key, calls, answers). Only an evaluation that made exactly those calls
   and got those answers puts a tool there. An evaluation now would make the same calls, get the
@@ -2281,6 +2287,11 @@ in Node, two runs, main → this): a walk with nothing changed 14.1, 12.2 → 12
   answers under a tool key therefore belongs to that tool. When the key is worked out again, the
   answers kept under the earlier key are taken over only if the key stays the same, and by the
   same argument a key with a memo always stays the same.
+- **The induction is checked.** After an evaluation in the view, the engine compares the calls it
+  made and their answers with the ones its key was built from. A difference (an evaluator whose
+  calls depend on something else) is treated as a result that doesn't fit its view: the result
+  goes, the key is remembered in `#readsBodies`, and the feature runs as `write`. An evaluation
+  with every body keys itself by its own calls, so it needs no check.
 - The answers are exact. They come from the same `reachAlong` over the same boxes: a version is one
   shape, and `measureBox` gives a shape one box since ADR-0035's amendment. The order of the bodies
   doesn't matter (a maximum). `canonicalJson` writes a finite double exactly, so the key holds the
@@ -2361,6 +2372,14 @@ clock, fixed seeds). The slot is sketched on a plane 5 mm up, so both directions
   - from a face: the face's box or the far box changed runs the cut, a box after it doesn't;
   - a picked join through all: the far box taller doesn't run it (its reach is the picked box's),
     the picked box taller does, a box come to the slot's end is touched but not joined.
+  - a kept tool's calls past the bound (`maxEntries` 4): six other cuts through all, each new,
+    evaluated after the slot; the slot's tool and calls stay, and a walk with nothing changed
+    evaluates nothing;
+  - a box that fails to measure when the key is worked out: the cut is reported before the box is
+    asked, the cut's status is a cleared engine's (the error), and the features after it compute;
+  - an evaluation in the view that asks the boxes otherwise than its key (a test extrude that asks
+    once more after its first evaluation): it runs as `write` once, equal to a cleared engine but
+    for versions.
 - **The answers:** through all answers `touch` for one side, symmetric and two sides, automatic or a
   picked join, from a sketch or a face; a picked cut through all `view`; to an object and a new
   body through all `write`.
@@ -2368,25 +2387,32 @@ clock, fixed seeds). The slot is sketched on a plane 5 mm up, so both directions
   its view through all (`reach: view→view`).
 
 **Taken out, one at a time** (the source changed, the filtered tests run, the source restored;
-every change failed at least one test):
+every change failed at least one test but the one row that says so; the rows above the fix round's
+were run again after it, of 18 tests):
 
 | Taken out | Tests that failed |
 |---|---|
 | the calls and answers in the tool key | the box moved over the slot above the old reach |
-| the calls and answers in a kept tool's view key | 14 of 15: every seeded design and every case but the answers |
-| the evaluation's own calls in `rekey`'s view key | 14 of 15, the same |
-| the calls stored after an evaluation | 8: the far box taller, the box moved over the slot, the box wider, the suppressed / moved / deleted / added box, the flip and the profile, the box come to touch, from a face, the picked join |
-| the tool key worked out again after an evaluation | 7: the same but the box come to touch |
-| `reach` handed to the evaluator | 7: the seeded picked join, the far box taller, the box moved over the slot, the suppressed / moved / deleted / added box, the mesh body, the evaluator in a view, from a face |
-| the boxes kept by body ID instead of version | 8: the seeded cut and picked join, the far box taller, the box moved over the slot, the suppressed / moved / deleted / added box, the mesh body, from a face, the picked join |
+| the calls and answers in a kept tool's view key | 15: every seeded design and every case but the answers and the three of the fix round |
+| the evaluation's own calls in `rekey`'s view key | 15, the same |
+| the calls stored after an evaluation | 10, among them the far box taller, the box moved over the slot, the box wider, the suppressed / moved / deleted / added box, the flip and the profile, the box come to touch, from a face, the picked join |
+| the tool key worked out again after an evaluation | 9, among them the same but the box come to touch |
+| `reach` handed to the evaluator | 8, among them the seeded picked join, the far box taller, the box moved over the slot, the suppressed / moved / deleted / added box, the mesh body, the evaluator in a view, from a face |
+| the boxes kept by body ID instead of version | 9, among them the seeded cut and picked join, the far box taller, the box moved over the slot, the suppressed / moved / deleted / added box, the mesh body, from a face, the picked join |
 | the picked bodies passed to `reach` | the seeded picked join, the picked join's counters |
+| a kept tool's calls refreshed as it is (stored only after an evaluation with every body, as before this round's fix) | the kept tool's calls past the bound |
+| `#probes` storing empty lists | none: with the refresh, a kept tool's calls stay the most recent, so empty lists only take memory |
+| the feature reported before the reach is worked out | the box that fails to measure (the order) |
+| the failure at key time caught | the box that fails to measure (the walk fails instead of the cut's error) |
+| the self-check on a view evaluation's calls | the evaluation that asks otherwise in the view |
 | through all in `touches` | 11: the answers of both files, every seeded design, the far box taller, the box wider, the box come to touch, the evaluator in a view, from a face, the picked join |
 
 **Not covered** by a test (by reading only): a body without a version before the feature (no tool
-key, as before: the evaluator measures itself, the same `reachAlong`); an evaluation stopped early
-and then made with more calls (the argument above; no design here stops between two calls but by
-"no bodies", which the no-body test walks); the bound of `#boxes` and `#probes` (a forgotten box
-is measured again, a forgotten call list means an evaluation with every body); a tool of several
+key, as before: the evaluator measures itself, the same `reachAlong`); an evaluation with every
+body that stops early and a later one that makes more calls (the argument above; the no-body test
+walks the "no bodies" stop, and a view evaluation that asks otherwise is checked and tested); a
+WASM trap while the reach is worked out at key time (rethrown, the feature reported first); the
+bound of `#boxes` (a forgotten box is measured again); a tool of several
 solids; previews; a script's isolated expansion (no tool key there).
 
 **Test time** (on one machine, run with the other `view-access` files, at the load of the last
