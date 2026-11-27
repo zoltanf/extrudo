@@ -1,11 +1,12 @@
-// The other operations keyed by the bodies they touch or pick (ADR-0024's amendment on the other
-// operations): a revolve, a sweep, a loft, a coil and a box cut answer `touch` with automatic
-// participants and a tool that reads no body, `view` for a picked cut or intersect, `write`
-// otherwise. One small design per family: a box `fb` its tool cuts, a box `o1` 20 mm off that
-// `nudge` moves into the tool's way (12 mm), boxes before and after. The engine-level cases (a
-// failed ask, an evicted tool, join order, the version and order terms) are the same code path
-// for every family and are tested once, with the extrude (`view-access-operation.test.ts`).
-// Real OCCT and manifold, strict leaks, no clock.
+// The other operations keyed by the bodies they touch or pick (ADR-0024's amendments on the other
+// operations and on tools built on a body): a revolve, a sweep, a loft, a coil and a box cut answer
+// `touch` with automatic participants (or a picked join) and a tool that reads no body or reads
+// bodies only through its face, edge or vertex references, `view` for a picked cut or intersect,
+// `add` for a new body from sketches and planes, `write` otherwise. One small design per family: a
+// box `fb` its tool cuts, a box `o1` 20 mm off that `nudge` moves into the tool's way (12 mm),
+// boxes before and after. The engine-level cases (a failed ask, an evicted tool, join order, the
+// version and order terms) are the same code path for every family and are tested once, with the
+// extrude (`view-access-operation.test.ts`). Real OCCT and manifold, strict leaks, no clock.
 import {
   coilInputs,
   type ExtrudoDocument,
@@ -253,7 +254,8 @@ const PICKED: Design[] = [
     make: onFace,
     target: 'cut',
     refsKey: 'bodies',
-    // No bodies picked: automatic with a tool on a face, `write` (the default rule's flips).
+    // No bodies picked: automatic with a tool on a face, `touch` (rule R), a view too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
     kinds: PICKED_KINDS,
     flips: [
       'twice: view→view',
@@ -331,7 +333,7 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['o1']);
   });
 
-  it('answers: touch or view for a tool that reads no body, write for one that reads one', () => {
+  it('answers: touch or view for a tool built by reference alone, add or write for a new body', () => {
     const registry = kernelFeatures();
     const access = (type: string, inputs: FeatureInputs) =>
       registry.get(type)?.bodyAccess?.(inputs as never);
@@ -348,8 +350,14 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(
       access('revolve', revolveInputs([profile], X_AXIS, { operation: 'cut', ...picked })),
     ).toBe('view');
-    expect(access('revolve', revolveInputs([profile], edge, { operation: 'cut' }))).toBe('write');
-    expect(access('revolve', revolveInputs([face], X_AXIS, { operation: 'cut' }))).toBe('write');
+    // About a body's edge, of a body's face: built on that body (rule R).
+    expect(access('revolve', revolveInputs([profile], edge, { operation: 'cut' }))).toBe('touch');
+    expect(access('revolve', revolveInputs([face], X_AXIS, { operation: 'cut' }))).toBe('touch');
+    expect(access('revolve', revolveInputs([face], X_AXIS, {}))).toBe('write');
+    // No axis: the revolve's error, keyed by every body.
+    expect(access('revolve', revolveInputs([profile], undefined, { operation: 'cut' }))).toBe(
+      'write',
+    );
     expect(
       access(
         'revolve',
@@ -359,7 +367,8 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(access('revolve', revolveInputs([profile], X_AXIS, {}))).toBe('add');
     // Sweep: a sketch profile along sketch curves.
     expect(access('sweep', sweepInputs([profile], [line], { operation: 'cut' }))).toBe('touch');
-    expect(access('sweep', sweepInputs([profile], [edge], { operation: 'cut' }))).toBe('write');
+    expect(access('sweep', sweepInputs([profile], [edge], { operation: 'cut' }))).toBe('touch');
+    expect(access('sweep', sweepInputs([face], [edge], { operation: 'join' }))).toBe('touch');
     expect(access('sweep', sweepInputs([profile], [edge], { operation: 'cut', ...picked }))).toBe(
       'view',
     );
@@ -369,13 +378,16 @@ describe('view access: the other operations (ADR-0024)', () => {
     );
     expect(
       access('loft', loftInputs([profile, { kind: 'vertex', id: 'v' }], { operation: 'cut' })),
-    ).toBe('write');
+    ).toBe('touch');
+    expect(access('loft', loftInputs([profile, { kind: 'vertex', id: 'v' }], {}))).toBe('write');
     // Coil and primitives: on a plane, or on a face.
     expect(access('coil', coilInputs({ operation: 'cut' }))).toBe('touch');
-    expect(access('coil', coilInputs({ operation: 'cut', plane: face }))).toBe('write');
+    // On a face: the tool built on that body (rule R).
+    expect(access('coil', coilInputs({ operation: 'cut', plane: face }))).toBe('touch');
+    expect(access('coil', coilInputs({ plane: face }))).toBe('write');
     expect(access('box', primitiveInputs('box', { operation: 'join' } as never))).toBe('touch');
     expect(access('box', primitiveInputs('box', { operation: 'cut', plane: face } as never))).toBe(
-      'write',
+      'touch',
     );
     expect(
       access('box', primitiveInputs('box', { operation: 'cut', plane: face, ...picked } as never)),
@@ -388,11 +400,12 @@ describe('view access: the other operations (ADR-0024)', () => {
     ).toBe('write');
   });
 
-  it('a box cut placed on a body’s face is keyed by every body: its tool moves with that body', {
+  it('a box cut placed on a body’s face keeps its tool by that body’s version: moved, built again', {
     timeout: 120_000,
   }, async () => {
     // A 4 mm box sunk 3 mm into `fb`'s top face; `o1` at 16 mm. With `fb` at 12 mm the cut (on its
-    // face) reaches `o1` too: an answer kept from the cut at 0 would miss it.
+    // face) reaches `o1` too: an answer kept from the cut at 0 would miss it (rule R: the face's
+    // body's version is in the tool's key).
     const parts = document('a box', [box('fb', 0)]);
     const face = await computed(parts, (engine) => faceRefs(engine, 'fb:0', top)[0] as GeomRef);
     const doc = document('a box cut on a body’s face', [
@@ -412,7 +425,7 @@ describe('view access: the other operations (ADR-0024)', () => {
     const run = await sequence(docs);
     for (const step of run) expect(step.problems).toEqual([]);
     expect(run[0]?.result.features['pc' as FeatureId]?.status).toBe('ok');
-    expect(run[0]?.result.stats.viewed).toEqual([]);
+    expect(run[0]?.result.stats.viewed).toEqual(['pc']);
     expect(run[1]?.evaluated).toEqual(['fb', 'pc']);
   });
 });

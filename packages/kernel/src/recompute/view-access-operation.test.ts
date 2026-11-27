@@ -417,11 +417,12 @@ describe('view access: operations (ADR-0024)', () => {
     expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('write');
     expect(access({ operation: 'cut', extent: 'through-all' })).toBe('write');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');
-    expect(access({ operation: 'cut' }, { kind: 'face', id: 'f[top]' })).toBe('write');
+    // A face profile: the tool built on that body (rule R).
+    expect(access({ operation: 'cut' }, { kind: 'face', id: 'f[top]' })).toBe('touch');
     expect(access({})).toBe('add');
   });
 
-  it('a cut from a body’s face is keyed by every body: its tool changes with that body', {
+  it('a cut from a body’s face keeps its tool by that body’s version: changed, built again', {
     timeout: 120_000,
   }, async () => {
     const parts = document('a box under a box', [box('fb', 0), small('ub', 0, 0, 6)]);
@@ -443,7 +444,7 @@ describe('view access: operations (ADR-0024)', () => {
     ]);
     const run = await steps([doc, setInputs(doc, 'fb', { width: length('4 mm') })]);
     expect(run[0]?.result.features['fp' as FeatureId]?.status).toBe('ok');
-    expect(run[0]?.result.stats.viewed).toEqual([]);
+    expect(run[0]?.result.stats.viewed).toEqual(['fp']);
     expect(run[1]?.evaluated).toEqual(['fb', 'fp']);
   });
 

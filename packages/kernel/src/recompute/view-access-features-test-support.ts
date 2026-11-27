@@ -36,7 +36,7 @@ import {
   setInputs,
 } from './add-access-test-support';
 import { RecomputeEngine } from './engine';
-import { plate, twinRegistry } from './view-access-test-support';
+import { document, plate, twinRegistry } from './view-access-test-support';
 
 let kernel: Kernel;
 
@@ -181,6 +181,43 @@ export const feature = (id: string, type: string, inputs: Feature['inputs']): Fe
   inputs,
 });
 
+/** A `size` mm box centred at `x`, 10 mm high, `offset` mm up. */
+export const lifted = (id: string, x: number, size: number, offset: number) =>
+  feature(
+    id,
+    'box',
+    primitiveInputs('box', {
+      numbers: {
+        length: `${size} mm`,
+        width: `${size} mm`,
+        height: '10 mm',
+        x: `${x} mm`,
+        offset: `${offset} mm`,
+      },
+    }),
+  );
+
+/** `fb`'s top face, from an engine that computed it. */
+export async function topOf(): Promise<GeomRef> {
+  return computed(
+    document('a box', [box('fb', 0)]),
+    (engine) => faceRefs(engine, 'fb:0', top)[0] as GeomRef,
+  );
+}
+
+/** Steps, each equal to a cleared engine (versions included) and to `write` keys, no fall-back. */
+export async function provedSteps(docs: ExtrudoDocument[]) {
+  const out = await sequence(docs);
+  out.forEach((step, i) => {
+    expect(step.problems, `step ${i}`).toEqual([]);
+    expect(fallbacks(step.result, docs[i] as ExtrudoDocument), `step ${i}`).toEqual([]);
+  });
+  return out;
+}
+
+export const statusOf = (run: Awaited<ReturnType<typeof provedSteps>>, i: number, id: string) =>
+  run[i]?.result.features[id as FeatureId]?.status;
+
 /** A fillet of the edges `pick` gives (by index) on `body`, from a recompute. */
 export async function filletAfter(
   doc: ExtrudoDocument,
@@ -261,6 +298,7 @@ export type Kind =
   | 'unproject'
   | 'op-cycle'
   | 'nudge'
+  | 'emboss-mode'
   | 'reach'
   | (typeof GENERIC_KINDS)[number];
 
@@ -396,6 +434,12 @@ export function edit(
       const projections =
         kind === 'project' ? { ...rest, pj: { ref: named.edge, curves: {} } } : rest;
       return set({ sketch: { ...input, sketch: { ...sketch, projections } as never } });
+    }
+    case 'emboss-mode': {
+      // The target emboss's mode, emboss ↔ deboss.
+      if (now?.type !== 'emboss') return undefined;
+      const was = (now.inputs.mode as EnumInput | undefined)?.value ?? 'emboss';
+      return set({ mode: choice(was === 'emboss' ? 'deboss' : 'emboss') });
     }
     case 'nudge': {
       // A `touch` design's box between (`o1`) moved into the tool's way (12 mm) and out (20 mm).

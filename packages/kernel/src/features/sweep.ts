@@ -53,11 +53,16 @@ export const kernelSweep: KernelFeatureDefinition<SweepInputs> = {
   ...sweepFeature,
   bodyAccess: (inputs) => {
     const settings = sweepSettings(inputs);
-    // A face profile or a path of body edges is a body's: its tool reads that body.
+    // A face profile or a path of body edges is a body's: not `add`.
     return operationAccess(settings, {
-      readsNone:
+      add:
         settings.profiles.every((ref) => ref.kind === 'profile') &&
         settings.path.every((ref) => ref.kind === 'sketchEntity'),
+      // A body's face as profile, its edges as path (`baseOf`, `pieceOf`): those bodies alone, by
+      // their references (rule R).
+      touch:
+        settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'face') &&
+        settings.path.every((ref) => ref.kind === 'sketchEntity' || ref.kind === 'edge'),
     });
   },
   evaluate: evaluateSweep,

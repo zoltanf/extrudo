@@ -219,8 +219,9 @@ export class RecomputeEngine {
    */
   readonly #readsBodies = new Set<string>();
   /**
-   * A `touch` feature's tool by its tool key (everything but the bodies), the entry it came from
-   * (the tool lives as long as that entry) and whether it touches a body, by the body's version.
+   * A `touch` feature's tool by its tool key (its inputs and upstream outputs, and the versions of
+   * the bodies it is built on: rule R), the entry it came from (the tool lives as long as that
+   * entry) and whether it touches a body, by the body's version.
    */
   readonly #touched = new Map<
     string,
@@ -896,16 +897,20 @@ export class RecomputeEngine {
       // bodies are asked again against that tool (`#touching`).
       // Not while a body before it has no version (a shape another output holds): no key could
       // name it, so the feature keeps today's key, and its cache hit.
-      // The bodies it picks are in its view too (a picked join asks every body which it touches);
-      // a picked body that isn't there keeps today's key (it is the feature's error).
-      const picked = access === 'touch' ? pickedBodies(feature) : [];
+      // The bodies its references name are in its view too: the ones it picks (a picked join asks
+      // every body which it touches) and the ones its tool is built on, whose versions are in the
+      // tool's key (rule R: a tool kept only while they are unchanged). A reference the view can't
+      // carry, or one no body has by its exact name, keeps today's key, as for `view`.
+      const named = access === 'touch' ? this.#named(feature, bodies) : undefined;
+      const picked = named ? [...named.ids] : [];
+      const built = named && this.#viewOfIds(bodies, named.built);
       const toolKey =
-        access === 'touch' &&
+        named &&
+        built &&
         scope === undefined &&
         !hasOwnBodies(bodies, feature.id) &&
-        [...bodies.values()].every((shape) => this.#versions.has(shape)) &&
-        picked.every((id) => bodies.has(id))
-          ? keyOf('touch')
+        [...bodies.values()].every((shape) => this.#versions.has(shape))
+          ? keyOf(hashOf('touch', built.versions))
           : undefined;
       const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
       let looked =
@@ -1682,7 +1687,20 @@ export class RecomputeEngine {
     feature: Feature,
     bodies: ReadonlyMap<BodyId, ShapeHandle>,
   ): { bodies: BodyView; versions: [BodyId, string][] } | undefined {
+    const named = this.#named(feature, bodies);
+    if (!named || named.ids.size === 0) return undefined;
+    return this.#viewOfIds(bodies, named.ids);
+  }
+
+  /**
+   * The bodies a feature's references name (`#viewOf`'s rule): `ids`, every one, and `built`, the
+   * ones a face, edge or vertex reference names by its exact name (a `touch` tool is built on
+   * those, rule R of ADR-0024's amendment on tools built on a body). Undefined for a reference of
+   * another kind, a body reference to no body or a reference no body has by its exact name.
+   */
+  #named(feature: Feature, bodies: ReadonlyMap<BodyId, ShapeHandle>) {
     const ids = new Set<BodyId>();
+    const built = new Set<BodyId>();
     for (const input of Object.values(feature.inputs)) {
       // A sketch's projections are references too (as `featureDependencies` finds them).
       const refs =
@@ -1708,14 +1726,14 @@ export class RecomputeEngine {
           if (!names) return undefined;
           if (namesOf(names, ref.kind).includes(ref.id)) {
             ids.add(id);
+            built.add(id);
             found = true;
           }
         }
         if (!found) return undefined;
       }
     }
-    if (ids.size === 0) return undefined;
-    return this.#viewOfIds(bodies, ids);
+    return { ids, built };
   }
 
   /** A view of the bodies `ids` names, in walk order, with their versions (undefined without). */
@@ -2207,16 +2225,6 @@ function placedAsWrite(
   if (last === undefined || !pieces.some((id) => isMesh(made.get(id) as ShapeHandle))) return true;
   const walk = [...bodies.keys()];
   return walk.slice(walk.indexOf(last) + 1).every((id) => view.holds(id));
-}
-
-/** The bodies a feature's `body` references name (a `touch` feature's picked bodies). */
-function pickedBodies(feature: Feature): BodyId[] {
-  const out: BodyId[] = [];
-  for (const input of Object.values(feature.inputs)) {
-    if (input.kind !== 'ref') continue;
-    for (const ref of input.refs) if (ref.kind === 'body') out.push(ref.id as BodyId);
-  }
-  return out;
 }
 
 /** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */

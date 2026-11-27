@@ -954,8 +954,8 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
     timeout: 120_000,
   }, async () => {
     const broken = await faultyEngine([
-      '    if (ids.size === 0) return undefined;\n    return this.#viewOfIds(bodies, ids);',
-      '    if (ids.size === 0) return undefined;\n    ids.delete([...ids].at(-1) as BodyId);\n    return this.#viewOfIds(bodies, ids);',
+      '    if (!named || named.ids.size === 0) return undefined;\n    return this.#viewOfIds(bodies, named.ids);',
+      '    if (!named || named.ids.size === 0) return undefined;\n    named.ids.delete([...named.ids].at(-1) as BodyId);\n    return this.#viewOfIds(bodies, named.ids);',
     ]);
     try {
       const doc = await acrossTwo();
@@ -972,8 +972,8 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
   }, async () => {
     // The one term the fall-back can't guard: the evaluator finds the name in the view.
     const broken = await faultyEngine([
-      '            ids.add(id);\n            found = true;\n',
-      '            ids.add(id);\n            found = true;\n            break;\n',
+      '            ids.add(id);\n            built.add(id);\n            found = true;\n',
+      '            ids.add(id);\n            built.add(id);\n            found = true;\n            break;\n',
     ]);
     try {
       const doc = await twins();
