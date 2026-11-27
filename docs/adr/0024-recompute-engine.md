@@ -2457,8 +2457,8 @@ touch test cover what it reads:
 - a through hole's length comes from `ctx.reach` (rule B);
 - the bodies it cuts come from the touch test (`operate`);
 - its count of holes that reach no body follows from the bodies the tool touches, while the holes
-  don't overlap (below). When they do, it hands the engine no touch answers and is keyed by every
-  body, as before.
+  don't overlap or touch (below). When they do, it hands the engine no touch answers and is
+  keyed by every body, as before.
 
 No engine change, no facade change, no change to results or to body placement. Two shared helpers
 change:
@@ -2482,7 +2482,7 @@ change:
 
 **Why the count of holes that reach no body needs no memory.** In a `touch` view the hole is
 given the bodies its tool touches and the face's body, not every body. Its count is the same as
-over every body while the holes don't overlap:
+over every body while the holes don't overlap or touch:
 - `mergeTools` (`pattern.ts:224`) leaves each hole that meets no other as its own group, and a
   group of one is the hole itself (`fuseTree`, `compoundOf`). The tool is then a compound of the
   holes' own shapes.
@@ -2496,7 +2496,7 @@ over every body while the holes don't overlap:
 - Hence a body that reaches a hole is one the tool touches. A body outside the view reaches no
   hole, and the count over the view is the count over every body.
 - One hole alone never warns (the warning needs some of several holes to miss).
-- When holes overlap, `mergeTools` fuses them into one solid. Then a hole's distance and the fused
+- When holes overlap or touch (within `TOUCH`), `mergeTools` fuses them into one solid. Then a hole's distance and the fused
   solid's are two computations, equal only up to rounding. So the hole drops `operate`'s `touched`
   (`hole.ts:157`): no tool is kept, the result keeps every body's key, as before.
 
@@ -2506,8 +2506,10 @@ for the extrude. The engine adds nothing for the hole.
 **What no longer holds.** In the amendment on operations, its "Not in" list names holes (they read
 the bodies themselves); in the amendment on the other operations, the same; in the amendment on
 rule R, "Still `write`: … the hole"; and the plan's "the hole, next step" in the amendment on
-rule B. The hole answers `touch` now. To an object with automatic participants and the rib stay
-`write`.
+rule B. The hole answers `touch` now. Holes that overlap or touch each other (`mergeTools` fuses
+holes within the touch distance) keep every body's key. Anything up to an object stays `write`,
+bodies picked or not: the extrude's `touches` and `cutsPicked` leave `to-object` out, and the
+revolve's `everyBody` makes it `write`. The rib stays `write`.
 
 **The proof** (`recompute/view-access-hole.test.ts`; real OCCT and manifold, strict leaks, no
 clock, fixed seeds; 4 mm holes, 7 mm counterbores and countersinks):
@@ -2565,27 +2567,18 @@ the largest increase of one feature +78 ms (b9's 6.2 s thread, which this change
 runs spread by about ±100 ms); the holes take the same (b7's 133.8 → 133.6 ms, the others within
 0.2 ms).
 
-**In real designs** (the first feature with a length ×1.1, incremental with `have`, two runs, main
-→ this; features evaluated, meshes sent): b5, 8/2 → 6/2, 247 → 207 ms (an edit of its first box
-runs two features fewer); b7, b8 and b10 redo as much as before, since that first edit
-changes the body their hole cuts.
+**A walk with nothing changed** costs more with many through holes in one feature (measured ad
+hoc: 110 plates and one hole feature through all on a plane over them, in Node, the median of 21
+walks, two runs, main → this). The hole asks `ctx.reach` once per hole, and on every walk the
+engine works each question's answer out again over every body's box before it can find the cache
+entry:
 
-**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
-time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
-edit its distance to 6 mm), incremental with `have`, in Node, the mean of two runs, main → this.
+| Holes | main | this |
+|--:|--:|--:|
+| 20 | 11.4, 10.5 ms | 10.8, 10.7 ms |
+| 100 | 9.4, 9.6 ms | 13.7, 13.7 ms |
+| 200 | 9.3, 9.0 ms | 16.8, 18.2 ms |
 
-| Each plate with | First | Middle | Last | Evaluated / meshes, first |
-|---|--:|--:|--:|--:|
-| a 5 mm hole 3 mm deep on its top face | 2,980 → 196 | 1,596 → 190 | 197 → 196 | 21/20 → 2/1 |
-| a 5 mm hole through all on its top face | 3,488 → 222 | 1,968 → 222 | 226 → 230 | 21/20 → 2/1 |
-| one hole feature on a plane 5 mm up, a point on each plate | 2,940 → 3,004 | 3,028 → 2,852 | 2,886 → 2,841 | 2/20 → 2/20 |
-
-The third design is one hole feature cutting every plate: an edit of any plate changes a body it
-cuts, so it runs again with all 20, as before; the spread is noise.
-
-In the app (the first design as a file, production build, Chrome, 1280 × 800, 4 interleaved runs:
-median and range, ms, main → this), until the model is ready: committing an edit of the first
-plate in its dialog 2,586 (2,546–2,620) → 190 (188–286); undoing it 322 (321–323) → 322 (320–324);
-opening the design 1,922 (1,459–2,091) → 2,050 (1,924–2,109), the ranges overlap. The page's
-blocked time: commit 0 → 0, undo 0 → 0, open 442 (372–521) → 374 (334–545).
-
+About 40 µs per question with 110 bodies, as the engine works it out now: eight corners made per
+box per question (4.2 ms for 200 questions measured alone), and the key's hash of the questions
+and answers twice (0.4 ms each). A blind hole asks nothing, and one through hole asks once.

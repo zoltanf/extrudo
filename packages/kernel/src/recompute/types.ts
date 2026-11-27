@@ -126,7 +126,9 @@ export interface ImportedFile {
  *   it asked and the answers (rule B). Answer it only for inputs whose tool reads no body but
  *   through such references and `reach`, and whose evaluation reads the others only through
  *   `touchingBodies` and `explicitBodies` (and the hole's count of holes that reach no body, which
- *   ADR-0024's amendment on the hole shows follows from the touched bodies).
+ *   ADR-0024's amendment on the hole shows follows from the touched bodies). An evaluation that
+ *   can't show its other reads follow from the touch test hands back no `output.touched` (the hole
+ *   with holes that overlap or touch): no tool is kept, and it is keyed by every body.
  */
 export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view' | 'touch';
 

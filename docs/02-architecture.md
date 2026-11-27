@@ -369,7 +369,7 @@ is `KernelClient`, which restarts the worker after a crash.
   hole that joins, cuts or intersects the bodies it touches) the versions
   of the bodies its tool touches, of those it picks and of those its tool is
   built on, and, for a tool sized from the bodies' boxes (an extrude through
-  all), the reach those boxes give (ADR-0024's amendments). Shapes in the cache are
+  all, a through hole), the reach those boxes give (ADR-0024's amendments). Shapes in the cache are
   reference-counted; the engine checks each evaluation for leaked shapes.
   `recompute(request, onFeature)` returns per-feature status and the bodies
   at the marker, meshing only those whose `version` the caller doesn't
