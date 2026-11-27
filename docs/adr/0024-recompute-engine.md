@@ -1605,6 +1605,17 @@ box and the feature (`o1`) and after it (`o2`).
   (a version of its own). Each runs the sketch, the extrude and the fillet again.
 - **A face found only by a related name** (a slot through the box before the sketch splits its
   top face): no view, keyed by every body, the same result; a box nothing refers to then runs it.
+- **A body projected and a body intersected** (a sketch on a face projecting a 20 mm box whole and
+  cutting through it: `bodyShape`, the one look-up by ID in a `read` evaluator): an edit of that
+  box runs the sketch, and its report changes; an edit of a box nothing refers to runs that box
+  alone. Every step equals a cleared engine and the reference.
+- **A whole sketch projected** (a `feature` reference): no view; a box nothing refers to runs it.
+- **Twin bodies with the face's exact name:** both are in the sketch's view; an edit of the other
+  twin runs the sketch, an unrelated box doesn't.
+- **A `read` feature that looks outside its view** (a test-only feature that resolves its face
+  and looks up a body no reference names): noticed and evaluated keyed by every body; then
+  remembered, so an edit of that body runs it once with no view tried, and the step after takes it
+  from the cache. Every step equals a cleared engine and the reference.
 - The move's and the draft's counters (`view-access-move.test.ts`, `-draft`) now show the
   construction axis, the sketch on a face and the construction point left alone by a box nothing
   refers to.
@@ -1614,20 +1625,27 @@ every change failed at least one test):
 
 | Taken out | Tests that failed |
 |---|---|
-| `read` next to `view` where the view is looked up | all nine of the file: both seeded designs, every counter, the three never-stale cases, the related name |
-| a sketch's projections in `#viewOf` | the seeded sketch design and the three never-stale cases (their sketch projects another box's edge: a look-up outside the view, a fall-back) |
-| the view's versions out of the key (IDs only) | both seeded designs, both counters of the chains, the three never-stale cases |
+| `read` next to `view` where the view is looked up | all thirteen of the file |
+| a sketch's projections in `#viewOf` | the seeded sketch design, the three never-stale cases (their sketch projects another box's edge: a look-up outside the view, a fall-back), the body projected and intersected |
+| the view's versions out of the key (IDs only) | both seeded designs, both counters of the chains, the three never-stale cases, the body projected and intersected, the twins |
+| only the first body with a face's exact name in the view | the twins |
+| a noticed look-up not remembered (`#readsBodies`) | the `read` feature that looks outside its view |
 | the sketch's `read` answer for a face as `write` | the seeded sketch design, the sketch counters, the cut counter, the three never-stale cases, the related name |
 | the construction features' `read` answer as `write` | the seeded construction design, the construction counters |
 | the canvas's `read` answer as `write` | the construction counters |
 | `resolve` other than by exact name not noticed | the `view` probe of a reference found by its fingerprint (`view-access.test.ts`), the same rule for both |
 
 **Not covered** by a test (by reading only): a construction point on a path and a plane along a
-path (`pathFromRefs`), and the intersection and face-centre projections (they resolve their
+path (`pathFromRefs`), and the face intersection and face-centre projections (they resolve their
 references like those tested); a reference found by its fingerprint only (the same noticed
-`resolve` as a related name); previews.
+`resolve` as a related name); a `read` feature inside a script's expansion that isn't isolated;
+previews.
 
-**Test time** (on one machine, under load from other work): `view-access-read.test.ts` 7.1 s, new; Move 4.9 s and the draft 5.1 s (their counters changed, not their designs); the thirteen `view-access` files 414.9 s, the twelve before 408.2 s, so +6.7 s.
+**Test time** (on one machine, under load from other work): `view-access-read.test.ts` 7.1 s, new,
+run with the other `view-access` files (6.1 s alone, its thirteen tests; the four added last, the
+body projections, the whole sketch, the twins and the probe, take 0.6 s of it); Move 4.9 s and the
+draft 5.1 s (their counters changed, not their designs); the thirteen `view-access` files 414.9 s,
+the twelve before 408.2 s, so +6.7 s, and about +7.3 s with the last four.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
