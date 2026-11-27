@@ -2006,9 +2006,9 @@ tested); a sweep of a face profile or along edges, a loft through a vertex, a re
 edge, picked (their `view` is the existing rule over their references); mesh bodies; a tool of
 several solids (a pattern's); previews.
 
-**Test time** (on one machine, under load from other work): `view-access-operations.test.ts`
-TT_NEW s, new; `view-access-operation.test.ts` TT_OLD s with the picked joins and the answers
-handed over (was 9.8 s).
+**Test time** (on one machine, under load from other work, run with the other recompute files):
+`view-access-operations.test.ts` 24.1 s, new; `view-access-operation.test.ts` 13.0 s with the
+picked joins and the answers handed over (was 9.8 s): about +27 s.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
@@ -2038,3 +2038,13 @@ along the plate, two grooves across it); a sweep cut (a 3 mm circle up a line); 
 | a coil cut | 16,912 → 857 | 9,302 → 849 | 852 → 850 | 21/20 → 2/1 |
 | a box cut | 3,296 → 204 | 1,834 → 197 | 199 → 202 | 21/20 → 2/1 |
 
+In real designs (an edit of the first feature with a length, ×1.1, incremental, in Node, main →
+this; features evaluated, meshes sent, ms): the hinge component 9/2 → 4/1, 221 → 120 ms; the
+sweep-loft-coil benchmark 5/2 → 4/2, 1,349 → 928 ms; the spool holder 6/2 → 5/1, 68 → 58 ms; b4,
+b5, b6 and b7 the same (their first edit changes what their cuts and joins touch).
+
+In the app (the 20 plates with a revolve cut each as a file, production build, Chrome, 1280 × 800,
+4 interleaved runs: median and range, ms, main → this), until the model is ready: committing an
+edit of the first plate in its dialog 4,378 (4,368–4,386) → 296 (285–299); undoing it 322
+(321–322) → 322 (320–322); opening the design 4,094 (3,939–4,177) → 3,999 (3,910–4,221). The
+page's blocked time: commit 0 → 0, undo 0 → 0, open 544 (420–617) → 596 (525–619).
