@@ -7,9 +7,11 @@
 // and playwright.config.ts gives each project the files of that shard. The
 // files are dealt longest first, each to the least loaded shard so far (LPT),
 // using the per-file seconds in e2e/timings.json; a file the JSON does not
-// know (a new spec) counts as the median of the known ones. Regenerate the
-// JSON from a CI run with `node scripts/e2e-timings.mjs <run-id>` when a
-// shard runs much longer than the others (docs/agent/e2e-notes.md, General).
+// know (a new spec) counts as the median of the known ones. A file whose
+// tests CI always skips (the env-gated recorders) has 0 there: it weighs
+// nothing and stays out of the median. Regenerate the JSON from a CI run with
+// `node scripts/e2e-timings.mjs <run-id>` when a shard runs much longer than
+// the others (docs/agent/e2e-notes.md, General).
 //
 // CLI (run by CI, Node strips the types itself):
 //   node scripts/e2e-shards.ts browsers   # extra Playwright browsers this shard needs
@@ -47,7 +49,9 @@ export function planShards(
   timings: Readonly<Record<string, number>>,
   total: number,
 ): { files: string[]; seconds: number }[] {
-  const known = Object.values(timings).sort((a, b) => a - b);
+  const known = Object.values(timings)
+    .filter((s) => s > 0)
+    .sort((a, b) => a - b);
   const median = known.length ? (known[Math.floor(known.length / 2)] ?? 0) : 0;
   const seconds = (file: string) => timings[file] ?? median;
   // Ties by name, so the plan is the same whatever order the files came in.

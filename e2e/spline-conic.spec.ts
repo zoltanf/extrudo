@@ -400,6 +400,9 @@ test("a control spline's degree set in the panel, and it still extrudes", async 
   await degree.fill('5');
   await degree.press('Enter');
   await expect(page.getByText('A degree-5 spline needs at least 6 points.')).toBeVisible();
+  // The 5 the panel refused stays in the field until an effect puts the stored 3 back, which
+  // can land during the next fill: the 2 is then added to it ("32"). Wait for the 3 first.
+  await expect(degree).toHaveValue('3');
   await degree.fill('2');
   await degree.press('Enter');
   await expect(selection(page).locator('[data-spline-degree]')).toHaveAttribute(
