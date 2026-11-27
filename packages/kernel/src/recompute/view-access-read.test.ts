@@ -227,7 +227,7 @@ describe('view access: read features (ADR-0024)', () => {
     }
   });
 
-  it('counters: a cut from a sketch on a face is `write`; the sketch stays', {
+  it('counters: a cut from a sketch on a face keys the bodies it touches; both stay', {
     timeout: 120_000,
   }, async () => {
     const { face } = await refs();
@@ -240,9 +240,9 @@ describe('view access: read features (ADR-0024)', () => {
     ]);
     const steps = await sequence([doc, setInputs(doc, 'o0', { length: length('12 mm') })]);
     for (const step of steps) expect(step.problems).toEqual([]);
-    expect(steps[0]?.result.stats.viewed).toEqual(['sk']);
-    // The cut's key holds every body before it, as before; the sketch's only `fb`'s.
-    expect(steps[1]?.evaluated).toEqual(['o0', 'cut']);
+    expect(steps[0]?.result.stats.viewed).toEqual(['sk', 'cut']);
+    // The sketch keys `fb`'s version, the cut the versions of the bodies it touches (`fb`).
+    expect(steps[1]?.evaluated).toEqual(['o0']);
   });
 
   it('construction counters: each piece runs with the box its reference is on', {

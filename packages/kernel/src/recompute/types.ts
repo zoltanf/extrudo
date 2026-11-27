@@ -105,15 +105,22 @@ export interface ImportedFile {
  *   again. A new body goes where `write` puts it: a piece `splitSolids` split off right after its
  *   body, any other at the end. A mesh piece of the view's last body with a body outside the view
  *   after that body runs as `write` for that walk (its place can't be told from the result).
- *   A `plane`, `axis`, `point` or `sketchEntity` reference (an origin one, a construction
- *   feature's output or a sketch's) reads no body and takes no part in the view. Treated as
- *   `write` inside an isolated expansion, when a face, edge or vertex reference has no exact
+ *   A `plane`, `axis`, `point`, `sketchEntity` or `profile` reference (an origin one, a
+ *   construction feature's output or a sketch's) reads no body and takes no part in the view.
+ *   Treated as `write` inside an isolated expansion, when a face, edge or vertex reference has no exact
  *   match among the bodies (or a reference is of another kind), when a body with the feature's
  *   own ID prefix exists already, and after an error
  *   to try again once the bodies before it change (`OutsideError` `retry: 'bodies'`), as `add`
  *   is.
+ * - `touch` (ADR-0024's amendment on operations): joins, cuts or intersects the bodies its tool
+ *   touches and reads no other (an extrude with automatic participants by distances). Its view is
+ *   the bodies the tool touches: the engine keeps the tool by everything but the bodies and asks
+ *   it again of each body whose version it hasn't asked about (`touchingBodies`); the first walk
+ *   evaluates with every body and keys the result by the bodies it touched (`output.touched`).
+ *   Then as `view`. Answer it only for inputs whose tool reads no body and whose evaluation reads
+ *   the others only through `touchingBodies`.
  */
-export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view';
+export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view' | 'touch';
 
 /**
  * A feature definition as the kernel sees it: core's data part plus the
@@ -293,6 +300,11 @@ export interface FeatureOutput {
    * sketch's `SketchReport`: its frame and projections). JSON-like.
    */
   report?: unknown;
+  /**
+   * A `touch` feature's tool and the bodies it touched among every body it was given, in their
+   * order (`operate`): what the engine asks the bodies again on a later walk.
+   */
+  touched?: { tool: ShapeHandle; bodies: readonly BodyId[] };
   /** Turns the status to `warning`. */
   warnings?: readonly string[];
   /**
@@ -401,10 +413,10 @@ export interface RecomputeStats {
   /** Features whose result came from the cache. */
   reused: number;
   /**
-   * Features that took their result with a view of the bodies (`view` access, and `read` features
-   * with a view), evaluated or from the cache, in order; a `view` feature not listed ran as
-   * `write`, a `read` feature not listed was keyed by every body before it. Absent from engines
-   * before it.
+   * Features that took their result with a view of the bodies (`view` and `touch` access, and
+   * `read` features with a view), evaluated or from the cache, in order; a `view` or `touch`
+   * feature not listed ran as `write`, a `read` feature not listed was keyed by every body before
+   * it. Absent from engines before it.
    */
   viewed?: FeatureId[];
   ms: number;

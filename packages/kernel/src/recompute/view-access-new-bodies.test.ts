@@ -72,7 +72,7 @@ const block = (id: string, x: number, l: number, w = 10, h = 10, y = 0) =>
     }),
   );
 
-/** A slot cut through every box (`write`: it reads them all, in order). */
+/** A slot cut through every box (`touch`: keyed by the boxes it touches, all of them here). */
 const cut = () => slot('cut', [-60, 3, 200, 4]);
 
 /**
@@ -275,7 +275,8 @@ describe('view access: new bodies (ADR-0024)', () => {
       const [step] = await sequence([doc]);
       // The same IDs in the same order, names and meshes as an all-`write` engine and a cleared one.
       expect(step?.problems).toEqual([]);
-      expect(step?.result.stats.viewed).toEqual([...viewed]);
+      // The slot cut at the end too: it keys the bodies it touches (`touch`).
+      expect(step?.result.stats.viewed).toEqual([...viewed, 'cut']);
       // The ones that fall back try the view once, then run as `write`.
       expect(fallbacks(step?.result as NonNullable<typeof step>['result'], doc)).toEqual([
         ...written,
@@ -418,7 +419,7 @@ describe('view access: new bodies (ADR-0024)', () => {
     const steps = await sequence([clash, setInputs(clash, 'o0', { length: length('12 mm') })]);
     for (const step of steps) {
       expect(step.problems).toEqual([]);
-      expect(step.result.stats.viewed).toEqual(['sc', 'mic', 'mij']);
+      expect(step.result.stats.viewed).toEqual(['sc', 'mic', 'mij', 'cut']);
       expect(fallbacks(step.result, clash)).toEqual([]);
     }
   });
