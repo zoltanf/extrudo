@@ -1,11 +1,12 @@
-// The other operations keyed by the bodies they touch or pick (ADR-0024's amendment on the other
-// operations): a revolve, a sweep, a loft, a coil and a box cut answer `touch` with automatic
-// participants and a tool that reads no body, `view` for a picked cut or intersect, `write`
-// otherwise. One small design per family: a box `fb` its tool cuts, a box `o1` 20 mm off that
-// `nudge` moves into the tool's way (12 mm), boxes before and after. The engine-level cases (a
-// failed ask, an evicted tool, join order, the version and order terms) are the same code path
-// for every family and are tested once, with the extrude (`view-access-operation.test.ts`).
-// Real OCCT and manifold, strict leaks, no clock.
+// The other operations keyed by the bodies they touch or pick (ADR-0024's amendments on the other
+// operations and on tools built on a body): a revolve, a sweep, a loft, a coil and a box cut answer
+// `touch` with automatic participants (or a picked join) and a tool that reads no body or reads
+// bodies only through its face, edge or vertex references, `view` for a picked cut or intersect,
+// `add` for a new body from sketches and planes, `write` otherwise. One small design per family: a
+// box `fb` its tool cuts, a box `o1` 20 mm off that `nudge` moves into the tool's way (12 mm),
+// boxes before and after. The engine-level cases (a failed ask, an evicted tool, join order, the
+// version and order terms) are the same code path for every family and are tested once, with the
+// extrude (`view-access-operation.test.ts`). Real OCCT and manifold, strict leaks, no clock.
 import {
   coilInputs,
   type ExtrudoDocument,
@@ -332,7 +333,7 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['o1']);
   });
 
-  it('answers: touch or view for a tool that reads no body, write for one that reads one', () => {
+  it('answers: touch or view for a tool built by reference alone, add or write for a new body', () => {
     const registry = kernelFeatures();
     const access = (type: string, inputs: FeatureInputs) =>
       registry.get(type)?.bodyAccess?.(inputs as never);
@@ -353,6 +354,10 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(access('revolve', revolveInputs([profile], edge, { operation: 'cut' }))).toBe('touch');
     expect(access('revolve', revolveInputs([face], X_AXIS, { operation: 'cut' }))).toBe('touch');
     expect(access('revolve', revolveInputs([face], X_AXIS, {}))).toBe('write');
+    // No axis: the revolve's error, keyed by every body.
+    expect(access('revolve', revolveInputs([profile], undefined, { operation: 'cut' }))).toBe(
+      'write',
+    );
     expect(
       access(
         'revolve',

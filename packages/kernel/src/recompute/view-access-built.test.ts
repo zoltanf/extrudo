@@ -441,7 +441,7 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     },
   );
 
-  it('a boss from a face joined to a picked box: its view is the picked, built-on and touched boxes', {
+  it('a boss from a face joined to a picked box: viewed, the picked, built-on and touched boxes', {
     timeout: 120_000,
   }, async () => {
     const doc = await pickedBoss();
@@ -462,7 +462,7 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     expect(run[3]?.evaluated).toEqual(['ub', 'fp']);
   });
 
-  it('a face left as a to-object reference on a distance extrude: its body in the key (a run more)', {
+  it('a face left as a to-object reference on a distance extrude: its body in the key, a run more', {
     timeout: 120_000,
   }, async () => {
     // Found by its exact name, `o0`'s face is taken as one the tool is built on, though a distance

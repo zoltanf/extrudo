@@ -2072,35 +2072,45 @@ page's blocked time: commit 0 → 0, undo 0 → 0, open 544 (420–617) → 596 
 keys, the versions of the bodies its face, edge and vertex references name by their exact names
 (`#named`, the walk `#viewOf` already makes over a feature's references). Those bodies are in its
 view as well (with the ones it picks). So a tool built on a body (an extrude of a face, a box
-placed on a face, a revolve about an edge, a sweep along edges, an emboss onto a face) is kept, and
+placed on a face, a revolve about an edge, a sweep along edges) is kept, and
 its answers used and handed to the evaluator, only while that body is unchanged: a new version is
 another tool key, no tool kept, an evaluation with every body as at first. A reference with no
 exact match (lost, or found only by a related name or a fingerprint), or of a kind the view can't
-carry, keeps today's key, as for `view`. The engine change: 15 lines of code added and 15 removed, comments aside (the reference walk shared
-with `#viewOf`, the tool key, the view; `pickedBodies` folded into it).
+carry, keeps today's key, as for `view`. The engine change: 15 lines of code added and 15
+removed, comments aside (the reference walk shared with `#viewOf`, the tool key, the view;
+`pickedBodies`, of the amendment on the other operations, folded into it).
 
 **Opted in** (each after an audit of its tool, below):
 1. the extrude of a body's face (`touches`: a `face` profile, by a distance, an automatic join, cut
    or intersect, or a picked join);
-2. primitives and coils placed on a face (`operationAccess`'s `byReference`, which `touch` takes and
-   `add` doesn't: a new body on a face stays `write`);
+2. primitives and coils placed on a face. `operationAccess`'s flags are named by the answer that
+   needs them: `tool.add` (the tool reads no body) and `tool.touch` (it reads none, or only
+   through its face, edge and vertex references; true wherever `tool.add` is), so a new body on a
+   face stays `write`;
 3. a revolve about a body's straight edge or of its face (by an angle), a sweep of a body's face or
    along its edges, a loft through a body's faces or vertices;
-4. the emboss: an emboss (a join) answers `touch`, a deboss (a cut) `view`. Its tool is built on
-   its faces' body, and `operate` takes that body as its participant: a deboss cuts it alone and
-   doesn't ask the touch test (the `view` rule as it is, its face reference bringing the body in);
-   an emboss joins it and lists every body its tool touches in its report.
+4. the emboss and the deboss answer `view` (not `touch`: the `view` rule as it is, its face
+   references bringing the body in). Its tool is built on its faces' body, and `operate` takes
+   that body as its only participant (`emboss.ts:196`, :344): a deboss cuts it; an emboss joins
+   the participants the tool touches (`operation.ts:172`, :202), and `touchingBodies` asks each
+   body on its own (its box, then the exact distance to the tool or to each of its solids, :343,
+   :369, :374), so its answer for that body is the same in a view of it as among every body, and
+   the join over the view equals the join over every body. The report is the emboss's own
+   (`emboss.ts:202`, :350: no `touching`), and its warnings speak of that body alone (one face:
+   `operate`'s go nowhere; several: "it doesn't touch the body", :345). As `touch` it gained
+   nothing: the first walk asked every body, the bodies the tool touched entered its key, and a
+   body moved over the face ran it again.
 
 **What each reads** (audited for this change; file:line, `features/`):
 
 | Feature | The tool reads, besides upstream outputs | Built on |
 |---|---|---|
 | Extrude, face profile | `facePart` (`sources.ts:152`): the face resolved by name (:153), described (:154), its edges' sources from that body's names (:158–162) | the face's body |
-| Primitives, coil on a face | `planeFrame` (`primitives.ts:277`): the face resolved (:279), refused if a mesh (:282), described (:283); the coil calls it (`coil.ts:205`) | the face's body |
-| Revolve | `axisOf` (`revolve.ts:274`): an edge resolved and described (:286, :287); profiles through `partsOf` (:237) and `uniteParts` (:238), a face profile as the extrude's | the edge's and the face's bodies |
-| Sweep | `baseOf` (`sweep.ts:100`, a face profile as the extrude's); the path's edges resolved (`pieceOf`, :228) | those bodies |
-| Loft | sections through `partsOf` (`loft.ts:115`, faces as the extrude's) and `pointOf` (:127: a vertex resolved) | those bodies |
-| Emboss | its face resolved (`emboss.ts:155`; several faces, :273, one body only), that body (:157, :280); the tool laid on the face (`layTangent`, :166, `faceHit` of that face, :430), moved, wrapped or projected onto it (`toolOn`, :235; `flatTool`, `wrappedTool`, `projectedTool`, :494, :534, :628; the face's surface, :795); the exact distance of that body and the tool (:183, :330); `operate` with that body as participant (:190, :337) | the faces' body |
+| Primitives, coil on a face | `planeFrame` (`primitives.ts:281`): the face resolved (:283), refused if a mesh (:286), described (:287); the coil calls it (`coil.ts:209`) | the face's body |
+| Revolve | `axisOf` (`revolve.ts:280`): an edge resolved and described (:292, :293); profiles through `partsOf` (:243) and `uniteParts` (:244), a face profile as the extrude's | the edge's and the face's bodies |
+| Sweep | `baseOf` (`sweep.ts:105`, a face profile as the extrude's); the path's edges resolved (`pieceOf`, :231, :233) | those bodies |
+| Loft | sections through `partsOf` (`loft.ts:120`, faces as the extrude's) and `pointOf` (:132: a vertex resolved) | those bodies |
+| Emboss (`view`) | its face resolved (`emboss.ts:156`; several faces, :274, one body only), that body (:158, :281); the tool laid on the face (`layTangent`, :167, :287, `faceHit` of that face, :431), moved, wrapped or projected onto it (`toolOn`, :236; `flatTool`, `wrappedTool`, `projectedTool`, :495, :535, :629; the face's surface, :796); the exact distance of that body and the tool (:184, :331); `operate` with that body as its only participant (:191, :339) | the faces' body |
 
 No tool above reads another body: what it samples is the face, edge or vertex it names, of the
 body that reference names. Each then calls `operate` and `splitSolids` as before.
@@ -2110,23 +2120,37 @@ tool by its tool key (… everything but the bodies)" and "face profiles (the to
 stay `write`": the tool key holds the versions of the bodies the tool is built on, and face
 profiles answer `touch`. In the amendment on the other operations, its "Not in" "any tool built on
 a body's face, edge or vertex with automatic participants or a picked join" and "emboss": they
-answer as above. This amendment replaces those.
+answer as above; and `operationAccess`'s `readsNone` is now `tool.add`. This amendment replaces
+those.
 
 **Still `write`:** through-all and to-object with automatic participants (rule B, a later step),
 the hole, the rib, a new body on a face.
 
+**A reference the settings ignore.** `#named` walks every reference input, as `#viewOf` does,
+also one the settings don't use: a `toObject` face, edge or vertex left on a distance extrude, or
+on a revolve by an angle (the amendment on the other operations has the same for a `body`
+reference). Found by its exact name, that body's version joins the tool key and the body the
+view: its edit runs the feature too, a run more than needed, sound (tested with a face left on a
+distance extrude). Lost, or found by a related name only, it keeps today's key, where the tool
+alone would have had a tool key. Only a document from the API, a script or an import carries one
+(the dialogs drop hidden fields); no engine code for it.
+
 **The proof** (`recompute/view-access-built.test.ts`; real OCCT and manifold, strict leaks, no
 clock, fixed seeds). The shared engine cases (a failed ask, an evicted tool, join order, the
 answers handed over, the order and version terms) are the same code path as before, tested with
-the extrude (`view-access-operation.test.ts`); here, what rule R adds:
+the extrude (`view-access-operation.test.ts`); here, what rule R adds (the emboss's in
+`recompute/view-access-emboss.test.ts`):
 
 - **Seeded designs**, each step equal to a cleared engine (versions and `measure` boxes too) and to
   `write` keys, no fall-back: a cut extruded from a box's face (22 edits: the face lost and back,
   no profile and back, the face's box and a box before resized, the operation cycle, the generic
   edits); a box cut placed on a box's face 2 mm up, which doesn't touch that box (22: the plane lost
-  and back, none and back, the same others); a revolve cut about a box's edge (22: the axis lost and
-  back, none and back, the others); an emboss on a box's face, emboss ↔ deboss (20: the face lost and
-  back, none and back, the box resized, the mode, the generic edits).
+  and back, none and back, the same others); a boss from a box's face joined to a picked box on
+  it, its view the picked, built-on and touched boxes (24: the picked body lost and back, none
+  picked and back, picked twice and back, the face's box and a box before resized, a box moved to
+  its side and away, the operation cycle, the generic edits); a revolve cut about a box's edge (22:
+  the axis lost and back, none and back, the others); an emboss on a box's face, emboss ↔ deboss
+  (20: the face lost and back, none and back, the box resized, the mode, the generic edits).
 - **Never stale**, one test each:
   - the face's box wider: the tool is built again and reaches a box the old one didn't (an answer
     kept for that box from the old tool would leave it uncut, and the answers handed to the
@@ -2139,33 +2163,41 @@ the extrude (`view-access-operation.test.ts`); here, what rule R adds:
   - a box comes into the tool's way and goes again;
   - the face's box suppressed (the face lost: today's key, the error), and back (the view again);
     the face found only by a related name (a slot through the box before): today's key;
-  - each of the revolve about an edge, the sweep of a face, the loft from a face, the emboss and
-    the deboss: the box wider builds the tool again, another box doesn't.
+  - the boss joined to a picked box: a box come to its side is touched (in its report and its
+    view, not joined), the picked box edited runs it, a box after doesn't;
+  - a face left as a `toObject` on a distance extrude: its box's edit runs the extrude (a run
+    more), another box's doesn't;
+  - each of the revolve about an edge, the sweep of a face and the loft from a face: the box wider
+    builds the tool again, another box doesn't;
+  - the emboss and the deboss: the face's box wider runs them again, a box before doesn't, nor a
+    box moved over the face (in the tool's way, outside the view).
 - **The answers:** a face profile, a coil or a box on a face, a revolve about an edge or of a face,
   a sweep along edges or of a face, a loft through a vertex answer `touch`; a new body on a face
-  stays `write`.
+  stays `write`, and so does a revolve with no axis; the emboss and the deboss answer `view`.
 - The earlier tests of a face-placed box cut and a cut from a body's face now show the view.
 
 **Taken out, one at a time** (the source changed, the filtered tests run, the source restored;
-every change failed at least one test):
+every change failed at least one test; the flags' rows ran under their earlier name, `byReference`):
 
 | Taken out | Tests that failed |
 |---|---|
 | the built-on bodies' versions in the tool key | the face's box wider, the same-ID box, the box cut on a face it doesn't touch |
 | the built-on bodies in the view | the box cut on a face it doesn't touch (a look-up outside the view: a fall-back) |
 | an exact name needed (a related name taken) | the face found only by a related name |
-| `byReference` never for `add` | the seeded face-placed box, revolve about an edge and picked face-placed box (their new-body steps), the answers |
 | the extrude's face profiles | the seeded face cut, five face-extrude tests, the extrude's answers, the earlier cut from a body's face |
-| the primitives' `byReference` | the seeded face-placed box, its counters, the picked face-placed design, the answers, the face-placed cut of the earlier file |
-| the coil's `byReference` | the answers |
-| the revolve's, the sweep's, the loft's `byReference` | the seeded revolve, each family's counters, the answers |
-| the emboss as `touch`; the deboss as `view` | the seeded emboss, the emboss's (or the deboss's) counters |
+| the primitives' `tool.touch` | the seeded face-placed box, its counters, the picked face-placed design, the answers, the face-placed cut of the earlier file |
+| the coil's `tool.touch` | the answers |
+| the revolve's, the sweep's, the loft's `tool.touch` | the seeded revolve, each family's counters, the answers |
+| the emboss as `touch` again (the deboss `view`) | the emboss's counters (the box over the face), the emboss answers |
+| the emboss and the deboss as `write` | the seeded emboss, both counters, the emboss answers |
+| `tool.add` taken out of the new-body answer | the seeded face-placed box and picked face-placed box, the answers |
+| `tool.touch` taken out (always `touch`) | the answers (the revolve with no axis) |
 
 **Not covered** by a test (by reading only): a sweep along body edges and a loft through a vertex
 (their answers are tested; the tool reads those bodies as a face profile does); a coil on a face
-(its answer); an emboss onto several faces (one body, as for one face); a picked join built on a
-body; a face found by its fingerprint only (the same noticed `resolve` as a related name); mesh
-bodies; previews.
+(its answer); an emboss onto several faces (one body, as for one face); a leftover `toObject`
+that is lost or found by a related name (today's key, as any such reference); a face found by its
+fingerprint only (the same noticed `resolve` as a related name); mesh bodies; previews.
 
 **Test time** (on one machine, under load from other work, run with the other `view-access` files):
 `view-access-built.test.ts` 13.9 s, new; `view-access-operations.test.ts` 31.3 s (was 22.9 s on the

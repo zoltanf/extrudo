@@ -365,8 +365,8 @@ is `KernelClient`, which restarts the worker after a crash.
   evaluator declares `bodyAccess: 'none'` (no bodies) or `add` (none: it
   only adds bodies). A `view` or `read` feature whose references name bodies
   by their exact names keys those bodies' versions instead of the whole set,
-  and a `touch` feature (an extrude, revolve, sweep, loft, coil, primitive or
-  emboss that joins, cuts or intersects the bodies it touches) the versions
+  and a `touch` feature (an extrude, revolve, sweep, loft, coil or primitive
+  that joins, cuts or intersects the bodies it touches) the versions
   of the bodies its tool touches, of those it picks and of those its tool is
   built on (ADR-0024's amendments). Shapes in the cache are
   reference-counted; the engine checks each evaluation for leaked shapes.
