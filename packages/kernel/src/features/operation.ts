@@ -330,12 +330,23 @@ export function reachAlong(
   point: readonly number[],
   along: readonly number[],
 ): number | undefined {
-  if (boxes.length === 0) return undefined;
+  return reachOver(
+    boxes.map((box) => corners(box.min as Vec3, box.max as Vec3)),
+    point,
+    along,
+  );
+}
+
+/** `reachAlong` over each box's eight corners (`corners`), as the engine keeps them by version. */
+export function reachOver(
+  cornerSets: readonly (readonly Vec3[])[],
+  point: readonly number[],
+  along: readonly number[],
+): number | undefined {
+  if (cornerSets.length === 0) return undefined;
   let far = 0;
-  for (const box of boxes) {
-    for (const c of corners(box.min as Vec3, box.max as Vec3)) {
-      far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
-    }
+  for (const set of cornerSets) {
+    for (const c of set) far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
   }
   return far;
 }

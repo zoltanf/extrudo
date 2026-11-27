@@ -17,6 +17,7 @@ import {
   importInputs,
   moveInputs,
   originPlaneRef,
+  primitiveInputs,
   profileRefId,
   sketchInputs,
 } from '@extrudo/core';
@@ -26,6 +27,7 @@ import { describe, expect, it } from 'vitest';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import { kernelFeatures } from '../features';
 import type { ExtrudeOutputData } from '../features/extrude';
+import { reachAlong } from '../features/operation';
 import { KernelError } from '../kernel';
 import {
   bytesOf,
@@ -598,5 +600,75 @@ describe('view access: through all, keyed by the reach (ADR-0024)', () => {
     for (const step of run) expect(step.problems).toEqual([]);
     expect(fallbacks(run[0]?.result as Done, doc)).toEqual([]);
     expect(fallbacks(run[1]?.result as Done, docs[1] as ExtrudoDocument)).toEqual(['cut']);
+  });
+  it('the engine’s answers from the corners it keeps equal reachAlong over the boxes', {
+    timeout: 120_000,
+  }, async () => {
+    // 60 boxes of random sizes and places, a slot through all after them; in its evaluation with
+    // every body the extrude compares 300 of the engine's answers (random points and directions)
+    // with `reachAlong` over the boxes it measures itself: exactly equal.
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const boxes = Array.from({ length: 60 }, (_, i) =>
+      feature(
+        `rb${i}`,
+        'box',
+        primitiveInputs('box', {
+          numbers: {
+            length: `${1 + 29 * rand()} mm`,
+            width: `${1 + 29 * rand()} mm`,
+            height: `${1 + 29 * rand()} mm`,
+            x: `${200 * rand() - 100} mm`,
+            y: `${200 * rand() - 100} mm`,
+            offset: `${40 * rand() - 20} mm`,
+          },
+        }),
+      ),
+    );
+    const compared: { engine: number | undefined; own: number | undefined }[] = [];
+    const spy = () => {
+      const registry = new FeatureRegistry<KernelFeatureDefinition>();
+      for (const definition of kernelFeatures().list()) {
+        registry.register(
+          definition.type !== 'extrude'
+            ? definition
+            : {
+                ...definition,
+                evaluate(ctx) {
+                  if (ctx.feature.id === 'cut' && ctx.reach) {
+                    const own = [...ctx.bodies.values()].map((s) => ctx.kernel.measureBox(s));
+                    for (let k = 0; k < 300; k++) {
+                      const v = [rand() - 0.5, rand() - 0.5, rand() - 0.5];
+                      const n = Math.hypot(...v);
+                      const along = v.map((x) => x / n) as [number, number, number];
+                      const point = [200 * rand() - 100, 200 * rand() - 100, 40 * rand() - 20] as [
+                        number,
+                        number,
+                        number,
+                      ];
+                      compared.push({
+                        engine: ctx.reach(point, along),
+                        own: reachAlong(own, point, along),
+                      });
+                    }
+                  }
+                  return definition.evaluate(ctx);
+                },
+              },
+        );
+      }
+      return registry;
+    };
+    const doc = document('random boxes and a cut through all', [
+      ...boxes,
+      ...throughCut('cut', [-8, -1, 8, 1]),
+    ]);
+    const run = await sequence([doc], { registry: spy, exact: false });
+    expect(run[0]?.problems).toEqual([]);
+    expect(compared).toHaveLength(300);
+    for (const { engine, own } of compared) expect(engine).toBe(own);
   });
 });
