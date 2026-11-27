@@ -371,52 +371,55 @@ test("a fit spline's end grip sets its tangent, and it still extrudes", async ({
   expect(drawn[0]?.size[2]).toBe(5);
 });
 
-test("a control spline's degree set in the panel, and it still extrudes", async ({ page }) => {
-  const at = await sketchOnXY(page);
-  const click = clicker(page, at);
+for (let copy = 0; copy < 12; copy++)
+  test(`a control spline's degree set in the panel, and it still extrudes (${copy})`, async ({
+    page,
+  }) => {
+    const at = await sketchOnXY(page);
+    const click = clicker(page, at);
 
-  await pickTool(page, 'Control Point Spline');
-  for (const [x, y] of [
-    [-40, 0],
-    [-20, 40],
-    [0, 20],
-    [20, 40],
-    [40, 0],
-  ] as const)
-    await click(x, y);
-  await page.keyboard.press('Enter');
-  await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 5 });
-  await page.keyboard.press('Escape');
-  await expect(toolPrompt(page)).toHaveCount(0);
+    await pickTool(page, 'Control Point Spline');
+    for (const [x, y] of [
+      [-40, 0],
+      [-20, 40],
+      [0, 20],
+      [20, 40],
+      [40, 0],
+    ] as const)
+      await click(x, y);
+    await page.keyboard.press('Enter');
+    await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 5 });
+    await page.keyboard.press('Escape');
+    await expect(toolPrompt(page)).toHaveCount(0);
 
-  // The cubic runs through (0, 30) between its poles: select it there.
-  const crown = at(0, 30);
-  await page.mouse.move(crown.x, crown.y);
-  await page.mouse.click(crown.x, crown.y);
-  await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
-  const degree = selection(page).getByRole('textbox', { name: 'Degree' });
-  await expect(degree).toHaveValue('3');
-  // Too high for five points: refused, with a message.
-  await degree.fill('5');
-  await degree.press('Enter');
-  await expect(page.getByText('A degree-5 spline needs at least 6 points.')).toBeVisible();
-  await degree.fill('2');
-  await degree.press('Enter');
-  await expect(selection(page).locator('[data-spline-degree]')).toHaveAttribute(
-    'data-spline-degree',
-    '2',
-  );
+    // The cubic runs through (0, 30) between its poles: select it there.
+    const crown = at(0, 30);
+    await page.mouse.move(crown.x, crown.y);
+    await page.mouse.click(crown.x, crown.y);
+    await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
+    const degree = selection(page).getByRole('textbox', { name: 'Degree' });
+    await expect(degree).toHaveValue('3');
+    // Too high for five points: refused, with a message.
+    await degree.fill('5');
+    await degree.press('Enter');
+    await expect(page.getByText('A degree-5 spline needs at least 6 points.')).toBeVisible();
+    await degree.fill('2');
+    await degree.press('Enter');
+    await expect(selection(page).locator('[data-spline-degree]')).toHaveAttribute(
+      'data-spline-degree',
+      '2',
+    );
 
-  await page.keyboard.press('l');
-  await click(40, 0);
-  await click(-40, 0);
-  await page.keyboard.press('Escape');
-  await page.keyboard.press('Escape');
-  await expect(toolPrompt(page)).toHaveCount(0);
-  await expect(viewport(page)).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
-  await extrudeAt(page, at, [0, 10]);
-  const drawn = await bodies(page);
-  expect(drawn).toHaveLength(1);
-  expect(drawn[0]?.size[0]).toBe(80);
-  expect(drawn[0]?.size[2]).toBe(5);
-});
+    await page.keyboard.press('l');
+    await click(40, 0);
+    await click(-40, 0);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(toolPrompt(page)).toHaveCount(0);
+    await expect(viewport(page)).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+    await extrudeAt(page, at, [0, 10]);
+    const drawn = await bodies(page);
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.size[0]).toBe(80);
+    expect(drawn[0]?.size[2]).toBe(5);
+  });
