@@ -2260,7 +2260,9 @@ changes whenever any body's box changes, also when the reach stays where it was,
 needs a box per body before the key is known (the plan's option for the automatic participants
 rejected that). The reach changes only when the tool does. Per walk it costs, for each call, one
 version look-up and one box look-up per body and eight dot products per box; a box is measured
-only for a new version. WALK_LINE
+only for a new version. With 110 bodies (100 plates and a slot through all across the first row,
+in Node, two runs, main → this): a walk with nothing changed 14.1, 12.2 → 12.0, 12.6 ms (median of
+10, noise); an edit of a plate the slot doesn't touch 237, 218 → 16, 16 ms (the cut kept).
 
 **Why it can't be stale.**
 - The calls an evaluation makes depend on the tool key of rule R and on the answers to the calls
@@ -2386,3 +2388,31 @@ and then made with more calls (the argument above; no design here stops between 
 "no bodies", which the no-body test walks); the bound of `#boxes` and `#probes` (a forgotten box
 is measured again, a forgotten call list means an evaluation with every body); a tool of several
 solids; previews; a script's isolated expansion (no tool key there).
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this one
+give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body, number of
+evaluations and versions: none of them has an extrude through all, and an extrude by a distance
+asks no reach, so its keys are as before. Every feature of those designs, the fastest of four runs
+each, main → this: 10,895 → 10,770 ms over 180 features; the largest increase of one feature
++2.5 ms (a 209 ms sweep). So no fixture redoes less after an early edit either.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
+time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
+edit its distance to 6 mm), incremental with `have`, in Node, the mean of two runs, main → this.
+
+| Each plate with | First | Middle | Last | Evaluated / meshes, first |
+|---|--:|--:|--:|--:|
+| a sketch on its top face, an 8 mm circle cut through all | 2,954 → 204 | 1,666 → 197 | 192 → 200 | 22/20 → 3/1 |
+| one XY sketch of 20 circles, one per plate, cut through all | 2,987 → 3,057 | 3,089 → 2,824 | 3,030 → 2,871 | 2/20 → 2/20 |
+
+The second design is one cut touching every plate: an edit of any plate changes a body it touches
+(and its reach, the plate's top), so the cut runs again with all 20, as before; the spread is noise.
+
+In the app (the first design as a file, production build, Chrome, 1280 × 800, 4 interleaved runs:
+median and range, ms, main → this), until the model is ready: committing an edit of the first
+plate in its dialog 2,944 (2,778–4,033) → 302 (292–411); undoing it 324 (322–444) → 325 (316–337);
+opening the design 2,662 (2,069–3,209) → 2,607 (2,363–8,058). The page's blocked time: commit 25
+(0–51) → 25 (0–55), undo 0 → 0, open 616 (418–779) → 738 (622–1,260); the ranges overlap (the
+8 s open came with the machine's other work).
+
