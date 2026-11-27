@@ -23,7 +23,14 @@ import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import { kernelFeatures } from '../features';
-import { bytesOf, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import {
+  bytesOf,
+  type Done,
+  fallbacks,
+  GENERIC_KINDS,
+  length,
+  setInputs,
+} from './add-access-test-support';
 import type { ImportedFile } from './types';
 import {
   BASE,
@@ -35,6 +42,7 @@ import {
   type Kind,
   proveDesigns,
   provedSteps,
+  sequence,
   statusOf,
   topOf,
   useKernel,
@@ -141,6 +149,23 @@ const DESIGNS: Design[] = [
       'size-face: view→view',
       'size-before: view→view',
       'nudge: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+    ],
+    steps: 30,
+  },
+  {
+    name: 'a cut of a picked box up to its top face, a box it doesn’t pick moved into its way',
+    make: async () => slotted(await topOf(), [], { bodies: ['fb:0'] }),
+    target: 'cut',
+    refsKey: 'bodies',
+    // No bodies picked: a cut of what it touches, `touch`, a view too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
+    kinds: KINDS,
+    flips: [
+      'size-face: view→view',
+      'nudge: view→view',
+      'op-cycle: view→view',
       'op-cycle: view→write',
       'op-cycle: write→view',
     ],
@@ -272,6 +297,53 @@ describe('view access: up to an object (ADR-0024)', () => {
     expect(run[2]?.evaluated).toEqual(['o0', 'cut']);
   });
 
+  it('a picked cut up to a face: its view; a box in its way it doesn’t pick runs alone', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = slotted(await topOf(), [], { bodies: ['fb:0'] });
+    const run = await provedSteps([
+      doc,
+      setInputs(doc, 'o1', { x: length('12 mm') }),
+      setInputs(doc, 'o0', { height: length('60 mm') }),
+      setInputs(doc, 'fb', { height: length('12 mm') }),
+    ]);
+    expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+    expect(run[1]?.evaluated).toEqual(['o1']);
+    expect(run[2]?.evaluated).toEqual(['o0']);
+    expect(run[3]?.evaluated).toEqual(['fb', 'cut']);
+  });
+
+  it('a picked cut up to a sphere: a view can’t give every body’s box, so it runs as write', {
+    timeout: 120_000,
+  }, async () => {
+    // The target's size needs the box round every body: in its view `everyBodyBox` reads `size`,
+    // the view notices it, and the cut runs as `write` (one fall-back per new view key, as a
+    // cleared engine's).
+    const doc = await toSphere({ bodies: ['fb:0'] });
+    const docs = [doc, setInputs(doc, 'o0', { height: length('60 mm') }), doc];
+    const run = await sequence(docs);
+    for (const step of run) expect(step.problems).toEqual([]);
+    expect(run[0]?.result.features['cut' as FeatureId]?.status).toBe('ok');
+    expect(fallbacks(run[0]?.result as Done, doc)).toEqual(['cut']);
+    expect(run[0]?.result.stats.viewed).not.toContain('cut');
+  });
+
+  it('a picked join up to a face: touch, the picked box joined, another box touched', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = slotted(await topOf(), [], { bodies: ['fb:0'], operation: 'join' });
+    const run = await provedSteps([
+      doc,
+      setInputs(doc, 'o1', { x: length('12 mm') }),
+      setInputs(doc, 'o0', { height: length('60 mm') }),
+    ]);
+    expect(statusOf(run, 0, 'cut')).not.toBe('error');
+    expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+    expect(run[1]?.evaluated).toEqual(['o1', 'cut']);
+    expect(touching(run, 1)).toEqual(['fb:0', 'o1:0']);
+    expect(run[2]?.evaluated).toEqual(['o0']);
+  });
+
   it('answers: touch up to a face, a vertex or a plane, write up to a body or with none', () => {
     const extrude = kernelFeatures().get('extrude');
     const access = (more: ExtrudeInputOptions) =>
@@ -287,6 +359,12 @@ describe('view access: up to an object (ADR-0024)', () => {
     expect(access({ operation: 'join', toObject: { kind: 'vertex', id: 'v' } })).toBe('touch');
     expect(access({ operation: 'cut', toObject: { kind: 'plane', id: 'pl' } })).toBe('touch');
     expect(access({ operation: 'cut', toObject: { kind: 'body', id: 'b:0' } })).toBe('write');
+    expect(access({ operation: 'cut', toObject: face, bodies: ['b:0'] })).toBe('view');
+    expect(access({ operation: 'intersect', toObject: face, bodies: ['b:0'] })).toBe('view');
+    expect(access({ operation: 'join', toObject: face, bodies: ['b:0'] })).toBe('touch');
+    expect(
+      access({ operation: 'cut', toObject: { kind: 'body', id: 'b:1' }, bodies: ['b:0'] }),
+    ).toBe('write');
     expect(access({ operation: 'cut' })).toBe('write');
     expect(access({ toObject: face })).toBe('write');
   });

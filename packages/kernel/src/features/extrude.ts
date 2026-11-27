@@ -105,15 +105,25 @@ export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
  * Whether an extrude cuts or intersects only the bodies it picks (`view`, ADR-0024's amendment on
  * operations): picked bodies (`explicitBodies` looks up those alone, and `operate` asks no other
  * whether it touches the tool), every side by a distance or `through-all` (which measures the
- * picked bodies alone, `throughAll`), never `to-object` (`objectSide` sizes its target from every
- * body). A join is `touch` (`touches`): its report lists every body the tool touches.
+ * picked bodies alone, `throughAll`), or up to a face, a vertex or a plane (the object's body is in
+ * the view by its reference). Up to a curved face the target is sized by every body's box
+ * (`bodiesBox`), which a view can't give: `everyBodyBox` reads `size`, the view notices it, and the
+ * extrude runs as `write`. Never up to a body (`trimTarget` cuts with it). A join is `touch`
+ * (`touches`): its report lists every body the tool touches.
  */
 export function cutsPicked(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);
   return (
     (settings.operation === 'cut' || settings.operation === 'intersect') &&
     settings.bodies.length > 0 &&
-    settings.sides.every((side) => side.extent === 'distance' || side.extent === 'through-all')
+    settings.sides.every(
+      (side) =>
+        side.extent === 'distance' ||
+        side.extent === 'through-all' ||
+        (side.extent === 'to-object' &&
+          side.toObject !== undefined &&
+          side.toObject.kind !== 'body'),
+    )
   );
 }
 
