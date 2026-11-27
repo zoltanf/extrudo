@@ -40,6 +40,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `data-sketch-summary` (the `counts` helper), then Finish
   (`auto-project.spec.ts`'s `undoTheEdit`).
 
+- **A refused field value reverts a render later.** Before `fill` on the same
+  `ExpressionInput`, wait for the stored value (`toHaveValue`), or the new text
+  lands inside the refused one (`spline-conic.spec.ts`: "2" became "32").
+
 - **Hover is reported on the next animation frame** (ADR-0102 §2,
   `viewport/pointer.ts`): a `page.mouse.move` over the view updates
   `data-model-hover` (and a sketch tool's preview) one frame later, not
