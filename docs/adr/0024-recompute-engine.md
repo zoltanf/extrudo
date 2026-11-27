@@ -2551,6 +2551,10 @@ could round apart.
 `throughLength`); a hole flipped; more than three holes; heavy tools (`isHeavyTool`, grouped by
 box, so `interfered`); previews; a script's isolated expansion (no tool key there).
 
+**Test time** (on one machine, run with the other `view-access` files, the machine's load about 1,
+at the last amendment's: `view-access.test.ts` 173.1 s, was 171.5 s): `view-access-hole.test.ts`
+10.7 s, new.
+
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this one
 give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and number of
