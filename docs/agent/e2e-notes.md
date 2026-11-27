@@ -40,9 +40,11 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   `data-sketch-summary` (the `counts` helper), then Finish
   (`auto-project.spec.ts`'s `undoTheEdit`).
 
-- **A refused field value reverts a render later.** Before `fill` on the same
-  `ExpressionInput`, wait for the stored value (`toHaveValue`), or the new text
-  lands inside the refused one (`spline-conic.spec.ts`: "2" became "32").
+- **A value a panel refuses reverts a render later.** A value that a panel's
+  `onCommit` refuses stays in the field until an effect puts the stored value
+  back (a draft the field itself rejects stays and never reverts). Before the
+  next `fill`, wait for it (`toHaveValue`), or the revert lands during the fill
+  and the new text is added to it (`spline-conic.spec.ts`: "2" became "32").
 
 - **Hover is reported on the next animation frame** (ADR-0102 §2,
   `viewport/pointer.ts`): a `page.mouse.move` over the view updates
@@ -57,19 +59,20 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **CI shards by duration.** `E2E_SHARD=<current>/<total>` (set by `ci.yml`,
   four shards) makes `playwright.config.ts` give each project only that
   shard's spec files: `scripts/e2e-shards.ts` deals the files longest first to
-  the least loaded shard, using the per-file seconds in `e2e/timings.json`
-  (a file not listed there counts as the median of the others; a file whose
-  tests CI always skips, the env-gated recorders, is listed with 0 by the
-  timings script and weighs nothing). Playwright's own `--shard`
-  splits by test count in file order, which put the benchmarks together
-  (22.7 min against 8.5, 2026-10-18). `node scripts/e2e-shards.ts plan` shows
-  the split. When a shard runs much longer than the others, or a heavy spec is
-  new, regenerate the timings from a CI run's `playwright-results-<shard>`
+  the least loaded shard, using the per-file seconds in `e2e/timings.json` (a
+  file not listed there counts as the median of the listed files that ran; a
+  file whose tests CI always skips, the env-gated recorders, is listed with 0
+  by the timings script and weighs nothing). Playwright's own `--shard` splits
+  by test count in file order, which put the benchmarks together (22.7 min
+  against 8.5, 2026-10-18). `node scripts/e2e-shards.ts plan` shows the split.
+  When a shard runs much longer than the others, or a heavy spec is new,
+  regenerate the timings from a CI run's `playwright-results-<shard>`
   artifacts: `node scripts/e2e-timings.mjs <run-id>` and commit the JSON.
   Locally, without `E2E_SHARD`, nothing changes; `E2E_SHARD=1/4 … test --list`
   shows one shard. Runner speed varies between runs (the same tests took 1.4×
-  longer on one run than on the one before), so compare shards within a run. The `webkit` project's spec is one of the files, and only
-  the shard that gets it installs WebKit (`node scripts/e2e-shards.ts browsers`).
+  longer on one run than on the one before), so compare shards within a run.
+  The `webkit` project's spec is one of the files, and only the shard that
+  gets it installs WebKit (`node scripts/e2e-shards.ts browsers`).
 
 - **WebKit** (the `webkit` project, `e2e/webkit-smoke.spec.ts` only; CI
   installs it with `playwright install --with-deps chromium webkit` in the

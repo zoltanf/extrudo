@@ -9,9 +9,9 @@
 // using the per-file seconds in e2e/timings.json; a file the JSON does not
 // know (a new spec) counts as the median of the known ones. A file whose
 // tests CI always skips (the env-gated recorders) has 0 there: it weighs
-// nothing and stays out of the median. Regenerate the
-// JSON from a CI run with `node scripts/e2e-timings.mjs <run-id>` when a
-// shard runs much longer than the others (docs/agent/e2e-notes.md, General).
+// nothing and stays out of the median. Regenerate the JSON from a CI run with
+// `node scripts/e2e-timings.mjs <run-id>` when a shard runs much longer than
+// the others (docs/agent/e2e-notes.md, General).
 //
 // CLI (run by CI, Node strips the types itself):
 //   node scripts/e2e-shards.ts browsers   # extra Playwright browsers this shard needs

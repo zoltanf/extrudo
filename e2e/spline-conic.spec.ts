@@ -400,8 +400,8 @@ test("a control spline's degree set in the panel, and it still extrudes", async 
   await degree.fill('5');
   await degree.press('Enter');
   await expect(page.getByText('A degree-5 spline needs at least 6 points.')).toBeVisible();
-  // The refused 5 stays in the field until the field's effect puts the stored 3 back, which
-  // can come after the message: typing before that lands in the middle of it ("32").
+  // The 5 the panel refused stays in the field until an effect puts the stored 3 back, which
+  // can land during the next fill: the 2 is then added to it ("32"). Wait for the 3 first.
   await expect(degree).toHaveValue('3');
   await degree.fill('2');
   await degree.press('Enter');
