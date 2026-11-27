@@ -894,17 +894,32 @@ export class RecomputeEngine {
       // A feature that changes only the bodies its tool touches (`touch`, the amendment on
       // operations) sees those and keys their versions, once a walk has shown its tool: the
       // bodies are asked again against that tool (`#touching`).
+      // Not while a body before it has no version (a shape another output holds): no key could
+      // name it, so the feature keeps today's key, and its cache hit.
       const toolKey =
-        access === 'touch' && scope === undefined && !hasOwnBodies(bodies, feature.id)
+        access === 'touch' &&
+        scope === undefined &&
+        !hasOwnBodies(bodies, feature.id) &&
+        [...bodies.values()].every((shape) => this.#versions.has(shape))
           ? keyOf('touch')
           : undefined;
       const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
-      const looked =
+      let looked =
         (access === 'view' || access === 'read') && scope === undefined
           ? this.#viewOf(feature, bodies)
-          : memo && this.#entries.get(memo.entry.key) === memo.entry
-            ? this.#touching(bodies, memo)
-            : undefined;
+          : undefined;
+      if (toolKey !== undefined && memo && this.#entries.get(memo.entry.key) === memo.entry) {
+        // Asking the bodies again is this feature's kernel work: reported first, so a Stop or a
+        // crash names it (ADR-0155). An ask that fails keeps no tool: the feature is evaluated
+        // with every body, as at first, and fails there as a cleared engine's would.
+        onFeature?.(script ?? feature.id);
+        try {
+          looked = this.#touching(bodies, memo);
+        } catch (error) {
+          if (error instanceof WebAssembly.RuntimeError) throw error;
+          this.#touched.delete(toolKey);
+        }
+      }
       const viewKey = looked && keyOf(hashOf('view', looked.versions));
       // Not when a body has the feature's own ID prefix: its fresh IDs (`<feature>:<n>`) are
       // picked among the bodies it sees, so they could meet one outside the view (as for `add`).
@@ -953,6 +968,9 @@ export class RecomputeEngine {
       // a `touch` feature's evaluation asked every body.
       let made = false;
       let asked = false;
+      // Whether the result of an evaluation with every body, keyed again, was in the cache already
+      // (`#evaluate` hands back that entry): not this walk's to drop.
+      let there = false;
       if (entry) {
         hit(entry);
       } else {
@@ -979,6 +997,7 @@ export class RecomputeEngine {
                 if (!touched || !viewed || this.#readBodies(viewed) || !output.bodies) return;
                 view = touched.bodies;
                 asked = true;
+                there = this.#entries.has(viewed);
                 const kept = [...output.bodies].filter(
                   ([id]) => view?.holds(id) || !bodies.has(id),
                 );
@@ -987,7 +1006,7 @@ export class RecomputeEngine {
             : undefined,
         );
         evaluated.push(feature.id);
-        made = true;
+        made = !there;
         key = entry.key;
       }
       if (toolKey !== undefined && view && entry.output?.touched) {

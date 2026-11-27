@@ -19,7 +19,10 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import { kernelFeatures } from '../features';
+import { Kernel, KernelError } from '../kernel';
 import { choice, fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import { RecomputeEngine } from './engine';
+import type { EvalContext, KernelFeatureDefinition } from './types';
 import {
   BASE,
   box,
@@ -30,6 +33,7 @@ import {
   type Kind,
   proveDesigns,
   sequence,
+  testKernel,
   top,
   useKernel,
 } from './view-access-features-test-support';
@@ -405,5 +409,132 @@ describe('view access: operations (ADR-0024)', () => {
     for (const step of out) expect(step.problems).toEqual([]);
     expect(out[2]?.evaluated).toContain('cut');
     expect(out[2]?.result.stats.viewed).toEqual(['cut']);
+  });
+
+  /** `Kernel.distance` failing for a 4.4 mm wide shape while `use` runs (a test switch). */
+  async function failingDistance<T>(use: (log: string[]) => Promise<T>): Promise<T> {
+    const original = Kernel.prototype.distance;
+    const log: string[] = [];
+    Kernel.prototype.distance = function (this: Kernel, a, b) {
+      log.push('distance');
+      const wide = (s: typeof a) => {
+        const { min, max } = this.measureBox(s);
+        return Math.abs((max[0] ?? 0) - (min[0] ?? 0) - 4.4) < 0.01;
+      };
+      if (wide(a) || wide(b)) throw new KernelError('A test distance failed.');
+      return original.call(this, a, b);
+    };
+    try {
+      return await use(log);
+    } finally {
+      Kernel.prototype.distance = original;
+    }
+  }
+
+  it('touch: asking a body again fails: the cut’s error as a cleared engine’s, the rest computed', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = document('a box near the tool, not touching it, a box after', [
+      ...nearby().features,
+      box('o9', 140),
+    ]);
+    const size = (s: number) =>
+      setInputs(doc, 'nb', { length: length(`${s} mm`), width: length(`${s} mm`) });
+    const run = await failingDistance(() => sequence([doc, size(4.4), doc, size(4.4)]));
+    for (const step of run) expect(step.problems).toEqual([]);
+    const status = (i: number, id: string) => run[i]?.result.features[id as FeatureId]?.status;
+    expect(status(1, 'cc')).toBe('error');
+    for (const id of ['ob', 'nb', 'o9']) expect(status(1, id), id).not.toBe('error');
+    // Back: no tool kept (the ask failed), so the cut runs with every body and finds its first
+    // result in the cache (`#evaluate` hands back that entry).
+    expect(run[2]?.evaluated).toEqual(['cc']);
+    expect(status(2, 'cc')).not.toBe('error');
+    expect(status(2, 'cc')).toBe(status(0, 'cc'));
+    // The failing box again: the error from the cache, the ask failing again.
+    expect(run[3]?.evaluated).toEqual([]);
+    expect(status(3, 'cc')).toBe('error');
+  });
+
+  it('touch: the feature is reported before its bodies are asked again', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = nearby();
+    const engine = new RecomputeEngine(testKernel(), kernelFeatures(), { strictLeaks: true });
+    try {
+      await engine.recompute({ doc });
+      await failingDistance(async (log) => {
+        log.length = 0;
+        const grown = setInputs(doc, 'nb', { length: length('4.2 mm'), width: length('4.2 mm') });
+        await engine.recompute({ doc: grown }, (id) => log.push(`feature ${id ?? '-'}`));
+        // The box, then the cut reported, then its exact distance to the box asked.
+        expect(log.slice(0, 3)).toEqual(['feature nb', 'feature cc', 'distance']);
+      });
+    } finally {
+      engine.clear();
+    }
+  });
+
+  it('touch: a body before it without a version keeps the write key: nothing runs again', {
+    timeout: 120_000,
+  }, async () => {
+    // A test feature whose body is the sketch's profile face itself (held by the sketch's output,
+    // so it gets no version of its own).
+    const registry = () => {
+      const out = kernelFeatures();
+      out.register({
+        type: 'test-sheet',
+        label: 'test-sheet',
+        category: 'create',
+        icon: 'test',
+        inputsSchema: (kernelFeatures().get('extrude') as KernelFeatureDefinition).inputsSchema,
+        bodyAccess: () => 'write',
+        evaluate(ctx: EvalContext) {
+          const ref = (ctx.inputs.profiles as { refs: GeomRef[] }).refs[0] as GeomRef;
+          const [sketch, region] = ref.id.split('/') as [string, string];
+          const face = (ctx.output(sketch as FeatureId).shapes as Record<string, unknown>)[region];
+          return { bodies: new Map(ctx.bodies).set(ctx.bodyId(), face as never) };
+        },
+      } as unknown as KernelFeatureDefinition);
+      return out;
+    };
+    const doc = touching();
+    const sheet = circleCut('sh', 200, 0, 3).map((f) =>
+      f.id === 'sh' ? { ...f, type: 'test-sheet' } : f,
+    );
+    const at0 = doc.features.findIndex((f) => f.id === 'sk-cut');
+    const features = [...doc.features];
+    features.splice(at0, 0, ...sheet);
+    const withSheet = { ...doc, features, timelineMarker: features.length };
+    // Versions aside: a body with none has none to compare (the same with today's keys).
+    const run = await sequence([withSheet, withSheet], {
+      registry,
+      reference: registry,
+      exact: false,
+    });
+    for (const step of run) expect(step.problems).toEqual([]);
+    expect(run[0]?.result.features['cut' as FeatureId]?.status).toBe('ok');
+    expect(run[0]?.result.stats.viewed).toEqual([]);
+    expect(run[1]?.evaluated).toEqual([]);
+  });
+
+  it('touch: back to an earlier tool while its memory lives: its own answers', {
+    timeout: 120_000,
+  }, async () => {
+    // A 4 mm box 12 mm over `fb`: the slot 20 mm deep doesn't reach it, 30 mm deep does.
+    const base = touching();
+    const doc = {
+      ...base,
+      features: [
+        ...base.features.slice(0, 2),
+        feature('xb', 'box', { ...small('xb', 0, 0, 4).inputs, offset: length('12 mm') }),
+        ...base.features.slice(2),
+      ],
+      timelineMarker: base.features.length + 1,
+    };
+    const deep = setInputs(doc, 'cut', { distance: length('30 mm') });
+    const run = await steps([doc, deep, doc, setInputs(doc, 'o0', { length: length('12 mm') })]);
+    expect(run[1]?.evaluated).toEqual(['cut']);
+    expect(run[2]?.evaluated).toEqual([]);
+    expect(run[3]?.evaluated).toEqual(['o0']);
   });
 });
