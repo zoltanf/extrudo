@@ -5,6 +5,7 @@
 // face would reach. Real OCCT and manifold, strict leaks, no clock.
 import {
   type ExtrudoDocument,
+  embossInputs,
   extrudeInputs,
   type FeatureId,
   type GeomRef,
@@ -204,6 +205,33 @@ async function builtOn(family: 'revolve' | 'sweep' | 'loft'): Promise<ExtrudoDoc
   ]);
 }
 
+/**
+ * A 4 mm circle on XY embossed 1 mm onto `fb`'s top face (moved onto it), or debossed into it;
+ * boxes before, between (on top, 12 mm off) and after.
+ */
+async function emboss(mode: 'emboss' | 'deboss' = 'emboss'): Promise<ExtrudoDocument> {
+  const face = await topOf();
+  const b = new SketchBuilder();
+  b.circle(0, 0, 2);
+  const [region] = detectProfiles(b.sketch);
+  return document(`an ${mode} on a box's face`, [
+    box('o0', -40),
+    box('fb', 0),
+    lifted('o1', 12, 10, 10),
+    feature('es', 'sketch', sketchInputs(originPlaneRef('origin:xy'), b.sketch)),
+    feature(
+      'em',
+      'emboss',
+      embossInputs(
+        [{ kind: 'profile', id: profileRefId('es' as FeatureId, region?.id ?? '') }],
+        face,
+        { depth: '1 mm', mode },
+      ),
+    ),
+    box('o2', 40),
+  ]);
+}
+
 const DESIGNS: Design[] = [
   {
     name: 'a cut extruded from a box’s face, the box and others edited',
@@ -256,6 +284,23 @@ const DESIGNS: Design[] = [
       'op-cycle: write→view',
     ],
     steps: 22,
+  },
+  {
+    name: 'an emboss on a box’s face, the box and others edited, emboss and deboss',
+    make: () => emboss(),
+    target: 'em',
+    refsKey: 'face',
+    kinds: [
+      ...BASE,
+      'size-face',
+      'size-face',
+      'size-before',
+      'emboss-mode',
+      'emboss-mode',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: ['size-face: view→view', 'size-before: view→view', 'emboss-mode: view→view'],
+    steps: 20,
   },
   {
     name: 'a revolve cut about a box’s edge, the box and others edited',
@@ -415,6 +460,27 @@ describe('view access: tools built on a body (ADR-0024)', () => {
       expect(run[0]?.result.stats.viewed).toEqual(['cut']);
       expect(run[1]?.evaluated).toEqual(['o0']);
       expect(run[2]?.evaluated).toEqual(['fb', 'cut']);
+    },
+  );
+
+  it.each(['emboss', 'deboss'] as const)(
+    'an %s on a box’s face: the box wider builds it again, another box doesn’t',
+    { timeout: 120_000 },
+    async (mode) => {
+      const doc = await emboss(mode);
+      const run = await steps([
+        doc,
+        setInputs(doc, 'o0', { length: length('12 mm') }),
+        setInputs(doc, 'fb', { width: length('12 mm') }),
+        setInputs(doc, 'o1', { x: length('0 mm') }),
+      ]);
+      expect(status(run, 0, 'em')).toBe('ok');
+      expect(run[0]?.result.stats.viewed).toEqual(['em']);
+      expect(run[1]?.evaluated).toEqual(['o0']);
+      expect(run[2]?.evaluated).toEqual(['fb', 'em']);
+      // A box come over the face: the emboss's tool touches it (it asks every body); a deboss
+      // cuts the face's box alone and doesn't ask.
+      expect(run[3]?.evaluated).toEqual(mode === 'emboss' ? ['o1', 'em'] : ['o1']);
     },
   );
 });

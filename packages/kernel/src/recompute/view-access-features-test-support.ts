@@ -261,6 +261,7 @@ export type Kind =
   | 'unproject'
   | 'op-cycle'
   | 'nudge'
+  | 'emboss-mode'
   | 'reach'
   | (typeof GENERIC_KINDS)[number];
 
@@ -396,6 +397,12 @@ export function edit(
       const projections =
         kind === 'project' ? { ...rest, pj: { ref: named.edge, curves: {} } } : rest;
       return set({ sketch: { ...input, sketch: { ...sketch, projections } as never } });
+    }
+    case 'emboss-mode': {
+      // The target emboss's mode, emboss ↔ deboss.
+      if (now?.type !== 'emboss') return undefined;
+      const was = (now.inputs.mode as EnumInput | undefined)?.value ?? 'emboss';
+      return set({ mode: choice(was === 'emboss' ? 'deboss' : 'emboss') });
     }
     case 'nudge': {
       // A `touch` design's box between (`o1`) moved into the tool's way (12 mm) and out (20 mm).

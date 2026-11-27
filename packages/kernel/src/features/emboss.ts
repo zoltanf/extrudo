@@ -133,7 +133,11 @@ export interface EmbossOutputData {
 
 export const kernelEmboss: KernelFeatureDefinition<EmbossInputs> = {
   ...embossFeature,
-  bodyAccess: () => 'write',
+  // Its tool is built on its faces' body alone (resolved by reference, the wrap and the projection
+  // read only those faces), and `operate` takes that body as its participant (ADR-0024's
+  // amendment on tools built on a body): a deboss cuts it alone (`view`: the touch test isn't
+  // asked); an emboss joins it and lists every body the tool touches (`touch`, rule R).
+  bodyAccess: (inputs) => (embossSettings(inputs).mode === 'emboss' ? 'touch' : 'view'),
   evaluate: evaluateEmboss,
 };
 
