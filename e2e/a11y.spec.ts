@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { primitive } from './benchmark-helpers';
-import { fileAction, kernelReady, openProject, pickMenuItem, pickTool } from './helpers';
+import { fileAction, kernelReady, openProject, pickMenuItem, pickTool, selectTab } from './helpers';
 
 // P3-13 (NFR-07): an axe audit of the main screens. Each screen is checked
 // against WCAG 2.1 A and AA; the test fails on any violation not listed in
@@ -41,6 +41,27 @@ async function audit(page: Page, screen: string) {
   expect.soft(found).toEqual([]);
 }
 
+/**
+ * The Wall bracket with a box beside it, its first body in Component1 and an empty
+ * Component2: the document the shell test builds along its audits, and the one the
+ * dialog and panel tests start from, so each audits the same page as when it was one
+ * long test.
+ */
+async function bracketAssembly(page: Page) {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await primitive(page, 'Box', {});
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  await expect(browser.locator('[data-assembly-hint]')).toBeVisible();
+  await browser.locator('[data-body] button').first().click();
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  await pickTool(page, 'New Component');
+  await expect(viewport).toHaveAttribute('data-components', /^Component1:/);
+  await page.keyboard.press('Escape');
+  await pickTool(page, 'New Component');
+  await expect(viewport).toHaveAttribute('data-components', /;Component2:$/);
+}
+
 for (const theme of ['dark', 'light'] as const) {
   test.describe(`${theme} theme`, () => {
     test.beforeEach(async ({ page }) => {
@@ -72,7 +93,7 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} tooltip demo`);
     });
 
-    test('project shell, sketch mode and dialogs', async ({ page }) => {
+    test('project shell, feature dialogs, a macro and components', async ({ page }) => {
       await openProject(page, 'wall-bracket');
       await kernelReady(page);
       await audit(page, `${theme} shell`);
@@ -137,6 +158,10 @@ for (const theme of ['dark', 'light'] as const) {
       await expect(page.getByRole('region', { name: 'Joint dialog' })).toBeVisible();
       await audit(page, `${theme} joint dialog`);
       await page.getByRole('button', { name: 'Cancel Esc' }).click();
+    });
+
+    test('parameters, versions, settings, search and export', async ({ page }) => {
+      await bracketAssembly(page);
 
       // Parameters.
       await pickTool(page, 'Parameters');
@@ -170,6 +195,13 @@ for (const theme of ['dark', 'light'] as const) {
       await expect(page.getByRole('dialog', { name: 'Export model' })).toBeVisible();
       await audit(page, `${theme} export`);
       await page.keyboard.press('Escape');
+    });
+
+    test('panels and sketch mode', async ({ page }) => {
+      await bracketAssembly(page);
+      // The Home tab, as Export left it when this was one test with the dialogs: Measure
+      // and Section Analysis are the audits that see its tiles.
+      await selectTab(page, 'Home');
 
       // Panels: Measure, Section Analysis, Print Info, the notification history.
       await page.keyboard.press('i');
