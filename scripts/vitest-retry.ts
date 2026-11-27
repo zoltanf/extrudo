@@ -9,8 +9,12 @@
 // again, and only when the crashes were the run's sole problem: any failed test
 // or other error fails the job as before.
 //
+// CI runs the suite in shards (`--shard=2/3`, one job each): the second run is
+// given the crashed files alone and none of the first run's arguments, so the
+// shard option does not cut that list again.
+//
 // CLI (run by CI, Node strips the types itself):
-//   node scripts/vitest-retry.ts [vitest filters…]
+//   node scripts/vitest-retry.ts [vitest arguments…]
 import { spawn } from 'node:child_process';
 import { relative } from 'node:path';
 
