@@ -2307,7 +2307,7 @@ in Node, two runs, main → this): a walk with nothing changed 14.1, 12.2 → 12
 | sketch profiles | none: the sketch's output (`baseOf`, `extrude.ts:284`) |
 | a face profile | that face of that body (`facePart`, `sources.ts:152`–162): rule R |
 | a through-all side | `throughAll` (`extrude.ts:577`): `ctx.reach` (:590) when the engine hands it, else the boxes of every body or of the participants (:586–588, :591); symmetric asks both directions (:335), two sides each side through all (:384) |
-| picked bodies | `explicitBodies` (`operation.ts:109`, :116): those bodies, in the view |
+| picked bodies | `explicitBodies` (`operation.ts:110`, :117): those bodies, in the view |
 | automatic participants | `operate` (`extrude.ts:305`): `touchingBodies` (`operation.ts:358`), the touch test as before |
 | the result | `splitSolids` (`extrude.ts:302`) |
 | a distance side, taper, flip, direction | the inputs alone |
