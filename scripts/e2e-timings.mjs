@@ -6,7 +6,8 @@
 //   node scripts/e2e-timings.mjs <run-id>     # gh run download, then sum per file
 //
 // A test's seconds are its last result's (a retry replaces the failed try, it
-// does not add to it); skipped tests count nothing. Prints the plan the new
+// does not add to it); skipped tests count nothing, so a file whose tests were
+// all skipped gets 0 (the planner weighs it at that, not at the median). Prints the plan the new
 // numbers give for the shard count in .github/workflows/ci.yml.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -34,6 +35,7 @@ try {
     for (const spec of suite.specs ?? []) {
       for (const test of spec.tests ?? []) {
         const last = test.results?.at(-1);
+        seconds[file] ??= 0;
         if (!last || last.status === 'skipped') continue;
         seconds[file] = (seconds[file] ?? 0) + last.duration / 1000;
       }

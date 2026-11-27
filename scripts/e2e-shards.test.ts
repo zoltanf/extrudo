@@ -19,6 +19,14 @@ describe('planShards', () => {
     expect(forward.reduce((sum, shard) => sum + shard.seconds, 0)).toBe(111);
   });
 
+  it('weighs an always-skipped file (0 s) at nothing and leaves it out of the median', () => {
+    const timings = { a: 10, b: 20, c: 30, skipped1: 0, skipped2: 0 };
+    const plan = planShards(['a', 'b', 'c', 'skipped1', 'skipped2', 'new'], timings, 2);
+    // The median of 10, 20, 30 is 20 for `new`; the skipped files add nothing.
+    expect(plan.reduce((sum, shard) => sum + shard.seconds, 0)).toBe(80);
+    expect(plan.flatMap((shard) => shard.files)).toContain('skipped1');
+  });
+
   it('spreads files with no timings at all by count', () => {
     const plan = planShards(['a', 'b', 'c', 'd', 'e'], {}, 3);
     expect(plan.map((shard) => shard.files.length)).toEqual([2, 2, 1]);
