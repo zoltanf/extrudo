@@ -54,7 +54,9 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   four shards) makes `playwright.config.ts` give each project only that
   shard's spec files: `scripts/e2e-shards.ts` deals the files longest first to
   the least loaded shard, using the per-file seconds in `e2e/timings.json`
-  (a file not listed there counts as the median). Playwright's own `--shard`
+  (a file not listed there counts as the median of the others; a file whose
+  tests CI always skips, the env-gated recorders, is listed with 0 by the
+  timings script and weighs nothing). Playwright's own `--shard`
   splits by test count in file order, which put the benchmarks together
   (22.7 min against 8.5, 2026-10-18). `node scripts/e2e-shards.ts plan` shows
   the split. When a shard runs much longer than the others, or a heavy spec is
