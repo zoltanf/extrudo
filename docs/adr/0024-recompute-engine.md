@@ -2562,8 +2562,8 @@ runs spread by about ±100 ms); the holes take the same (b7's 133.8 → 133.6 ms
 0.2 ms).
 
 **In real designs** (the first feature with a length ×1.1, incremental with `have`, two runs, main
-→ this; features evaluated, meshes sent): b5, 8/2 → 6/2, 247 → 207 ms (its holes on the lid no
-longer run for an edit of the box); b7, b8 and b10 redo as much as before, since that first edit
+→ this; features evaluated, meshes sent): b5, 8/2 → 6/2, 247 → 207 ms (an edit of its first box
+runs two features fewer); b7, b8 and b10 redo as much as before, since that first edit
 changes the body their hole cuts.
 
 **Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
