@@ -2460,8 +2460,9 @@ touch test cover what it reads:
   don't overlap or touch (below). When they do, it hands the engine no touch answers and is
   keyed by every body, as before.
 
-No engine change, no facade change, no change to results or to body placement. Two shared helpers
-change:
+No engine change for the hole itself (two for the cost of a walk, below: 37 lines of code added and
+22 removed, comments aside), no facade change, no change to results or to body placement. Two
+shared helpers change:
 - `reachAlong` (`features/operation.ts`) now gives the raw reach. The extrude adds its margin
   (`throughMargin`), the hole its 1 mm, each as before, so the engine keys both by the same numbers
   the evaluator uses.
@@ -2501,7 +2502,8 @@ over every body while the holes don't overlap or touch:
   (`hole.ts:157`): no tool is kept, the result keeps every body's key, as before.
 
 **Why it can't be stale** otherwise: rule R's and rule B's arguments, and the touch test's, as
-for the extrude. The engine adds nothing for the hole.
+for the extrude. The engine adds no rule for the hole (its two changes for the walk's cost keep the
+same answers, and keys that tell the same calls and answers apart).
 
 **What no longer holds.** In the amendment on operations, its "Not in" list names holes (they read
 the bodies themselves); in the amendment on the other operations, the same; in the amendment on
@@ -2567,18 +2569,38 @@ the largest increase of one feature +78 ms (b9's 6.2 s thread, which this change
 runs spread by about ±100 ms); the holes take the same (b7's 133.8 → 133.6 ms, the others within
 0.2 ms).
 
-**A walk with nothing changed** costs more with many through holes in one feature (measured ad
-hoc: 110 plates and one hole feature through all on a plane over them, in Node, the median of 21
-walks, two runs, main → this). The hole asks `ctx.reach` once per hole, and on every walk the
-engine works each question's answer out again over every body's box before it can find the cache
-entry:
+**A walk with nothing changed** costs more with many through holes in one feature: the hole asks
+`ctx.reach` once per hole, and on every walk the engine works each question's answer out again over
+every body's box before it can find the cache entry. Measured ad hoc: 110 plates and one hole
+feature through all on a plane over them, in Node, the median of 21 walks, two runs, ms. "Before"
+is this amendment as first written; "after", with the two changes below.
 
-| Holes | main | this |
-|--:|--:|--:|
-| 20 | 11.4, 10.5 ms | 10.8, 10.7 ms |
-| 100 | 9.4, 9.6 ms | 13.7, 13.7 ms |
-| 200 | 9.3, 9.0 ms | 16.8, 18.2 ms |
+| Holes | main | before | after |
+|--:|--:|--:|--:|
+| 20 | 10.4, 10.4 | 10.6, 10.8 | 10.4, 10.4 |
+| 100 | 9.7, 9.6 | 14.7, 13.6 | 11.7, 11.6 |
+| 200 | 9.1, 9.4 | 16.5, 16.7 | 12.4, 11.9 |
 
-About 40 µs per question with 110 bodies, as the engine works it out now: eight corners made per
-box per question (4.2 ms for 200 questions measured alone), and the key's hash of the questions
-and answers twice (0.4 ms each). A blind hole asks nothing, and one through hole asks once.
+Before, a question cost about 40 µs with 110 bodies: eight corners made per box per question
+(4.2 ms for 200 questions, measured alone), and the key's hash of the questions and answers, twice
+(0.4 ms each). The two changes:
+- `#boxes` keeps each version's box as its eight corners (`corners`), and `#reach` reads them with
+  `reachOver` (`features/operation.ts`). `reachAlong` is `reachOver` over the boxes' corners, so
+  the extrude, the hole and the engine run one inner loop. The answers are bit for bit the same:
+  the same corners, the same `dot` and `sub`, the same maximum. A test compares 300 of the
+  engine's answers (60 random boxes, random points and directions) with `reachAlong` over the
+  boxes the extrude measures itself: all equal. The bound is unchanged (`8 × bodies + 256`
+  versions); a version now holds eight three-number arrays instead of a box, about 0.5 KB.
+- `#probes` keeps a tool's calls with their hash, made once when they are kept. The keys hold that
+  hash and the answers, so a walk hashes only the answers (0.02 ms for 200). An evaluation's own
+  calls are hashed once, after it. The self-check compares that hash and the answers with its
+  key's.
+
+Known further steps, not taken:
+- answers kept while no body version changed since the walk before (same versions, same boxes,
+  so exact): a walk with nothing changed would cost about 0.1 ms more whatever the number of
+  holes;
+- one reach question taking all of a hole's points (an API change to `ctx.reach` and the hole;
+  exact, the same dots): one question in the key, the answers about 1.5 ms for 200 holes.
+
+A blind hole asks nothing, and one through hole asks once.
