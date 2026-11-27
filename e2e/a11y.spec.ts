@@ -1,7 +1,15 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { primitive } from './benchmark-helpers';
-import { fileAction, kernelReady, openProject, pickMenuItem, pickTool, selectTab } from './helpers';
+import {
+  fileAction,
+  kernelReady,
+  openProject,
+  pickMenuItem,
+  pickTool,
+  saveStatus,
+  selectTab,
+} from './helpers';
 
 // P3-13 (NFR-07): an axe audit of the main screens. Each screen is checked
 // against WCAG 2.1 A and AA; the test fails on any violation not listed in
@@ -41,25 +49,45 @@ async function audit(page: Page, screen: string) {
   expect.soft(found).toEqual([]);
 }
 
+/** What the shell test does between the steps of {@link bracketAssembly}. */
+interface AssemblySteps {
+  /** The bracket is open and computed; the box comes next. */
+  opened?: () => Promise<void>;
+  /** The box is there, no component yet. */
+  box?: () => Promise<void>;
+  /** Component1 holds the first body. */
+  component?: () => Promise<void>;
+  /** Component2 is there too (before the document settles). */
+  components?: () => Promise<void>;
+}
+
 /**
  * The Wall bracket with a box beside it, its first body in Component1 and an empty
- * Component2: the document the shell test builds along its audits, and the one the
- * dialog and panel tests start from, so each audits the same page as when it was one
- * long test.
+ * Component2: the document the shell test builds along its audits (through `steps`),
+ * and the one the dialog and panel tests start from, so each audits the same page as
+ * when it was one long test. It ends computed and saved. One label differs from the
+ * old single test: "Repeat last" offers New Component here, where it offered Joint
+ * after the shell test's Joint dialog.
  */
-async function bracketAssembly(page: Page) {
+async function bracketAssembly(page: Page, steps: AssemblySteps = {}) {
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
+  await steps.opened?.();
   await primitive(page, 'Box', {});
   const browser = page.getByRole('complementary', { name: 'Browser' });
   await expect(browser.locator('[data-assembly-hint]')).toBeVisible();
+  await steps.box?.();
   await browser.locator('[data-body] button').first().click();
   const viewport = page.getByRole('region', { name: 'Viewport' });
   await pickTool(page, 'New Component');
   await expect(viewport).toHaveAttribute('data-components', /^Component1:/);
+  await steps.component?.();
   await page.keyboard.press('Escape');
   await pickTool(page, 'New Component');
   await expect(viewport).toHaveAttribute('data-components', /;Component2:$/);
+  await steps.components?.();
+  await kernelReady(page);
+  await expect(saveStatus(page)).toHaveText('Saved');
 }
 
 for (const theme of ['dark', 'light'] as const) {
@@ -94,70 +122,57 @@ for (const theme of ['dark', 'light'] as const) {
     });
 
     test('project shell, feature dialogs, a macro and components', async ({ page }) => {
-      await openProject(page, 'wall-bracket');
-      await kernelReady(page);
-      await audit(page, `${theme} shell`);
+      await bracketAssembly(page, {
+        opened: async () => {
+          await audit(page, `${theme} shell`);
 
-      // A feature dialog.
-      await page
-        .getByRole('list', { name: 'Features' })
-        .getByRole('button', { name: /^Extrude1/ })
-        .dblclick();
-      await expect(page.getByRole('region', { name: 'Edit Extrude1 dialog' })).toBeVisible();
-      await audit(page, `${theme} feature dialog`);
-      await page.getByRole('button', { name: 'Cancel Esc' }).click();
+          // A feature dialog.
+          await page
+            .getByRole('list', { name: 'Features' })
+            .getByRole('button', { name: /^Extrude1/ })
+            .dblclick();
+          await expect(page.getByRole('region', { name: 'Edit Extrude1 dialog' })).toBeVisible();
+          await audit(page, `${theme} feature dialog`);
+          await page.getByRole('button', { name: 'Cancel Esc' }).click();
 
-      await pickTool(page, 'Script');
-      await expect(page.getByRole('textbox', { name: 'Script code' })).toBeVisible();
-      await expect(page.getByRole('region', { name: 'Script dialog' })).toHaveAttribute(
-        'data-preview-status',
-        'ok',
-      );
-      await audit(page, `${theme} script editor`);
-      await page.getByRole('button', { name: 'Cancel Esc' }).click();
+          await pickTool(page, 'Script');
+          await expect(page.getByRole('textbox', { name: 'Script code' })).toBeVisible();
+          await expect(page.getByRole('region', { name: 'Script dialog' })).toHaveAttribute(
+            'data-preview-status',
+            'ok',
+          );
+          await audit(page, `${theme} script editor`);
+          await page.getByRole('button', { name: 'Cancel Esc' }).click();
 
-      // The Macro dialog (P5-05): a recorded box, with its code.
-      await pickTool(page, 'Record Macro');
-      await primitive(page, 'Box', {});
-      await pickTool(page, 'Stop Macro');
-      await expect(page.getByRole('region', { name: 'Macro' })).toHaveAttribute(
-        'data-macro-dialog',
-        'ready',
-      );
-      await expect(page.getByRole('textbox', { name: 'Macro code' })).toBeVisible();
-      await audit(page, `${theme} macro dialog`);
-      await page.getByRole('button', { name: 'Close', exact: true }).click();
+          // The Macro dialog (P5-05): the box is recorded, with its code.
+          await pickTool(page, 'Record Macro');
+        },
+        box: async () => {
+          await pickTool(page, 'Stop Macro');
+          await expect(page.getByRole('region', { name: 'Macro' })).toHaveAttribute(
+            'data-macro-dialog',
+            'ready',
+          );
+          await expect(page.getByRole('textbox', { name: 'Macro code' })).toBeVisible();
+          await audit(page, `${theme} macro dialog`);
+          await page.getByRole('button', { name: 'Close', exact: true }).click();
 
-      // The browser's assembly hint (#74): the bracket and the box, no component yet.
-      await expect(
-        page.getByRole('complementary', { name: 'Browser' }).locator('[data-assembly-hint]'),
-      ).toBeVisible();
-      await audit(page, `${theme} browser with the assembly hint`);
-
-      // The browser with a component holding a body (P6-05).
-      await page
-        .getByRole('complementary', { name: 'Browser' })
-        .locator('[data-body] button')
-        .first()
-        .click();
-      await pickTool(page, 'New Component');
-      await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
-        'data-components',
-        /^Component1:/,
-      );
-      await audit(page, `${theme} browser with a component`);
-
-      // The Joint dialog (P6-05 J1): a second, empty component makes it available.
-      await page.keyboard.press('Escape');
-      await pickTool(page, 'New Component');
-      await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
-        'data-components',
-        /;Component2:$/,
-      );
-      await page.keyboard.press('j');
-      await expect(page.getByRole('region', { name: 'Joint dialog' })).toBeVisible();
-      await audit(page, `${theme} joint dialog`);
-      await page.getByRole('button', { name: 'Cancel Esc' }).click();
+          // The browser's assembly hint (#74): the bracket and the box, no component yet.
+          await expect(
+            page.getByRole('complementary', { name: 'Browser' }).locator('[data-assembly-hint]'),
+          ).toBeVisible();
+          await audit(page, `${theme} browser with the assembly hint`);
+        },
+        // The browser with a component holding a body (P6-05).
+        component: () => audit(page, `${theme} browser with a component`),
+        // The Joint dialog (P6-05 J1): a second, empty component makes it available.
+        components: async () => {
+          await page.keyboard.press('j');
+          await expect(page.getByRole('region', { name: 'Joint dialog' })).toBeVisible();
+          await audit(page, `${theme} joint dialog`);
+          await page.getByRole('button', { name: 'Cancel Esc' }).click();
+        },
+      });
     });
 
     test('parameters, versions, settings, search and export', async ({ page }) => {
