@@ -376,6 +376,25 @@ tools only work on some of them. Notes further down that name a machine apply to
   downloads it. The dispatch needs the
   workflow file on `main`; runs of one ref cancel each other, so run
   experiments from separate branches (and delete the branch afterwards).
+- **The unit tests run in shards** (`ci.yml`, job `unit`, "Unit and memory
+  tests (i/3)"): each shard is `node scripts/vitest-retry.ts --shard=i/3` on
+  its own runner (4 cores, 3 vitest workers). vitest sorts the test files by
+  the SHA-1 of their path and gives each shard an equal count, so no list is
+  kept and every file is in exactly one shard; a new file can move others to
+  the neighbouring shard. Shard 1 also runs the changelog check (pull requests;
+  the only full-history checkout), `pnpm check:static` and the drawing export.
+  The job **"Typecheck, lint, unit and memory tests"** (`check`) is the gate
+  that branch protection requires by name: it runs with `always()` and fails
+  unless every shard succeeded (a failed, cancelled or skipped shard turns it
+  red; without `always()` it would be skipped, which counts as passed). Never
+  rename it. Measured 2026-11-26: one job took 32 min (tests 31 min, files'
+  own times summing to 81 min); three shards took 9, 15.5 and 16.5 min, the
+  gate green 17 min after the run started. The four long files are
+  `fuzz.test.ts` (~14-15 min), `memory.test.ts`, `features/thread-fill.test.ts`
+  and `recompute/add-access-features.test.ts` (7-11 min each), all in the
+  kernel; the count is cut by time only by luck, so when one shard runs much
+  longer than the others, change the matrix's count or split the fuzz file by
+  fixture. Locally `pnpm check` still runs everything in one go.
 - **`node scripts/measure-startup.mjs`** prints the size table and times a
   first visit, a repeat visit and an offline visit under CDP throttling
   (`--mbit`, `--no-browser`); it uses `PLAYWRIGHT_CHROMIUM_PATH` for a

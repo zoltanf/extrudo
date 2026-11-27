@@ -698,7 +698,8 @@ it.
 | perf | recompute timings for fixtures; sketch solve timings; bundle size budget | Vitest bench, CI budget check |
 
 CI (GitHub Actions): typecheck, lint, unit, kernel tests, E2E on Chromium,
-bundle-size budget. Every agent task must leave CI green.
+bundle-size budget. The unit and the E2E tests each run in shards on their own
+runners (`docs/agent/dev-environment.md`). Every agent task must leave CI green.
 
 ## 10. Architecture decision records
 

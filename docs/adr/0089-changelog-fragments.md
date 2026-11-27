@@ -69,6 +69,12 @@ from a shallow clone but would blame the branch for changelog lines that only
 merged to main after the branch was cut — a PR open across a release would fail
 wrongly.)
 
+*Amended 2026-11-26:* the unit tests moved into shards (jobs `unit`, "Unit and
+memory tests (i/3)"), and the step moved with the static checks into the first
+shard, the only one with the full-history checkout. The `check` job is now the
+gate that is green only when every shard is, so a pull request that edits the
+changelog still fails the required check.
+
 The scripts' behaviour is tested in `scripts/changelog.test.ts` (Vitest runs
 `scripts/` as a project in the root config; the root `tsconfig.json` typechecks
 it). `--base` itself needs a real git history, so it is exercised by hand, once

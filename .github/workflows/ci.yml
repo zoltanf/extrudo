@@ -128,11 +128,23 @@ jobs:
         if: steps.release.outputs.exists == 'false'
         run: node packages/openscad/openscad.mjs publish
 
-  check:
-    name: Typecheck, lint, unit and memory tests
+  unit:
+    # The unit and memory tests, cut into shards that each run on their own
+    # runner (docs/agent/dev-environment.md, "The unit tests run in shards").
+    # vitest's own `--shard` deals the test files by the hash of their path, so
+    # there is no list to keep and no file can be left out. Shard 1 also does
+    # the work that needs no splitting: the changelog check, the static checks
+    # and the drawing export. To change the count, change the matrix.
+    name: Unit and memory tests (${{ matrix.shard }}/${{ strategy.job-total }})
     needs: [occt, planegcs, openscad]
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
-    timeout-minutes: 70 # the tests alone take ~27 min, ~45 on a slow runner
+    # A shard takes ~17 min (the fuzz test's file alone runs ~15.5), ~27 on a
+    # slow runner; ~22 and ~35 if the four long files ever fall into one shard.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -140,10 +152,10 @@ jobs:
       # diff has the merge base (ADR-0089); the other jobs keep the shallow default.
       - uses: actions/checkout@v5
         with:
-          fetch-depth: 0
+          fetch-depth: ${{ matrix.shard != 1 && 1 || 0 }} # `== 1 && 0 || 1` is always 1: 0 is falsy
 
       - name: A pull request must not edit docs/CHANGELOG.md (ADR-0089)
-        if: github.event_name == 'pull_request'
+        if: matrix.shard == 1 && github.event_name == 'pull_request'
         run: node scripts/check-changelog.mjs --base "origin/${{ github.base_ref }}"
 
       - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
@@ -161,20 +173,37 @@ jobs:
       # `pnpm check`, in two steps: the tests run through vitest-retry.ts, which
       # runs a test file again when its worker crashed with SIGTRAP.
       - name: Typecheck, lint, package boundaries, bindings
+        if: matrix.shard == 1
         run: pnpm check:static
 
       - name: Unit and memory tests
-        run: node scripts/vitest-retry.ts
+        run: node scripts/vitest-retry.ts --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       # Drawings (P6-24 S6, ADR-0143): the CLI exports the drawing fixture as a
       # PDF, and its pages and text are what the sheets say; no anchor is detached.
       - name: A drawing exported by the CLI
+        if: matrix.shard == 1
         run: |
           pnpm extrudo check fixtures/sheets/plate.extrudo --sheets
           pnpm extrudo export fixtures/sheets/plate.extrudo --format pdf --version-name V1 --out "$RUNNER_TEMP/plate.pdf"
           node scripts/check-sheet-pdf.mjs "$RUNNER_TEMP/plate.pdf" --pages 2 \
             --text "Plate and peg" --text "60.0" --text "Ø16.0" --text "Break the edge 1.0 mm" \
             --text "Drawn 2026-11-11, V1. Sheet 1 of 2." --text "First drawing"
+
+  check:
+    # The check that branch protection requires by this name: green only when
+    # every shard above is. `always()` because a job whose needed job failed or
+    # was cancelled is otherwise skipped, and a skipped check counts as passed.
+    name: Typecheck, lint, unit and memory tests
+    needs: [unit]
+    if: always()
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - name: Every shard passed
+        run: |
+          echo "The shards: ${{ needs.unit.result }}"
+          test "${{ needs.unit.result }}" = success
 
   docker:
     # The Docker image (ADR-0091): builds it from a fresh app build for the
