@@ -2076,7 +2076,7 @@ placed on a face, a revolve about an edge, a sweep along edges, an emboss onto a
 its answers used and handed to the evaluator, only while that body is unchanged: a new version is
 another tool key, no tool kept, an evaluation with every body as at first. A reference with no
 exact match (lost, or found only by a related name or a fingerprint), or of a kind the view can't
-carry, keeps today's key, as for `view`. The engine change: ENGINE_LINES (the reference walk shared
+carry, keeps today's key, as for `view`. The engine change: 15 lines of code added and 15 removed, comments aside (the reference walk shared
 with `#viewOf`, the tool key, the view; `pickedBodies` folded into it).
 
 **Opted in** (each after an audit of its tool, below):
@@ -2114,3 +2114,83 @@ answer as above. This amendment replaces those.
 
 **Still `write`:** through-all and to-object with automatic participants (rule B, a later step),
 the hole, the rib, a new body on a face.
+
+**The proof** (`recompute/view-access-built.test.ts`; real OCCT and manifold, strict leaks, no
+clock, fixed seeds). The shared engine cases (a failed ask, an evicted tool, join order, the
+answers handed over, the order and version terms) are the same code path as before, tested with
+the extrude (`view-access-operation.test.ts`); here, what rule R adds:
+
+- **Seeded designs**, each step equal to a cleared engine (versions and `measure` boxes too) and to
+  `write` keys, no fall-back: a cut extruded from a box's face (22 edits: the face lost and back,
+  no profile and back, the face's box and a box before resized, the operation cycle, the generic
+  edits); a box cut placed on a box's face 2 mm up, which doesn't touch that box (22: the plane lost
+  and back, none and back, the same others); a revolve cut about a box's edge (22: the axis lost and
+  back, none and back, the others); an emboss on a box's face, emboss ↔ deboss (20: the face lost and
+  back, none and back, the box resized, the mode, the generic edits).
+- **Never stale**, one test each:
+  - the face's box wider: the tool is built again and reaches a box the old one didn't (an answer
+    kept for that box from the old tool would leave it uncut, and the answers handed to the
+    evaluator are the new tool's);
+  - the face's box replaced by a moved box of the same ID: the tool built again;
+  - a boss from the face joined to its own box (the built-on body touched too): that box edited
+    runs it, another doesn't;
+  - a box cut on a box's face it doesn't touch (built on, not touched): that box taller moves the
+    tool and runs it, its report names the other box alone;
+  - a box comes into the tool's way and goes again;
+  - the face's box suppressed (the face lost: today's key, the error), and back (the view again);
+    the face found only by a related name (a slot through the box before): today's key;
+  - each of the revolve about an edge, the sweep of a face, the loft from a face, the emboss and
+    the deboss: the box wider builds the tool again, another box doesn't.
+- **The answers:** a face profile, a coil or a box on a face, a revolve about an edge or of a face,
+  a sweep along edges or of a face, a loft through a vertex answer `touch`; a new body on a face
+  stays `write`.
+- The earlier tests of a face-placed box cut and a cut from a body's face now show the view.
+
+**Taken out, one at a time** (the source changed, the filtered tests run, the source restored;
+every change failed at least one test):
+
+| Taken out | Tests that failed |
+|---|---|
+| the built-on bodies' versions in the tool key | the face's box wider, the same-ID box, the box cut on a face it doesn't touch |
+| the built-on bodies in the view | the box cut on a face it doesn't touch (a look-up outside the view: a fall-back) |
+| an exact name needed (a related name taken) | the face found only by a related name |
+| `byReference` never for `add` | the seeded face-placed box, revolve about an edge and picked face-placed box (their new-body steps), the answers |
+| the extrude's face profiles | the seeded face cut, five face-extrude tests, the extrude's answers, the earlier cut from a body's face |
+| the primitives' `byReference` | the seeded face-placed box, its counters, the picked face-placed design, the answers, the face-placed cut of the earlier file |
+| the coil's `byReference` | the answers |
+| the revolve's, the sweep's, the loft's `byReference` | the seeded revolve, each family's counters, the answers |
+| the emboss as `touch`; the deboss as `view` | the seeded emboss, the emboss's (or the deboss's) counters |
+
+**Not covered** by a test (by reading only): a sweep along body edges and a loft through a vertex
+(their answers are tested; the tool reads those bodies as a face profile does); a coil on a face
+(its answer); an emboss onto several faces (one body, as for one face); a picked join built on a
+body; a face found by its fingerprint only (the same noticed `resolve` as a related name); mesh
+bodies; previews.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and
+number of evaluations. Versions differ in one, b10: its cylinder joined on a face is now keyed by
+the body that face belongs to. The feature goldens are unchanged. Every feature of those designs,
+the fastest of four runs each, main → this: 10,661 → 10,698 ms over 180 features; the largest
+increase of one feature +45 ms (b9's 6.2 s thread, which this change doesn't reach; its runs
+spread by about ±100 ms); b10's cylinder 24.9 → 24.5 ms. In b10 an early edit redoes as much as
+before: every feature before its cylinder changes the body the cylinder is built on. No other
+fixture has a tool built on a body.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
+time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
+edit its distance to 6 mm), incremental with `have`, in Node, two runs each, main → this.
+
+| Each plate with | First | Middle | Last | Evaluated / meshes, first |
+|---|--:|--:|--:|--:|
+| its top face extruded 2 mm, joined | 7,706 → 446 | 4,270 → 438 | 432 → 434 | 21/20 → 2/1 |
+| a 6 mm box cut placed on its top face | 2,717 → 190 | 1,515 → 186 | 185 → 178 | 21/20 → 2/1 |
+| an 8 mm circle embossed onto its top face | 2,552 → 176 | 1,420 → 168 | 171 → 170 | 21/20 → 2/1 |
+
+In the app (the 20 plates with their faces extruded as a file, production build, Chrome,
+1280 × 800, 4 interleaved runs: median and range, ms, main → this), until the model is ready:
+committing an edit of the first plate in its dialog 7,174 (7,170–7,185) → 483 (480–487); undoing it
+322 (321–322) → 320 (320–327); opening the design 6,946 (6,890–7,197) → 6,884 (6,721–7,134). The
+page's blocked time: commit 0 → 0, undo 0 → 0, open 534 (359–586) → 500 (344–520).
+
