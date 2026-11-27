@@ -114,9 +114,9 @@ export interface ImportedFile {
  *   is.
  * - `touch` (ADR-0024's amendments on operations): joins, cuts or intersects the bodies its tool
  *   touches (automatic participants, or a join of picked bodies) and reads no other but the ones
- *   it picks and the ones its tool is built on: an extrude, revolve, sweep, loft, coil or
- *   primitive whose tool reads no body, or reads one only through a face, edge or vertex
- *   reference (`operationAccess`). Its view is the bodies the tool touches, the ones it picks and
+ *   it picks and the ones its tool is built on: an extrude, revolve, sweep, loft, coil,
+ *   primitive or hole whose tool reads no body, or reads one only through a face, edge or vertex
+ *   reference (`operationAccess`; the hole always). Its view is the bodies the tool touches, the ones it picks and
  *   the ones those references name: the engine keeps the tool by its inputs, upstream keys and the
  *   versions of the bodies it is built on (rule R) and asks it again of each body whose version it
  *   hasn't asked about (`touchingBodies`), and hands the evaluator those answers
