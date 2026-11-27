@@ -399,7 +399,10 @@ tools only work on some of them. Notes further down that name a machine apply to
   first visit, a repeat visit and an offline visit under CDP throttling
   (`--mbit`, `--no-browser`); it uses `PLAYWRIGHT_CHROMIUM_PATH` for a
   system Chromium (on the Ubuntu machine `/usr/bin/google-chrome`). The
-  ADR-0037 numbers were measured on the Ubuntu machine.
+  ADR-0037 numbers were measured on the Ubuntu machine. On Node 24.22.3 its
+  `process.exit` deadlocked in about 1 of 70 CI runs (a V8 background compile
+  waits for a GC while the main thread joins it): CI's size step therefore has
+  a 5-minute timeout, and a verdict it printed before the hang stands.
 - **The scratchpad is shared between agents in one session**: put harness
   files in your own subfolder (`<scratchpad>/<task>/`); `harness.js` from
   another task once ran in place of a fresh build. Shell commands that
