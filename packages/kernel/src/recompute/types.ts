@@ -122,9 +122,10 @@ export interface ImportedFile {
  *   whose version it hasn't asked about (`touchingBodies`), and hands the evaluator those answers
  *   (`EvalContext.touched`); the first walk evaluates with every body and keys the result by the
  *   bodies it touched (`output.touched`). Then as `view`. A tool sized from the bodies' boxes (an
- *   extrude through all, a through hole) asks `EvalContext.reach`, and the engine keys it by what
- *   it asked and the answers (rule B). Answer it only for inputs whose tool reads no body but
- *   through such references and `reach`, and whose evaluation reads the others only through
+ *   extrude through all or up to a curved face, a through hole, a revolve up to an object) asks
+ *   `EvalContext.reach` or `farthest`, and the engine keys it by what it asked and the answers
+ *   (rule B). Answer it only for inputs whose tool reads no body but through such references,
+ *   `reach` and `farthest`, and whose evaluation reads the others only through
  *   `touchingBodies` and `explicitBodies` (and the hole's count of holes that reach no body, which
  *   ADR-0024's amendment on the hole shows follows from the touched bodies). An evaluation that
  *   can't show its other reads follow from the touch test hands back no `output.touched` (the hole

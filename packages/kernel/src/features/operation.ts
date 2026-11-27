@@ -91,8 +91,9 @@ export interface OperationSettings {
  * engine keeps the tool by those bodies' versions); else `write`. `tool`: what each answer needs,
  * `add` (the tool reads no body: every reference upstream or none) and `touch` (it reads none, or
  * only through such references: true wherever `add` is); and whether it sizes its tool from every
- * body other than through `EvalContext.reach` (`everyBody`: `write`; a revolve to an object sizes
- * its target from every body, `sweepToObject`).
+ * body other than through `EvalContext.reach` or `farthest` (`everyBody`: `write`; a revolve up to
+ * a body, which cuts with that body, or a picked cut up to an object, whose view can't give every
+ * body's box).
  */
 export function operationAccess(
   settings: { operation: BodyOperation; bodies: readonly string[] },
