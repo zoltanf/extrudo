@@ -26,6 +26,7 @@ import { operationCsg } from '../scad-export/operation';
 import { framePoint, merged2d, resolveProfiles } from '../scad-export/profile';
 import { splitSolids } from './bodies';
 import {
+  everyBodyBox,
   explicitBodies,
   LENGTH_EPS,
   type OperationWords,
@@ -122,8 +123,10 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
  * bodies (its report lists every body the tool touches; the picked ones are in its view too;
  * `touchingBodies` asks every body, and the engine asks again only bodies it hasn't asked this
  * tool); every side by a distance, or through all (`throughAll` asks `ctx.reach`, and the engine
- * keys the tool by its answer, rule B), never to an object (`objectSide` sizes its target from
- * every body); and every profile a sketch's profile or text, or a body's face (`facePart`,
+ * keys the tool by its answer, rule B), or up to a face, a vertex or a plane (the object resolved
+ * by its reference, rule R; a curved face's target sized by `bodiesBox`, which asks `ctx.reach`),
+ * never up to a body (`trimTarget` cuts with that body itself, which no key names); and every
+ * profile a sketch's profile or text, or a body's face (`facePart`,
  * `sources.ts`: that face of that body alone; the engine keeps the tool by that body's version,
  * rule R).
  */
@@ -132,7 +135,14 @@ export function touches(inputs: ExtrudeInputs): boolean {
   return (
     settings.operation !== 'new-body' &&
     (settings.bodies.length === 0 || settings.operation === 'join') &&
-    settings.sides.every((side) => side.extent === 'distance' || side.extent === 'through-all') &&
+    settings.sides.every(
+      (side) =>
+        side.extent === 'distance' ||
+        side.extent === 'through-all' ||
+        (side.extent === 'to-object' &&
+          side.toObject !== undefined &&
+          side.toObject.kind !== 'body'),
+    ) &&
     settings.profiles.every(
       (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity' || ref.kind === 'face',
     )
@@ -534,8 +544,8 @@ function objectSide(
   // Far enough to reach past every body and the profile from anywhere among them.
   let lo = kernel.measureBox(base.source.shape).min;
   let hi = kernel.measureBox(base.source.shape).max;
-  for (const body of ctx.bodies.values()) {
-    const bbox = kernel.measureBox(body);
+  const bbox = bodiesBox(ctx);
+  if (bbox) {
     lo = [Math.min(lo[0], bbox.min[0]), Math.min(lo[1], bbox.min[1]), Math.min(lo[2], bbox.min[2])];
     hi = [Math.max(hi[0], bbox.max[0]), Math.max(hi[1], bbox.max[1]), Math.max(hi[2], bbox.max[2])];
   }
@@ -559,6 +569,29 @@ function objectSide(
   if (far <= LENGTH_EPS) throw offsetTooShort();
   const sweepLength = far + Math.max(1, 0.05 * far);
   return { along: u, length: sweepLength, taper, trimBy, reach: far };
+}
+
+/**
+ * The box round every body before the extrude, undefined for none: each side the boxes' extent
+ * along that axis, as `reachAlong` from the origin gives it (the same minimum and maximum of the
+ * same corner coordinates). A `touch` extrude asks the engine (`ctx.reach`), which keys the tool by
+ * the answers (ADR-0024's rule B); else every body's box, measured.
+ */
+function bodiesBox(ctx: EvalContext<ExtrudeInputs>): { min: Vec3; max: Vec3 } | undefined {
+  const origin: Vec3 = [0, 0, 0];
+  const boxes = ctx.reach ? [] : everyBodyBox(ctx);
+  const far = (along: Vec3) =>
+    ctx.reach ? ctx.reach(origin, along) : reachAlong(boxes, origin, along);
+  const axes: Vec3[] = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ];
+  const [hx, hy, hz] = axes.map((axis) => far(axis));
+  const [lx, ly, lz] = axes.map((axis) => far(scale(axis, -1)));
+  if (hx === undefined || hy === undefined || hz === undefined) return undefined;
+  if (lx === undefined || ly === undefined || lz === undefined) return undefined;
+  return { min: [-lx, -ly, -lz], max: [hx, hy, hz] };
 }
 
 /** How far past `point` along unit `u` a shape's box reaches (mm; negative: wholly behind). */

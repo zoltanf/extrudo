@@ -21,7 +21,7 @@ import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { BodyAccess, EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
 import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
-import { add, corners, dot, scale, sub } from './vec';
+import { add, corners, dot, length, scale, sub } from './vec';
 
 /**
  * Distances (mm) at or below which shapes touch. The facade's `kTouch` is the
@@ -344,11 +344,41 @@ export function reachOver(
   along: readonly number[],
 ): number | undefined {
   if (cornerSets.length === 0) return undefined;
-  let far = 0;
+  // Unclamped: negative when every box lies behind `point` (its callers clamp at 0 themselves),
+  // so the reach along an axis from the origin is the boxes' extent that way (`bodiesBox`).
+  let far = Number.NEGATIVE_INFINITY;
   for (const set of cornerSets) {
     for (const c of set) far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
   }
   return far;
+}
+
+/**
+ * How far from `point` the boxes' lowest and highest corners (`corners`' first and last) lie at
+ * most, undefined for no boxes: what a revolve up to an object sizes its target by
+ * (`sweepToObject`), and what the engine keys it by (`EvalContext.farthest`, rule B).
+ */
+export function farOver(
+  cornerSets: readonly (readonly Vec3[])[],
+  point: readonly number[],
+): number | undefined {
+  if (cornerSets.length === 0) return undefined;
+  let far = Number.NEGATIVE_INFINITY;
+  for (const set of cornerSets) {
+    const lo = length(sub(set[0] as Vec3, point as Vec3));
+    far = Math.max(far, length(sub(set[set.length - 1] as Vec3, point as Vec3)), lo);
+  }
+  return far;
+}
+
+/**
+ * Every body's box, for an evaluator that sizes a tool from them without the engine's questions.
+ * It reads `size` first: a `view` evaluator can't see every body, and that read is noticed there,
+ * so it runs as `write`.
+ */
+export function everyBodyBox(ctx: EvalContext): Box[] {
+  if (ctx.bodies.size === 0) return [];
+  return [...ctx.bodies.values()].map((shape) => ctx.kernel.measureBox(shape));
 }
 
 /** An extrude's through-all length from `reachAlong`'s: 0 for none, else 5% more (≥ 1 mm). */
