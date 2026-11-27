@@ -2710,3 +2710,38 @@ real OCCT and manifold, strict leaks, no clock, fixed seeds):
 design (their answers are tested; they read no box); a two-sided extrude with one side up to an
 object (the same `resolveSide`); an extrude's picked intersect up to an object (the same rule as
 the cut); previews; a script's isolated expansion.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body, number
+of evaluations and versions: none of them extrudes or revolves up to an object, and the unclamped
+reach gave no through-all extrude or through hole of theirs another answer. Every feature of those
+designs, the fastest of four runs each, main → this: 10,652 → 10,644 ms over 180 features; the
+largest increase of one feature +10.7 ms (b9's thread, which this change doesn't reach). No
+fixture redoes less after an early edit, since none has an object to reach.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine (load about 1.5). Kernel
+time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
+edit its distance to 6 mm), incremental with `have`, in Node, the mean of two runs, main → this.
+
+| Each plate with | First | Middle | Last | Evaluated / meshes, first |
+|---|--:|--:|--:|--:|
+| a plate 20 mm over it, a 4 mm boss joined up to that plate's bottom face (flat) | 3,002 → 202 | 1,672 → 198 | 206 → 200 | 22/20 → 3/1 |
+| a 30 mm sphere 30 mm over it, the boss up to the sphere, 1 mm short (curved) | 3,552 → 226 | 1,987 → 220 | 222 → 221 | 22/20 → 3/1 |
+
+Up to the sphere the target's size comes from the box round every body before the boss. A plate
+made thicker stays inside it (the spheres are higher), so the other bosses are kept. An edit that
+grows that box reaches every boss after it: the first sphere raised 10 mm makes the box taller
+for the 19 bosses after it, which all run again, as before (3,572 → 3,532 ms, 21/21 both). The
+last sphere raised: 211 → 220 ms, 2/2 both (only its own boss comes after it).
+
+**A walk with nothing changed** (110 plates, in Node, the median of 21 walks, two runs, main →
+this): with one cut up to a sphere (six questions), 9.9, 10.0 → 10.6, 10.6 ms; with one revolve
+up to a plane (one question), 9.6, 9.8 → 10.1, 10.2 ms.
+
+In the app (the first design as a file, production build, Chrome, 1280 × 800, 4 interleaved runs:
+median and range, ms, main → this), until the model is ready: committing an edit of the first
+plate in its dialog 2,924 (2,882–2,981) → 313 (303–314); undoing it 324 (322–324) → 324 (323–324);
+opening the design 2,276 (2,191–2,530) → 2,352 (2,182–2,581), the ranges overlap. The page's
+blocked time: commit 52 → 52, undo 0 → 0, open 438 (423–472) → 447 (430–612).
+
