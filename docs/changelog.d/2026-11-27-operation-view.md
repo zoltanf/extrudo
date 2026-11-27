@@ -1,0 +1,1 @@
+- 2026-11-27 · **Quicker edits around cuts and joins**: changing one body no longer redoes the extrude cuts, joins and intersections, by a distance from a sketch, that don't touch it, nor extrude cuts and intersections of picked bodies; extrudes through all or to an object, from a body's face, joins of picked bodies, and holes, revolves, sweeps and lofts are redone as before.

@@ -391,4 +391,19 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[0]?.result.stats.viewed).toEqual([]);
     expect(run[1]?.evaluated).toEqual(['fb', 'fp']);
   });
+
+  it('touch: a tool whose result the cache let go is not asked again: every body, as at first', {
+    timeout: 120_000,
+  }, async () => {
+    // Two entries at most: the first cut's result goes while the second distance is computed, so
+    // its tool (held by that result) is gone when the first distance comes back.
+    const doc = touching();
+    const other = setInputs(doc, 'cut', { distance: length('24 mm') });
+    const out = await sequence([doc, other, setInputs(doc, 'o0', { length: length('12 mm') })], {
+      options: { maxEntries: 2 },
+    });
+    for (const step of out) expect(step.problems).toEqual([]);
+    expect(out[2]?.evaluated).toContain('cut');
+    expect(out[2]?.result.stats.viewed).toEqual(['cut']);
+  });
 });

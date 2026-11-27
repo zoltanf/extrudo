@@ -1683,3 +1683,80 @@ In the app (the 20 plates with a sketch and a cut as a file, production build, C
 edit of the first plate in its dialog 2,530 (2,528–2,536) → 2,534 (2,527–2,543); undoing it 323
 (322–323) → 322 (321–322); opening the design 2,024 (1,682–2,327) → 1,706 (1,666–2,127). The
 page's blocked time: commit 0 → 0, undo 0 → 0, open 450 (406–582) → 467 (413–473).
+
+## Amendment 2026-11-27: operations keyed by the bodies they change
+
+**Decision.** Two kinds of extrude that join, cut or intersect bodies are no longer keyed by every
+body before them.
+
+- **Picked bodies, cut or intersect** answer `view` (`cutsPicked`, `features/extrude.ts:106`): the
+  picked bodies are `body` references, and nothing else of the bodies is read. A sketch's
+  `profile` reference is now passed over by `#viewOf`, like a `sketchEntity`: it is that sketch's
+  output (`ctx.output`), whose key is upstream.
+- **Automatic participants** (no bodies picked), join, cut or intersect, every side by a distance,
+  every profile a sketch's, answer `touch` (`touches`, `features/extrude.ts:123`), a new
+  `BodyAccess`: keyed by the bodies the tool touches. The engine keeps each such feature's tool by
+  its tool key (type, ID, inputs, values, upstream keys: everything but the bodies, `#touched`),
+  with the participant test's answer per body version, and on a later walk asks the test again
+  only of bodies whose version it hasn't asked this tool about (`#touching`: `touchingBodies`
+  itself, on just those bodies). The bodies touched, in walk order, are the feature's view: key,
+  `BodyView`, merge in place and every placement and new-body rule of the `view` amendments, as
+  for a `view` feature. The first walk (no tool kept) evaluates with every body, reads the touched
+  bodies from the result (`FeatureOutput.touched`, set by `operate`), and keys and cuts down its
+  result as if it had had that view (the `rekey` of `#evaluate`), which is what a cleared engine
+  does too, so versions agree.
+
+**Why this form.** Three options were weighed (the plan in the private folder): every body's box in
+the key (a facade call per body per walk, and a new key on every box change, even one that still
+misses); asking the bodies again against the kept tool (built); and splitting each operation's
+evaluator into a tool step and an operation step (a new evaluator API for every operation
+feature). The second needs no change to results and no facade change: `touchingBodies`, the boxes
+and the distances exist; per walk it costs one look-up per body, and a box (and for a near body an
+exact distance) only for a body with a new version, once per tool. The engine change is 92 lines
+of code added and 4 removed, comments aside (both kinds together).
+
+**Why it can't be stale.** The result of an automatic operation is a function of the tool, of the
+bodies it touches (which, in what order, their shapes and names) and of the map it changes in
+place.
+- The tool is a function of the tool key alone for these inputs: profiles from sketches (their
+  keys are upstream; a sketch on a face keys its body's version since the `read` amendment),
+  distances; `through-all` and `to-object` (they measure every body, `throughAll`,
+  `features/extrude.ts:575`–583, `objectSide`, :531) and face profiles (the tool is made of that
+  body's face) stay `write`.
+- The bodies touched are what `touchingBodies` returns, a function of (body shape, tool shape) per
+  body; a version names one shape, so an answer kept for a version holds for good, and a body with
+  a new version is asked again.
+- Their versions, in walk order, are the key; the bodies outside stay in their places.
+- Errors and warnings ("doesn't touch any body", "doesn't remove anything", "removed a whole
+  body", "nothing to join to, so it made a new body") come from the bodies touched alone; an
+  evaluation that fails keeps today's key (no tool, nothing kept).
+- A tool whose entry the cache let go is not asked again (the kept entry must still be the cache's
+  under its key): the next walk evaluates with every body, as at first.
+- A body with the feature's own ID prefix, an isolated expansion, or a key remembered as reading
+  outside its view: `write`, as for `view`.
+
+**One rule changed for every view:** a result of a view with no bodies may hold new bodies; they go
+at the end, as under `write` (`fitsView`: "a new body before the first view body" applies only
+when the view has one). It is how a join that touches nothing makes its new body.
+
+**What each reads** (audited for this change; file:line, `features/`):
+
+| Path | Reads | Under the key |
+|---|---|---|
+| `explicitBodies` (`operation.ts:93`) | `has` of each picked body | picked: the view |
+| `operate` (`operation.ts:129`) | `touchingBodies` (:149; :310: every body's box against the tool's, then the exact distance, `bodiesTouch` :51, of the near ones), not asked for a picked cut or intersect; each target's shape and names (:165, :166); a copy of the map changed by `set`/`delete` of targets (:203, :268); a new body from a join that touches nothing (`newBodies`, :338) | the bodies touched (or picked): the view; the test itself asked again by the engine |
+| the extrude's tool (`extrude.ts`) | the profiles (`baseOf`, :282: a sketch's through `ctx.output`, `sources.ts:89`, :123; a face resolved by name, `sources.ts:153`, for a face profile: `write`), `centroidOf` (:284), the sides (:286: distances; `through-all` measures the picked bodies or every body, :575–583; `to-object` sizes its target from every body, :531, and resolves its object, :493), `sweep` (:287) | distances and sketch profiles: nothing of the bodies |
+| `splitSolids` (:300) | as in the amendment on new bodies | pieces right after their body |
+
+**What no longer holds.** In the amendment on `add` access, "everything else is `write` as before:
+join, cut and intersect, picked bodies": a cut or intersect of picked bodies answers `view`, and a
+join, cut or intersect with automatic participants by distances `touch`. In the amendment on
+`view` access, "the cut through the overlapping plates is `write` and reads the fillets": it is
+`touch`, keyed by the plates it touches. In the amendment on `read` features, "a cut from the
+sketch is `write` and still keyed by every body before it" and "a cut does (`write`, keyed by
+every body before it)": it is keyed by the bodies it touches. This amendment replaces those.
+
+**Not in** (still `write`): a join of picked bodies (its report lists every body the tool touches,
+part of the result); `through-all` and `to-object` with automatic participants; face profiles;
+the other operation features (revolve, sweep, loft, coil, primitives: the same shape of evaluator,
+each needs its tool audited; hole, emboss and rib search the bodies themselves).

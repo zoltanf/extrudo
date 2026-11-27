@@ -72,7 +72,7 @@ const block = (id: string, x: number, l: number, w = 10, h = 10, y = 0) =>
     }),
   );
 
-/** A slot cut through every box (`write`: it reads them all, in order). */
+/** A slot cut through every box (`touch`: keyed by the boxes it touches, all of them here). */
 const cut = () => slot('cut', [-60, 3, 200, 4]);
 
 /**
