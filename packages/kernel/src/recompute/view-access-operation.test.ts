@@ -414,7 +414,7 @@ describe('view access: operations (ADR-0024)', () => {
     expect(access({ operation: 'intersect' })).toBe('touch');
     expect(access({ operation: 'cut', bodies: ['b:0'] })).toBe('view');
     expect(access({ operation: 'join', bodies: ['b:0'] })).toBe('touch');
-    expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('write');
+    expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('touch');
     // Through all: the engine keys the tool by its reach (rule B).
     expect(access({ operation: 'cut', extent: 'through-all' })).toBe('touch');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');

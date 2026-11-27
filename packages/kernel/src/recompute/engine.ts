@@ -944,7 +944,6 @@ export class RecomputeEngine {
               return this.#reach(bodies, probe);
             };
       const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
-      let rebuilt = false;
       let looked =
         (access === 'view' || access === 'read') && scope === undefined
           ? this.#viewOf(feature, bodies)
@@ -1066,8 +1065,7 @@ export class RecomputeEngine {
             if (this.#probes.size <= (this.#options.maxEntries ?? 256)) break;
             this.#probes.delete(old);
           }
-          const now = toolKeyOf(recorded);
-          if (now !== toolKey) [toolKey, rebuilt] = [now, true];
+          toolKey = toolKeyOf(recorded);
         }
         evaluated.push(feature.id);
         made = !there;
@@ -1075,7 +1073,7 @@ export class RecomputeEngine {
       }
       if (toolKey !== undefined && view && entry.output?.touched) {
         // The tool and the answers so far; an evaluation with every body asked every body.
-        const answers = (!rebuilt && memo?.answers) || new Map<string, boolean>();
+        const answers = memo?.answers ?? new Map<string, boolean>();
         const hit = new Set(entry.output.touched.bodies);
         for (const [id, shape] of asked ? bodies : []) {
           const version = this.#versions.get(shape);

@@ -125,17 +125,10 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
  */
 export function touches(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);
-  const sketched = settings.profiles.every(
-    (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity',
-  );
   return (
     settings.operation !== 'new-body' &&
     (settings.bodies.length === 0 || settings.operation === 'join') &&
-    settings.sides.every(
-      (side) =>
-        side.extent === 'distance' ||
-        (side.extent === 'through-all' && settings.bodies.length === 0 && sketched),
-    ) &&
+    settings.sides.every((side) => side.extent === 'distance' || side.extent === 'through-all') &&
     settings.profiles.every(
       (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity' || ref.kind === 'face',
     )

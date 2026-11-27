@@ -38,6 +38,7 @@ import {
   proveDesigns,
   provedSteps,
   statusOf,
+  topOf,
   useKernel,
 } from './view-access-features-test-support';
 import { document } from './view-access-test-support';
@@ -90,6 +91,33 @@ const slotted = (more: Feature[] = [], options: ExtrudeInputOptions = {}): Extru
     box('o2', 40),
   ]);
 
+/**
+ * `fb`'s top face cut through all (`fp`), up through `ub` on top of it; `o0` before, far off
+ * (`tall` sets the reach), `o2` after. Built on `fb` (rule R) and keyed by the reach (rule B).
+ */
+async function faceThrough(): Promise<ExtrudoDocument> {
+  const face = await topOf();
+  return document('a cut through all from a box’s face', [
+    box('o0', -40),
+    box('fb', 0),
+    lifted('ub', 0, 6, 10),
+    feature(
+      'fp',
+      'extrude',
+      extrudeInputs([{ kind: 'face', id: face.id } as never], {
+        extent: 'through-all',
+        distance: '4 mm',
+        operation: 'cut',
+      }),
+    ),
+    box('o2', 40),
+  ]);
+}
+
+/** `slotted`'s slot joined to the picked `fb` alone: its reach is `fb`'s box alone. */
+const pickedThrough = () =>
+  slotted([], { operation: 'join', bodies: ['fb:0'], direction: 'symmetric' });
+
 const tall = (doc: ExtrudoDocument) => setInputs(doc, 'o0', { height: length('30 mm') });
 const touching = (run: Awaited<ReturnType<typeof provedSteps>>, i: number) =>
   (run[i]?.result.reports['cut' as FeatureId] as { touching: string[] } | undefined)?.touching;
@@ -137,6 +165,72 @@ const DESIGNS: Design[] = [
       'reach: view→view',
     ],
     steps: 40,
+  },
+  {
+    name: 'a cut through all from a box’s face, the box and the far box changed, flipped',
+    make: faceThrough,
+    target: 'fp',
+    refsKey: 'profiles',
+    kinds: [
+      ...BASE,
+      'size-face',
+      'size-face',
+      'size-before',
+      'tall',
+      'tall',
+      'turn',
+      'turn',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'reach',
+      'reach',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: [
+      'size-face: view→view',
+      'tall: view→view',
+      'turn: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+      'reach: view→view',
+    ],
+    steps: 30,
+  },
+  {
+    name: 'a join through all of a picked box, the far box taller, a box moved to it and away',
+    make: async () => pickedThrough(),
+    target: 'cut',
+    refsKey: 'bodies',
+    // No bodies picked: a join of the bodies it touches, `touch` too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
+    kinds: [
+      ...BASE,
+      'twice',
+      'untwice',
+      'size-face',
+      'tall',
+      'tall',
+      'nudge',
+      'nudge',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: [
+      'twice: view→view',
+      'untwice: view→view',
+      'size-face: view→view',
+      'tall: view→view',
+      'nudge: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+      'op-cycle: view→view',
+    ],
+    steps: 30,
   },
 ];
 
@@ -344,7 +438,45 @@ describe('view access: through all, keyed by the reach (ADR-0024)', () => {
     expect(extents[1]?.reach).toBe(true);
   });
 
-  it('answers: through all with automatic participants touch; picked, a face, to an object not', () => {
+  it('a cut through all from a face: the face’s box or the far box changed runs it, another not', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = await faceThrough();
+    const run = await provedSteps([
+      doc,
+      setInputs(doc, 'o2', { height: length('30 mm') }),
+      tall(doc),
+      setInputs(doc, 'fb', { width: length('12 mm') }),
+    ]);
+    // A warning: `ub`, all within the face's prism, is cut away whole.
+    expect(statusOf(run, 0, 'fp')).toBe('warning');
+    expect(run[0]?.result.stats.viewed).toEqual(['fp']);
+    // After it: not in its reach.
+    expect(run[1]?.evaluated).toEqual(['o2']);
+    expect(run[2]?.evaluated).toEqual(['o0', 'fp']);
+    expect(run[3]?.evaluated).toEqual(['fb', 'fp']);
+  });
+
+  it('a join through all of a picked box: its reach is that box’s, the far box runs alone', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = pickedThrough();
+    const run = await provedSteps([
+      doc,
+      tall(doc),
+      setInputs(doc, 'fb', { height: length('12 mm') }),
+      setInputs(doc, 'o1', { x: length('12 mm') }),
+    ]);
+    expect(statusOf(run, 0, 'cut')).toBe('ok');
+    expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+    expect(run[1]?.evaluated).toEqual(['o0']);
+    expect(run[2]?.evaluated).toEqual(['fb', 'cut']);
+    // Come to the slot's end: touched (in its report and view), not joined: not picked.
+    expect(run[3]?.evaluated).toEqual(['o1', 'cut']);
+    expect(touching(run, 3)).toEqual(['fb:0', 'o1:0']);
+  });
+
+  it('answers: through all touch, automatic or a picked join, from a sketch or a face; to an object not', () => {
     const extrude = kernelFeatures().get('extrude');
     const access = (
       more: ExtrudeInputOptions,
@@ -361,10 +493,10 @@ describe('view access: through all, keyed by the reach (ADR-0024)', () => {
       'touch',
     );
     expect(access({ operation: 'cut', extent: 'through-all', bodies: ['b:0'] })).toBe('view');
-    expect(access({ operation: 'join', extent: 'through-all', bodies: ['b:0'] })).toBe('write');
+    expect(access({ operation: 'join', extent: 'through-all', bodies: ['b:0'] })).toBe('touch');
     expect(
       access({ operation: 'cut', extent: 'through-all' }, { kind: 'face', id: 'f[top]' }),
-    ).toBe('write');
+    ).toBe('touch');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');
     expect(access({ extent: 'through-all' })).toBe('write');
   });
