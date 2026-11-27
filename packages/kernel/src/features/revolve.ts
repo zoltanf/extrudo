@@ -78,12 +78,18 @@ export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
   bodyAccess: (inputs) => {
     const settings = revolveSettings(inputs);
     // A revolve to an object sizes its target from every body (`sweepToObject`); an axis on an
-    // edge or a face profile is a body's: its tool reads that body.
+    // edge or a face profile is a body's: `readsNone` (for `add`) is false.
     return operationAccess(settings, {
       readsNone:
         settings.extent === 'angle' &&
         (settings.axis?.kind === 'axis' || settings.axis?.kind === 'sketchEntity') &&
         settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity'),
+      // About a body's straight edge, or of a body's face (`axisOf`, `partsOf`): that body alone,
+      // by its reference (rule R).
+      byReference:
+        settings.extent === 'angle' &&
+        ['axis', 'sketchEntity', 'edge'].includes(settings.axis?.kind ?? '') &&
+        settings.profiles.every((ref) => ['profile', 'sketchEntity', 'face'].includes(ref.kind)),
       everyBody: settings.extent === 'to-object',
     });
   },

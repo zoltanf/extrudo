@@ -8,9 +8,17 @@ import {
   extrudeInputs,
   type FeatureId,
   type GeomRef,
+  loftInputs,
   moveInputs,
+  originPlaneRef,
   primitiveInputs,
+  profileRefId,
+  revolveInputs,
+  sketchInputs,
+  sweepInputs,
 } from '@extrudo/core';
+import { SketchBuilder } from '@extrudo/sketch/fixtures';
+import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
 import { fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
 import {
@@ -18,6 +26,7 @@ import {
   box,
   computed,
   type Design,
+  edgeRefs,
   faceRefs,
   feature,
   type Kind,
@@ -99,6 +108,102 @@ async function faceBox(): Promise<ExtrudoDocument> {
   ]);
 }
 
+/** A sketch `id` on `plane` of one rectangle, and its profile. */
+function rectangleSketch(
+  id: string,
+  plane: GeomRef,
+  [x0, y0, x1, y1]: [number, number, number, number],
+) {
+  const b = new SketchBuilder();
+  b.line(x0, y0, x1, y0);
+  b.line(x1, y0, x1, y1);
+  b.line(x1, y1, x0, y1);
+  b.line(x0, y1, x0, y0);
+  const [region] = detectProfiles(b.sketch);
+  return {
+    feature: feature(id, 'sketch', sketchInputs(plane, b.sketch)),
+    profile: { kind: 'profile', id: profileRefId(id as FeatureId, region?.id ?? '') } as GeomRef,
+  };
+}
+
+/** `fb`'s top edge along X at y = 5 mm. */
+async function topEdge(): Promise<GeomRef> {
+  return computed(
+    document('a box', [box('fb', 0)]),
+    (engine) =>
+      edgeRefs(engine, 'fb:0', (d) =>
+        d.edges.flatMap((e, i) =>
+          e.type === 'line' &&
+          Math.abs(e.direction?.[0] ?? 0) > 0.99 &&
+          e.midpoint[1] > 4.9 &&
+          e.midpoint[2] > 9.9
+            ? [i]
+            : [],
+        ),
+      )[0] as GeomRef,
+  );
+}
+
+/**
+ * The other families on `fb`: a revolve cut about its top edge (a ring 1–3 mm from it, in its top
+ * face's plane); a sweep cut of its top face up a 6 mm sketch line (through `ub`); a loft cut from its top
+ * face to a 2 mm square 6 mm up (through `ub`). Boxes before and after.
+ */
+async function builtOn(family: 'revolve' | 'sweep' | 'loft'): Promise<ExtrudoDocument> {
+  const face = await topOf();
+  const tool = [];
+  if (family === 'revolve') {
+    // In the plane of the edge (10 mm up), 1–3 mm from it: a ring about the edge.
+    const plane = feature('rp', 'offsetPlane', {
+      plane: { kind: 'ref', refs: [originPlaneRef('origin:xy')] },
+      distance: length('10 mm'),
+    });
+    const s = rectangleSketch('rs', { kind: 'plane', id: 'rp' }, [-3, 2, 3, 4]);
+    tool.push(
+      plane,
+      s.feature,
+      feature('cut', 'revolve', revolveInputs([s.profile], await topEdge(), { operation: 'cut' })),
+    );
+  } else if (family === 'sweep') {
+    const path = new SketchBuilder();
+    const up = path.line(0, 10, 0, 16);
+    tool.push(
+      feature('wq', 'sketch', sketchInputs(originPlaneRef('origin:xz'), path.sketch)),
+      feature(
+        'cut',
+        'sweep',
+        sweepInputs(
+          [{ kind: 'face', id: face.id } as never],
+          [{ kind: 'sketchEntity', id: `wq/${up.id}` }],
+          { operation: 'cut' },
+        ),
+      ),
+    );
+  } else {
+    const plane = feature('lp', 'offsetPlane', {
+      plane: { kind: 'ref', refs: [originPlaneRef('origin:xy')] },
+      distance: length('16 mm'),
+    });
+    const s = rectangleSketch('lt', { kind: 'plane', id: 'lp' }, [-1, -1, 1, 1]);
+    tool.push(
+      plane,
+      s.feature,
+      feature(
+        'cut',
+        'loft',
+        loftInputs([{ kind: 'face', id: face.id } as never, s.profile], { operation: 'cut' }),
+      ),
+    );
+  }
+  return document(`a ${family} cut built on a box`, [
+    box('o0', -40),
+    box('fb', 0),
+    lifted('ub', 0, 6, 10),
+    ...tool,
+    box('o2', 40),
+  ]);
+}
+
 const DESIGNS: Design[] = [
   {
     name: 'a cut extruded from a box’s face, the box and others edited',
@@ -132,6 +237,33 @@ const DESIGNS: Design[] = [
     refsKey: 'plane',
     // No plane: on XY, nothing built on a body: `touch` still.
     rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
+    kinds: [
+      ...BASE,
+      'size-face',
+      'size-face',
+      'size-before',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: [
+      'size-face: view→view',
+      'size-before: view→view',
+      'op-cycle: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+    ],
+    steps: 22,
+  },
+  {
+    name: 'a revolve cut about a box’s edge, the box and others edited',
+    make: () => builtOn('revolve'),
+    target: 'cut',
+    refsKey: 'axis',
+    // No axis: an error, `write` until the edge is back.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→write', 'fill: write→view'],
     kinds: [
       ...BASE,
       'size-face',
@@ -267,4 +399,22 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['o0']);
     expect(run[2]?.evaluated).toEqual(['fb', 'pc']);
   });
+
+  it.each(['revolve', 'sweep', 'loft'] as const)(
+    'a %s cut built on a box: the box wider builds the tool again, another box doesn’t',
+    { timeout: 120_000 },
+    async (family) => {
+      const doc = await builtOn(family);
+      const run = await steps([
+        doc,
+        setInputs(doc, 'o0', { length: length('12 mm') }),
+        setInputs(doc, 'fb', { width: length('12 mm') }),
+      ]);
+      expect(status(run, 0, 'cut')).not.toBe('error');
+      expect(status(run, 2, 'cut')).not.toBe('error');
+      expect(run[0]?.result.stats.viewed).toEqual(['cut']);
+      expect(run[1]?.evaluated).toEqual(['o0']);
+      expect(run[2]?.evaluated).toEqual(['fb', 'cut']);
+    },
+  );
 });

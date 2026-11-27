@@ -349,8 +349,10 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(
       access('revolve', revolveInputs([profile], X_AXIS, { operation: 'cut', ...picked })),
     ).toBe('view');
-    expect(access('revolve', revolveInputs([profile], edge, { operation: 'cut' }))).toBe('write');
-    expect(access('revolve', revolveInputs([face], X_AXIS, { operation: 'cut' }))).toBe('write');
+    // About a body's edge, of a body's face: built on that body (rule R).
+    expect(access('revolve', revolveInputs([profile], edge, { operation: 'cut' }))).toBe('touch');
+    expect(access('revolve', revolveInputs([face], X_AXIS, { operation: 'cut' }))).toBe('touch');
+    expect(access('revolve', revolveInputs([face], X_AXIS, {}))).toBe('write');
     expect(
       access(
         'revolve',
@@ -360,7 +362,8 @@ describe('view access: the other operations (ADR-0024)', () => {
     expect(access('revolve', revolveInputs([profile], X_AXIS, {}))).toBe('add');
     // Sweep: a sketch profile along sketch curves.
     expect(access('sweep', sweepInputs([profile], [line], { operation: 'cut' }))).toBe('touch');
-    expect(access('sweep', sweepInputs([profile], [edge], { operation: 'cut' }))).toBe('write');
+    expect(access('sweep', sweepInputs([profile], [edge], { operation: 'cut' }))).toBe('touch');
+    expect(access('sweep', sweepInputs([face], [edge], { operation: 'join' }))).toBe('touch');
     expect(access('sweep', sweepInputs([profile], [edge], { operation: 'cut', ...picked }))).toBe(
       'view',
     );
@@ -370,7 +373,8 @@ describe('view access: the other operations (ADR-0024)', () => {
     );
     expect(
       access('loft', loftInputs([profile, { kind: 'vertex', id: 'v' }], { operation: 'cut' })),
-    ).toBe('write');
+    ).toBe('touch');
+    expect(access('loft', loftInputs([profile, { kind: 'vertex', id: 'v' }], {}))).toBe('write');
     // Coil and primitives: on a plane, or on a face.
     expect(access('coil', coilInputs({ operation: 'cut' }))).toBe('touch');
     // On a face: the tool built on that body (rule R).

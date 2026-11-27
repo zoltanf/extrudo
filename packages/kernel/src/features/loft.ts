@@ -36,10 +36,15 @@ export const kernelLoft: KernelFeatureDefinition<LoftInputs> = {
   ...loftFeature,
   bodyAccess: (inputs) => {
     const settings = loftSettings(inputs);
-    // A face or a vertex section is a body's: its tool reads that body.
+    // A face or a vertex section is a body's: `readsNone` (for `add`) is false.
     return operationAccess(settings, {
       readsNone: settings.sections.every(
         (ref) => ref.kind === 'profile' || ref.kind === 'point' || ref.kind === 'sketchEntity',
+      ),
+      // Faces and vertices as sections (`partsOf`, `pointOf`): those bodies alone, by their
+      // references (rule R).
+      byReference: settings.sections.every((ref) =>
+        ['profile', 'point', 'sketchEntity', 'face', 'vertex'].includes(ref.kind),
       ),
     });
   },
