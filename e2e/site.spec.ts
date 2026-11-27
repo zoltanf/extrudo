@@ -762,20 +762,21 @@ test('the tool reference is generated into the site and carries its demo clip', 
   expect(await page.evaluate('document.querySelectorAll("script").length')).toBe(0);
 });
 
-test('the docs pass an axe audit in both themes', async ({ page }) => {
-  // NFR-07, like the landing page's own audit below: the docs are pages of the
-  // site, and their tables and code blocks are as much content as its cards are.
-  for (const colorScheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme });
-    for (const path of [
-      '/docs/',
-      '/docs/tools/',
-      '/docs/tools/extrude/',
-      '/docs/sketching/',
-      '/docs/tools/trim/',
-      '/docs/api/',
-      '/docs/api/features/extrude/',
-    ]) {
+// NFR-07, like the landing page's own audit below: the docs are pages of the site, and
+// their tables and code blocks are as much content as its cards are. One test per page:
+// all fourteen audits in one test took 22-28 s of its 30 s in CI and timed out under load.
+for (const path of [
+  '/docs/',
+  '/docs/tools/',
+  '/docs/tools/extrude/',
+  '/docs/sketching/',
+  '/docs/tools/trim/',
+  '/docs/api/',
+  '/docs/api/features/extrude/',
+])
+  test(`the docs page ${path} passes an axe audit in both themes`, async ({ page }) => {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
       await page.goto(`${host.url}${path}`);
       await expect(page.locator('main h1')).toBeVisible();
       const results = await new AxeBuilder({ page })
@@ -795,8 +796,7 @@ test('the docs pass an axe audit in both themes', async ({ page }) => {
         )
         .toEqual([]);
     }
-  }
-});
+  });
 
 test('an old link to a design goes on to the app with its route', async ({ page }) => {
   await page.route(`${APP_URL}/**`, (route) =>
