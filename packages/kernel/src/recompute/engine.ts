@@ -1009,6 +1009,14 @@ export class RecomputeEngine {
                 return { key: viewed, bodies: new Map(kept) };
               }
             : undefined,
+          // With a kept tool: the answers it was asked, by the bodies' versions.
+          toolKey !== undefined && view && memo
+            ? (id) => {
+                const shape = bodies.get(id);
+                const version = shape && this.#versions.get(shape);
+                return version === undefined ? undefined : memo.answers.get(version);
+              }
+            : undefined,
         );
         evaluated.push(feature.id);
         made = !there;
@@ -1412,6 +1420,7 @@ export class RecomputeEngine {
     rekey?: (
       output: FeatureOutput,
     ) => { key: string; bodies: Map<BodyId, ShapeHandle> } | undefined,
+    touched?: (body: BodyId) => boolean | undefined,
   ): Entry {
     const kernel = this.#kernel;
     const references = this.#references(feature, bodies);
@@ -1441,6 +1450,7 @@ export class RecomputeEngine {
     const files = this.#files(doc);
     const ctx: EvalContext = {
       kernel,
+      ...(touched && { touched }),
       feature,
       inputs,
       bodies,

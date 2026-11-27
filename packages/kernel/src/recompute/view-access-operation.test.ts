@@ -610,4 +610,17 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[3]?.evaluated).toEqual(['fb', 'jn']);
     expect(run[3]?.result.features['jn' as FeatureId]?.status).toBe('warning');
   });
+
+  it('touch: the picked box of a join gone (suppressed): its error, as a cleared engine’s, no fall-back', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = pickedJoin();
+    const gone = {
+      ...doc,
+      features: doc.features.map((f) => (f.id === 'fb' ? { ...f, suppressed: true } : f)),
+    };
+    const run = await steps([doc, gone]);
+    expect(run[1]?.result.features['jn' as FeatureId]?.status).toBe('error');
+    expect(run[1]?.evaluated).toEqual(['jn']);
+  });
 });

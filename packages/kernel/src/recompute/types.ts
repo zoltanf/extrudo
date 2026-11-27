@@ -226,6 +226,12 @@ export type PrepareContext<I extends FeatureInputs = FeatureInputs> = Pick<
 
 export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
   kernel: Kernel;
+  /**
+   * For a `touch` feature with a kept tool: whether its tool touches a body, as the engine asked
+   * it of that body's version (same tool key, same shape: the same answer); undefined when not
+   * asked. `touchingBodies` takes it instead of asking again.
+   */
+  touched?: (body: BodyId) => boolean | undefined;
   feature: Feature;
   /** The inputs, checked against the definition's schema. */
   inputs: I;

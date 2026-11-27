@@ -96,7 +96,7 @@ export function operationAccess(
 ): BodyAccess {
   const picked = settings.bodies.length > 0;
   if (tool.everyBody) return 'write';
-  if (picked && (settings.operation === 'cut' || settings.operation === 'intersect')) return 'view';
+
   if (!tool.readsNone) return 'write';
   if (settings.operation === 'new-body') return picked ? 'write' : 'add';
   return !picked || settings.operation === 'join' ? 'touch' : 'write';
@@ -333,12 +333,31 @@ export const boxesTouch = (a: Box, b: Box): boolean =>
 export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeHandle): BodyId[] {
   const { kernel } = ctx;
   const toolBox = kernel.measureBox(tool);
+  // What the engine already asked this tool of a body (`ctx.touched`, a `touch` feature): the same
+  // answer, not asked again.
+  const known = new Map<BodyId, boolean>();
   const near: { id: BodyId; shape: ShapeHandle; box: Box }[] = [];
   for (const [id, shape] of ctx.bodies) {
+    const answer = ctx.touched?.(id);
+    if (answer !== undefined) {
+      known.set(id, answer);
+      continue;
+    }
     const box = kernel.measureBox(shape);
     if (boxesTouch(box, toolBox)) near.push({ id, shape, box });
   }
-  if (near.length === 0) return [];
+  const asked = new Set(near.length === 0 ? [] : askNear(ctx, scope, tool, near));
+  return [...ctx.bodies.keys()].filter((id) => known.get(id) ?? asked.has(id));
+}
+
+/** Which of the bodies whose box meets the tool's the tool touches (`touchingBodies`). */
+function askNear(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  tool: ShapeHandle,
+  near: readonly { id: BodyId; shape: ShapeHandle; box: Box }[],
+): BodyId[] {
+  const { kernel } = ctx;
   const touches = (a: ShapeHandle, b: ShapeHandle): boolean => bodiesTouch(ctx, a, b);
   const solids = kernel.solids(tool);
   for (const solid of solids) scope.track(solid);
