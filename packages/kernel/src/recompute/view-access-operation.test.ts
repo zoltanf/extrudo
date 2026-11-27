@@ -519,6 +519,11 @@ describe('view access: operations (ADR-0024)', () => {
         await engine.recompute({ doc: grown }, (id) => log.push(`feature ${id ?? '-'}`));
         // The box, then the cut reported, then its exact distance to the box asked.
         expect(log.slice(0, 3)).toEqual(['feature nb', 'feature cc', 'distance']);
+        // The box the cut touches made taller: asked once, by the engine; the cut, run again with
+        // it, takes that answer (`EvalContext.touched`).
+        log.length = 0;
+        await engine.recompute({ doc: setInputs(grown, 'ob', { height: length('12 mm') }) });
+        expect(log).toEqual(['distance']);
       });
     } finally {
       engine.clear();
