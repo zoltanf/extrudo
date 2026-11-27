@@ -362,7 +362,10 @@ is `KernelClient`, which restarts the worker after a crash.
   engine walks the whole active timeline and each feature is found by its
   key, so there is no dirty index; "upstream" is the features it refers to
   (`<feature>/…` reference IDs) plus the body set before it, unless its
-  evaluator declares `bodyAccess: 'none'`. Shapes in the cache are
+  evaluator declares `bodyAccess: 'none'` (no bodies) or `add` (none: it
+  only adds bodies). A `view` or `read` feature whose references name bodies
+  by their exact names keys those bodies' versions instead of the whole set
+  (ADR-0024's amendments). Shapes in the cache are
   reference-counted; the engine checks each evaluation for leaked shapes.
   `recompute(request, onFeature)` returns per-feature status and the bodies
   at the marker, meshing only those whose `version` the caller doesn't

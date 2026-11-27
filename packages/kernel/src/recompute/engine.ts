@@ -6,8 +6,10 @@
  * A feature's cache key hashes everything its result depends on: its type,
  * ID and inputs, the values of its expressions, the keys of the features it
  * refers to and, unless it ignores bodies, the key of the body set before
- * it. An edit therefore re-evaluates the edited feature and what depends on
- * it; undo and scrubbing back to an earlier value hit the cache.
+ * it (an `add` feature none; a `view` or `read` feature with a view the
+ * versions of the bodies its references name). An edit therefore
+ * re-evaluates the edited feature and what depends on it; undo and
+ * scrubbing back to an earlier value hit the cache.
  *
  * Shapes in the cache are reference-counted: a body passed on unchanged is
  * shared by the entries of every feature it passes through, and goes back to
@@ -967,9 +969,10 @@ export class RecomputeEngine {
       if (wrong || unplaced) {
         // It read a body after all: its `add` or `view` answer (or a `read` feature's view) was
         // wrong for these inputs, or a view's result doesn't fit its view. Its result goes, and it
-        // runs as `write` (`read` keyed by every body), now and whenever these inputs come again. So does an error to try again once the bodies before
-        // it change, as main's `write` key did. A result that only can't be placed here stays
-        // cached under its view key, for a walk where it can be, and runs as `write` this walk.
+        // runs as `write` (`read` keyed by every body), now and whenever the same key comes again
+        // while `#readsBodies` holds it. So does an error to try again once the bodies before it
+        // change, as main's `write` key did. A result that only can't be placed here stays cached
+        // under its view key, for a walk where it can be, and runs as `write` this walk.
         if (wrong) {
           this.#readsBodies.add(key);
           const max = this.#options.maxEntries ?? 256;
@@ -1564,11 +1567,11 @@ export class RecomputeEngine {
    * `read` features): every body a `body` reference names and every body whose naming table holds
    * the exact name of a face, edge or vertex reference (a sketch's projections included), in walk
    * order, with their versions for its key. `undefined`, so the feature runs as `write` (`read`
-   * keyed by every body before it), when it has no such reference, a reference of another kind, a body reference
-   * to no body, a face, edge or vertex reference no body has by that name (lost, or found only by
-   * a related name or a fingerprint), a body before it without a naming table, or a view body
-   * without a version. A `plane`, `axis`, `point` or `sketchEntity` reference (an origin one, a
-   * construction feature's output or a sketch's) reads no body and is passed over.
+   * keyed by every body before it), when it has no such reference, a reference of another kind,
+   * a body reference to no body, a face, edge or vertex reference no body has by that name (lost,
+   * or found only by a related name or a fingerprint), a body before it without a naming table,
+   * or a view body without a version. A `plane`, `axis`, `point` or `sketchEntity` reference (an
+   * origin one, a construction feature's output or a sketch's) reads no body and is passed over.
    */
   #viewOf(
     feature: Feature,
@@ -1911,11 +1914,12 @@ class NoBodies extends Map<BodyId, ShapeHandle> {
 const PASSED_OVER: ReadonlySet<string> = new Set(['plane', 'axis', 'point', 'sketchEntity']);
 
 /**
- * The bodies a `view` feature sees (ADR-0024's amendment on `view` access). A look-up of a body
- * outside them (`get`, `has`) or of their number (`size`, which differs from the design's) is
- * noticed, and the engine evaluates the feature again as `write`; so are `names` of such a body
- * and a reference resolved by anything but its exact name. Iterating gives the view's bodies
- * and is not noticed: an evaluator copies its input map that way.
+ * The bodies a `view` or `read` feature sees (ADR-0024's amendments on `view` access and on `read`
+ * features). A look-up of a body outside them (`get`, `has`) or of their number (`size`, which
+ * differs from the design's) is noticed, and the engine evaluates the feature again as `write`
+ * (`read` keyed by every body before it); so are `names` of such a body and a reference resolved
+ * by anything but its exact name. Iterating gives the view's bodies and is not noticed: an
+ * evaluator copies its input map that way.
  */
 class BodyView extends Map<BodyId, ShapeHandle> {
   read = false;

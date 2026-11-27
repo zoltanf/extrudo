@@ -1526,7 +1526,8 @@ axis or point on a face, edge or vertex, a canvas on a face) gets the view a `vi
 `#viewOf` gives it the bodies its references name, its key holds their versions instead of every
 body before it, and a look-up outside them, a reference resolved other than by its exact name, or
 an error to try again once the bodies change makes it run keyed by every body before it, now and
-whenever its inputs come again (`#readsBodies`). When no view can be worked out (a reference of
+whenever the same view key comes again while `#readsBodies` still holds it (that memory is
+bounded, least recently used out first). When no view can be worked out (a reference of
 another kind, one no body has by its exact name, an isolated expansion) it is keyed by every body
 as before. A sketch's projections are references for the view, as `featureDependencies` already
 takes them for its upstream features.
@@ -1542,12 +1543,14 @@ change: `read` next to `view` where the view is looked up, and the projections i
 (10 lines of code added and 3 removed, comments aside).
 
 **What no longer holds.** "Only `read` and `write` put the body-set key into their own key"
-(Decision 2): a `read` feature with a view keys its view's versions. In the amendment on the
-shell and the others, "a construction plane built on a face of a body answers `read`, so its key
-moves with every body-writing feature before it": it moves with that body's version. In the
-amendment on picked-body features, "every `read` feature after an edited body runs again too (its
-key holds every body before it)": only those whose references name the edited body do. This
-amendment replaces those.
+(Decision 2): a `read` feature with a view keys its view's versions. In the amendment on `add`
+access, "a sketch on a face is fine as an upstream feature: its key holds the bodies": its key holds
+the versions of the bodies its references name (it is still fine as an upstream feature). In the
+amendment on the shell and the others, "a construction plane built on a face of a body answers
+`read`, so its key moves with every body-writing feature before it": it moves with that body's
+version. In the amendment on picked-body features, "every `read` feature after an edited body runs
+again too (its key holds every body before it)": only those whose references name the edited body
+do. This amendment replaces those.
 
 **What each reads** (audited for this change; file:line, `features/`). Every read of a body is
 through a reference the view holds; everything else is upstream (`ctx.output`) or the feature's
@@ -1559,10 +1562,13 @@ own inputs.
 | Construction plane, axis and point (`construction.ts`, 13 types, :85) | a face, edge or vertex among their references (`usesBodies`) | their references only: `planeOf`, `lineOf`, `pointOf` (`references.ts:72`, :102, :155: a face, edge or vertex resolved, a construction or sketch one through `ctx.output`), `ctx.resolve` of a face, edge or vertex and `describe` of it (`construction.ts:326`, :455, :477, :508, :518, :553, :631, :671, :678, :734), a path (`pathFromRefs`, `pattern-path.ts:152`: edges resolved, sketch curves through `ctx.output`) | the bodies of their faces, edges and vertices |
 | Canvas (`canvas.ts`, :41) | a face as its plane | `planeOf` of its plane (:61); the image is the feature's own input, not read | the face's body |
 
-No other feature answers `read`. No evaluator above iterates the bodies, asks their number or
-looks one up other than through a reference (`bodyShape`'s `ctx.bodies.get` takes a `body`
-reference's ID, which the view holds). Nothing is computed for the screen from other bodies
-during an evaluation: snapping and silhouettes in the app come from the meshes it was sent.
+No other feature in the app's registry answers `read` (the test-only probe of `recompute/testing.ts`
+does, and gets views too). A sketch on an origin plane whose only projections are axes, points or
+sketch entities answers `read`, gets no view (none of its references names a body) and stays keyed
+by every body: sound, slower than needed. No evaluator above iterates the bodies, asks their number
+or looks one up other than through a reference (`bodyShape`'s `ctx.bodies.get` takes a `body`
+reference's ID, which the view holds). Nothing is computed for the screen from other bodies during
+an evaluation: snapping and silhouettes in the app come from the meshes it was sent.
 
 **Downstream.** A feature that takes a `read` feature's output (an extrude of a sketch's profile, a
 `view` feature's passed-over `plane`, `axis`, `point` or `sketchEntity` reference) has its key as

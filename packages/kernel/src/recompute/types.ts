@@ -401,8 +401,10 @@ export interface RecomputeStats {
   /** Features whose result came from the cache. */
   reused: number;
   /**
-   * Features that took their result with a view of the bodies (`view` access), evaluated or from
-   * the cache, in order; a `view` feature not listed ran as `write`. Absent from engines before it.
+   * Features that took their result with a view of the bodies (`view` access, and `read` features
+   * with a view), evaluated or from the cache, in order; a `view` feature not listed ran as
+   * `write`, a `read` feature not listed was keyed by every body before it. Absent from engines
+   * before it.
    */
   viewed?: FeatureId[];
   ms: number;
