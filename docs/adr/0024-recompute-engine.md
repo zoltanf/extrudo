@@ -2389,6 +2389,11 @@ and then made with more calls (the argument above; no design here stops between 
 is measured again, a forgotten call list means an evaluation with every body); a tool of several
 solids; previews; a script's isolated expansion (no tool key there).
 
+**Test time** (on one machine, run with the other `view-access` files, at the load of the last
+amendment's run: `view-access.test.ts` 172.6 s, was 169.6 s): `view-access-through.test.ts`
+11.0 s, new; `view-access-operation.test.ts` 12.6 s (was 12.8 s): about +11 s. Under the heavier
+load of a first run the new file took 31.5 s.
+
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this one
 give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body, number of
