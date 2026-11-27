@@ -118,8 +118,8 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
  * bodies (its report lists every body the tool touches; the picked ones are in its view too;
  * `touchingBodies` asks every body, and the engine asks again only bodies it hasn't asked this
  * tool); every side by a distance (`through-all` and `to-object` measure every body); and every
- * profile a sketch's profile or text, so the tool reads no body (a face profile is a body's face,
- * and the engine keeps a tool by everything but the bodies).
+ * profile a sketch's profile or text, or a body's face (`facePart`, `sources.ts`: that face of
+ * that body alone; the engine keeps the tool by that body's version, rule R).
  */
 export function touches(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);
@@ -127,7 +127,9 @@ export function touches(inputs: ExtrudeInputs): boolean {
     settings.operation !== 'new-body' &&
     (settings.bodies.length === 0 || settings.operation === 'join') &&
     settings.sides.every((side) => side.extent === 'distance') &&
-    settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity')
+    settings.profiles.every(
+      (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity' || ref.kind === 'face',
+    )
   );
 }
 
