@@ -206,8 +206,8 @@ export async function topOf(): Promise<GeomRef> {
 }
 
 /** Steps, each equal to a cleared engine (versions included) and to `write` keys, no fall-back. */
-export async function provedSteps(docs: ExtrudoDocument[]) {
-  const out = await sequence(docs);
+export async function provedSteps(docs: ExtrudoDocument[], more: PairOptions = {}) {
+  const out = await sequence(docs, more);
   out.forEach((step, i) => {
     expect(step.problems, `step ${i}`).toEqual([]);
     expect(fallbacks(step.result, docs[i] as ExtrudoDocument), `step ${i}`).toEqual([]);
@@ -261,7 +261,10 @@ export async function filletAfter(
  * operation cycling (`combine-op`), the tools kept and not (`keep-tools`), the target picked as a
  * tool and back (`tool-is-target`, `tool-not-target`). The twins swapping places (`swap`), one
  * suppressed and back (`twin-off`, `twin-on`). A random draft's flip, offset's kept rounds,
- * thread's hand or extent, extrude's operation; then the generic edits.
+ * thread's hand or extent, extrude's operation. Through all (rule B): the box before (`o0`) 10 ↔
+ * 30 mm high (`tall`), the target extrude flipped and back (`turn`), its direction one side →
+ * symmetric → two sides → one side (`sides`), its second side by 3 mm ↔ through all (`side2`);
+ * then the generic edits.
  */
 export const RULE = ['lose', 'find', 'empty', 'fill'] as const;
 export type Kind =
@@ -298,6 +301,10 @@ export type Kind =
   | 'unproject'
   | 'op-cycle'
   | 'nudge'
+  | 'tall'
+  | 'turn'
+  | 'sides'
+  | 'side2'
   | 'emboss-mode'
   | 'reach'
   | (typeof GENERIC_KINDS)[number];
@@ -434,6 +441,41 @@ export function edit(
       const projections =
         kind === 'project' ? { ...rest, pj: { ref: named.edge, curves: {} } } : rest;
       return set({ sketch: { ...input, sketch: { ...sketch, projections } as never } });
+    }
+    case 'tall': {
+      const box = doc.features.find((f) => f.id === 'o0');
+      if (!box || !targetId) return undefined;
+      const was = (box.inputs.height as { expr?: string } | undefined)?.expr;
+      return {
+        doc: setInputs(doc, 'o0', {
+          height: { kind: 'expr', expr: was === '30 mm' ? '10 mm' : '30 mm', unit: 'length' },
+        }),
+        feature: targetId as FeatureId,
+      };
+    }
+    case 'turn':
+    case 'sides':
+    case 'side2': {
+      if (now?.type !== 'extrude') return undefined;
+      if (kind === 'turn') {
+        const on = (now.inputs.flip as { value?: boolean } | undefined)?.value === true;
+        return set({ flip: { kind: 'bool', value: !on } });
+      }
+      const was = (now.inputs.direction as EnumInput | undefined)?.value ?? 'one-side';
+      if (kind === 'side2') {
+        if (was !== 'two-sides') return undefined;
+        const two = (now.inputs.extent2 as EnumInput | undefined)?.value ?? 'distance';
+        return set({ extent2: choice(two === 'distance' ? 'through-all' : 'distance') });
+      }
+      const next = { 'one-side': 'symmetric', symmetric: 'two-sides', 'two-sides': 'one-side' }[
+        was as 'one-side'
+      ];
+      return set({
+        direction: choice(next),
+        ...(now.inputs.distance2 === undefined && {
+          distance2: { kind: 'expr', expr: '3 mm', unit: 'length' },
+        }),
+      });
     }
     case 'emboss-mode': {
       // The target emboss's mode, emboss ↔ deboss.

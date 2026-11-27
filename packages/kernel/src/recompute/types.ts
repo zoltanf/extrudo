@@ -14,7 +14,7 @@ import type {
   JointReport,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
-import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
+import { type Kernel, KernelError, type ShapeHandle, type Vec3 } from '../kernel';
 import type { BodyMesh, MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import type { TopoNames } from '../naming/names';
@@ -121,9 +121,11 @@ export interface ImportedFile {
  *   versions of the bodies it is built on (rule R) and asks it again of each body whose version it
  *   hasn't asked about (`touchingBodies`), and hands the evaluator those answers
  *   (`EvalContext.touched`); the first walk evaluates with every body and keys the result by the
- *   bodies it touched (`output.touched`). Then as `view`. Answer it only for inputs whose tool
- *   reads no body but through such references, and whose evaluation reads the others only
- *   through `touchingBodies` and `explicitBodies`.
+ *   bodies it touched (`output.touched`). Then as `view`. A tool sized from the bodies' boxes (an
+ *   extrude through all) asks `EvalContext.reach`, and the engine keys it by what it asked and the
+ *   answers (rule B). Answer it only for inputs whose tool reads no body but through such
+ *   references and `reach`, and whose evaluation reads the others only through `touchingBodies`
+ *   and `explicitBodies`.
  */
 export type BodyAccess = 'none' | 'read' | 'write' | 'add' | 'view' | 'touch';
 
@@ -237,6 +239,13 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
    * asked. `touchingBodies` takes it instead of asking again.
    */
   touched?: (body: BodyId) => boolean | undefined;
+  /**
+   * For a `touch` feature (ADR-0024's rule B): how far the boxes of every body before it (or of
+   * `bodies` alone) reach past `point` along the unit `along`, by `reachAlong`, from the engine's
+   * box of each body version, whichever bodies the feature sees. The engine keys the tool by what
+   * it answered, so a tool whose size comes from the bodies' boxes asks here alone.
+   */
+  reach?: (point: Vec3, along: Vec3, bodies?: readonly BodyId[]) => number | undefined;
   feature: Feature;
   /** The inputs, checked against the definition's schema. */
   inputs: I;

@@ -15,13 +15,13 @@
  * manifold-3d's `minGap` (`bodiesTouch`) instead.
  */
 import type { BodyId, BodyOperation } from '@extrudo/core';
-import { type Kernel, KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
+import { type Kernel, KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { BodyAccess, EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
 import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
-import { add, scale } from './vec';
+import { add, corners, dot, scale, sub } from './vec';
 
 /**
  * Distances (mm) at or below which shapes touch. The facade's `kTouch` is the
@@ -90,8 +90,9 @@ export interface OperationSettings {
  * `touch` when its tool reads bodies only through its face, edge or vertex references (rule R: the
  * engine keeps the tool by those bodies' versions); else `write`. `tool`: what each answer needs,
  * `add` (the tool reads no body: every reference upstream or none) and `touch` (it reads none, or
- * only through such references: true wherever `add` is); and whether it measures every body
- * (`everyBody`: `write`).
+ * only through such references: true wherever `add` is); and whether it sizes its tool from every
+ * body other than through `EvalContext.reach` (`everyBody`: `write`; a revolve to an object sizes
+ * its target from every body, `sweepToObject`).
  */
 export function operationAccess(
   settings: { operation: BodyOperation; bodies: readonly string[] },
@@ -312,6 +313,30 @@ export function operate(
 export interface Box {
   min: readonly number[];
   max: readonly number[];
+}
+
+/** A length below which a reach or a side is none (mm). */
+export const LENGTH_EPS = 1e-6;
+
+/**
+ * How far boxes reach past `point` along the unit `along`, plus the kernel's margin: 0 when none
+ * reaches past it, undefined for no boxes. An extrude's through-all length (`throughAll`), and
+ * what the engine keys such a tool by (ADR-0024's rule B, `EvalContext.reach`): one function, so
+ * the two can't differ.
+ */
+export function reachAlong(
+  boxes: readonly Box[],
+  point: readonly number[],
+  along: readonly number[],
+): number | undefined {
+  if (boxes.length === 0) return undefined;
+  let far = 0;
+  for (const box of boxes) {
+    for (const c of corners(box.min as Vec3, box.max as Vec3)) {
+      far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
+    }
+  }
+  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
 }
 
 /** Whether two boxes meet or lie within `TOUCH` of each other. */

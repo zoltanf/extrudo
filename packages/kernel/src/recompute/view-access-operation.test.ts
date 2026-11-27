@@ -207,8 +207,8 @@ const DESIGNS: Design[] = [
       'op-cycle: view→view',
       'op-cycle: view→write',
       'op-cycle: write→view',
-      'reach: view→write',
-      'reach: write→view',
+      // Through all: the reach from the boxes in the tool's key (rule B).
+      'reach: view→view',
     ],
     steps: 24,
   },
@@ -401,7 +401,7 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[2]?.evaluated).toEqual(['o0']);
   });
 
-  it('answers: touch for automatic participants, distances, sketch profiles; else view or write', {
+  it('answers: touch, automatic, by a distance or through all; else view or write', {
     timeout: 120_000,
   }, async () => {
     const extrude = kernelFeatures().get('extrude');
@@ -414,8 +414,9 @@ describe('view access: operations (ADR-0024)', () => {
     expect(access({ operation: 'intersect' })).toBe('touch');
     expect(access({ operation: 'cut', bodies: ['b:0'] })).toBe('view');
     expect(access({ operation: 'join', bodies: ['b:0'] })).toBe('touch');
-    expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('write');
-    expect(access({ operation: 'cut', extent: 'through-all' })).toBe('write');
+    expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('touch');
+    // Through all: the engine keys the tool by its reach (rule B).
+    expect(access({ operation: 'cut', extent: 'through-all' })).toBe('touch');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');
     // A face profile: the tool built on that body (rule R).
     expect(access({ operation: 'cut' }, { kind: 'face', id: 'f[top]' })).toBe('touch');
