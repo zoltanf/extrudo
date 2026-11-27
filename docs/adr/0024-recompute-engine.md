@@ -2200,9 +2200,9 @@ that is lost or found by a related name (today's key, as any such reference); a 
 fingerprint only (the same noticed `resolve` as a related name); mesh bodies; previews.
 
 **Test time** (on one machine, under load from other work, run with the other `view-access` files):
-`view-access-built.test.ts` 13.9 s, new; `view-access-operations.test.ts` 31.3 s (was 22.9 s on the
-last step's run; its answers and two of its tests changed); `view-access-operation.test.ts`
-14.0 s (was 12.5 s): about +24 s.
+`view-access-built.test.ts` 15.2 s and `view-access-emboss.test.ts` 3.4 s, new;
+`view-access-operations.test.ts` 31.2 s (was 22.9 s on the last step's run; its answers and two of
+its tests changed); `view-access-operation.test.ts` 12.8 s (was 12.5 s): about +26 s.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
