@@ -148,8 +148,10 @@ export function operate(
   const touching =
     participants && operation !== 'join' ? [] : touchingBodies(ctx, scope, tool.shape);
   const report: OperationReport = { touching };
-  // Asked of every body: the tool and what it touched, for a `touch` key (ADR-0024).
-  const touched = participants ? {} : { touched: { tool: tool.shape, bodies: touching } };
+  // Asked of every body (automatic participants, or a join of picked ones): the tool and what it
+  // touched, for a `touch` key (ADR-0024).
+  const touched =
+    participants && operation !== 'join' ? {} : { touched: { tool: tool.shape, bodies: touching } };
   const targets = participants ?? touching;
   const set = 'passes' in tool && tool.interferes ? tool : undefined;
   // Kept only on success: a failure below must release the tool with the scope.
@@ -179,7 +181,12 @@ export function operate(
       if (joining.length === 0) {
         const them = participants.length === 1 ? 'the body' : 'any of the bodies';
         warnings.push(`It doesn't touch ${them} it joins, so the ${words.noun} made a new body.`);
-        return { ...newBodies(ctx, scope, tool, words), previewTools: preview(), report };
+        return {
+          ...newBodies(ctx, scope, tool, words),
+          previewTools: preview(),
+          report,
+          ...touched,
+        };
       }
       if (apart > 0) {
         warnings.push(

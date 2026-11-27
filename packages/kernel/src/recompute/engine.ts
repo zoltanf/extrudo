@@ -896,11 +896,15 @@ export class RecomputeEngine {
       // bodies are asked again against that tool (`#touching`).
       // Not while a body before it has no version (a shape another output holds): no key could
       // name it, so the feature keeps today's key, and its cache hit.
+      // The bodies it picks are in its view too (a picked join asks every body which it touches);
+      // a picked body that isn't there keeps today's key (it is the feature's error).
+      const picked = access === 'touch' ? pickedBodies(feature) : [];
       const toolKey =
         access === 'touch' &&
         scope === undefined &&
         !hasOwnBodies(bodies, feature.id) &&
-        [...bodies.values()].every((shape) => this.#versions.has(shape))
+        [...bodies.values()].every((shape) => this.#versions.has(shape)) &&
+        picked.every((id) => bodies.has(id))
           ? keyOf('touch')
           : undefined;
       const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
@@ -914,7 +918,7 @@ export class RecomputeEngine {
         // with every body, as at first, and fails there as a cleared engine's would.
         onFeature?.(script ?? feature.id);
         try {
-          looked = this.#touching(bodies, memo);
+          looked = this.#touching(bodies, memo, picked);
         } catch (error) {
           if (error instanceof WebAssembly.RuntimeError) throw error;
           this.#touched.delete(toolKey);
@@ -992,7 +996,8 @@ export class RecomputeEngine {
           toolKey !== undefined && !view
             ? (output) => {
                 const touched =
-                  output.touched && this.#viewOfIds(bodies, new Set(output.touched.bodies));
+                  output.touched &&
+                  this.#viewOfIds(bodies, new Set([...output.touched.bodies, ...picked]));
                 const viewed = touched && keyOf(hashOf('view', touched.versions));
                 if (!touched || !viewed || this.#readBodies(viewed) || !output.bodies) return;
                 view = touched.bodies;
@@ -1012,9 +1017,10 @@ export class RecomputeEngine {
       if (toolKey !== undefined && view && entry.output?.touched) {
         // The tool and the answers so far; an evaluation with every body asked every body.
         const answers = memo?.answers ?? new Map<string, boolean>();
+        const hit = new Set(entry.output.touched.bodies);
         for (const [id, shape] of asked ? bodies : []) {
           const version = this.#versions.get(shape);
-          if (version !== undefined) answers.set(version, view.holds(id));
+          if (version !== undefined) answers.set(version, hit.has(id));
         }
         this.#touched.delete(toolKey);
         this.#touched.set(toolKey, { entry, tool: entry.output.touched.tool, answers });
@@ -1717,13 +1723,15 @@ export class RecomputeEngine {
   }
 
   /**
-   * The bodies a `touch` feature's tool touches, asked again (ADR-0024's amendment on
-   * operations): a body whose version this tool was asked of keeps its answer (a version is one
-   * shape); the others are asked as the evaluator asks (`touchingBodies`), boxes first.
+   * The bodies a `touch` feature's tool touches, asked again, and the ones it picks (ADR-0024's
+   * amendment on operations): a body whose version this tool was asked of keeps its answer (a
+   * version is one shape); the others are asked as the evaluator asks (`touchingBodies`), boxes
+   * first.
    */
   #touching(
     bodies: ReadonlyMap<BodyId, ShapeHandle>,
     memo: { tool: ShapeHandle; answers: Map<string, boolean> },
+    picked: readonly BodyId[],
   ) {
     // Bounded: a long session's edits leave answers for versions no walk will meet again.
     if (memo.answers.size > 8 * bodies.size + 256) memo.answers.clear();
@@ -1740,7 +1748,7 @@ export class RecomputeEngine {
       for (const [id, shape] of ask)
         memo.answers.set(this.#versions.get(shape) as string, hit.has(id));
     }
-    const ids = new Set<BodyId>();
+    const ids = new Set<BodyId>(picked);
     for (const [id, shape] of bodies) {
       if (memo.answers.get(this.#versions.get(shape) as string)) ids.add(id);
     }
@@ -2189,6 +2197,16 @@ function placedAsWrite(
   if (last === undefined || !pieces.some((id) => isMesh(made.get(id) as ShapeHandle))) return true;
   const walk = [...bodies.keys()];
   return walk.slice(walk.indexOf(last) + 1).every((id) => view.holds(id));
+}
+
+/** The bodies a feature's `body` references name (a `touch` feature's picked bodies). */
+function pickedBodies(feature: Feature): BodyId[] {
+  const out: BodyId[] = [];
+  for (const input of Object.values(feature.inputs)) {
+    if (input.kind !== 'ref') continue;
+    for (const ref of input.refs) if (ref.kind === 'body') out.push(ref.id as BodyId);
+  }
+  return out;
 }
 
 /** Whether a body with the feature's own ID prefix (`<feature>:`) is there already. */

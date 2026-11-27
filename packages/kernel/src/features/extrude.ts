@@ -101,7 +101,7 @@ export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
  * operations): picked bodies (`explicitBodies` looks up those alone, and `operate` asks no other
  * whether it touches the tool), every side by a distance or `through-all` (which measures the
  * picked bodies alone, `throughAll`), never `to-object` (`objectSide` sizes its target from every
- * body). A join stays `write`: its report lists every body the tool touches.
+ * body). A join is `touch` (`touches`): its report lists every body the tool touches.
  */
 export function cutsPicked(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);
@@ -114,8 +114,10 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
 
 /**
  * Whether an extrude joins, cuts or intersects the bodies its tool touches and reads no other
- * (`touch`, ADR-0024's amendment on operations): automatic participants (`touchingBodies` asks
- * every body, and the engine asks again only bodies it hasn't asked this tool), every side by a
+ * (`touch`, ADR-0024's amendment on operations): automatic participants, or a join of picked
+ * bodies (its report lists every body the tool touches; the picked ones are in its view too)
+ * (`touchingBodies` asks every body, and the engine asks again only bodies it hasn't asked this
+ * tool), every side by a
  * distance (`through-all` and `to-object` measure every body), and every profile a sketch's
  * profile or text, so the tool reads no body (a face profile is a body's face, and the engine
  * keeps a tool by everything but the bodies).
@@ -124,7 +126,7 @@ export function touches(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);
   return (
     settings.operation !== 'new-body' &&
-    settings.bodies.length === 0 &&
+    (settings.bodies.length === 0 || settings.operation === 'join') &&
     settings.sides.every((side) => side.extent === 'distance') &&
     settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity')
   );

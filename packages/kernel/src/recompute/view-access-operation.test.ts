@@ -133,6 +133,21 @@ const joined = (id: string, rect: [number, number, number, number]) =>
     f.id === id ? { ...f, inputs: { ...f.inputs, operation: choice('join') } } : f,
   );
 
+/**
+ * A join of a picked box `fb`: a slot reaching from it towards `o1` (20 mm off: `nudge` moves it
+ * to 12 mm, into the slot's way, touched but not picked), boxes before and after.
+ */
+function pickedJoin(): ExtrudoDocument {
+  const doc = document('a join of a picked body', [
+    box('o0', -40),
+    box('fb', 0),
+    box('o1', 20),
+    ...joined('jn', [-8, -1, 14, 1]),
+    box('o2', 40),
+  ]);
+  return setInputs(doc, 'jn', { bodies: bodies('fb:0') });
+}
+
 const DESIGNS: Design[] = [
   {
     name: 'cuts of picked bodies, a box in the way it doesn’t pick',
@@ -194,6 +209,38 @@ const DESIGNS: Design[] = [
       'op-cycle: write→view',
       'reach: view→write',
       'reach: write→view',
+    ],
+    steps: 24,
+  },
+  {
+    name: 'a join of a picked box, a box it touches but doesn’t pick moved in and out',
+    make: async () => pickedJoin(),
+    target: 'jn',
+    refsKey: 'bodies',
+    // No bodies picked: a join of the bodies it touches, `touch` too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
+    kinds: [
+      ...BASE,
+      'twice',
+      'untwice',
+      'size-face',
+      'size-before',
+      'nudge',
+      'nudge',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: [
+      'twice: view→view',
+      'untwice: view→view',
+      'size-face: view→view',
+      'nudge: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+      'op-cycle: view→view',
     ],
     steps: 24,
   },
@@ -366,7 +413,8 @@ describe('view access: operations (ADR-0024)', () => {
     expect(access({ operation: 'join' })).toBe('touch');
     expect(access({ operation: 'intersect' })).toBe('touch');
     expect(access({ operation: 'cut', bodies: ['b:0'] })).toBe('view');
-    expect(access({ operation: 'join', bodies: ['b:0'] })).toBe('write');
+    expect(access({ operation: 'join', bodies: ['b:0'] })).toBe('touch');
+    expect(access({ operation: 'join', bodies: ['b:0'], extent: 'through-all' })).toBe('write');
     expect(access({ operation: 'cut', extent: 'through-all' })).toBe('write');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');
     expect(access({ operation: 'cut' }, { kind: 'face', id: 'f[top]' })).toBe('write');
@@ -539,5 +587,28 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['cut']);
     expect(run[2]?.evaluated).toEqual([]);
     expect(run[3]?.evaluated).toEqual(['o0']);
+  });
+
+  it('touch: a picked join: a box it touches but doesn’t pick runs it, an unrelated one doesn’t', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = pickedJoin();
+    const run = await steps([
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+      at(doc, 'o1', 12),
+      at(doc, 'fb', -30),
+    ]);
+    expect(run[0]?.result.stats.viewed).toEqual(['jn']);
+    expect(run[1]?.evaluated).toEqual(['o0']);
+    // In the slot's way: listed among the bodies it touches (its report), not joined.
+    expect(run[2]?.evaluated).toEqual(['o1', 'jn']);
+    expect((run[2]?.result.reports['jn' as FeatureId] as { touching: string[] }).touching).toEqual([
+      'fb:0',
+      'o1:0',
+    ]);
+    // The picked box off the slot: the join makes a new body and says so.
+    expect(run[3]?.evaluated).toEqual(['fb', 'jn']);
+    expect(run[3]?.result.features['jn' as FeatureId]?.status).toBe('warning');
   });
 });
