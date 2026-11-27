@@ -263,8 +263,10 @@ export async function filletAfter(
  * suppressed and back (`twin-off`, `twin-on`). A random draft's flip, offset's kept rounds,
  * thread's hand or extent, extrude's operation. Through all (rule B): the box before (`o0`) 10 ↔
  * 30 mm high (`tall`), the target extrude flipped and back (`turn`), its direction one side →
- * symmetric → two sides → one side (`sides`), its second side by 3 mm ↔ through all (`side2`);
- * then the generic edits.
+ * symmetric → two sides → one side (`sides`), its second side by 3 mm ↔ through all (`side2`).
+ * The target hole's type simple → counterbore → countersink → simple (`hole-type`), its
+ * diameter 4 ↔ 5 mm (`hole-size`), blind ↔ through (`hole-extent`), its depth 4 ↔ 6 mm
+ * (`hole-depth`); then the generic edits.
  */
 export const RULE = ['lose', 'find', 'empty', 'fill'] as const;
 export type Kind =
@@ -302,6 +304,10 @@ export type Kind =
   | 'op-cycle'
   | 'nudge'
   | 'tall'
+  | 'hole-type'
+  | 'hole-size'
+  | 'hole-extent'
+  | 'hole-depth'
   | 'turn'
   | 'sides'
   | 'side2'
@@ -452,6 +458,27 @@ export function edit(
         }),
         feature: targetId as FeatureId,
       };
+    }
+    case 'hole-type':
+    case 'hole-size':
+    case 'hole-extent':
+    case 'hole-depth': {
+      if (now?.type !== 'hole') return undefined;
+      const value = (name: string) => (now.inputs[name] as EnumInput | undefined)?.value;
+      const expr = (name: string) => (now.inputs[name] as { expr?: string } | undefined)?.expr;
+      const length = (to: string) => ({ kind: 'expr' as const, expr: to, unit: 'length' as const });
+      if (kind === 'hole-type') {
+        const next = { simple: 'counterbore', counterbore: 'countersink', countersink: 'simple' }[
+          (value('type') ?? 'simple') as 'simple'
+        ];
+        return set({ type: choice(next) });
+      }
+      if (kind === 'hole-extent') {
+        return set({ extent: choice(value('extent') === 'through' ? 'blind' : 'through') });
+      }
+      if (kind === 'hole-size')
+        return set({ diameter: length(expr('diameter') === '5 mm' ? '4 mm' : '5 mm') });
+      return set({ depth: length(expr('depth') === '6 mm' ? '4 mm' : '6 mm') });
     }
     case 'turn':
     case 'sides':

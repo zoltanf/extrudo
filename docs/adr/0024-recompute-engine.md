@@ -2448,3 +2448,159 @@ opening the design 2,662 (2,069–3,209) → 2,607 (2,363–8,058). The page's b
 (0–51) → 25 (0–55), undo 0 → 0, open 616 (418–779) → 738 (622–1,260); the ranges overlap (the
 8 s open came with the machine's other work).
 
+
+## Amendment 2026-11-27: the hole keyed by the bodies it reads
+
+**Decision.** The hole answers `touch` (`features/hole.ts`, `bodyAccess`). Rules R and B and the
+touch test cover what it reads:
+- a face it sits on is keyed by that body's version (rule R);
+- a through hole's length comes from `ctx.reach` (rule B);
+- the bodies it cuts come from the touch test (`operate`);
+- its count of holes that reach no body follows from the bodies the tool touches, while the holes
+  don't overlap or touch (below). When they do, it hands the engine no touch answers and is
+  keyed by every body, as before.
+
+No engine change for the hole itself (two for the cost of a walk, below: 37 lines of code added and
+22 removed, comments aside), no facade change, no change to results or to body placement. Two
+shared helpers change:
+- `reachAlong` (`features/operation.ts`) now gives the raw reach. The extrude adds its margin
+  (`throughMargin`), the hole its 1 mm, each as before, so the engine keys both by the same numbers
+  the evaluator uses.
+- `mergeTools` (`features/pattern.ts`) says when it put parts into one solid (`interfered`).
+
+**What the hole reads** (audited for this change; `features/`):
+
+| Input | What it reads of the bodies |
+|---|---|
+| `plane`: a face | `planeFrame` (`hole.ts:104`, `primitives.ts:281`): the face resolved by name (:283), refused if a mesh (:286), described (:287): rule R |
+| `plane`: an origin or construction plane, or none (XY) | none |
+| `points` | the sketches' outputs (`sketchPoint`, `hole.ts:263`, :272): upstream, no body |
+| numbers, type, flip | the inputs alone |
+| `extent: 'through'` | `throughLength` (`hole.ts:290`): `ctx.reach` per hole (:296) when the engine hands it, else every body's box (:293); the longest plus 1 mm |
+| the holes that reach no body | every body it is given, box then exact distance per hole (`hole.ts:129`–136) |
+| the cut | `operate` with automatic participants (`hole.ts:146`): `touchingBodies` (`operation.ts:366`) |
+| the result | `splitSolids` (`hole.ts:157`) |
+
+**Why the count of holes that reach no body needs no memory.** In a `touch` view the hole is
+given the bodies its tool touches and the face's body, not every body. Its count is the same as
+over every body while the holes don't overlap or touch:
+- `mergeTools` (`pattern.ts:224`) leaves each hole that meets no other as its own group, and a
+  group of one is the hole itself (`fuseTree`, `compoundOf`). The tool is then a compound of the
+  holes' own shapes.
+- `kernel.solids` gives back those shapes (`TopExp_Explorer` over the compound), so the touch
+  test's solid-by-solid branch (`operation.ts:401`–404) asks of each hole the same box
+  (`measureBox`, one shape, one box) and the same exact distance (`bodiesTouch`) as the count
+  (`hole.ts:136`).
+- The compound's box holds each hole's: `BRepBndLib::Add` adds the same faces' boxes (the
+  facade's `looseBox`). So a body whose box meets a hole's box also meets the tool's
+  (`operation.ts:368`, :379–380).
+- Hence a body that reaches a hole is one the tool touches. A body outside the view reaches no
+  hole, and the count over the view is the count over every body.
+- One hole alone never warns (the warning needs some of several holes to miss).
+- When holes overlap or touch (within `TOUCH`), `mergeTools` fuses them into one solid. Then a hole's distance and the fused
+  solid's are two computations, equal only up to rounding. So the hole drops `operate`'s `touched`
+  (`hole.ts:157`): no tool is kept, the result keeps every body's key, as before.
+
+**Why it can't be stale** otherwise: rule R's and rule B's arguments, and the touch test's, as
+for the extrude. The engine adds no rule for the hole (its two changes for the walk's cost keep the
+same answers, and keys that tell the same calls and answers apart).
+
+**What no longer holds.** In the amendment on operations, its "Not in" list names holes (they read
+the bodies themselves); in the amendment on the other operations, the same; in the amendment on
+rule R, "Still `write`: … the hole"; and the plan's "the hole, next step" in the amendment on
+rule B. The hole answers `touch` now. Holes that overlap or touch each other (`mergeTools` fuses
+holes within the touch distance) keep every body's key. Anything up to an object stays `write`,
+bodies picked or not: the extrude's `touches` and `cutsPicked` leave `to-object` out, and the
+revolve's `everyBody` makes it `write`. The rib stays `write`.
+
+**The proof** (`recompute/view-access-hole.test.ts`; real OCCT and manifold, strict leaks, no
+clock, fixed seeds; 4 mm holes, 7 mm counterbores and countersinks):
+- **Seeded designs**, each step equal to a cleared engine (versions, statuses with the warning's
+  words, reports, `measure` boxes) and to `write` keys, with no fall-back:
+  - a blind hole on a box's top face (30 edits: the plane lost and back, none and back (the XY
+    plane, under every box: the hole's error), the boxes resized, a box moved and back, the type
+    simple → counterbore → countersink → simple, the diameter, the depth, blind ↔ through, the
+    generic edits);
+  - a hole through all up from a box's bottom face (30: the far box 10 ↔ 30 mm high, the same
+    others);
+  - three holes at sketch points, two missing, a box moved under one and away (30).
+- **Never stale**, one test each:
+  - the face's box taller, replaced by a Move of the same ID, suppressed (today's key, the error)
+    and back; the face found only by a related name (a slot through the box first): today's key;
+  - a box moved under a hole that missed: cut, "2 of 3 holes" becomes "1 of 3"; moved back: the
+    first document from the cache; a box after the hole runs alone;
+  - the cut box changed runs it; a box nothing reads runs alone; the depth, the diameter, the type
+    each run it;
+  - through all: the far box taller changes the reach and runs it, back from the cache; wider,
+    the reach the same, kept;
+  - overlapping holes: no touch answers, an edit of a box nothing reads runs the hole, as before;
+  - a mesh body (the STL cube) under a hole: touched and cut as a cleared engine does; a box after
+    runs alone, the face's box runs the hole.
+- **The answers:** `touch` on a face or a plane, blind or through.
+
+**Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
+
+| Taken out | Tests that failed |
+|---|---|
+| the hole's `touch` (back to `write`) | 7: the three seeded designs, the face's box, the cut box, through all, the answers |
+| `ctx.reach` for a through hole (every body it sees measured) | through all: the far box taller |
+| dropping the touch answers for overlapping holes | the overlapping holes |
+| `mergeTools`' `interfered` | the overlapping holes |
+
+Without the drop no result here differs: the count and the touch test agree in every design, as
+they do mathematically. The drop keeps the argument exact when two computations of a distance
+could round apart.
+
+**Not covered** by a test (by reading only): a counterbore or countersink through all (the same
+`throughLength`); a hole flipped; more than three holes; heavy tools (`isHeavyTool`, grouped by
+box, so `interfered`); previews; a script's isolated expansion (no tool key there).
+
+**Test time** (on one machine, run with the other `view-access` files, the machine's load about 1,
+at the last amendment's: `view-access.test.ts` 173.1 s, was 171.5 s): `view-access-hole.test.ts`
+10.7 s, new.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this one
+give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and number of
+evaluations. Versions differ in the four with holes, b5, b7, b8 and b10: their holes are keyed by
+the bodies they read now, and so are the bodies they cut and what comes after. Every feature of
+those designs, the fastest of four runs each, main → this: 10,727 → 10,798 ms over 180 features;
+the largest increase of one feature +78 ms (b9's 6.2 s thread, which this change doesn't reach; its
+runs spread by about ±100 ms); the holes take the same (b7's 133.8 → 133.6 ms, the others within
+0.2 ms).
+
+**A walk with nothing changed** costs more with many through holes in one feature: the hole asks
+`ctx.reach` once per hole, and on every walk the engine works each question's answer out again over
+every body's box before it can find the cache entry. Measured ad hoc: 110 plates and one hole
+feature through all on a plane over them, in Node, the median of 21 walks, two runs, ms. "Before"
+is this amendment as first written; "after", with the two changes below.
+
+| Holes | main | before | after |
+|--:|--:|--:|--:|
+| 20 | 10.4, 10.4 | 10.6, 10.8 | 10.4, 10.4 |
+| 100 | 9.7, 9.6 | 14.7, 13.6 | 11.7, 11.6 |
+| 200 | 9.1, 9.4 | 16.5, 16.7 | 12.4, 11.9 |
+
+Before, a question cost about 40 µs with 110 bodies: eight corners made per box per question
+(4.2 ms for 200 questions, measured alone), and the key's hash of the questions and answers, twice
+(0.4 ms each). The two changes:
+- `#boxes` keeps each version's box as its eight corners (`corners`), and `#reach` reads them with
+  `reachOver` (`features/operation.ts`). `reachAlong` is `reachOver` over the boxes' corners, so
+  the extrude, the hole and the engine run one inner loop. The answers are bit for bit the same:
+  the same corners, the same `dot` and `sub`, the same maximum. A test compares 300 of the
+  engine's answers (60 random boxes, random points and directions) with `reachAlong` over the
+  boxes the extrude measures itself: all equal. The bound is unchanged (`8 × bodies + 256`
+  versions); a version now holds eight three-number arrays instead of a box, about 0.5 KB.
+- `#probes` keeps a tool's calls with their hash, made once when they are kept. The keys hold that
+  hash and the answers, so a walk hashes only the answers (0.02 ms for 200). An evaluation's own
+  calls are hashed once, after it. The self-check compares that hash and the answers with its
+  key's.
+
+Known further steps, not taken:
+- answers kept while no body version changed since the walk before (same versions, same boxes,
+  so exact): a walk with nothing changed would cost about 0.1 ms more whatever the number of
+  holes;
+- one reach question taking all of a hole's points (an API change to `ctx.reach` and the hole;
+  exact, the same dots): one question in the key, the answers about 1.5 ms for 200 holes.
+
+A blind hole asks nothing, and one through hole asks once.

@@ -40,11 +40,11 @@ import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { bodiesTouch, boxesTouch, type OperationWords, operate } from './operation';
+import { bodiesTouch, boxesTouch, type OperationWords, operate, reachAlong } from './operation';
 import { mergeTools } from './pattern';
 import { planarFace, planeFrame, upright } from './primitives';
 import type { SketchOutputData } from './sketch';
-import { add, corners, cross, dot, scale, sub } from './vec';
+import { add, cross, dot, scale, sub } from './vec';
 
 /** Most holes one feature makes. */
 export const MAX_HOLES = 200;
@@ -92,7 +92,12 @@ interface Place {
 
 export const kernelHole: KernelFeatureDefinition<HoleInputs> = {
   ...holeFeature,
-  bodyAccess: () => 'write',
+  // Keyed by what it reads (ADR-0024's amendment on the hole): a face it sits on by that body's
+  // version (rule R), a through hole's length by `ctx.reach` (rule B), the bodies it cuts by the
+  // touch test (`operate`). Its count of holes that reach no body reads only the bodies the tool
+  // touches when the holes don't overlap; when they do, it hands the engine no touch answers, so
+  // it is keyed by every body as before.
+  bodyAccess: () => 'touch',
   evaluate(ctx): FeatureOutput {
     const settings = holeSettings(ctx.inputs);
     const numbers = numbersOf(ctx, settings);
@@ -117,7 +122,10 @@ export const kernelHole: KernelFeatureDefinition<HoleInputs> = {
 
     // Holes that start nowhere near a body cut nothing: say so (the cut says
     // it when none does).
-    // Boxes first: an exact distance only for a body whose box meets the hole's.
+    // Boxes first: an exact distance only for a body whose box meets the hole's. In a `touch`
+    // view the bodies are the ones the tool touches (and the face's): with separate holes the
+    // tool's solids are the holes, so a body the tool doesn't touch touches none of them and the
+    // count is the same as over every body (ADR-0024's amendment on the hole).
     const bodies = [...ctx.bodies.values()].map((shape) => ({
       shape,
       box: ctx.kernel.measureBox(shape),
@@ -135,11 +143,18 @@ export const kernelHole: KernelFeatureDefinition<HoleInputs> = {
     }
 
     const tool = mergeTools(ctx, scope, parts, 'hole');
-    const result = splitSolids(
+    const { touched, ...cut } = operate(
       ctx,
       scope,
-      operate(ctx, scope, { operation: 'cut', bodies: [] }, tool, undefined, warnings, WORDS),
+      { operation: 'cut', bodies: [] },
+      tool,
+      undefined,
+      warnings,
+      WORDS,
     );
+    // Holes that overlap are one solid of the tool: the count above isn't the touch test's then,
+    // so no touch answers (keyed by every body).
+    const result = splitSolids(ctx, scope, tool.interfered ? cut : { ...cut, touched });
     const data: HoleOutputData = {
       frame: plane,
       direction,
@@ -273,12 +288,13 @@ const length2 = (v: Vec3) => dot(v, v);
  * (and the cut says nothing was there).
  */
 function throughLength(ctx: EvalContext, places: readonly Place[], direction: Vec3): number {
+  // A `touch` hole asks the engine, which keys the tool by the answers (ADR-0024's rule B); else
+  // the bodies it sees, measured here. The same `reachAlong` either way.
+  const boxes = ctx.reach ? [] : [...ctx.bodies.values()].map((s) => ctx.kernel.measureBox(s));
   let reach = 0;
-  for (const shape of ctx.bodies.values()) {
-    const { min, max } = ctx.kernel.measureBox(shape);
-    for (const corner of corners(min as Vec3, max as Vec3)) {
-      for (const place of places) reach = Math.max(reach, dot(sub(corner, place.at), direction));
-    }
+  for (const place of places) {
+    const far = ctx.reach ? ctx.reach(place.at, direction) : reachAlong(boxes, place.at, direction);
+    reach = Math.max(reach, far ?? 0);
   }
   return reach + 1;
 }
