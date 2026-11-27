@@ -219,8 +219,9 @@ export class RecomputeEngine {
    */
   readonly #readsBodies = new Set<string>();
   /**
-   * A `touch` feature's tool by its tool key (everything but the bodies), the entry it came from
-   * (the tool lives as long as that entry) and whether it touches a body, by the body's version.
+   * A `touch` feature's tool by its tool key (its inputs and upstream outputs, and the versions of
+   * the bodies it is built on: rule R), the entry it came from (the tool lives as long as that
+   * entry) and whether it touches a body, by the body's version.
    */
   readonly #touched = new Map<
     string,

@@ -113,8 +113,8 @@ export const kernelCoil: KernelFeatureDefinition<CoilInputs> = {
   bodyAccess: (inputs) => {
     const settings = coilSettings(inputs);
     return operationAccess(settings, {
-      readsNone: settings.plane.kind === 'plane',
-      byReference: true,
+      add: settings.plane.kind === 'plane',
+      touch: true,
     });
   },
   evaluate(ctx): FeatureOutput {

@@ -1,11 +1,12 @@
 // Tools built on a body (rule R, ADR-0024's amendment on tools built on a body): a `touch`
 // feature whose tool is built on a face, edge or vertex a reference names keeps that tool, and its
-// answers, by that body's version. The extrude of a box's top face: a cut of the box over it, and
-// a boss joined to the box itself. Boxes before, between and after; one 12 mm off that a wider
-// face would reach. Real OCCT and manifold, strict leaks, no clock.
+// answers, by that body's version. The extrude of a box's top face: a cut of the box over it, a
+// boss joined to the box itself, and one joined to a picked box. A box cut placed on a face, and
+// a revolve, a sweep and a loft built on a box. Boxes before, between and after; one 12 mm off
+// that a wider face would reach. Real OCCT and manifold, strict leaks, no clock. (The emboss is
+// `view`: `view-access-emboss.test.ts`.)
 import {
   type ExtrudoDocument,
-  embossInputs,
   extrudeInputs,
   type FeatureId,
   type GeomRef,
@@ -21,7 +22,7 @@ import {
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
-import { fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import { GENERIC_KINDS, length, setInputs } from './add-access-test-support';
 import {
   BASE,
   box,
@@ -31,38 +32,17 @@ import {
   faceRefs,
   feature,
   type Kind,
+  lifted,
   proveDesigns,
-  sequence,
+  provedSteps,
+  statusOf,
   top,
+  topOf,
   useKernel,
 } from './view-access-features-test-support';
 import { document, slot } from './view-access-test-support';
 
 useKernel();
-
-/** A `size` mm box centred at `x`, 10 mm high, `offset` mm up. */
-const lifted = (id: string, x: number, size: number, offset: number) =>
-  feature(
-    id,
-    'box',
-    primitiveInputs('box', {
-      numbers: {
-        length: `${size} mm`,
-        width: `${size} mm`,
-        height: '10 mm',
-        x: `${x} mm`,
-        offset: `${offset} mm`,
-      },
-    }),
-  );
-
-/** `fb`'s top face, from an engine that computed it. */
-async function topOf(): Promise<GeomRef> {
-  return computed(
-    document('a box', [box('fb', 0)]),
-    (engine) => faceRefs(engine, 'fb:0', top)[0] as GeomRef,
-  );
-}
 
 /**
  * Boxes `o0` before, `fb`, `ub` (6 mm, on top of `fb`), `o1` (on top too, 12 mm off), `o2`
@@ -80,6 +60,31 @@ async function faceExtrude(operation: 'cut' | 'join' = 'cut'): Promise<ExtrudoDo
       'fp',
       'extrude',
       extrudeInputs([{ kind: 'face', id: face.id } as never], { distance: '6 mm', operation }),
+    ),
+    box('o2', 40),
+  ]);
+}
+
+/**
+ * A boss extruded 6 mm up from `fb`'s top face, joined to the picked `ub` on top of it: built on
+ * `fb`, touching `fb` and `ub`, picking `ub`. `o1` (14 mm, at 20 mm) clear of it, touching its
+ * side at 12 mm (`nudge`). Boxes before and after.
+ */
+async function pickedBoss(): Promise<ExtrudoDocument> {
+  const face = await topOf();
+  return document('a boss from a box’s face joined to a picked box', [
+    box('o0', -40),
+    box('fb', 0),
+    lifted('ub', 0, 6, 10),
+    lifted('o1', 20, 14, 10),
+    feature(
+      'fp',
+      'extrude',
+      extrudeInputs([{ kind: 'face', id: face.id } as never], {
+        distance: '6 mm',
+        operation: 'join',
+        bodies: ['ub:0'],
+      } as never),
     ),
     box('o2', 40),
   ]);
@@ -147,8 +152,8 @@ async function topEdge(): Promise<GeomRef> {
 
 /**
  * The other families on `fb`: a revolve cut about its top edge (a ring 1–3 mm from it, in its top
- * face's plane); a sweep cut of its top face up a 6 mm sketch line (through `ub`); a loft cut from its top
- * face to a 2 mm square 6 mm up (through `ub`). Boxes before and after.
+ * face's plane); a sweep cut of its top face up a 6 mm sketch line (through `ub`); a loft cut from
+ * its top face to a 2 mm square 6 mm up (through `ub`). Boxes before and after.
  */
 async function builtOn(family: 'revolve' | 'sweep' | 'loft'): Promise<ExtrudoDocument> {
   const face = await topOf();
@@ -201,33 +206,6 @@ async function builtOn(family: 'revolve' | 'sweep' | 'loft'): Promise<ExtrudoDoc
     box('fb', 0),
     lifted('ub', 0, 6, 10),
     ...tool,
-    box('o2', 40),
-  ]);
-}
-
-/**
- * A 4 mm circle on XY embossed 1 mm onto `fb`'s top face (moved onto it), or debossed into it;
- * boxes before, between (on top, 12 mm off) and after.
- */
-async function emboss(mode: 'emboss' | 'deboss' = 'emboss'): Promise<ExtrudoDocument> {
-  const face = await topOf();
-  const b = new SketchBuilder();
-  b.circle(0, 0, 2);
-  const [region] = detectProfiles(b.sketch);
-  return document(`an ${mode} on a box's face`, [
-    box('o0', -40),
-    box('fb', 0),
-    lifted('o1', 12, 10, 10),
-    feature('es', 'sketch', sketchInputs(originPlaneRef('origin:xy'), b.sketch)),
-    feature(
-      'em',
-      'emboss',
-      embossInputs(
-        [{ kind: 'profile', id: profileRefId('es' as FeatureId, region?.id ?? '') }],
-        face,
-        { depth: '1 mm', mode },
-      ),
-    ),
     box('o2', 40),
   ]);
 }
@@ -286,21 +264,36 @@ const DESIGNS: Design[] = [
     steps: 22,
   },
   {
-    name: 'an emboss on a box’s face, the box and others edited, emboss and deboss',
-    make: () => emboss(),
-    target: 'em',
-    refsKey: 'face',
+    name: 'a boss from a box’s face joined to a picked box, a box moved to its side and away',
+    make: pickedBoss,
+    target: 'fp',
+    refsKey: 'bodies',
+    // No bodies picked: a join of the bodies it touches, `touch` too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
     kinds: [
       ...BASE,
-      'size-face',
+      'twice',
+      'untwice',
       'size-face',
       'size-before',
-      'emboss-mode',
-      'emboss-mode',
+      'nudge',
+      'nudge',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
       ...GENERIC_KINDS,
     ] as Kind[],
-    flips: ['size-face: view→view', 'size-before: view→view', 'emboss-mode: view→view'],
-    steps: 20,
+    flips: [
+      'twice: view→view',
+      'untwice: view→view',
+      'size-face: view→view',
+      'nudge: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+      'op-cycle: view→view',
+    ],
+    steps: 24,
   },
   {
     name: 'a revolve cut about a box’s edge, the box and others edited',
@@ -331,19 +324,6 @@ const DESIGNS: Design[] = [
   },
 ];
 
-/** Steps, each equal to a cleared engine (versions included) and to `write` keys, no fall-back. */
-async function steps(docs: ExtrudoDocument[]) {
-  const out = await sequence(docs);
-  out.forEach((step, i) => {
-    expect(step.problems, `step ${i}`).toEqual([]);
-    expect(fallbacks(step.result, docs[i] as ExtrudoDocument), `step ${i}`).toEqual([]);
-  });
-  return out;
-}
-
-const status = (run: Awaited<ReturnType<typeof steps>>, i: number, id: string) =>
-  run[i]?.result.features[id as FeatureId]?.status;
-
 describe('view access: tools built on a body (ADR-0024)', () => {
   proveDesigns(DESIGNS);
 
@@ -353,13 +333,13 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     // At 16 mm `fb`'s face reaches `o1` (7…17 mm): an answer kept for `o1` from the 10 mm tool
     // would leave it uncut.
     const doc = await faceExtrude();
-    const run = await steps([
+    const run = await provedSteps([
       doc,
       setInputs(doc, 'o0', { length: length('12 mm') }),
       setInputs(doc, 'fb', { length: length('16 mm') }),
     ]);
     expect(run[0]?.result.stats.viewed).toEqual(['fp']);
-    expect(status(run, 0, 'fp')).toBe('ok');
+    expect(statusOf(run, 0, 'fp')).toBe('ok');
     expect(run[1]?.evaluated).toEqual(['o0']);
     expect(run[2]?.evaluated).toEqual(['fb', 'fp']);
     expect(
@@ -371,7 +351,7 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     timeout: 120_000,
   }, async () => {
     const doc = await faceExtrude('join');
-    const run = await steps([
+    const run = await provedSteps([
       doc,
       setInputs(doc, 'o2', { length: length('12 mm') }),
       setInputs(doc, 'fb', { height: length('12 mm') }),
@@ -389,14 +369,14 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     const features = [...doc.features];
     features.splice(at, 0, feature('mv', 'move', moveInputs(['fb:0'], { dx: '3 mm' })));
     const moved = { ...doc, features, timelineMarker: features.length };
-    const run = await steps([doc, moved]);
+    const run = await provedSteps([doc, moved]);
     expect(run[1]?.evaluated).toEqual(['mv', 'fp']);
     expect(run[1]?.result.stats.viewed).toContain('fp');
   });
 
   it('a box comes into the tool’s way and goes again', { timeout: 120_000 }, async () => {
     const doc = await faceExtrude();
-    const run = await steps([
+    const run = await provedSteps([
       doc,
       setInputs(doc, 'o1', { x: length('6 mm') }),
       setInputs(doc, 'o1', { x: length('30 mm') }),
@@ -418,8 +398,8 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     const features = [...doc.features];
     features.splice(at, 0, ...slot('gr', [-1, -20, 1, 20]));
     const split = { ...doc, features, timelineMarker: features.length };
-    const run = await steps([doc, gone, doc, split]);
-    expect(status(run, 1, 'fp')).toBe('error');
+    const run = await provedSteps([doc, gone, doc, split]);
+    expect(statusOf(run, 1, 'fp')).toBe('error');
     expect(run[1]?.result.stats.viewed).not.toContain('fp');
     expect(run[2]?.result.stats.viewed).toContain('fp');
     expect(run[3]?.result.stats.viewed).not.toContain('fp');
@@ -429,7 +409,7 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     timeout: 120_000,
   }, async () => {
     const doc = await faceBox();
-    const run = await steps([
+    const run = await provedSteps([
       doc,
       setInputs(doc, 'o0', { length: length('12 mm') }),
       setInputs(doc, 'fb', { height: length('12 mm') }),
@@ -448,37 +428,57 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     { timeout: 120_000 },
     async (family) => {
       const doc = await builtOn(family);
-      const run = await steps([
+      const run = await provedSteps([
         doc,
         setInputs(doc, 'o0', { length: length('12 mm') }),
         setInputs(doc, 'fb', { width: length('12 mm') }),
       ]);
-      expect(status(run, 0, 'cut')).not.toBe('error');
-      expect(status(run, 2, 'cut')).not.toBe('error');
+      expect(statusOf(run, 0, 'cut')).not.toBe('error');
+      expect(statusOf(run, 2, 'cut')).not.toBe('error');
       expect(run[0]?.result.stats.viewed).toEqual(['cut']);
       expect(run[1]?.evaluated).toEqual(['o0']);
       expect(run[2]?.evaluated).toEqual(['fb', 'cut']);
     },
   );
 
-  it.each(['emboss', 'deboss'] as const)(
-    'an %s on a box’s face: the box wider builds it again, another box doesn’t',
-    { timeout: 120_000 },
-    async (mode) => {
-      const doc = await emboss(mode);
-      const run = await steps([
-        doc,
-        setInputs(doc, 'o0', { length: length('12 mm') }),
-        setInputs(doc, 'fb', { width: length('12 mm') }),
-        setInputs(doc, 'o1', { x: length('0 mm') }),
-      ]);
-      expect(status(run, 0, 'em')).toBe('ok');
-      expect(run[0]?.result.stats.viewed).toEqual(['em']);
-      expect(run[1]?.evaluated).toEqual(['o0']);
-      expect(run[2]?.evaluated).toEqual(['fb', 'em']);
-      // A box come over the face: the emboss's tool touches it (it asks every body); a deboss
-      // cuts the face's box alone and doesn't ask.
-      expect(run[3]?.evaluated).toEqual(mode === 'emboss' ? ['o1', 'em'] : ['o1']);
-    },
-  );
+  it('a boss from a face joined to a picked box: its view is the picked, built-on and touched boxes', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = await pickedBoss();
+    const run = await provedSteps([
+      doc,
+      setInputs(doc, 'o1', { x: length('12 mm') }),
+      setInputs(doc, 'o2', { length: length('12 mm') }),
+      setInputs(doc, 'ub', { height: length('12 mm') }),
+    ]);
+    expect(statusOf(run, 0, 'fp')).toBe('ok');
+    expect(run[0]?.result.stats.viewed).toEqual(['fp']);
+    // Come to its side: touched, in the view, not joined (not picked).
+    expect(run[1]?.evaluated).toEqual(['o1', 'fp']);
+    expect(
+      (run[1]?.result.reports['fp' as FeatureId] as { touching: string[] } | undefined)?.touching,
+    ).toEqual(['fb:0', 'ub:0', 'o1:0']);
+    expect(run[2]?.evaluated).toEqual(['o2']);
+    expect(run[3]?.evaluated).toEqual(['ub', 'fp']);
+  });
+
+  it('a face left as a to-object reference on a distance extrude: its body in the key (a run more)', {
+    timeout: 120_000,
+  }, async () => {
+    // Found by its exact name, `o0`'s face is taken as one the tool is built on, though a distance
+    // extrude ignores it: sound, `o0`'s edit runs the extrude too.
+    const left = await computed(
+      document('a box', [box('o0', -40)]),
+      (engine) => faceRefs(engine, 'o0:0', top)[0] as GeomRef,
+    );
+    const doc = setInputs(await faceExtrude(), 'fp', { toObject: { kind: 'ref', refs: [left] } });
+    const run = await provedSteps([
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+      setInputs(doc, 'o2', { length: length('12 mm') }),
+    ]);
+    expect(run[0]?.result.stats.viewed).toEqual(['fp']);
+    expect(run[1]?.evaluated).toEqual(['o0', 'fp']);
+    expect(run[2]?.evaluated).toEqual(['o2']);
+  });
 });
