@@ -75,7 +75,11 @@ export interface ImportedFile {
  * feature's cache key includes and whether its result replaces the body set.
  *
  * - `none`: doesn't look at bodies (a sketch on an origin plane).
- * - `read`: looks, doesn't change them (a sketch on a face).
+ * - `read`: looks, doesn't change them (a sketch on a face). The engine gives it the view a `view`
+ *   feature gets (ADR-0024's amendment on `read` features): the bodies its face, edge, vertex and
+ *   `body` references (a sketch's projections too) name by their exact names, keyed by their
+ *   versions; else, and once its evaluation looks outside them, every body before it. Answer it
+ *   only for inputs whose evaluation reads bodies through its references alone.
  * - `write`: changes the body set (extrude, fillet, a boolean).
  * - `add` (ADR-0024's amendment on `add` access): only adds new bodies and reads none of the
  *   bodies before it (a New Body extrude of sketch profiles by distances). The engine hands it
