@@ -1807,12 +1807,12 @@ every change failed at least one test):
 
 | Taken out | Tests that failed |
 |---|---|
-| `touch` used at all (the tool key) | both seeded designs, six of the touched-set tests, the evicted tool |
+| `touch` used at all (the tool key) | both seeded designs (the picked one's "no bodies" step is `touch`), five of the touched-set tests (the two boxes that miss, comes to touch, the join in the other order, the join that touches nothing), the evicted tool |
 | answers by body version (by ID instead) | the seeded automatic design, comes to touch, the join that touches nothing |
 | bodies with a version not yet asked asked again (never asked) | the seeded automatic design, comes to touch, the touched box changes, a body added, the join that touches nothing |
 | the touched bodies in walk order in the key (sorted) | a body added before, the join in the other order |
-| their versions in the key (IDs only) | the seeded automatic design, the picked counters, and seven of the touched-set tests |
-| the first walk keyed by the bodies it touched (no `rekey`) | both seeded designs, six of the touched-set tests, the evicted tool |
+| their versions in the key (IDs only) | the seeded automatic design, the picked counters, and eight of the touched-set tests (all but the evicted tool and the face-profile cut) |
+| the first walk keyed by the bodies it touched (no `rekey`) | the same eight as `touch` taken out: no tool is ever kept |
 | the kept entry still the cache's (identity) | the evicted tool |
 | sketch profiles only (`touches`) | the face-profile cut (its tool kept from before its body changed), the answers |
 | distances only (`touches`) | the seeded automatic design (the extent toggle), the answers |
