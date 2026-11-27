@@ -7,6 +7,7 @@
 // strict leaks, no clock.
 import {
   type AttachmentId,
+  type BodyId,
   canvasInputs,
   type ExtrudoDocument,
   extrudeInputs,
@@ -21,7 +22,9 @@ import {
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
+import { kernelFeatures } from '../features';
 import { fallbacks, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import type { EvalContext, KernelFeatureDefinition } from './types';
 import {
   BASE,
   box,
@@ -36,7 +39,7 @@ import {
   top,
   useKernel,
 } from './view-access-features-test-support';
-import { document, slot } from './view-access-test-support';
+import { document, slot, twin } from './view-access-test-support';
 
 useKernel();
 
@@ -282,9 +285,14 @@ describe('view access: read features (ADR-0024)', () => {
     expect(steps[0]?.result.stats.viewed).toContain('sk');
     expect(steps[0]?.result.features['sk' as FeatureId]?.status).toBe('ok');
     expect(steps[1]?.evaluated).toEqual([first, 'sk', 'ek', 'fl']);
-    const frame = (i: number) =>
-      JSON.stringify((steps[i]?.result.reports['sk' as FeatureId] as { frame?: unknown })?.frame);
-    return { moved: frame(1) !== frame(0) };
+    const report = (i: number, key: 'frame' | 'projections') =>
+      JSON.stringify(
+        (steps[i]?.result.reports['sk' as FeatureId] as Record<string, unknown>)?.[key],
+      );
+    return {
+      moved: report(1, 'frame') !== report(0, 'frame'),
+      projected: report(1, 'projections') !== report(0, 'projections'),
+    };
   };
 
   it('never stale: the face’s box taller, the face keeping its name', {
@@ -296,7 +304,12 @@ describe('view access: read features (ADR-0024)', () => {
   });
 
   it('never stale: the box whose edge the sketch projects', { timeout: 120_000 }, async () => {
-    await stale((doc) => setInputs(doc, 'eb', { width: length('12 mm') }), 'eb');
+    const { projected } = await stale(
+      (doc) => setInputs(doc, 'eb', { width: length('12 mm') }),
+      'eb',
+    );
+    // The projected edge moved with its box's side.
+    expect(projected).toBe(true);
   });
 
   it('never stale: the face’s body replaced by a body of the same ID from another feature', {
@@ -335,5 +348,162 @@ describe('view access: read features (ADR-0024)', () => {
     );
     // Keyed by every body: a box nothing refers to runs it again.
     expect(steps[2]?.evaluated).toContain('sk');
+  });
+
+  it('a body projected and a body intersected: run with that body, not with an unrelated one', {
+    timeout: 120_000,
+  }, async () => {
+    // A 20 mm tall box `tb` the sketch on `fb`'s top face (z 10) projects whole and cuts through:
+    // `bodyShape` looks it up by the `body` reference's ID, which the view holds.
+    const { face } = await refs();
+    const { sketch } = circleSketch('sb', face);
+    const data = (sketch.inputs.sketch as { sketch: object }).sketch;
+    const body: GeomRef = { kind: 'body', id: 'tb:0' };
+    const tall = feature('tb', 'box', {
+      ...box('tb', 90).inputs,
+      height: length('20 mm'),
+    });
+    const doc = document('a body projected and intersected', [
+      ...BOXES,
+      tall,
+      setInputs(document('', [sketch]), 'sb', {
+        sketch: {
+          kind: 'sketchData',
+          sketch: {
+            ...data,
+            projections: {
+              whole: { ref: body, curves: {} },
+              cross: { ref: body, curves: {}, mode: 'intersect' },
+            },
+          },
+        } as never,
+      }).features[0] as Feature,
+    ]);
+    const steps = await sequence([
+      doc,
+      setInputs(doc, 'tb', { width: length('14 mm') }),
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+    ]);
+    for (const step of steps) {
+      expect(step.problems).toEqual([]);
+      expect(fallbacks(step.result, doc)).toEqual([]);
+      expect(step.result.stats.viewed).toEqual(['sb']);
+    }
+    const projections = (i: number) =>
+      (steps[i]?.result.reports['sb' as FeatureId] as { projections?: Record<string, unknown> })
+        ?.projections;
+    expect(Object.keys(projections(0) ?? {}).sort()).toEqual(['cross', 'whole']);
+    expect(steps[1]?.evaluated).toEqual(['tb', 'sb']);
+    expect(JSON.stringify(projections(1))).not.toEqual(JSON.stringify(projections(0)));
+    expect(steps[3]?.evaluated).toEqual(['o0']);
+  });
+
+  it('a whole sketch projected: no view, keyed by every body', { timeout: 120_000 }, async () => {
+    const doc = await sketches();
+    const b = new SketchBuilder();
+    b.circle(40, 40, 2);
+    const whole = feature(
+      'sw',
+      'sketch',
+      sketchInputs({ kind: 'plane', id: 'origin:xy' }, {
+        ...b.sketch,
+        projections: { all: { ref: { kind: 'feature', id: 'sk' }, curves: {} } },
+      } as never),
+    );
+    const withWhole = {
+      ...doc,
+      features: [...doc.features, whole],
+      timelineMarker: doc.features.length + 1,
+    };
+    const steps = await sequence([
+      withWhole,
+      setInputs(withWhole, 'o0', { length: length('12 mm') }),
+    ]);
+    for (const step of steps) expect(step.problems).toEqual([]);
+    expect(steps[0]?.result.features['sw' as FeatureId]?.status).toBe('ok');
+    expect(steps[0]?.result.stats.viewed).toEqual(['sk', 'fl']);
+    // A box nothing refers to runs it again: its key holds every body before it.
+    expect(steps[1]?.evaluated).toEqual(['o0', 'sw']);
+  });
+
+  it('twin bodies with the face’s exact name: both in the view', { timeout: 120_000 }, async () => {
+    const parts = document('twins', [twin('ta', '0 mm'), twin('tb', '30 mm')]);
+    const face = await computed(parts, (engine) => faceRefs(engine, 'ta:0', top)[0] as GeomRef);
+    const { sketch } = circleSketch('st', face);
+    const doc = document('a sketch on a face two twins have by name', [
+      // The twins are `write` (the test feature's default): a box before them would run them.
+      ...parts.features,
+      box('o0', -40),
+      sketch,
+    ]);
+    const steps = await sequence([
+      doc,
+      setInputs(doc, 'tb', { size: length('12 mm') }),
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+    ]);
+    for (const step of steps) {
+      expect(step.problems).toEqual([]);
+      expect(step.result.stats.viewed).toEqual(['st']);
+    }
+    // The other twin is in the view too (the face's name is on both): it runs the sketch again.
+    expect(steps[1]?.evaluated).toEqual(['tb', 'st']);
+    expect(steps[3]?.evaluated).toEqual(['o0']);
+  });
+
+  it('a read feature that looks outside its view: noticed, keyed by every body, remembered', {
+    timeout: 120_000,
+  }, async () => {
+    // A test-only `read` feature that resolves its face and also looks up `o0:0`, which no
+    // reference names.
+    const registry = () => {
+      const out = kernelFeatures();
+      out.register({
+        type: 'test-read-peek',
+        label: 'test-read-peek',
+        category: 'construct',
+        icon: 'test',
+        inputsSchema: (kernelFeatures().get('canvas') as KernelFeatureDefinition).inputsSchema,
+        bodyAccess: () => 'read',
+        evaluate(ctx: EvalContext) {
+          for (const input of Object.values(ctx.inputs)) {
+            if (input?.kind === 'ref') for (const ref of input.refs) ctx.resolve(ref);
+          }
+          const seen = ctx.bodies.get('o0:0' as BodyId) !== undefined;
+          return { report: { seen } as never };
+        },
+      } as unknown as KernelFeatureDefinition);
+      return out;
+    };
+    const { face } = await refs();
+    const doc = document('a read feature that peeks', [
+      ...BOXES,
+      feature('pk', 'test-read-peek', {
+        ...canvasInputs({
+          image: 'att-img' as AttachmentId,
+          plane: face,
+          numbers: { width: '5 mm' },
+        }),
+      }),
+    ]);
+    const steps = await sequence([doc, setInputs(doc, 'o0', { length: length('12 mm') }), doc], {
+      registry,
+      reference: registry,
+    });
+    for (const step of steps) {
+      // Equal to a cleared engine and to `read` keyed by every body, at every step.
+      expect(step.problems).toEqual([]);
+      expect(step.result.stats.viewed).toEqual([]);
+      expect(step.result.features['pk' as FeatureId]?.status).toBe('ok');
+      expect((step.result.reports['pk' as FeatureId] as { seen?: boolean })?.seen).toBe(true);
+    }
+    // Tried with its view, noticed, evaluated keyed by every body.
+    expect(fallbacks(steps[0]?.result as NonNullable<(typeof steps)[0]>['result'], doc)).toEqual([
+      'pk',
+    ]);
+    // Remembered: the box it peeks at runs it once, keyed by every body, with no view tried.
+    expect(steps[1]?.evaluated).toEqual(['o0', 'pk']);
+    expect(steps[2]?.evaluated).toEqual([]);
   });
 });
