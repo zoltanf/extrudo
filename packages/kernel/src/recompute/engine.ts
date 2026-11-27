@@ -56,11 +56,11 @@ import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
 import { resolveAnnotation as annotationAt } from '../annotations/resolve';
 import { type SmoothFaces, smoothFaces } from '../features/offset-face';
-import { touchingBodies } from '../features/operation';
+import { type Box, reachAlong, touchingBodies } from '../features/operation';
 import { kernelSurface, removeFacesPick } from '../features/remove-faces';
 import type { SmoothKind, SubShapeKind } from '../history';
 import { resolveJoint } from '../joints/frames';
-import { type Kernel, KernelError, type MeshRegions, type ShapeHandle } from '../kernel';
+import { type Kernel, KernelError, type MeshRegions, type ShapeHandle, type Vec3 } from '../kernel';
 import type { MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import { fingerprintOf } from '../naming/fingerprint';
@@ -178,6 +178,9 @@ type Channel = 'recompute' | 'preview';
 /** What a definition's `prepare` resolved to, or what it threw (ADR-0071 §3). */
 type Prepared = { value: unknown } | { error: unknown };
 
+/** A `touch` evaluator's call of `ctx.reach` (ADR-0024's rule B). */
+type Probe = { point: Vec3; along: Vec3; ids?: readonly BodyId[] };
+
 const EMPTY_BODIES = 'bodies:none';
 
 /**
@@ -227,6 +230,13 @@ export class RecomputeEngine {
     string,
     { entry: Entry; tool: ShapeHandle; answers: Map<string, boolean> }
   >();
+  /** Each body version's box (ADR-0024's rule B: a version is one shape, so it has one box). */
+  readonly #boxes = new Map<string, Box>();
+  /**
+   * A `touch` feature's calls of `ctx.reach` by its tool key without them (rule B): what its last
+   * evaluation with every body asked, worked out again from the boxes on a later walk.
+   */
+  readonly #probes = new Map<string, Probe[]>();
   /** Which feature made each body shape, for mesh errors. */
   readonly #makers = new Map<ShapeHandle, FeatureId>();
   /** Naming table of each body shape the cache holds (ADR-0005). */
@@ -683,6 +693,8 @@ export class RecomputeEngine {
     this.#entries.clear();
     this.#readsBodies.clear();
     this.#touched.clear();
+    this.#boxes.clear();
+    this.#probes.clear();
     this.#runs.clear();
     this.#latest = new Map();
     this.#atMarker = undefined;
@@ -904,7 +916,7 @@ export class RecomputeEngine {
       const named = access === 'touch' ? this.#named(feature, bodies) : undefined;
       const picked = named ? [...named.ids] : [];
       const built = named && this.#viewOfIds(bodies, named.built);
-      const toolKey =
+      const bare =
         named &&
         built &&
         scope === undefined &&
@@ -912,7 +924,27 @@ export class RecomputeEngine {
         [...bodies.values()].every((shape) => this.#versions.has(shape))
           ? keyOf(hashOf('touch', built.versions))
           : undefined;
+      // Rule B: what the tool took from the bodies' boxes (its calls of `ctx.reach` and their
+      // answers, from the boxes now) is in its key and its view's, so a tool is kept only while
+      // that is the same. The calls are its last evaluation's with every body.
+      const reachPart = (asked: readonly Probe[]) =>
+        asked.length === 0 ? [] : [asked, asked.map((probe) => this.#reach(bodies, probe) ?? null)];
+      const toolKeyOf = (asked: readonly Probe[]) =>
+        bare &&
+        (asked.length ? keyOf(hashOf('touch', built?.versions, ...reachPart(asked))) : bare);
+      const probes = (bare !== undefined && this.#probes.get(bare)) || [];
+      let toolKey = toolKeyOf(probes);
+      const recorded: Probe[] = [];
+      const reach =
+        bare === undefined
+          ? undefined
+          : (point: Vec3, along: Vec3, ids?: readonly BodyId[]) => {
+              const probe = { point, along, ...(ids && { ids: [...ids] }) };
+              recorded.push(probe);
+              return this.#reach(bodies, probe);
+            };
       const memo = toolKey === undefined ? undefined : this.#touched.get(toolKey);
+      let rebuilt = false;
       let looked =
         (access === 'view' || access === 'read') && scope === undefined
           ? this.#viewOf(feature, bodies)
@@ -929,7 +961,7 @@ export class RecomputeEngine {
           this.#touched.delete(toolKey);
         }
       }
-      const viewKey = looked && keyOf(hashOf('view', looked.versions));
+      const viewKey = looked && keyOf(hashOf('view', looked.versions, ...reachPart(probes)));
       // Not when a body has the feature's own ID prefix: its fresh IDs (`<feature>:<n>`) are
       // picked among the bodies it sees, so they could meet one outside the view (as for `add`).
       let view =
@@ -985,6 +1017,7 @@ export class RecomputeEngine {
       } else {
         // A crash in a script's feature is the script's (the app keys crashes by stored features).
         if (!prepared) onFeature?.(script ?? feature.id);
+        const whole = toolKey !== undefined && !view;
         entry = this.#evaluate(
           definition,
           feature,
@@ -1003,7 +1036,8 @@ export class RecomputeEngine {
                 const touched =
                   output.touched &&
                   this.#viewOfIds(bodies, new Set([...output.touched.bodies, ...picked]));
-                const viewed = touched && keyOf(hashOf('view', touched.versions));
+                const viewed =
+                  touched && keyOf(hashOf('view', touched.versions, ...reachPart(recorded)));
                 if (!touched || !viewed || this.#readBodies(viewed) || !output.bodies) return;
                 view = touched.bodies;
                 asked = true;
@@ -1022,14 +1056,26 @@ export class RecomputeEngine {
                 return version === undefined ? undefined : memo.answers.get(version);
               }
             : undefined,
+          reach,
         );
+        if (whole && bare !== undefined) {
+          // What an evaluation with every body asked of the boxes keys its tool from now on.
+          this.#probes.delete(bare);
+          this.#probes.set(bare, recorded);
+          for (const old of this.#probes.keys()) {
+            if (this.#probes.size <= (this.#options.maxEntries ?? 256)) break;
+            this.#probes.delete(old);
+          }
+          const now = toolKeyOf(recorded);
+          if (now !== toolKey) [toolKey, rebuilt] = [now, true];
+        }
         evaluated.push(feature.id);
         made = !there;
         key = entry.key;
       }
       if (toolKey !== undefined && view && entry.output?.touched) {
         // The tool and the answers so far; an evaluation with every body asked every body.
-        const answers = memo?.answers ?? new Map<string, boolean>();
+        const answers = (!rebuilt && memo?.answers) || new Map<string, boolean>();
         const hit = new Set(entry.output.touched.bodies);
         for (const [id, shape] of asked ? bodies : []) {
           const version = this.#versions.get(shape);
@@ -1426,6 +1472,7 @@ export class RecomputeEngine {
       output: FeatureOutput,
     ) => { key: string; bodies: Map<BodyId, ShapeHandle> } | undefined,
     touched?: (body: BodyId) => boolean | undefined,
+    reach?: EvalContext['reach'],
   ): Entry {
     const kernel = this.#kernel;
     const references = this.#references(feature, bodies);
@@ -1456,6 +1503,7 @@ export class RecomputeEngine {
     const ctx: EvalContext = {
       kernel,
       ...(touched && { touched }),
+      ...(reach && { reach }),
       feature,
       inputs,
       bodies,
@@ -1756,6 +1804,22 @@ export class RecomputeEngine {
    * version is one shape); the others are asked as the evaluator asks (`touchingBodies`), boxes
    * first.
    */
+  /** `reachAlong` over the boxes of `bodies`, or of `ids` among them: one box per version (rule B). */
+  #reach(bodies: ReadonlyMap<BodyId, ShapeHandle>, { point, along, ids }: Probe) {
+    if (this.#boxes.size > 8 * bodies.size + 256) this.#boxes.clear();
+    const boxes: Box[] = [];
+    for (const shape of ids ? ids.map((id) => bodies.get(id) as ShapeHandle) : bodies.values()) {
+      const version = this.#versions.get(shape);
+      let box = version === undefined ? undefined : this.#boxes.get(version);
+      if (!box) {
+        box = this.#kernel.measureBox(shape);
+        if (version !== undefined) this.#boxes.set(version, box);
+      }
+      boxes.push(box);
+    }
+    return reachAlong(boxes, point, along);
+  }
+
   #touching(
     bodies: ReadonlyMap<BodyId, ShapeHandle>,
     memo: { tool: ShapeHandle; answers: Map<string, boolean> },

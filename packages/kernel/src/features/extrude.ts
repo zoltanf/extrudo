@@ -25,7 +25,7 @@ import {
 import { operationCsg } from '../scad-export/operation';
 import { framePoint, merged2d, resolveProfiles } from '../scad-export/profile';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate } from './operation';
+import { explicitBodies, type OperationWords, operate, reachAlong } from './operation';
 import { planeOf } from './references';
 import { type Base, baseOf, centroidOf, PARALLEL_EPS, type Plane } from './sources';
 import { movedTarget, type TrimTarget, trimSweep, trimTarget } from './to-object';
@@ -117,16 +117,25 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
  * (`touch`, ADR-0024's amendments on operations): automatic participants, or a join of picked
  * bodies (its report lists every body the tool touches; the picked ones are in its view too;
  * `touchingBodies` asks every body, and the engine asks again only bodies it hasn't asked this
- * tool); every side by a distance (`through-all` and `to-object` measure every body); and every
- * profile a sketch's profile or text, or a body's face (`facePart`, `sources.ts`: that face of
- * that body alone; the engine keeps the tool by that body's version, rule R).
+ * tool); every side by a distance, or through all (`throughAll` asks `ctx.reach`, and the engine
+ * keys the tool by its answer, rule B), never to an object (`objectSide` sizes its target from
+ * every body); and every profile a sketch's profile or text, or a body's face (`facePart`,
+ * `sources.ts`: that face of that body alone; the engine keeps the tool by that body's version,
+ * rule R).
  */
 export function touches(inputs: ExtrudeInputs): boolean {
   const settings = extrudeSettings(inputs);
+  const sketched = settings.profiles.every(
+    (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity',
+  );
   return (
     settings.operation !== 'new-body' &&
     (settings.bodies.length === 0 || settings.operation === 'join') &&
-    settings.sides.every((side) => side.extent === 'distance') &&
+    settings.sides.every(
+      (side) =>
+        side.extent === 'distance' ||
+        (side.extent === 'through-all' && settings.bodies.length === 0 && sketched),
+    ) &&
     settings.profiles.every(
       (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity' || ref.kind === 'face',
     )
@@ -260,12 +269,9 @@ function distanceScalar(ctx: CsgContext<ExtrudeInputs>, side: ExtrudeSide): Scal
 /** How far a side reaches past the plane in one direction (0 when nothing is there), plus the margin. */
 function reachLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): number {
   const bounds = ctx.bounds();
-  if (!bounds) {
-    throw new KernelError('There are no bodies to go through. Enter a distance instead.');
-  }
-  let far = 0;
-  for (const c of corners(bounds.min, bounds.max)) far = Math.max(far, dot(sub(c, point), along));
-  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
+  const far = bounds && reachAlong([bounds], point, along);
+  if (far === undefined) throw noBodies();
+  return far;
 }
 
 /** How far a side reaches past the plane for `through-all` (mm), plus the kernel's margin. */
@@ -581,21 +587,25 @@ function throughAll(
   along: Vec3,
   participants: BodyId[] | undefined,
 ): number {
-  const shapes = participants
-    ? participants.map((id) => ctx.bodies.get(id) as ShapeHandle)
-    : [...ctx.bodies.values()];
-  if (shapes.length === 0) {
-    throw new KernelError('There are no bodies to go through. Enter a distance instead.');
-  }
-  let far = 0;
-  for (const shape of shapes) {
-    const bbox = ctx.kernel.measureBox(shape);
-    for (const c of corners(bbox.min, bbox.max)) {
-      far = Math.max(far, dot(sub(c, base.plane.point), along));
-    }
-  }
-  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
+  // A `touch` extrude asks the engine, which answers from its box of each body version and keys
+  // the tool by the answer (ADR-0024's rule B); else the bodies it sees, measured here.
+  const shapes = () =>
+    participants
+      ? participants.map((id) => ctx.bodies.get(id) as ShapeHandle)
+      : [...ctx.bodies.values()];
+  const far = ctx.reach
+    ? ctx.reach(base.plane.point, along, participants)
+    : reachAlong(
+        shapes().map((shape) => ctx.kernel.measureBox(shape)),
+        base.plane.point,
+        along,
+      );
+  if (far === undefined) throw noBodies();
+  return far;
 }
+
+const noBodies = () =>
+  new KernelError('There are no bodies to go through. Enter a distance instead.');
 
 const nothingToGoThrough = () =>
   new KernelError(
