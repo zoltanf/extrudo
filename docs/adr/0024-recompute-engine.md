@@ -1760,3 +1760,111 @@ every body before it)": it is keyed by the bodies it touches. This amendment rep
 part of the result); `through-all` and `to-object` with automatic participants; face profiles;
 the other operation features (revolve, sweep, loft, coil, primitives: the same shape of evaluator,
 each needs its tool audited; hole, emboss and rib search the bodies themselves).
+
+**The proof** (`recompute/view-access-operation.test.ts`; real OCCT and manifold, strict leaks, no
+clock, fixed seeds, 10 mm boxes). The reference engine of every differential turns `touch` into
+`write` as well (`allWrite`), so every differential with a cut (the slot cuts of the earlier
+designs) now also compares `touch` with today's keys.
+
+- **Designs:**
+  - picked: boxes `o0`, `b1`, `o1`, `b2`, `o2` and a 2 mm slot through all of them cut out of `b1`
+    and `b2` only (each in two), `o1` in its way;
+  - automatic: boxes `o0` before, `fb` (the slot cuts it in two), `o1` between, the slot cut,
+    `o2` after.
+- **Seeded edits** (24 each), at every step equal to a cleared engine (versions and `measure` boxes
+  too) and to today's keys (all but versions), no fall-back:
+  - picked: a body that doesn't exist, and back; no bodies (automatic), and back; a body picked a
+    second time, and back; the operation cut → intersect → join → new body → cut; the extent
+    distance ↔ through all;
+  - automatic: the cut box, the boxes before, between and after, each 10 → 12 mm and back; the box
+    between moved into the slot's way and out; the operation cycle; the extent toggle;
+  - the generic edits (insert, length, suppress, marker, reorder, delete, undo, parameter).
+- **Each way the bodies a tool touches can change**, one test each, every step equal to a cleared
+  engine and to today's keys, with exact evaluations:
+  - a box whose box misses the tool's, made larger and smaller: it alone;
+  - a box whose box meets the tool's but that the tool doesn't touch (the exact distance
+    decides), larger and smaller: it alone;
+  - a box comes to touch the tool (the cut runs with it), and goes elsewhere (the box alone, the
+    cut's first result from the cache);
+  - the box it touches moves away (the cut touches nothing: its error), and back;
+  - the box it touches changes and still touches (box and cut); the tool changes (the cut);
+  - a body added before it in the tool's way (it and the cut), and taken out (nothing);
+  - a join of two boxes in the other order: the other keeps its ID; then a box nothing touches
+    alone;
+  - a join that touches nothing makes a new body at the end; then a box comes to it;
+  - a tool whose cache entry was let go (two entries at most) is not used again: the cut runs with
+    every body, as at first;
+  - a cut from a body's face is keyed by every body: an edit of that body runs it.
+- **Counters (picked):** a box not picked runs alone; a picked box runs the cut.
+- **The answers:** `touch` for automatic join, cut and intersect by distances; `view` for a picked
+  cut; `write` for a picked join, `through-all`, `to-object` and a face profile; `add` for a new
+  body.
+- The earlier counters that ran a cut after every body (`view-access-read.test.ts`'s cut from a
+  sketch on a face, `view-access-new-bodies.test.ts`'s viewed lists) now show the cut kept.
+
+**Taken out, one at a time** (the source changed, the filtered tests run, the source restored;
+every change failed at least one test):
+
+| Taken out | Tests that failed |
+|---|---|
+| `touch` used at all (the tool key) | both seeded designs, six of the touched-set tests, the evicted tool |
+| answers by body version (by ID instead) | the seeded automatic design, comes to touch, the join that touches nothing |
+| bodies with a version not yet asked asked again (never asked) | the seeded automatic design, comes to touch, the touched box changes, a body added, the join that touches nothing |
+| the touched bodies in walk order in the key (sorted) | a body added before, the join in the other order |
+| their versions in the key (IDs only) | the seeded automatic design, the picked counters, and seven of the touched-set tests |
+| the first walk keyed by the bodies it touched (no `rekey`) | both seeded designs, six of the touched-set tests, the evicted tool |
+| the kept entry still the cache's (identity) | the evicted tool |
+| sketch profiles only (`touches`) | the face-profile cut (its tool kept from before its body changed), the answers |
+| distances only (`touches`) | the seeded automatic design (the extent toggle), the answers |
+| automatic only (`touches`: a picked join as `touch`) | the answers |
+| cut or intersect only (`cutsPicked`: a picked join as `view`) | the seeded picked design, the answers |
+| `profile` passed over | the seeded picked design, the picked counters |
+
+**Not covered** by a test (by reading only): a mesh tool or target in a `touch` cut (the same
+`touchingBodies`, `minGap` for a pair with a mesh); a tool of many solids (a pattern's; the
+extrude makes one sweep); previews.
+
+**Test time** (on one machine, under load from other work): `view-access-operation.test.ts`
+9.8 s, new, run with the other `view-access` files; those files 423.5 s, about +8 s.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and
+number of evaluations. Versions differ in one, b2, the one design with an extrude cut: it is now
+keyed by the body it touches. The feature goldens are unchanged. Every feature of those designs,
+the fastest of four runs each, main → this: 10,670 → 10,693 ms over 180 features, 25.8 ms of it
+b9's 6.2 s thread (which this change doesn't reach; its runs spread by about ±100 ms on that
+machine); b2's cut 6.3 → 6.3 ms.
+
+**Per walk** (110 bodies: 100 plates and one slot through a row, in Node, two runs): a walk with
+nothing changed 12.5 → 12.0 ms (median of 10; fastest 7.8 → 8.0 ms), so no measurable cost of the
+key; an edit of a plate the slot doesn't touch 205 → 13 ms (the cut no longer runs).
+
+**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
+time and meshes sent for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5
+mm, 30 holes; the edit its distance to 6 mm), incremental with `have`, in Node, two runs each,
+main → this.
+
+| Design | Edit | Evaluated / meshes sent | ms |
+|---|---|--:|--:|
+| 20 plates, a sketch on the face and a 2 mm cut | first | 22/20 → 3/1 | 2,684, 2,671 → 183, 182 |
+| | middle | 13/11 → 3/1 | 1,468, 1,479 → 179, 179 |
+| | last | 3/1 → 3/1 | 176, 176 → 181, 181 |
+| 20 plates, a plane on the face, a sketch on it, a cut | first | 23/20 → 4/1 | 2,628, 2,617 → 193, 180 |
+| | middle | 14/11 → 4/1 | 1,466, 1,467 → 188, 176 |
+| | last | 4/1 → 4/1 | 176, 176 → 176, 175 |
+| 20 plates, a sketch on the face and a New Body extrude | first | 3/2 → 3/2 | 72, 72 → 72, 73 |
+| | middle | 3/2 → 3/2 | 66, 66 → 66, 67 |
+| | last | 3/2 → 3/2 | 66, 66 → 67, 67 |
+| 20 plates, one slot through 5 of them | first | 2/10 → 2/10 | 874, 872 → 906, 893 |
+| | middle | 2/11 → 1/1 | 878, 881 → 53, 52 |
+| | last | 2/11 → 1/1 | 880, 898 → 54, 53 |
+
+The first plate of the slot design is one the slot touches: the cut runs again either way (+27 ms,
+the plate asked again, and noise).
+
+In the app (the 20 plates with a sketch and a cut as a file, production build, Chrome, 1280 × 800,
+4 interleaved runs: median and range, ms, main → this), until the model is ready: committing an
+edit of the first plate in its dialog 2,528 (2,527–2,534) → 196 (195–203); undoing it 324
+(321–324) → 322 (321–323); opening the design 1,820 (1,724–2,078) → 1,818 (1,639–2,198). The
+page's blocked time: commit 0 → 0, undo 0 → 0, open 462 (415–475) → 540 (439–628).
