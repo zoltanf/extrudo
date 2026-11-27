@@ -2550,3 +2550,38 @@ could round apart.
 **Not covered** by a test (by reading only): a counterbore or countersink through all (the same
 `throughLength`); a hole flipped; more than three holes; heavy tools (`isHeavyTool`, grouped by
 box, so `interfered`); previews; a script's isolated expansion (no tool key there).
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this one
+give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and number of
+evaluations. Versions differ in the four with holes, b5, b7, b8 and b10: their holes are keyed by
+the bodies they read now, and so are the bodies they cut and what comes after. Every feature of
+those designs, the fastest of four runs each, main → this: 10,727 → 10,798 ms over 180 features;
+the largest increase of one feature +78 ms (b9's 6.2 s thread, which this change doesn't reach; its
+runs spread by about ±100 ms); the holes take the same (b7's 133.8 → 133.6 ms, the others within
+0.2 ms).
+
+**In real designs** (the first feature with a length ×1.1, incremental with `have`, two runs, main
+→ this; features evaluated, meshes sent): b5, 8/2 → 6/2, 247 → 207 ms (its holes on the lid no
+longer run for an edit of the box); b7, b8 and b10 redo as much as before, since that first edit
+changes the body their hole cuts.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
+time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
+edit its distance to 6 mm), incremental with `have`, in Node, the mean of two runs, main → this.
+
+| Each plate with | First | Middle | Last | Evaluated / meshes, first |
+|---|--:|--:|--:|--:|
+| a 5 mm hole 3 mm deep on its top face | 2,980 → 196 | 1,596 → 190 | 197 → 196 | 21/20 → 2/1 |
+| a 5 mm hole through all on its top face | 3,488 → 222 | 1,968 → 222 | 226 → 230 | 21/20 → 2/1 |
+| one hole feature on a plane 5 mm up, a point on each plate | 2,940 → 3,004 | 3,028 → 2,852 | 2,886 → 2,841 | 2/20 → 2/20 |
+
+The third design is one hole feature cutting every plate: an edit of any plate changes a body it
+cuts, so it runs again with all 20, as before; the spread is noise.
+
+In the app (the first design as a file, production build, Chrome, 1280 × 800, 4 interleaved runs:
+median and range, ms, main → this), until the model is ready: committing an edit of the first
+plate in its dialog 2,586 (2,546–2,620) → 190 (188–286); undoing it 322 (321–323) → 322 (320–324);
+opening the design 1,922 (1,459–2,091) → 2,050 (1,924–2,109), the ranges overlap. The page's
+blocked time: commit 0 → 0, undo 0 → 0, open 442 (372–521) → 374 (334–545).
+
