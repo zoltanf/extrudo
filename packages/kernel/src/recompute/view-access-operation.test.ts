@@ -603,10 +603,9 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[1]?.evaluated).toEqual(['o0']);
     // In the slot's way: listed among the bodies it touches (its report), not joined.
     expect(run[2]?.evaluated).toEqual(['o1', 'jn']);
-    expect((run[2]?.result.reports['jn' as FeatureId] as { touching: string[] }).touching).toEqual([
-      'fb:0',
-      'o1:0',
-    ]);
+    expect(
+      (run[2]?.result.reports['jn' as FeatureId] as { touching?: string[] } | undefined)?.touching,
+    ).toEqual(['fb:0', 'o1:0']);
     // The picked box off the slot: the join makes a new body and says so.
     expect(run[3]?.evaluated).toEqual(['fb', 'jn']);
     expect(run[3]?.result.features['jn' as FeatureId]?.status).toBe('warning');

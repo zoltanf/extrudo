@@ -589,12 +589,16 @@ type Access = 'add' | 'write' | 'other';
 
 const REGISTRY = kernelFeatures();
 
-/** What a feature answers: `add`, `write`, or `other` (`none`, `read`, `view`). */
+/**
+ * What a feature answers: `add`, `write` (also `touch`, a join, cut or intersect of the bodies its
+ * tool touches: no longer `add`, ADR-0024's amendment on operations), or `other` (`none`, `read`,
+ * `view`).
+ */
 function accessOf(f: Feature | undefined): Access {
   if (!f) return 'other';
   const definition = REGISTRY.get(f.type);
   const access = definition?.bodyAccess?.(f.inputs as never) ?? 'write';
-  return access === 'add' || access === 'write' ? access : 'other';
+  return access === 'add' ? 'add' : access === 'write' || access === 'touch' ? 'write' : 'other';
 }
 
 interface Term {

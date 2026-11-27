@@ -27,7 +27,7 @@ import {
 import { operationCsg } from '../scad-export/operation';
 import { merged2d, type ProfileRef, resolveProfiles, type To2d } from '../scad-export/profile';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate } from './operation';
+import { explicitBodies, type OperationWords, operate, operationAccess } from './operation';
 import { type GeometryReader, lineOf } from './references';
 import type { SketchOutputData } from './sketch';
 import { type Base, centroidOf, PARALLEL_EPS, type Plane, partsOf, uniteParts } from './sources';
@@ -75,7 +75,18 @@ const WORDS: OperationWords = { noun: 'revolve', check: 'Check its axis and angl
  */
 export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
   ...revolveFeature,
-  bodyAccess: (inputs) => (revolveAddsOnly(inputs) ? 'add' : 'write'),
+  bodyAccess: (inputs) => {
+    const settings = revolveSettings(inputs);
+    // A revolve to an object sizes its target from every body (`sweepToObject`); an axis on an
+    // edge or a face profile is a body's: its tool reads that body.
+    return operationAccess(settings, {
+      readsNone:
+        settings.extent === 'angle' &&
+        (settings.axis?.kind === 'axis' || settings.axis?.kind === 'sketchEntity') &&
+        settings.profiles.every((ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity'),
+      everyBody: settings.extent === 'to-object',
+    });
+  },
   evaluate: evaluateRevolve,
   csg: revolveCsg,
 };

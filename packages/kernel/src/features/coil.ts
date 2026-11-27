@@ -17,7 +17,7 @@ import type { NamedShape } from '../naming/ops';
 import type { PlanarCurve } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate } from './operation';
+import { explicitBodies, type OperationWords, operate, operationAccess } from './operation';
 import { circle, placedAddsOnly, planarFace, planeFrame, upright } from './primitives';
 import { sweepTool } from './sweep';
 import { add, cross, scale, unit } from './vec';
@@ -108,7 +108,11 @@ export function helixSweep(ctx: EvalContext, scope: ShapeScope, spec: HelixSweep
  */
 export const kernelCoil: KernelFeatureDefinition<CoilInputs> = {
   ...coilFeature,
-  bodyAccess: (inputs) => (coilAddsOnly(inputs) ? 'add' : 'write'),
+  // On a face, `planeFrame` resolves it among the bodies: its tool reads that body.
+  bodyAccess: (inputs) => {
+    const settings = coilSettings(inputs);
+    return operationAccess(settings, { readsNone: settings.plane.kind === 'plane' });
+  },
   evaluate(ctx): FeatureOutput {
     const settings = coilSettings(ctx.inputs);
     const n = numbersOf(ctx, settings);

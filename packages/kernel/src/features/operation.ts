@@ -19,7 +19,7 @@ import { type Kernel, KernelError, type ShapeHandle, type ShapeScope } from '../
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
-import type { EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
+import type { BodyAccess, EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
 import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
 import { add, scale } from './vec';
 
@@ -80,6 +80,26 @@ export interface OperationSettings {
   operation: BodyOperation;
   /** Explicit participants (body IDs); empty means automatic. */
   bodies: string[];
+}
+
+/**
+ * An operation feature's body access (ADR-0024's amendments on `add` access and on operations):
+ * `add` for a new body with no picked bodies; `view` for a cut or intersect of picked bodies (they
+ * and the bodies its other references name are the view); `touch` for a join, cut or intersect of
+ * the bodies its tool touches (automatic, or a join of picked bodies); else `write`. `tool`: whether
+ * its tool reads no body (`readsNone`: every reference upstream or none, so the tool is a function
+ * of the inputs and upstream keys), and whether it measures every body (`everyBody`: `write`).
+ */
+export function operationAccess(
+  settings: { operation: BodyOperation; bodies: readonly string[] },
+  tool: { readsNone: boolean; everyBody?: boolean },
+): BodyAccess {
+  const picked = settings.bodies.length > 0;
+  if (tool.everyBody) return 'write';
+  if (picked && (settings.operation === 'cut' || settings.operation === 'intersect')) return 'view';
+  if (!tool.readsNone) return 'write';
+  if (settings.operation === 'new-body') return picked ? 'write' : 'add';
+  return !picked || settings.operation === 'join' ? 'touch' : 'write';
 }
 
 /** The bodies named in `bodies`, or undefined for "automatic". */
