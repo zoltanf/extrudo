@@ -234,8 +234,23 @@ jobs:
 
       - run: pnpm --filter @extrudo/web build
 
+      # The check takes 1.5-2 minutes (brotli at quality 11). Twice on 2026-11-27 its node
+      # process printed the verdict and then never exited, until the job's 15-minute limit
+      # cancelled it. So it gets 5 minutes; a run that printed "Within the size budgets"
+      # and was then stopped passes with a warning, and anything else keeps its exit code.
       - name: Download size within budget (ADR-0100 §5)
-        run: node scripts/measure-startup.mjs --no-browser --budget
+        timeout-minutes: 6
+        run: |
+          set +e
+          timeout -k 10 300 node scripts/measure-startup.mjs --no-browser --budget 2>&1 | tee size-check.txt
+          status=${PIPESTATUS[0]}
+          if [ "$status" = 124 ] || [ "$status" = 137 ]; then
+            if [ "$(tail -n 1 size-check.txt)" = 'Within the size budgets' ]; then
+              echo "::warning::The size check printed its verdict but did not exit; stopped after 5 minutes."
+              exit 0
+            fi
+          fi
+          exit "$status"
 
       - run: docker build -t extrudo:ci .
 
