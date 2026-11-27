@@ -253,7 +253,8 @@ const PICKED: Design[] = [
     make: onFace,
     target: 'cut',
     refsKey: 'bodies',
-    // No bodies picked: automatic with a tool on a face, `write` (the default rule's flips).
+    // No bodies picked: automatic with a tool on a face, `touch` (rule R), a view too.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
     kinds: PICKED_KINDS,
     flips: [
       'twice: view→view',
@@ -372,10 +373,12 @@ describe('view access: the other operations (ADR-0024)', () => {
     ).toBe('write');
     // Coil and primitives: on a plane, or on a face.
     expect(access('coil', coilInputs({ operation: 'cut' }))).toBe('touch');
-    expect(access('coil', coilInputs({ operation: 'cut', plane: face }))).toBe('write');
+    // On a face: the tool built on that body (rule R).
+    expect(access('coil', coilInputs({ operation: 'cut', plane: face }))).toBe('touch');
+    expect(access('coil', coilInputs({ plane: face }))).toBe('write');
     expect(access('box', primitiveInputs('box', { operation: 'join' } as never))).toBe('touch');
     expect(access('box', primitiveInputs('box', { operation: 'cut', plane: face } as never))).toBe(
-      'write',
+      'touch',
     );
     expect(
       access('box', primitiveInputs('box', { operation: 'cut', plane: face, ...picked } as never)),
@@ -388,11 +391,12 @@ describe('view access: the other operations (ADR-0024)', () => {
     ).toBe('write');
   });
 
-  it('a box cut placed on a body’s face is keyed by every body: its tool moves with that body', {
+  it('a box cut placed on a body’s face keeps its tool by that body’s version: moved, built again', {
     timeout: 120_000,
   }, async () => {
     // A 4 mm box sunk 3 mm into `fb`'s top face; `o1` at 16 mm. With `fb` at 12 mm the cut (on its
-    // face) reaches `o1` too: an answer kept from the cut at 0 would miss it.
+    // face) reaches `o1` too: an answer kept from the cut at 0 would miss it (rule R: the face's
+    // body's version is in the tool's key).
     const parts = document('a box', [box('fb', 0)]);
     const face = await computed(parts, (engine) => faceRefs(engine, 'fb:0', top)[0] as GeomRef);
     const doc = document('a box cut on a body’s face', [
@@ -412,7 +416,7 @@ describe('view access: the other operations (ADR-0024)', () => {
     const run = await sequence(docs);
     for (const step of run) expect(step.problems).toEqual([]);
     expect(run[0]?.result.features['pc' as FeatureId]?.status).toBe('ok');
-    expect(run[0]?.result.stats.viewed).toEqual([]);
+    expect(run[0]?.result.stats.viewed).toEqual(['pc']);
     expect(run[1]?.evaluated).toEqual(['fb', 'pc']);
   });
 });

@@ -108,10 +108,14 @@ export function helixSweep(ctx: EvalContext, scope: ShapeScope, spec: HelixSweep
  */
 export const kernelCoil: KernelFeatureDefinition<CoilInputs> = {
   ...coilFeature,
-  // On a face, `planeFrame` resolves it among the bodies: its tool reads that body.
+  // On a face, `planeFrame` resolves it among the bodies: its tool reads that body alone, by that
+  // reference (rule R).
   bodyAccess: (inputs) => {
     const settings = coilSettings(inputs);
-    return operationAccess(settings, { readsNone: settings.plane.kind === 'plane' });
+    return operationAccess(settings, {
+      readsNone: settings.plane.kind === 'plane',
+      byReference: true,
+    });
   },
   evaluate(ctx): FeatureOutput {
     const settings = coilSettings(ctx.inputs);

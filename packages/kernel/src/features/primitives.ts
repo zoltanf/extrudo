@@ -107,10 +107,14 @@ function primitive<I extends PrimitiveInputs>(
   };
   return {
     ...feature,
-    // On a face, `planeFrame` resolves it among the bodies: its tool reads that body.
+    // On a face, `planeFrame` resolves it among the bodies: its tool reads that body alone, by that
+    // reference (rule R).
     bodyAccess: (inputs) => {
       const settings = primitiveSettings(inputs);
-      return operationAccess(settings, { readsNone: settings.plane.kind === 'plane' });
+      return operationAccess(settings, {
+        readsNone: settings.plane.kind === 'plane',
+        byReference: true,
+      });
     },
     evaluate(ctx): FeatureOutput {
       const settings = primitiveSettings(ctx.inputs);

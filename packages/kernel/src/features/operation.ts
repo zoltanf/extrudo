@@ -86,20 +86,22 @@ export interface OperationSettings {
  * An operation feature's body access (ADR-0024's amendments on `add` access and on operations):
  * `add` for a new body with no picked bodies; `view` for a cut or intersect of picked bodies (they
  * and the bodies its other references name are the view); `touch` for a join, cut or intersect of
- * the bodies its tool touches (automatic, or a join of picked bodies) when its tool reads no body;
- * else `write`. `tool`: whether its tool reads no body (`readsNone`: every reference upstream or
- * none, so the tool is a function of the inputs and upstream keys), and whether it measures every
- * body (`everyBody`: `write`).
+ * the bodies its tool touches (automatic, or a join of picked bodies) when its tool reads no body
+ * or reads bodies only through its face, edge or vertex references (rule R: the engine keeps the
+ * tool by those bodies' versions); else `write`. `tool`: whether its tool reads no body
+ * (`readsNone`: every reference upstream or none; also what `add` needs), whether it reads bodies
+ * only through such references (`byReference`), and whether it measures every body (`everyBody`:
+ * `write`).
  */
 export function operationAccess(
   settings: { operation: BodyOperation; bodies: readonly string[] },
-  tool: { readsNone: boolean; everyBody?: boolean },
+  tool: { readsNone: boolean; byReference?: boolean; everyBody?: boolean },
 ): BodyAccess {
   const picked = settings.bodies.length > 0;
   if (tool.everyBody) return 'write';
   if (picked && (settings.operation === 'cut' || settings.operation === 'intersect')) return 'view';
-  if (!tool.readsNone) return 'write';
-  if (settings.operation === 'new-body') return picked ? 'write' : 'add';
+  if (!tool.readsNone && !tool.byReference) return 'write';
+  if (settings.operation === 'new-body') return picked || !tool.readsNone ? 'write' : 'add';
   // Automatic participants, or picked ones joined (a picked cut or intersect is `view` above).
   return 'touch';
 }

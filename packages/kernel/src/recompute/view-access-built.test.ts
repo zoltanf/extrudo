@@ -75,12 +75,63 @@ async function faceExtrude(operation: 'cut' | 'join' = 'cut'): Promise<ExtrudoDo
   ]);
 }
 
+/**
+ * A 4 mm box cut placed on `fb`'s top face 2 mm up (it doesn't touch `fb`), 6 mm high, through
+ * `ub` over `fb`; boxes before, between and after.
+ */
+async function faceBox(): Promise<ExtrudoDocument> {
+  const face = await topOf();
+  return document('a box cut placed on a box’s face, apart from it', [
+    box('o0', -40),
+    box('fb', 0),
+    lifted('ub', 0, 6, 10),
+    lifted('o1', 12, 10, 10),
+    feature(
+      'pc',
+      'box',
+      primitiveInputs('box', {
+        plane: face,
+        numbers: { length: '4 mm', width: '4 mm', height: '6 mm', offset: '2 mm' },
+        operation: 'cut',
+      } as never),
+    ),
+    box('o2', 40),
+  ]);
+}
+
 const DESIGNS: Design[] = [
   {
     name: 'a cut extruded from a box’s face, the box and others edited',
     make: () => faceExtrude(),
     target: 'fp',
     refsKey: 'profiles',
+    kinds: [
+      ...BASE,
+      'size-face',
+      'size-face',
+      'size-before',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      'op-cycle',
+      ...GENERIC_KINDS,
+    ] as Kind[],
+    flips: [
+      'size-face: view→view',
+      'size-before: view→view',
+      'op-cycle: view→view',
+      'op-cycle: view→write',
+      'op-cycle: write→view',
+    ],
+    steps: 22,
+  },
+  {
+    name: 'a box cut placed on a box’s face, apart from it, the box and others edited',
+    make: faceBox,
+    target: 'pc',
+    refsKey: 'plane',
+    // No plane: on XY, nothing built on a body: `touch` still.
+    rule: ['lose: view→write', 'find: write→view', 'empty: view→view', 'fill: view→view'],
     kinds: [
       ...BASE,
       'size-face',
@@ -197,5 +248,23 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     expect(run[1]?.result.stats.viewed).not.toContain('fp');
     expect(run[2]?.result.stats.viewed).toContain('fp');
     expect(run[3]?.result.stats.viewed).not.toContain('fp');
+  });
+
+  it('a box cut on a box’s face it doesn’t touch: the box taller moves the tool, another doesn’t', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = await faceBox();
+    const run = await steps([
+      doc,
+      setInputs(doc, 'o0', { length: length('12 mm') }),
+      setInputs(doc, 'fb', { height: length('12 mm') }),
+    ]);
+    expect(run[0]?.result.stats.viewed).toEqual(['pc']);
+    // Built on `fb` but apart from it: its report names `ub` alone.
+    expect((run[0]?.result.reports['pc' as FeatureId] as { touching: string[] }).touching).toEqual([
+      'ub:0',
+    ]);
+    expect(run[1]?.evaluated).toEqual(['o0']);
+    expect(run[2]?.evaluated).toEqual(['fb', 'pc']);
   });
 });
