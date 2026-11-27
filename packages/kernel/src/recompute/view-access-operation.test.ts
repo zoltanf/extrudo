@@ -401,7 +401,7 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[2]?.evaluated).toEqual(['o0']);
   });
 
-  it('answers: touch for automatic participants, distances or through all, sketch profiles; else view or write', {
+  it('answers: touch, automatic, by a distance or through all; else view or write', {
     timeout: 120_000,
   }, async () => {
     const extrude = kernelFeatures().get('extrude');

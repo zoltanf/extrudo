@@ -933,8 +933,10 @@ describe('the comparison catches a wrong `view` (negative controls)', () => {
     timeout: 300_000,
   }, async () => {
     const broken = await faultyEngine([
-      "const viewKey = looked && keyOf(hashOf('view', looked.versions, ...reachPart(probes)));",
-      "const viewKey = looked && keyOf(hashOf('view', looked.versions.map(([id]) => id), ...reachPart(probes)));",
+      "const viewKey =\n        looked && keyOf(hashOf('view', " +
+        'looked.versions, ...reachPart(probes, reached)));',
+      "const viewKey =\n        looked &&\n        keyOf(hashOf('view', " +
+        'looked.versions.map(([id]) => id), ...reachPart(probes, reached)));',
     ]);
     try {
       const doc = await platesWithFillets(3);

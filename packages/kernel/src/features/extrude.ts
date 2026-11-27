@@ -25,7 +25,7 @@ import {
 import { operationCsg } from '../scad-export/operation';
 import { framePoint, merged2d, resolveProfiles } from '../scad-export/profile';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate, reachAlong } from './operation';
+import { explicitBodies, LENGTH_EPS, type OperationWords, operate, reachAlong } from './operation';
 import { planeOf } from './references';
 import { type Base, baseOf, centroidOf, PARALLEL_EPS, type Plane } from './sources';
 import { movedTarget, type TrimTarget, trimSweep, trimTarget } from './to-object';
@@ -54,7 +54,6 @@ export interface ExtrudeOutputData {
 const FAR = ['cap:far', 'cap:far2'] as const;
 
 /** Lengths (mm) at or below which an extrude has none. */
-const LENGTH_EPS = 1e-6;
 
 /** How an extrude speaks of itself (the shared operation code, `operation.ts`). */
 const WORDS: OperationWords = { noun: 'extrude', check: 'Check its direction and distance.' };

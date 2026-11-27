@@ -315,6 +315,9 @@ export interface Box {
   max: readonly number[];
 }
 
+/** A length below which a reach or a side is none (mm). */
+export const LENGTH_EPS = 1e-6;
+
 /**
  * How far boxes reach past `point` along the unit `along`, plus the kernel's margin: 0 when none
  * reaches past it, undefined for no boxes. An extrude's through-all length (`throughAll`), and
@@ -333,7 +336,7 @@ export function reachAlong(
       far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
     }
   }
-  return far <= 1e-6 ? 0 : far + Math.max(1, 0.05 * far);
+  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
 }
 
 /** Whether two boxes meet or lie within `TOUCH` of each other. */

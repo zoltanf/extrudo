@@ -26,7 +26,16 @@ import { describe, expect, it } from 'vitest';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import { kernelFeatures } from '../features';
 import type { ExtrudeOutputData } from '../features/extrude';
-import { bytesOf, GENERIC_KINDS, length, setInputs } from './add-access-test-support';
+import { KernelError } from '../kernel';
+import {
+  bytesOf,
+  type Done,
+  fallbacks,
+  GENERIC_KINDS,
+  length,
+  setInputs,
+} from './add-access-test-support';
+import { RecomputeEngine } from './engine';
 import type { ImportedFile, KernelFeatureDefinition } from './types';
 import {
   BASE,
@@ -37,7 +46,9 @@ import {
   lifted,
   proveDesigns,
   provedSteps,
+  sequence,
   statusOf,
+  testKernel,
   topOf,
   useKernel,
 } from './view-access-features-test-support';
@@ -476,7 +487,7 @@ describe('view access: through all, keyed by the reach (ADR-0024)', () => {
     expect(touching(run, 3)).toEqual(['fb:0', 'o1:0']);
   });
 
-  it('answers: through all touch, automatic or a picked join, from a sketch or a face; to an object not', () => {
+  it('answers: through all touch (automatic, a picked join, a sketch, a face); to an object not', () => {
     const extrude = kernelFeatures().get('extrude');
     const access = (
       more: ExtrudeInputOptions,
@@ -499,5 +510,93 @@ describe('view access: through all, keyed by the reach (ADR-0024)', () => {
     ).toBe('touch');
     expect(access({ operation: 'cut', extent: 'to-object' })).toBe('write');
     expect(access({ extent: 'through-all' })).toBe('write');
+  });
+  it('a kept tool’s calls stay while it does: other through-all cuts past the bound, then nothing runs', {
+    timeout: 120_000,
+  }, async () => {
+    // A bound of 4: six other cuts through all (each a new input, each new calls) evaluated with
+    // every body after the slot. The slot's tool is kept each walk, and so are its calls; without
+    // them its key would be the one without the reach, which keeps no tool, and it would run.
+    const doc = slotted([], {});
+    const other = (k: number) => {
+      const extra = throughCut('oc', [38, -1, 42, 1], { distance: `${k} mm` });
+      const features = [...doc.features, ...extra.filter((f) => f.id !== 'zp')];
+      return { ...doc, features, timelineMarker: features.length };
+    };
+    const docs = [other(1), other(2), other(3), other(4), other(5), other(6), other(7), other(7)];
+    const run = await provedSteps(docs, { options: { maxEntries: 4 } });
+    for (const i of [1, 2, 3, 4, 5, 6]) expect(run[i]?.evaluated, `step ${i}`).toEqual(['oc']);
+    expect(run[7]?.evaluated).toEqual([]);
+  });
+
+  it('a box that fails to measure when the key is worked out: reported first, a cleared engine’s error', {
+    timeout: 120_000,
+  }, async () => {
+    const kernel = testKernel();
+    const measure = kernel.measureBox.bind(kernel);
+    const events: string[] = [];
+    const doc = slotted();
+    const cached = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    const cleared = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    try {
+      await cached.recompute({ doc });
+      // The far box made 30 mm high fails to measure: its first box is asked when the slot's key
+      // is worked out.
+      kernel.measureBox = (shape) => {
+        const box = measure(shape);
+        if ((box.max[2] as number) < 25) return box;
+        events.push('measure');
+        throw new KernelError('This box can’t be measured.');
+      };
+      const mine = await cached.recompute({ doc: tall(doc) }, (id) => events.push(`report ${id}`));
+      const fresh = await cleared.recompute({ doc: tall(doc) });
+      if (mine.status !== 'done' || fresh.status !== 'done') throw new Error('cancelled');
+      expect(mine.features['cut' as FeatureId]?.status).toBe('error');
+      expect(mine.features).toEqual(fresh.features);
+      expect(mine.features['o2' as FeatureId]?.status).toBe('ok');
+      expect(events.slice(0, events.indexOf('measure') + 1)).toEqual([
+        'report o0',
+        'report cut',
+        'measure',
+      ]);
+    } finally {
+      // The instance's own function goes; the class's is back.
+      delete (kernel as { measureBox?: unknown }).measureBox;
+      cached.clear();
+      cleared.clear();
+    }
+  });
+
+  it('an evaluation in the view that asks the boxes otherwise than its key: run as write', {
+    timeout: 120_000,
+  }, async () => {
+    // An extrude that asks once more on every evaluation but its first: the calls an evaluation
+    // in the view makes are not the ones its key holds. Rule B's induction, checked: the result
+    // goes and the cut runs as `write` (one fall-back), equal to a cleared engine's but versions.
+    let evaluations = 0;
+    const asksMore = () => {
+      const registry = new FeatureRegistry<KernelFeatureDefinition>();
+      for (const definition of kernelFeatures().list()) {
+        registry.register(
+          definition.type !== 'extrude'
+            ? definition
+            : {
+                ...definition,
+                evaluate(ctx) {
+                  if (ctx.feature.id === 'cut' && evaluations++ > 0)
+                    ctx.reach?.([0, 0, 0], [1, 0, 0]);
+                  return definition.evaluate(ctx);
+                },
+              },
+        );
+      }
+      return registry;
+    };
+    const doc = tall(slotted());
+    const docs = [doc, setInputs(doc, 'fb', { width: length('14 mm') })];
+    const run = await sequence(docs, { registry: asksMore, exact: false });
+    for (const step of run) expect(step.problems).toEqual([]);
+    expect(fallbacks(run[0]?.result as Done, doc)).toEqual([]);
+    expect(fallbacks(run[1]?.result as Done, docs[1] as ExtrudoDocument)).toEqual(['cut']);
   });
 });
