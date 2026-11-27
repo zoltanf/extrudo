@@ -2418,7 +2418,8 @@ solids; previews; a script's isolated expansion (no tool key there).
 **Test time** (on one machine, run with the other `view-access` files, at the load of the last
 amendment's run: `view-access.test.ts` 172.6 s, was 169.6 s): `view-access-through.test.ts`
 11.0 s, new; `view-access-operation.test.ts` 12.6 s (was 12.8 s): about +11 s. Under the heavier
-load of a first run the new file took 31.5 s.
+load of a first run the new file took 31.5 s. With the fix round's three tests, at the same load
+(`view-access.test.ts` 171.5 s): `view-access-through.test.ts` 12.4 s, about +1.4 s more.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this one
