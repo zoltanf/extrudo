@@ -96,7 +96,7 @@ export function operationAccess(
 ): BodyAccess {
   const picked = settings.bodies.length > 0;
   if (tool.everyBody) return 'write';
-
+  if (picked && (settings.operation === 'cut' || settings.operation === 'intersect')) return 'view';
   if (!tool.readsNone) return 'write';
   if (settings.operation === 'new-body') return picked ? 'write' : 'add';
   return !picked || settings.operation === 'join' ? 'touch' : 'write';
