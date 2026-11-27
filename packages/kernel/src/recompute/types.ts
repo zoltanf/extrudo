@@ -106,8 +106,8 @@ export interface ImportedFile {
  *   body, any other at the end. A mesh piece of the view's last body with a body outside the view
  *   after that body runs as `write` for that walk (its place can't be told from the result).
  *   A `plane`, `axis`, `point`, `sketchEntity` or `profile` reference (an origin one, a
- *   construction feature's output or a sketch's) reads no body and takes no part in the view. Treated as
- *   `write` inside an isolated expansion, when a face, edge or vertex reference has no exact
+ *   construction feature's output or a sketch's) reads no body and takes no part in the view.
+ *   Treated as `write` inside an isolated expansion, when a face, edge or vertex reference has no exact
  *   match among the bodies (or a reference is of another kind), when a body with the feature's
  *   own ID prefix exists already, and after an error
  *   to try again once the bodies before it change (`OutsideError` `retry: 'bodies'`), as `add`
@@ -414,9 +414,9 @@ export interface RecomputeStats {
   reused: number;
   /**
    * Features that took their result with a view of the bodies (`view` and `touch` access, and
-   * `read` features with a view), evaluated or from the cache, in order; a `view` feature not listed ran as
-   * `write`, a `read` feature not listed was keyed by every body before it. Absent from engines
-   * before it.
+   * `read` features with a view), evaluated or from the cache, in order; a `view` or `touch`
+   * feature not listed ran as `write`, a `read` feature not listed was keyed by every body before
+   * it. Absent from engines before it.
    */
   viewed?: FeatureId[];
   ms: number;

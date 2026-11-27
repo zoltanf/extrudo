@@ -157,7 +157,7 @@ export function allWrite(
               ...definition,
               bodyAccess: (inputs: never) => {
                 const answer = access.call(definition, inputs);
-                // `read` and `touch` as `write`: keyed by every body before it, as before their views.
+                // `read` and `touch` as `write`: keyed by every body before it, as before views.
                 return answer === 'add' ||
                   answer === 'view' ||
                   answer === 'read' ||

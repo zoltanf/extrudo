@@ -40,7 +40,7 @@ import { plate, twinRegistry } from './view-access-test-support';
 
 let kernel: Kernel;
 
-/** The kernel the helpers here use (loaded by `useKernel`), for a test that drives an engine itself. */
+/** The kernel the helpers here use (loaded by `useKernel`), for a test that drives an engine. */
 export const testKernel = (): Kernel => kernel;
 
 /** The kernel every helper here uses: loaded before a file's tests, its shapes checked after. */

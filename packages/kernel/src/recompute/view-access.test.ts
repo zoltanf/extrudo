@@ -894,7 +894,7 @@ describe('view access: what an edit costs (exact counters)', () => {
     },
   );
 
-  it('a later `write` feature still keys a fillet it reads: the cut through all plates', {
+  it('a later cut still keys a fillet it reads: the cut through all plates (`touch`)', {
     timeout: 300_000,
   }, async () => {
     const doc = await overlapping();

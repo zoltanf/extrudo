@@ -78,7 +78,7 @@ const small = (id: string, x: number, y: number, size: number) =>
     }),
   );
 
-/** A circle of radius `r` at `x`, `y` on XY, and its extrude doing `operation` symmetric (20 mm). */
+/** A circle of radius `r` at `x`, `y` on XY and its extrude doing `operation`, symmetric 20 mm. */
 function circleCut(id: string, x: number, y: number, r: number, operation = 'cut') {
   const b = new SketchBuilder();
   b.circle(x, y, r);
@@ -115,7 +115,10 @@ function touching(): ExtrudoDocument {
   ]);
 }
 
-/** A circle cut of radius 8 at (100, 0) through `ob`, and a 4 mm box `nb` whose box meets the tool's but that it doesn't touch. */
+/**
+ * A circle cut of radius 8 at (100, 0) through `ob`, and a 4 mm box `nb` whose box meets the
+ * tool's but that it doesn't touch.
+ */
 function nearby(): ExtrudoDocument {
   return document('a box near the tool, not touching it', [
     box('ob', 100),
@@ -257,7 +260,7 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[2]?.evaluated).toEqual(['o0']);
   });
 
-  it('touch: a box whose box meets the tool’s but that it doesn’t touch, larger and smaller: it alone', {
+  it('touch: a box whose box meets the tool’s, not touching it, larger and smaller: it alone', {
     timeout: 120_000,
   }, async () => {
     const doc = nearby();
@@ -351,7 +354,7 @@ describe('view access: operations (ADR-0024)', () => {
     expect(run[2]?.evaluated).toEqual(['o0']);
   });
 
-  it('answers: touch for automatic participants by distances and sketch profiles; else view or write', {
+  it('answers: touch for automatic participants, distances, sketch profiles; else view or write', {
     timeout: 120_000,
   }, async () => {
     const extrude = kernelFeatures().get('extrude');

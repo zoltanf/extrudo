@@ -1658,8 +1658,9 @@ export class RecomputeEngine {
    * keyed by every body before it), when it has no such reference, a reference of another kind,
    * a body reference to no body, a face, edge or vertex reference no body has by that name (lost,
    * or found only by a related name or a fingerprint), a body before it without a naming table,
-   * or a view body without a version. A `plane`, `axis`, `point` or `sketchEntity` reference (an
-   * origin one, a construction feature's output or a sketch's) reads no body and is passed over.
+   * or a view body without a version. A `plane`, `axis`, `point`, `sketchEntity` or `profile`
+   * reference (an origin one, a construction feature's output or a sketch's) reads no body and is
+   * passed over.
    */
   #viewOf(
     feature: Feature,
@@ -1681,8 +1682,8 @@ export class RecomputeEngine {
           continue;
         }
         // A plane, an axis or a point is an origin one or a construction feature's output, and a
-        // sketch entity or profile a sketch's: no body is read, and that feature's key is in this feature's
-        // key already (an upstream feature).
+        // sketch entity or profile a sketch's: no body is read, and that feature's key is in this
+        // feature's key already (an upstream feature).
         if (PASSED_OVER.has(ref.kind)) continue;
         if (ref.kind !== 'face' && ref.kind !== 'edge' && ref.kind !== 'vertex') return undefined;
         let found = false;
@@ -1701,7 +1702,7 @@ export class RecomputeEngine {
     return this.#viewOfIds(bodies, ids);
   }
 
-  /** A view of the bodies `ids` names, in walk order, with their versions; undefined without one. */
+  /** A view of the bodies `ids` names, in walk order, with their versions (undefined without). */
   #viewOfIds(bodies: ReadonlyMap<BodyId, ShapeHandle>, ids: ReadonlySet<BodyId>) {
     const view = new BodyView();
     const versions: [BodyId, string][] = [];

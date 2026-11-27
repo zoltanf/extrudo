@@ -1712,8 +1712,24 @@ misses); asking the bodies again against the kept tool (built); and splitting ea
 evaluator into a tool step and an operation step (a new evaluator API for every operation
 feature). The second needs no change to results and no facade change: `touchingBodies`, the boxes
 and the distances exist; per walk it costs one look-up per body, and a box (and for a near body an
-exact distance) only for a body with a new version, once per tool. The engine change is 92 lines
-of code added and 4 removed, comments aside (both kinds together).
+exact distance) only for a body with a new version, once per tool. The engine change is 105 lines
+of code added and 5 removed, comments aside (both kinds together).
+
+**Asking again is the feature's work.** The engine reports the feature (`onFeature`) before it asks
+the bodies again, so a Stop or a crash there names it (ADR-0155); the recomputer keeps a feature
+reported twice at its first start. An ask that fails (an exact distance, a mesh conversion) keeps
+no tool: the feature is evaluated with every body, as at first, and fails there with the error a
+cleared engine shows, the rest of the design computed; a WASM abort still ends the walk. Answers
+are stored only after the whole ask, so none from a failed one. No `touch` key while a body before
+the feature has no version (a shape another output holds, such as a profile face reused as a
+body): the feature keeps today's key and its cache hit. When an evaluation with every body, keyed
+again, finds its result's entry already in the cache, `#evaluate` hands that entry back, and the
+walk doesn't count it as its own to drop.
+
+**What "unchanged" means.** A `touch` cut is kept while the bodies it touches come out unchanged
+(their versions). A body made or changed by a `write` feature (a revolve, sweep, loft, hole, emboss,
+rib, a picked join, a cut through all) gets a new version after any earlier edit, so a cut on it
+runs again then, as before.
 
 **Why it can't be stale.** The result of an automatic operation is a function of the tool, of the
 bodies it touches (which, in what order, their shapes and names) and of the map it changes in
@@ -1819,13 +1835,33 @@ every change failed at least one test):
 | automatic only (`touches`: a picked join as `touch`) | the answers |
 | cut or intersect only (`cutsPicked`: a picked join as `view`) | the seeded picked design, the answers |
 | `profile` passed over | the seeded picked design, the picked counters |
+| a failed ask turned into an evaluation with every body (no `catch`) | a failed ask (the walk rejected) |
+| the feature reported before the ask | the report order |
+| no `touch` key while a body has no version | the body without a version (a full evaluation every walk) |
+| the tool memory by tool key (by feature ID instead) | back to an earlier tool (its versions) |
+
+Not caught, by reading only: `made` left true when `#evaluate` hands back an entry already there.
+It matters only if that entry then failed its view (`misfit`, a noticed read), which no extrude
+result can: the entry passed the same checks when it was made.
+
+**Failure paths, tested:** an ask that fails (`Kernel.distance` made to fail for one
+box): the cut's error as a cleared engine's, the other features computed; back, the cut runs with
+every body and gets its first result from the cache; the failing box again, the error from the
+cache. The feature is reported before its exact distance is asked. A body before it without a
+version (a test feature whose body is a sketch's profile face): a walk with nothing changed
+evaluates nothing. Back to an earlier tool while its memory lives: its own answers (a box the
+deeper cut reaches and the shallower doesn't), nothing evaluated.
 
 **Not covered** by a test (by reading only): a mesh tool or target in a `touch` cut (the same
-`touchingBodies`, `minGap` for a pair with a mesh); a tool of many solids (a pattern's; the
-extrude makes one sweep); previews.
+`touchingBodies`, `minGap` for a pair with a mesh); a tool of several solids (a pattern's; the
+extrude makes one sweep); a preview walking between two recomputes (the memory is shared, keyed by
+tool and checked against the cache like a recompute's); a `touch` extrude inside a script's
+expansion (an isolated one is `write`, `scope === undefined`; a non-isolated one walks as the
+document's features do); a WASM abort during the ask; `made` as above.
 
 **Test time** (on one machine, under load from other work): `view-access-operation.test.ts`
-9.8 s, new, run with the other `view-access` files; those files 423.5 s, about +8 s.
+9.8 s, new, run with the other `view-access` files (8.5 s alone with the tests of the failure
+paths, +1.2 s for those); those files 423.5 s, about +9 s in all.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
