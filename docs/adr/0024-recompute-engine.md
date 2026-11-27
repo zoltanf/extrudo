@@ -1621,7 +1621,7 @@ path (`pathFromRefs`), and the intersection and face-centre projections (they re
 references like those tested); a reference found by its fingerprint only (the same noticed
 `resolve` as a related name); previews.
 
-**Test time** (on one machine, under load from other work): TEST_TIME.
+**Test time** (on one machine, under load from other work): `view-access-read.test.ts` 7.1 s, new; Move 4.9 s and the draft 5.1 s (their counters changed, not their designs); the thirteen `view-access` files 414.9 s, the twelve before 408.2 s, so +6.7 s.
 
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
