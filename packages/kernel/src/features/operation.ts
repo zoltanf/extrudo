@@ -319,10 +319,11 @@ export interface Box {
 export const LENGTH_EPS = 1e-6;
 
 /**
- * How far boxes reach past `point` along the unit `along`, plus the kernel's margin: 0 when none
- * reaches past it, undefined for no boxes. An extrude's through-all length (`throughAll`), and
- * what the engine keys such a tool by (ADR-0024's rule B, `EvalContext.reach`): one function, so
- * the two can't differ.
+ * How far boxes reach past `point` along the unit `along`: the farthest corner's distance, 0 when
+ * none reaches past it, undefined for no boxes. What an extrude through all (`throughAll`, with
+ * `throughMargin`) and a through hole (`throughLength`) take from the bodies, and what the engine
+ * keys such a tool by (ADR-0024's rule B, `EvalContext.reach`): one function, so the two can't
+ * differ.
  */
 export function reachAlong(
   boxes: readonly Box[],
@@ -336,8 +337,12 @@ export function reachAlong(
       far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
     }
   }
-  return far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
+  return far;
 }
+
+/** An extrude's through-all length past `reachAlong`'s distance: 0 for none, else 5% more (≥ 1 mm). */
+export const throughMargin = (far: number): number =>
+  far <= LENGTH_EPS ? 0 : far + Math.max(1, 0.05 * far);
 
 /** Whether two boxes meet or lie within `TOUCH` of each other. */
 export const boxesTouch = (a: Box, b: Box): boolean =>

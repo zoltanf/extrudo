@@ -226,7 +226,7 @@ export function mergeTools(
   scope: ShapeScope,
   parts: readonly NamedShape[],
   op: string,
-): NamedShape {
+): NamedShape & { interfered?: true } {
   const { kernel } = ctx;
   if (parts.length === 1) return parts[0] as NamedShape;
   const boxes = parts.map((p) => kernel.measureBox(p.shape));
@@ -258,7 +258,9 @@ export function mergeTools(
     groups.set(find(i), members);
   });
   const fused = [...groups.values()].map((members) => fuseTree(ctx, scope, members, op));
-  return compoundOf(ctx, scope, fused);
+  const merged = compoundOf(ctx, scope, fused);
+  // Whether parts went into one solid: else the tool's solids are the parts themselves.
+  return groups.size < parts.length ? { ...merged, interfered: true } : merged;
 }
 
 /** The most passes a tool set may take; more interference than that is fused instead. */

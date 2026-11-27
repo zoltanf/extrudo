@@ -25,7 +25,14 @@ import {
 import { operationCsg } from '../scad-export/operation';
 import { framePoint, merged2d, resolveProfiles } from '../scad-export/profile';
 import { splitSolids } from './bodies';
-import { explicitBodies, LENGTH_EPS, type OperationWords, operate, reachAlong } from './operation';
+import {
+  explicitBodies,
+  LENGTH_EPS,
+  type OperationWords,
+  operate,
+  reachAlong,
+  throughMargin,
+} from './operation';
 import { planeOf } from './references';
 import { type Base, baseOf, centroidOf, PARALLEL_EPS, type Plane } from './sources';
 import { movedTarget, type TrimTarget, trimSweep, trimTarget } from './to-object';
@@ -261,7 +268,7 @@ function reachLength(ctx: CsgContext<ExtrudeInputs>, point: Vec3, along: Vec3): 
   const bounds = ctx.bounds();
   const far = bounds && reachAlong([bounds], point, along);
   if (far === undefined) throw noBodies();
-  return far;
+  return throughMargin(far);
 }
 
 /** How far a side reaches past the plane for `through-all` (mm), plus the kernel's margin. */
@@ -591,7 +598,7 @@ function throughAll(
         along,
       );
   if (far === undefined) throw noBodies();
-  return far;
+  return throughMargin(far);
 }
 
 const noBodies = () =>
