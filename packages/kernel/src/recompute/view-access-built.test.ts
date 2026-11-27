@@ -362,11 +362,9 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     expect(status(run, 0, 'fp')).toBe('ok');
     expect(run[1]?.evaluated).toEqual(['o0']);
     expect(run[2]?.evaluated).toEqual(['fb', 'fp']);
-    expect((run[2]?.result.reports['fp' as FeatureId] as { touching: string[] }).touching).toEqual([
-      'fb:0',
-      'ub:0',
-      'o1:0',
-    ]);
+    expect(
+      (run[2]?.result.reports['fp' as FeatureId] as { touching: string[] } | undefined)?.touching,
+    ).toEqual(['fb:0', 'ub:0', 'o1:0']);
   });
 
   it('a boss from the face joined to its own box: that box edited runs it, another doesn’t', {
@@ -438,9 +436,9 @@ describe('view access: tools built on a body (ADR-0024)', () => {
     ]);
     expect(run[0]?.result.stats.viewed).toEqual(['pc']);
     // Built on `fb` but apart from it: its report names `ub` alone.
-    expect((run[0]?.result.reports['pc' as FeatureId] as { touching: string[] }).touching).toEqual([
-      'ub:0',
-    ]);
+    expect(
+      (run[0]?.result.reports['pc' as FeatureId] as { touching: string[] } | undefined)?.touching,
+    ).toEqual(['ub:0']);
     expect(run[1]?.evaluated).toEqual(['o0']);
     expect(run[2]?.evaluated).toEqual(['fb', 'pc']);
   });
