@@ -1518,3 +1518,168 @@ runs: median and range, ms, main → this), until the model is ready: committing
 first plate in its dialog 2,304 (2,272–2,343) → 291 (282–299); undoing it 322 (320–324) → 320
 (320–321); opening the design 2,314 (2,278–2,473) → 2,356 (2,240–2,555). The page's blocked time:
 commit 0 → 0, undo 0 → 0, open 600 (574–653) → 590 (570–647).
+
+## Amendment 2026-11-27: `read` features keyed by the bodies their references name
+
+**Decision.** A `read` feature (a sketch on a face or with projections, a construction plane,
+axis or point on a face, edge or vertex, a canvas on a face) gets the view a `view` feature gets:
+`#viewOf` gives it the bodies its references name, its key holds their versions instead of every
+body before it, and a look-up outside them, a reference resolved other than by its exact name, or
+an error to try again once the bodies change makes it run keyed by every body before it, now and
+whenever the same view key comes again while `#readsBodies` still holds it (that memory is
+bounded, least recently used out first). When no view can be worked out (a reference of
+another kind, one no body has by its exact name, an isolated expansion) it is keyed by every body
+as before. A sketch's projections are references for the view, as `featureDependencies` already
+takes them for its upstream features.
+
+**Why this form.** Three were open: a new answer (`readView`), `view` with a result that changes
+no body, or the engine applying the view to `read` itself. The last is the smallest: no feature
+changes its answer, the view, its key, the noticed look-ups and the fall-back are the ones `view`
+features use, and a `read` result has no bodies, so none of the merge and placement rules
+(`fitsView`, `placedAsWrite`, `mergeInPlace`) apply and `bodiesKey` doesn't move. A new answer
+would need every `read` feature to opt in again and the same engine code; `view` with no result
+bodies would put a feature that changes no body under the rules for those that do. The engine
+change: `read` next to `view` where the view is looked up, and the projections in `#viewOf`
+(10 lines of code added and 3 removed, comments aside).
+
+**What no longer holds.** "Only `read` and `write` put the body-set key into their own key"
+(Decision 2): a `read` feature with a view keys its view's versions. In the amendment on `add`
+access, "a sketch on a face is fine as an upstream feature: its key holds the bodies": its key holds
+the versions of the bodies its references name (it is still fine as an upstream feature). In the
+amendment on the shell and the others, "a construction plane built on a face of a body answers
+`read`, so its key moves with every body-writing feature before it": it moves with that body's
+version. In the amendment on picked-body features, "every `read` feature after an edited body runs
+again too (its key holds every body before it)": only those whose references name the edited body
+do. This amendment replaces those.
+
+**What each reads** (audited for this change; file:line, `features/`). Every read of a body is
+through a reference the view holds; everything else is upstream (`ctx.output`) or the feature's
+own inputs.
+
+| Feature | Answers `read` for | Reads | Under the view |
+|---|---|---|---|
+| Sketch (`sketch.ts`) | its plane a face, or any projection (:178–182) | the plane: a face resolved by name and described (`sketchFrame`, :258, :259), a construction plane's output (`planeOf`, :272; `ctx.output`); each projection (`projectAll`, :285): an edge or vertex resolved (:342, :348), a face resolved with its body's names (:366–:368), a body by its `body` reference's ID (`bodyShape`, :495, for `projectBody` and the intersection) with its names (:515, :516), a face's centre (:487), an intersection with a face (:552) or a body (`sectionWithPlane`, :546), a point or axis through its construction feature (`pointOf`, `lineOf`, :357, :360), a sketch entity or a whole sketch through `ctx.output` (:394); the sketch data itself | the plane's body and every projected body; a point, axis or sketch entity passed over (upstream); a whole-sketch projection (`feature` reference) gives no view: keyed by every body |
+| Construction plane, axis and point (`construction.ts`, 13 types, :85) | a face, edge or vertex among their references (`usesBodies`) | their references only: `planeOf`, `lineOf`, `pointOf` (`references.ts:72`, :102, :155: a face, edge or vertex resolved, a construction or sketch one through `ctx.output`), `ctx.resolve` of a face, edge or vertex and `describe` of it (`construction.ts:326`, :455, :477, :508, :518, :553, :631, :671, :678, :734), a path (`pathFromRefs`, `pattern-path.ts:152`: edges resolved, sketch curves through `ctx.output`) | the bodies of their faces, edges and vertices |
+| Canvas (`canvas.ts`, :41) | a face as its plane | `planeOf` of its plane (:61); the image is the feature's own input, not read | the face's body |
+
+No other feature in the app's registry answers `read` (the test-only probe of `recompute/testing.ts`
+does, and gets views too). A sketch on an origin plane whose only projections are axes, points or
+sketch entities answers `read`, gets no view (none of its references names a body) and stays keyed
+by every body: sound, slower than needed. No evaluator above iterates the bodies, asks their number
+or looks one up other than through a reference (`bodyShape`'s `ctx.bodies.get` takes a `body`
+reference's ID, which the view holds). Nothing is computed for the screen from other bodies during
+an evaluation: snapping and silhouettes in the app come from the meshes it was sent.
+
+**Downstream.** A feature that takes a `read` feature's output (an extrude of a sketch's profile, a
+`view` feature's passed-over `plane`, `axis`, `point` or `sketchEntity` reference) has its key as
+an upstream key, as before. A chain of features none of which is `write` (a sketch on a face, a
+New Body extrude of it, a fillet of that body) is left alone by an edit of a body none of them
+names; a cut from the sketch is `write` and still keyed by every body before it.
+
+**The proof** (`recompute/view-access-read.test.ts`; real OCCT and manifold, strict leaks, no
+clock, a fixed seed, 10 mm boxes). The reference engine of every differential now turns `read`
+into `write` as well (`allWrite`, `recompute/add-access-test-support.ts`): keyed by every body
+before it, what `read` was. Boxes nothing refers to before the feature (`o0`), between the face's
+box and the feature (`o1`) and after it (`o2`).
+
+- **Designs:**
+  - a sketch on a box's top face, a New Body extrude of its circle, a fillet of that body's rim;
+  - a construction plane over a box's top face with a sketch on it and a New Body extrude of
+    that, a canvas on the face, an axis along the box's edge and a box moved about the axis.
+- **Seeded edits** (28 and 24), at every step equal to a cleared engine (versions and `measure`
+  boxes too) and to the reference engine (all but versions), no fall-back:
+  - the reference to a face no body has, and back; no plane, and back;
+  - the face's box, the box before, between and after, each 10 mm → 12 mm and back;
+  - the sketch's circle 3 mm → 2.5 mm and back; a projection of another box's edge added, and
+    taken out;
+  - the generic edits (insert, length, suppress, marker, reorder, delete, undo, parameter).
+- **Counters:**
+  - a box before, between or after: that box alone, its mesh alone;
+  - the face's box: the box, the sketch, the extrude and the fillet; their two meshes;
+  - a cut from a sketch on a face: a box before it runs the box and the cut, not the sketch;
+  - construction: a box before runs alone; the face's box runs the plane, the sketch on it, the
+    extrude from that, the canvas, the axis along its edge and the move about it.
+- **Never stale**, one test each (each step equal to a cleared engine, versions included): the
+  face's box taller (the face keeps its name, the sketch's plane rises); the box whose edge the
+  sketch projects wider; the face's box replaced by a Move's body of the same ID before the sketch
+  (a version of its own). Each runs the sketch, the extrude and the fillet again.
+- **A face found only by a related name** (a slot through the box before the sketch splits its
+  top face): no view, keyed by every body, the same result; a box nothing refers to then runs it.
+- **A body projected and a body intersected** (a sketch on a face projecting a 20 mm box whole and
+  cutting through it: `bodyShape`, the one look-up by ID in a `read` evaluator): an edit of that
+  box runs the sketch, and its report changes; an edit of a box nothing refers to runs that box
+  alone. Every step equals a cleared engine and the reference.
+- **A whole sketch projected** (a `feature` reference): no view; a box nothing refers to runs it.
+- **Twin bodies with the face's exact name:** both are in the sketch's view; an edit of the other
+  twin runs the sketch, an unrelated box doesn't.
+- **A `read` feature that looks outside its view** (a test-only feature that resolves its face
+  and looks up a body no reference names): noticed and evaluated keyed by every body; then
+  remembered, so an edit of that body runs it once with no view tried, and the step after takes it
+  from the cache. Every step equals a cleared engine and the reference.
+- The move's and the draft's counters (`view-access-move.test.ts`, `-draft`) now show the
+  construction axis, the sketch on a face and the construction point left alone by a box nothing
+  refers to.
+
+**Taken out, one at a time** (the source changed, the filtered tests run, the source restored;
+every change failed at least one test):
+
+| Taken out | Tests that failed |
+|---|---|
+| `read` next to `view` where the view is looked up | all thirteen of the file |
+| a sketch's projections in `#viewOf` | the seeded sketch design, the three never-stale cases (their sketch projects another box's edge: a look-up outside the view, a fall-back), the body projected and intersected |
+| the view's versions out of the key (IDs only) | both seeded designs, both counters of the chains, the three never-stale cases, the body projected and intersected, the twins |
+| only the first body with a face's exact name in the view | the twins |
+| a noticed look-up not remembered (`#readsBodies`) | the `read` feature that looks outside its view |
+| the sketch's `read` answer for a face as `write` | the seeded sketch design, the sketch counters, the cut counter, the three never-stale cases, the related name |
+| the construction features' `read` answer as `write` | the seeded construction design, the construction counters |
+| the canvas's `read` answer as `write` | the construction counters |
+| `resolve` other than by exact name not noticed | the `view` probe of a reference found by its fingerprint (`view-access.test.ts`), the same rule for both |
+
+**Not covered** by a test (by reading only): a construction point on a path and a plane along a
+path (`pathFromRefs`), and the face intersection and face-centre projections (they resolve their
+references like those tested); a reference found by its fingerprint only (the same noticed
+`resolve` as a related name); a `read` feature inside a script's expansion that isn't isolated;
+previews.
+
+**Test time** (on one machine, under load from other work): `view-access-read.test.ts` 7.1 s, new,
+run with the other `view-access` files (6.1 s alone, its thirteen tests; the four added last, the
+body projections, the whole sketch, the twins and the probe, take 0.6 s of it); Move 4.9 s and the
+draft 5.1 s (their counters changed, not their designs); the thirteen `view-access` files 414.9 s,
+the twelve before 408.2 s, so +6.7 s, and about +7.3 s with the last four.
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body and
+number of evaluations. Versions differ in one, b2: its sketch on a face (with projections) is keyed
+by its view, and the cut from it holds that key upstream. The feature goldens are unchanged. Every
+feature of those designs, the fastest of four runs each, main → this: 10,642 → 10,719 ms over 180
+features, 68 ms of it b9's 6.2 s thread (which this change doesn't reach; its runs spread by about
+±100 ms on that machine), +9 ms for the other 179.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine running other work. Kernel
+time and meshes sent for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5
+mm, 30 holes; the edit its distance to 6 mm), incremental with `have`, in Node, two runs each,
+main → this. On each plate's top face a sketch of one 8 mm circle between holes, and a 2 mm cut
+from it; or a construction plane on that face (offset 0 mm) with the sketch on it; or the sketch
+and a 2 mm New Body extrude instead of the cut.
+
+| Design | Edit | Evaluated / meshes sent | ms |
+|---|---|--:|--:|
+| 20 plates, a sketch on the face and a cut | first | 41/20 → 22/20 | 2,648, 2,664 → 2,647, 2,651 |
+| | middle | 23/11 → 13/11 | 1,482, 1,503 → 1,489, 1,481 |
+| | last | 3/1 → 3/1 | 181, 179 → 178, 176 |
+| 20 plates, a plane on the face, a sketch on it, a cut | first | 61/20 → 23/20 | 2,635, 2,639 → 2,631, 2,626 |
+| | middle | 34/11 → 14/11 | 1,502, 1,483 → 1,476, 1,471 |
+| | last | 4/1 → 4/1 | 178, 177 → 178, 177 |
+| 20 plates, a sketch on the face and a New Body extrude | first | 41/21 → 3/2 | 136, 139 → 76, 71 |
+| | middle | 23/12 → 3/2 | 106, 107 → 70, 72 |
+| | last | 3/2 → 3/2 | 72, 74 → 75, 74 |
+
+The sketches and planes no longer run again; a cut does (`write`, keyed by every body before it),
+and its time is nearly all of the edit's, so the time barely moves where a cut follows.
+
+In the app (the 20 plates with a sketch and a cut as a file, production build, Chrome, 1280 × 800,
+4 interleaved runs: median and range, ms, main → this), until the model is ready: committing an
+edit of the first plate in its dialog 2,530 (2,528–2,536) → 2,534 (2,527–2,543); undoing it 323
+(322–323) → 322 (321–322); opening the design 2,024 (1,682–2,327) → 1,706 (1,666–2,127). The
+page's blocked time: commit 0 → 0, undo 0 → 0, open 450 (406–582) → 467 (413–473).
