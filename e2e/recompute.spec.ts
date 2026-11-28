@@ -26,7 +26,7 @@ test('the kernel computes a new design, and a sketch in it', async ({ page }) =>
     .click();
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
   await expect(chip(page, 'Sketch1')).toHaveAccessibleName('Sketch1');
-  await expect(kernel(page)).toHaveAttribute('data-model-status', 'ready');
+  await kernelReady(page);
   await expect(status(page)).toHaveText('1 feature · mm');
 });
 

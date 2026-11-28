@@ -99,11 +99,7 @@ test('a long recompute shows a progress bar and a queued kernel call shows the b
   // move depends on the machine: the features before the heavy thread often
   // finish inside the notice's 800 ms delay, so it may show the last step only
   // (the per-feature progress is unit-tested in recomputer.test.ts).
-  await expect(page.getByRole('status', { name: 'Kernel' })).toHaveAttribute(
-    'data-model-status',
-    'ready',
-    { timeout: 60_000 },
-  );
+  await kernelReady(page, 60_000);
   await expect(page.locator('[data-model-progress]')).toHaveCount(0);
   await expect(page.locator('[data-kernel-busy]')).toHaveCount(0);
   const { bar, cursors } = await sampled(page);
