@@ -504,7 +504,7 @@ export class Recomputer {
     this.#model = options.model;
     this.#fontSource = options.fonts;
     this.#fileSource = options.files;
-    this.#delayMs = options.delayMs ?? 500;
+    this.#delayMs = options.delayMs ?? 30;
     this.#previewDelayMs = options.previewDelayMs ?? 0;
     this.#heapRecycleBytes = options.heapRecycleBytes ?? HEAP_RECYCLE_BYTES;
     this.#longFeatureMs = options.longFeatureMs ?? LONG_FEATURE_MS;
