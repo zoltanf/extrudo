@@ -212,7 +212,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   dismiss toasts before it (the recorder does). The Viewport region leaves the
   accessibility tree under a modal dialog, so step.ts settles on `[data-camera-size]`.
   Tutorial 1 (`first-part`) is B1's flow plus an extrude and an STL export; the shared
-  `dimension()` helper lives in `benchmark-helpers.ts`.
+  `dimension()` helper lives in `benchmark-helpers.ts`. Tutorial 4 (`bottle-cap`) is
+  B9's flow, so its `change-parameters` wait has B9's 60 s budget: at 30 s it timed out
+  on "computing 7/7" in 5 of about 200 CI runs (2026-11-23 to 11-28), while B9 timed the
+  same rebuild at 0.7-48 s (median 9 s, over 30 s in 14 runs), always finishing.
 
 ## Specs
 
