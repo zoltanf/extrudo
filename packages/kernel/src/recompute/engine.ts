@@ -179,9 +179,9 @@ type Channel = 'recompute' | 'preview';
 /** What a definition's `prepare` resolved to, or what it threw (ADR-0071 §3). */
 type Prepared = { value: unknown } | { error: unknown };
 
-/** A `touch` evaluator's call of `ctx.reach`, or of `ctx.farthest` (no `along`; ADR-0024's rule B). */
+/** A `touch` evaluator's call of `ctx.reach`, or of `ctx.farthest` (no `along`; rule B). */
 type Probe = { point: Vec3; along?: Vec3; ids?: readonly BodyId[] };
-/** A feature's calls of `ctx.reach` and their hash, worked out once (none: no calls, no hash). */
+/** A feature's `ctx.reach` and `ctx.farthest` calls and their hash, made once (none: no hash). */
 type Asked = { list: readonly Probe[]; hash: string };
 const askedOf = (list: readonly Probe[]): Asked => ({
   list,
@@ -239,12 +239,13 @@ export class RecomputeEngine {
   >();
   /**
    * Each body version's box, as its eight corners (ADR-0024's rule B: a version is one shape, so
-   * it has one box; `reachOver` reads the corners).
+   * it has one box; `reachOver` and `farOver` read the corners).
    */
   readonly #boxes = new Map<string, readonly Vec3[]>();
   /**
-   * A `touch` feature's calls of `ctx.reach` by its tool key without them (rule B): what its last
-   * evaluation with every body asked, worked out again from the boxes on a later walk.
+   * A `touch` feature's calls of `ctx.reach` and `ctx.farthest` by its tool key without them (rule
+   * B): what its last evaluation with every body asked, worked out again from the boxes on a later
+   * walk.
    */
   readonly #probes = new Map<string, Asked>();
   /** Which feature made each body shape, for mesh errors. */

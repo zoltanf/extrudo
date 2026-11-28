@@ -320,11 +320,12 @@ export interface Box {
 export const LENGTH_EPS = 1e-6;
 
 /**
- * How far boxes reach past `point` along the unit `along`: the farthest corner's distance, 0 when
- * none reaches past it, undefined for no boxes. What an extrude through all (`throughAll`, with
- * `throughMargin`) and a through hole (`throughLength`) take from the bodies, and what the engine
- * keys such a tool by (ADR-0024's rule B, `EvalContext.reach`): one function, so the two can't
- * differ.
+ * How far boxes reach past `point` along the unit `along`: the farthest corner's distance,
+ * negative when every box lies behind `point` (unclamped), undefined for no boxes. A caller that
+ * needs at least 0 clamps itself (`throughMargin` for an extrude through all, the hole's
+ * `Math.max` in `throughLength`); `bodiesBox` reads the boxes' extent along each axis from it.
+ * What those tools take from the bodies, and what the engine keys such a tool by (ADR-0024's rule
+ * B, `EvalContext.reach`): one function, so the two can't differ.
  */
 export function reachAlong(
   boxes: readonly Box[],
@@ -378,6 +379,8 @@ export function farOver(
  * so it runs as `write`.
  */
 export function everyBodyBox(ctx: EvalContext): Box[] {
+  // Not only a shortcut: this `size` read is what a view notices (a picked cut up to a curved face
+  // falls back to `write` here), where iterating the bodies would go unnoticed.
   if (ctx.bodies.size === 0) return [];
   return [...ctx.bodies.values()].map((shape) => ctx.kernel.measureBox(shape));
 }

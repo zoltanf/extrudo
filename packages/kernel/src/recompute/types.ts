@@ -246,8 +246,9 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
   /**
    * For a `touch` feature (ADR-0024's rule B): how far the boxes of every body before it (or of
    * `bodies` alone) reach past `point` along the unit `along`, by `reachAlong`, from the engine's
-   * box of each body version, whichever bodies the feature sees. The engine keys the tool by what
-   * it answered, so a tool whose size comes from the bodies' boxes asks here alone.
+   * box of each body version, whichever bodies the feature sees: unclamped (negative when every
+   * box lies behind `point`; the caller clamps if it needs to). The engine keys the tool by what it
+   * answered, so a tool whose size comes from the bodies' boxes asks here alone.
    */
   reach?: (point: Vec3, along: Vec3, bodies?: readonly BodyId[]) => number | undefined;
   /**

@@ -102,6 +102,16 @@ export const kernelExtrude: KernelFeatureDefinition<ExtrudeInputs> = {
 };
 
 /**
+ * A side whose length a `view` or `touch` extrude can key: by a distance, through all (the reach,
+ * rule B), or up to a face, a vertex or a plane (the object by its reference, rule R); never up to
+ * a body (`trimTarget` cuts with that body itself, which no key names).
+ */
+const keyedSide = (side: ExtrudeSide): boolean =>
+  side.extent === 'distance' ||
+  side.extent === 'through-all' ||
+  (side.extent === 'to-object' && side.toObject !== undefined && side.toObject.kind !== 'body');
+
+/**
  * Whether an extrude cuts or intersects only the bodies it picks (`view`, ADR-0024's amendment on
  * operations): picked bodies (`explicitBodies` looks up those alone, and `operate` asks no other
  * whether it touches the tool), every side by a distance or `through-all` (which measures the
@@ -116,14 +126,7 @@ export function cutsPicked(inputs: ExtrudeInputs): boolean {
   return (
     (settings.operation === 'cut' || settings.operation === 'intersect') &&
     settings.bodies.length > 0 &&
-    settings.sides.every(
-      (side) =>
-        side.extent === 'distance' ||
-        side.extent === 'through-all' ||
-        (side.extent === 'to-object' &&
-          side.toObject !== undefined &&
-          side.toObject.kind !== 'body'),
-    )
+    settings.sides.every(keyedSide)
   );
 }
 
@@ -145,14 +148,7 @@ export function touches(inputs: ExtrudeInputs): boolean {
   return (
     settings.operation !== 'new-body' &&
     (settings.bodies.length === 0 || settings.operation === 'join') &&
-    settings.sides.every(
-      (side) =>
-        side.extent === 'distance' ||
-        side.extent === 'through-all' ||
-        (side.extent === 'to-object' &&
-          side.toObject !== undefined &&
-          side.toObject.kind !== 'body'),
-    ) &&
+    settings.sides.every(keyedSide) &&
     settings.profiles.every(
       (ref) => ref.kind === 'profile' || ref.kind === 'sketchEntity' || ref.kind === 'face',
     )
@@ -587,7 +583,7 @@ function objectSide(
  * same corner coordinates). A `touch` extrude asks the engine (`ctx.reach`), which keys the tool by
  * the answers (ADR-0024's rule B); else every body's box, measured.
  */
-function bodiesBox(ctx: EvalContext<ExtrudeInputs>): { min: Vec3; max: Vec3 } | undefined {
+export function bodiesBox(ctx: EvalContext<ExtrudeInputs>): { min: Vec3; max: Vec3 } | undefined {
   const origin: Vec3 = [0, 0, 0];
   const boxes = ctx.reach ? [] : everyBodyBox(ctx);
   const far = (along: Vec3) =>

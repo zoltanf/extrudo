@@ -1,6 +1,6 @@
 // A revolve up to an object keyed by the bodies it reads (ADR-0024's amendment on up to an
-// object): `touch` up to a face or a plane, its target sized by the farthest box corner from the
-// axis (`ctx.farthest`, rule B). A 2 × 2 mm ring profile on XZ, 8 to 10 mm from the Z axis, turned
+// object): `touch` up to a face or a plane, its target sized by the farther of each box's lowest
+// and highest corners from the axis's origin point (`ctx.farthest`, rule B). A 2 × 2 mm ring profile on XZ, 8 to 10 mm from the Z axis, turned
 // up to the YZ plane through `rb` (in the ring's way at its start); `o0` far off (the farthest
 // box: moved or grown, a new target size), `o1` between (inside: kept), `o2` after. Real OCCT and
 // manifold, strict leaks, no clock.
@@ -20,7 +20,10 @@ import { GENERIC_KINDS, length, setInputs } from './add-access-test-support';
 import {
   BASE,
   box,
+  computed,
   type Design,
+  faceRefs,
+  faces,
   feature,
   type Kind,
   proveDesigns,
@@ -35,7 +38,23 @@ useKernel();
 const Z_AXIS: GeomRef = { kind: 'axis', id: 'origin:z' };
 const YZ: GeomRef = { kind: 'plane', id: 'origin:yz' };
 
-function turned(options: { operation?: 'cut' | 'join'; bodies?: string[] } = {}) {
+/** `wb` (x -10 to 0, y 5 to 15) and its face in the YZ plane, from an engine that computed it. */
+const wall = () => box('wb', -5, 10);
+async function wallFace(): Promise<GeomRef> {
+  return computed(
+    document('a box', [wall()]),
+    (engine) =>
+      faceRefs(
+        engine,
+        'wb:0',
+        faces((f) => (f.direction?.[0] ?? 0) > 0.99),
+      )[0] as GeomRef,
+  );
+}
+
+function turned(
+  options: { operation?: 'cut' | 'join'; bodies?: string[]; toObject?: GeomRef } = {},
+) {
   const b = new SketchBuilder();
   b.line(8, 2, 10, 2);
   b.line(10, 2, 10, 4);
@@ -50,13 +69,14 @@ function turned(options: { operation?: 'cut' | 'join'; bodies?: string[] } = {})
     box('o0', -40),
     box('rb', 9),
     box('o1', 30),
+    ...(options.toObject ? [wall()] : []),
     feature('rs', 'sketch', sketchInputs(originPlaneRef('origin:xz'), b.sketch)),
     feature(
       'rv',
       'revolve',
       revolveInputs([profile], Z_AXIS, {
         extent: 'to-object',
-        toObject: YZ,
+        toObject: options.toObject ?? YZ,
         operation: options.operation ?? 'cut',
         ...(options.bodies && { bodies: options.bodies }),
       }),
@@ -120,6 +140,23 @@ describe('view access: a revolve up to an object (ADR-0024)', () => {
     for (const i of [2, 4]) expect(run[i]?.evaluated, `step ${i}`).toEqual([]);
     expect(run[5]?.evaluated).toEqual(['o1']);
     expect(run[6]?.evaluated).toEqual(['rb', 'rv']);
+  });
+
+  it('up to a box’s face: that box changed runs it, a box inside the reach is kept', {
+    timeout: 120_000,
+  }, async () => {
+    const doc = turned({ toObject: await wallFace() });
+    const run = await provedSteps([
+      doc,
+      setInputs(doc, 'wb', { height: length('12 mm') }),
+      setInputs(doc, 'o1', { width: length('12 mm') }),
+      doc,
+    ]);
+    expect(statusOf(run, 0, 'rv')).not.toBe('error');
+    expect(run[0]?.result.stats.viewed).toEqual(['rv']);
+    expect(run[1]?.evaluated).toEqual(['wb', 'rv']);
+    expect(run[2]?.evaluated).toEqual(['o1']);
+    expect(run[3]?.evaluated).toEqual([]);
   });
 
   it('a picked join: touch; a picked cut and up to a body: every body', () => {

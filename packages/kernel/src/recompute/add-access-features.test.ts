@@ -1466,7 +1466,9 @@ describe('the comparison catches a wrong `add` here too (negative control)', () 
     expect(step?.problems).toEqual([...seen, ...seen.map((p) => `write: ${p}`)]);
     expect(fallbacks(step?.result as never, d)).toEqual([]);
   });
+});
 
+describe('a wrong `add` that reads every body is noticed: it runs as `write`', () => {
   it('a revolve to a plane said to be `add` in both engines: its read of every body is noticed', {
     timeout: 300_000,
   }, async () => {
@@ -1498,7 +1500,8 @@ describe('the comparison catches a wrong `add` here too (negative control)', () 
     });
     expect(faulty.map((s) => s.problems)).toEqual([[], []]);
     expect(fallbacks(faulty[1]?.result as never, edited)).toEqual(['r5']);
-    // With the kernel's own predicate (a revolve to an object is `write`), clean against both.
+    // With the kernel's own predicate (a New Body revolve up to an object is `write`), clean
+    // against both.
     const right = await sequence(kernel, [d, edited], { options: ENGINE });
     expect(right.map((s) => s.problems)).toEqual([[], []]);
     expect(right[1]?.result.features['r5' as FeatureId]?.status).toBe('ok');
