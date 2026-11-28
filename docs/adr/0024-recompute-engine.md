@@ -2733,7 +2733,7 @@ Up to the sphere the target's size comes from the box round every body before th
 made thicker stays inside it (the spheres are higher), so the other bosses are kept. An edit that
 grows that box reaches every boss after it: the first sphere raised 10 mm makes the box taller
 for the 19 bosses after it, which all run again, as before (3,572 → 3,532 ms, 21/21 both). The
-last sphere raised: 211 → 220 ms, 2/2 both (only its own boss comes after it).
+last sphere raised: 214 → 220 ms, 2/2 both (only its own boss comes after it).
 
 **A walk with nothing changed** (110 plates, in Node, the median of 21 walks, two runs, main →
 this): with one cut up to a sphere (six questions), 9.9, 10.0 → 10.6, 10.6 ms; with one revolve
