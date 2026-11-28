@@ -75,6 +75,9 @@ async function extrudeProfileAt(
   await dialog.getByRole('button', { name: 'OK' }).click();
   await expect(dialog).toBeHidden();
   await kernelReady(page);
+  // The sketch made no body, and the recompute starts 30 ms after the OK, so
+  // `kernelReady` can still see the sketch's "ready": wait for the body.
+  await expect(viewport(page)).toHaveAttribute('data-bodies', /./);
   return bodies(page);
 }
 

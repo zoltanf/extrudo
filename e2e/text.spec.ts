@@ -201,9 +201,11 @@ test('places text in a sketch and extrudes it into one body per letter', async (
   await expect(chip(page, 'Extrude1')).toHaveAccessibleName('Extrude1');
 
   // Seven bodies, one per letter, all 2 mm thick. `d` and `o` keep their
-  // counter as a hole: front, back and two walls, four faces.
+  // counter as a hole: front, back and two walls, four faces. Polled: the
+  // recompute starts 30 ms after the OK, so `kernelReady` can still see the
+  // sketch's "ready" (e2e notes, `data-bodies`).
+  await expect.poll(async () => (await bodies(page)).length).toBe(7);
   const drawn = await bodies(page);
-  expect(drawn).toHaveLength(7);
   for (const body of drawn) expect(body.size[2]).toBe(2);
   // A body is two caps and one side face per curve of its outline, so the `o`
   // (one curve for the ring, one for its counter) is the four-face one: the
@@ -224,7 +226,9 @@ test('editing the string and the height keeps the extrude computing', async ({ p
   await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 30_000 });
   await dialog.getByRole('button', { name: 'OK' }).click();
   await kernelReady(page);
-  expect(await bodies(page)).toHaveLength(7);
+  // Polled: the recompute starts 30 ms after the OK, so `kernelReady` can still
+  // see the sketch's "ready" (e2e notes, `data-bodies`).
+  await expect.poll(async () => (await bodies(page)).length).toBe(7);
   const before = Math.max(...(await bodies(page)).map((b) => b.size[1] as number));
 
   // Reopen the sketch: the extrude rolls back, and the text is still there.

@@ -171,8 +171,10 @@ test('a font added to the design shapes a text, and travels with the design', as
   await kernelReady(page);
   await expect(chip(page, 'Extrude1')).toHaveAccessibleName('Extrude1');
   // Three solids: `H`, `i`'s stem and `i`'s dot, which the font draws apart.
+  // Polled: the recompute starts 30 ms after the OK, so `kernelReady` can still
+  // see the sketch's "ready" (e2e notes, `data-bodies`).
+  await expect.poll(async () => (await bodies(page)).length).toBe(3);
   const drawn = await bodies(page);
-  expect(drawn).toHaveLength(3);
   for (const body of drawn) expect(body.size[2]).toBe(2);
 
   // The design carries the font: the exported file has it with the document.
