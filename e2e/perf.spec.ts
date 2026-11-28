@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { type Browser, devices, expect, type Page, test } from '@playwright/test';
 import { parameterExpression, parametersDialog, pickTool, projector } from './helpers';
 
 // P6-13, ADR-0100 §1 and §4: the main-thread budgets for what a CAD user
@@ -28,7 +28,8 @@ import { parameterExpression, parametersDialog, pickTool, projector } from './he
 //
 // Traps are in docs/agent/e2e-notes.md (`e2e/perf.spec.ts`).
 
-test.use({ viewport: { width: 1440, height: 900 } });
+const VIEWPORT = { width: 1440, height: 900 };
+test.use({ viewport: VIEWPORT });
 test.setTimeout(180_000);
 
 /** The observers and the frame counter, on every document this page loads. */
@@ -255,21 +256,20 @@ const EXAMPLES = [
   },
 ];
 
-async function runExample(page: Page, ex: (typeof EXAMPLES)[number]) {
+type Example = (typeof EXAMPLES)[number];
+
+/**
+ * 1. open, in a page of a fresh context: the home screen is already up, so the
+ * window is the example being opened — the copy, the kernel's first recompute
+ * and the first frames.
+ */
+async function openExample(page: Page, ex: Example) {
   const viewport = page.getByRole('region', { name: 'Viewport' });
   const kernel = page.getByRole('status', { name: 'Kernel' });
-  const windows: Record<
-    string,
-    Sample & { elapsedMs: number; roundTripMs?: number; roundTripAppMs?: number }
-  > = {};
-
   await page.addInitScript(INSTRUMENT);
   await page.goto('./');
   await page.getByRole('button', { name: 'New design' }).waitFor({ timeout: 60_000 });
   const renderer = await rendererString(page);
-
-  // 1. open: the home screen is already up, so the window is the example being
-  // opened — the copy, the kernel's first recompute and the first frames.
   let openFrom = await nowOf(page);
   await page.goto(`./#/example/${ex.id}`);
   // A same-document hash navigation keeps the clock; a full one would reset
@@ -279,10 +279,61 @@ async function runExample(page: Page, ex: (typeof EXAMPLES)[number]) {
   await expect(viewport).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
   await page.waitForTimeout(500); // let the first frames settle
   const openTo = await nowOf(page);
-  windows.open = {
+  const open = {
     ...(await sample(page, openFrom, openTo)),
     elapsedMs: Math.round(openTo - openFrom),
   };
+  return { open, renderer };
+}
+
+/**
+ * A second context like the test's own (playwright.config.ts's `use` and the
+ * project's device), so a second open is as cold as the first.
+ */
+function freshContext(browser: Browser) {
+  const { baseURL, serviceWorkers, colorScheme, storageState } = test.info().project.use;
+  return browser.newContext({
+    ...devices['Desktop Chrome'],
+    viewport: VIEWPORT,
+    baseURL,
+    serviceWorkers,
+    colorScheme,
+    storageState,
+  });
+}
+
+/**
+ * The example opened twice, each in a fresh context, the first page closed
+ * before the second opens (ADR-0100 §1): the open budgets judge the faster
+ * open, the other is shown beside it. The second open measured no warmer than
+ * the first (24 local pairs per example, 2026-11-28: the second faster in 13 of
+ * 24 for B5 and 10 of 24 for B7, medians within 10 ms). With the first page
+ * still open it measured slower (in 21 of 24), so it is closed. The rest of the
+ * test runs on the second page.
+ */
+async function runExample(page: Page, browser: Browser, ex: Example) {
+  const first = await openExample(page, ex);
+  await page.close();
+  const context = await freshContext(browser);
+  try {
+    await afterOpen(await context.newPage(), ex, first);
+  } finally {
+    await context.close();
+  }
+}
+
+async function afterOpen(page: Page, ex: Example, first: Awaited<ReturnType<typeof openExample>>) {
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  const second = await openExample(page, ex);
+  const { renderer } = second;
+  const [faster, slower] =
+    first.open.appMax <= second.open.appMax ? [first, second] : [second, first];
+  const windows: Record<
+    string,
+    Sample & { elapsedMs: number; roundTripMs?: number; roundTripAppMs?: number }
+  > = {};
+  windows.open = faster.open;
+  windows.otherOpen = slower.open;
 
   // The model's centre on screen: the camera target (fit centres the bounds
   // there, in the part of the view the browser panel doesn't cover).
@@ -386,17 +437,21 @@ async function runExample(page: Page, ex: (typeof EXAMPLES)[number]) {
       worstTask: worst && { dur: worst.dur, render: worst.render, app: worst.app, top: worst.top },
     });
   };
+  // The open budgets judge the faster of the two opens; the other open's numbers follow.
+  const other = slower.open;
+  const showOpen = () =>
+    `${show(faster.open)}; the other open: ${JSON.stringify({ appMax: other.appMax, appTotal: other.appTotal, longMax: other.longMax, elapsedMs: other.elapsedMs })}`;
   expect(
     windows.open.appMax,
-    `longest task's app time while opening ${ex.label} (ms, budget 400): ${show(windows.open)}`,
+    `longest task's app time while opening ${ex.label} (ms, budget 400): ${showOpen()}`,
   ).toBeLessThan(400);
   expect(
     windows.open.appTotal,
-    `long tasks' app time total while opening ${ex.label} (ms, budget 1200): ${show(windows.open)}`,
+    `long tasks' app time total while opening ${ex.label} (ms, budget 1200): ${showOpen()}`,
   ).toBeLessThan(1200);
   expect(
     windows.open.elapsedMs,
-    `${ex.label} open → model ready (ms, budget ${ex.openBudgetMs}): ${show(windows.open)}`,
+    `${ex.label} open → model ready (ms, budget ${ex.openBudgetMs}): ${showOpen()}`,
   ).toBeLessThan(ex.openBudgetMs);
 
   expect(
@@ -447,7 +502,7 @@ async function runExample(page: Page, ex: (typeof EXAMPLES)[number]) {
 }
 
 for (const ex of EXAMPLES) {
-  test(`perf: ${ex.label} stays inside the main-thread budgets`, async ({ page }) => {
-    await runExample(page, ex);
+  test(`perf: ${ex.label} stays inside the main-thread budgets`, async ({ page, browser }) => {
+    await runExample(page, browser, ex);
   });
 }

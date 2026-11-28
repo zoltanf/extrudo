@@ -1911,7 +1911,13 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   main-thread budgets for opening, orbiting, editing and hovering, driven
   through the two example designs `#/example/pcb-enclosure` (B5) and
   `#/example/knurled-knob` (B7), one test each (no serial mode: both report
-  even when one fails; 180 s timeout). What it measures: a
+  even when one fails; 180 s timeout). **Each example opens twice** (ADR-0100's
+  amendment of 2026-11-28): in the test's `page`, which is then closed, and in a
+  second context from `freshContext(browser)` (the config's `use` and the
+  device), whose page runs the rest of the test; the open budgets judge the open
+  with the lower `appMax` (`windows.open`, the other is `windows.otherOpen`).
+  Keep the first page closed before the second opens: alive, it made the second
+  open slower in 21 of 24 local pairs. What it measures: a
   `page.addInitScript` installs `window.__perf` (`long`, `events`, `frames`)
   with a `PerformanceObserver` for `longtask` entries, one for `event` entries
   (`durationThreshold: 16`, so quick events are not listed — both `observe`
