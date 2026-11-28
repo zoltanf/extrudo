@@ -59,13 +59,17 @@ export async function listStyleMenu(page: Page) {
   await page.addInitScript("localStorage.setItem('extrudo.marking.radial', 'false')");
 }
 
-/** Waits until the kernel has computed the document (P2-01): chips show their status. */
+/**
+ * Waits until the kernel has computed the document (P2-01): chips show their status.
+ * "Ready" counts only with no recompute waiting to be sent (`data-model-pending`): the
+ * app gathers changes for 30 ms before it says "computing", so right after an edit the
+ * old result's "ready" doesn't pass. Both are read in one locator check. An edit the app
+ * applies later (after an await) is not waited for: wait for its sign first.
+ */
 export async function kernelReady(page: Page, timeout = 30_000) {
-  await expect(page.getByRole('status', { name: 'Kernel' })).toHaveAttribute(
-    'data-model-status',
-    'ready',
-    { timeout },
-  );
+  await expect(
+    page.getByRole('status', { name: 'Kernel' }).and(page.locator(':not([data-model-pending])')),
+  ).toHaveAttribute('data-model-status', 'ready', { timeout });
 }
 
 /** Opens a sketch on XY and waits for the Top view. Returns a sketch-mm → page-px mapping. */

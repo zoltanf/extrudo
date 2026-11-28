@@ -47,9 +47,10 @@ test('Insert Design brings a design in as one component, undoable and saved', as
   // The copy's bodies keep their names, in the component named after the file.
   await expect(viewport).toHaveAttribute('data-components', 'b4-box-with-lid:Box,Lid');
   await expect(chip(page, 'b4-box-with-lid')).toBeVisible();
+  // The kernel's statuses are idle, computing, ready and failed.
   await expect(page.getByRole('status', { name: 'Kernel' })).not.toHaveAttribute(
     'data-model-status',
-    'error',
+    'failed',
   );
 
   // One undo step takes the feature, the component and its bodies away; redo brings them back.

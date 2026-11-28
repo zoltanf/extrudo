@@ -162,15 +162,35 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **Every open project starts a kernel worker** (P2-01), so every e2e test
   compiles the OCCT WASM. Wait for the first recompute with
   `kernelReady(page)` (`e2e/helpers.ts`: the status bar's "Kernel" output,
-  `data-model-status="ready"`) before screenshots or status checks. **After
-  an edit, `kernelReady` alone can pass on the previous recompute's "ready"**:
-  the `Recomputer` gathers changes for 30 ms (`delayMs`) before it says
-  "computing", so a check right after a dialog's OK can read the old model
-  (an extrude's `data-bodies` still empty: user-fonts, text and
-  import-drawing were flaky that way, 2026-11). Poll for the result itself
-  (`expect.poll` on the body count, `toHaveAttribute('data-bodies', /./)`);
-  a local build with `delayMs` raised to 500 makes such a race fail every
-  time. The
+  `data-model-status="ready"`) before screenshots or status checks. **It
+  passes only with no recompute pending** (`data-model-pending` absent, read in
+  the same locator check as the status): the `Recomputer` gathers changes for
+  30 ms (`delayMs`) before it says "computing", and the model store's `pending`
+  flag covers that window (set when the gather starts, cleared by the send or
+  when nothing needs sending), so right after a synchronous edit (a dialog's
+  OK, a keypress, a parameter) the old result's "ready" no longer passes; this
+  is what made user-fonts, text and import-drawing flaky (2026-11). **It still
+  can't see an edit the app hasn't made yet**: flows that await before their
+  command (Insert Design and Add font read and store the file first, plugin
+  commands and Remove Faces ask the kernel first, Restore version reads
+  IndexedDB first, a sketch on a face waits for the face's reference) leave
+  the status "ready" and nothing pending until the command lands, so wait for
+  that command's own sign (a chip, a toast, the panel) before `kernelReady`.
+  **Nor a worker restart between recomputes**: after a result the memory
+  recycle (`#recycleIfBig`, a `heap()` call, then `client.restart()`) or a
+  crash between recomputes ends the worker and boots a new one; while it boots
+  (the WASM loads) the status stays "ready" with nothing pending, then
+  `onRestart` asks for the resend (pending, "computing") and the same
+  document's result comes back cold. The model on screen is right throughout;
+  a test that times or counts recomputes can see the extra one. Specs that
+  still read `data-model-status` themselves: perf (the first open, and its
+  own round-trip observer), kernel-cancel's first load, and insert-design's and
+  primitives' "not `failed`" checks; every read after an edit goes through
+  `kernelReady`. A local or CI build with
+  `delayMs` raised to 500 makes such early reads fail every time (the whole
+  suite passed so on 2026-11-28, one flaky test aside: joints' "Check
+  clearance" clicked inside the window is stopped by the recompute and ends
+  idle, which at 30 ms nothing reaches). The
   Wall bracket template computes one body, "Bracket" (40×80×60 mm, 12
   faces); Fillet1 computes since P3-01, and only rolling forward brings in
   Plane1, the template's placeholder of the old `plane` type, which stays an
@@ -212,7 +232,10 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   dismiss toasts before it (the recorder does). The Viewport region leaves the
   accessibility tree under a modal dialog, so step.ts settles on `[data-camera-size]`.
   Tutorial 1 (`first-part`) is B1's flow plus an extrude and an STL export; the shared
-  `dimension()` helper lives in `benchmark-helpers.ts`.
+  `dimension()` helper lives in `benchmark-helpers.ts`. Tutorial 4 (`bottle-cap`) is
+  B9's flow, so its `change-parameters` wait has B9's 60 s budget: at 30 s it timed out
+  on "computing 7/7" in 5 of about 200 CI runs (2026-11-23 to 11-28), while B9 timed the
+  same rebuild at 0.7-48 s (median 9 s, over 30 s in 14 runs), always finishing.
 
 ## Specs
 

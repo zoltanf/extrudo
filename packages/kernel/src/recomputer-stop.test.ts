@@ -997,3 +997,89 @@ describe('whether Cancel only undoes, for Ctrl+Z (ADR-0161)', () => {
     expect(t.r.revertToShownUndoes()).toBe(false);
   });
 });
+
+describe("the model store's pending flag on the other send paths (ADR-0024, 2026-11-28)", () => {
+  /**
+   * Every (status, pending) the store goes through, repeats dropped; `wrong` lists a
+   * "ready" with nothing pending that isn't the current document's result.
+   */
+  function watch(t: ReturnType<typeof setup>) {
+    const seen: string[] = [];
+    const wrong: string[] = [];
+    t.model.subscribe(({ status, pending, doc }) => {
+      const now = pending ? `${status}+pending` : status;
+      if (seen.at(-1) !== now) seen.push(now);
+      if (status === 'ready' && !pending && doc !== t.store.getState().doc) wrong.push(now);
+    });
+    return { seen, wrong };
+  }
+  const pending = (t: ReturnType<typeof setup>) => t.model.getState().pending;
+
+  it('a restart between recomputes: nothing pending while the new worker starts, then the resend', async () => {
+    const t = setup();
+    await settle(t);
+    const { seen, wrong } = watch(t);
+    const restarting = t.r.client.restart();
+    // The old worker is gone and the new one is starting: the old result's "ready",
+    // nothing pending yet (what `kernelReady` can't see).
+    expect(t.model.getState().status).toBe('ready');
+    expect(pending(t)).toBe(false);
+    await restarting;
+    // `onRestart` asked for the resend.
+    expect(pending(t)).toBe(true);
+    const resend = await t.call(2);
+    expect(resend.worker).toBe(2);
+    resend.finish();
+    await until(() => t.ready() && !pending(t));
+    expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+    expect(wrong).toEqual([]);
+  });
+
+  it('Try again: the document is unchanged, the flag still covers the gather', async () => {
+    const t = setup();
+    (await t.call(1)).report('f2' as FeatureId);
+    await until(() => t.r.stops.get().stoppable);
+    await t.r.stop();
+    (await t.call(2)).finish();
+    await until(t.ready);
+    const { seen } = watch(t);
+    expect(t.r.retry('f2' as FeatureId)).toBe(true);
+    expect(pending(t)).toBe(true);
+    (await t.call(3)).finish();
+    await until(() => t.ready() && !pending(t));
+    expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+  });
+
+  it('dispose leaves it to the owner, whose reset clears it; nothing is sent', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    expect(pending(t)).toBe(true);
+    t.r.dispose();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.calls).toHaveLength(1);
+    expect(pending(t)).toBe(true);
+    // useRecompute's cleanup resets the model store after dispose.
+    t.model.getState().reset();
+    expect(pending(t)).toBe(false);
+  });
+
+  it('a Cancel while a feature runs: pending until the reverted document is sent', async () => {
+    const t = setup();
+    await settle(t);
+    dispatch(t.store, renameFeature({ id: 'f1' as FeatureId, name: 'Renamed' }));
+    const update = await t.call(2);
+    update.report('f2' as FeatureId);
+    const { seen, wrong } = watch(t);
+    expect(t.r.revertToShown()).toBe(true);
+    expect(pending(t)).toBe(true);
+    const reverted = await t.call(3);
+    expect(pending(t)).toBe(false);
+    // The edited document's call comes back first: superseded, it shows nothing.
+    update.finish();
+    reverted.finish();
+    await until(() => t.ready() && t.model.getState().doc === t.store.getState().doc);
+    expect(seen).toEqual(['computing+pending', 'computing', 'ready']);
+    expect(wrong).toEqual([]);
+  });
+});

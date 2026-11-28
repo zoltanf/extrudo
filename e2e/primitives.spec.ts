@@ -232,7 +232,11 @@ test('sits on a body’s face, joins and cuts, and follows the face when the bod
   await expect(edit).toBeHidden();
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:13:20,20,45');
-  await expect(page.getByRole('status', { name: 'Kernel' })).not.toContainText('error');
+  // A failed kernel says "kernel stopped"; its status is `failed`.
+  await expect(page.getByRole('status', { name: 'Kernel' })).not.toHaveAttribute(
+    'data-model-status',
+    'failed',
+  );
   await page.screenshot({ path: test.info().outputPath('edited.png') });
 
   // Editing the cylinder keeps its face and its choices.

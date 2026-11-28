@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { parameterExpression, parametersDialog, pickTool } from './helpers';
+import { kernelReady, parameterExpression, parametersDialog, pickTool } from './helpers';
 
 // ADR-0111: on the bottle cap (B9, an ~8 s recompute) a parameter change shows
 // "Updating the model…" with a Cancel button; Cancel undoes the change, the
@@ -55,7 +55,9 @@ test('Cancel on a long update undoes the edit, and Redo brings it back', async (
   // 0.7-3.6 s in nine, 11-21.5 s in nine; five local runs 0.4-0.6 s, once 11 s).
   // Budget: 40 s, about 1.9 x the worst seen (21.5 s, measured with the toast
   // check). The time is logged rather than asserted.
-  await expect(kernel(page)).toHaveAttribute('data-model-status', 'ready', { timeout: 40_000 });
+  // kernelReady, not the status alone: the edited document's result can land "ready"
+  // while the document Cancel went back to is still gathered.
+  await kernelReady(page, 40_000);
   const ms = Date.now() - clicked;
   test.info().annotations.push({ type: 'click to ready', description: `${ms} ms` });
   console.log(`kernel-cancel: click to ready ${ms} ms`);

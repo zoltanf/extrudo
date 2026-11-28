@@ -251,6 +251,127 @@ function extrude(
 }
 
 describe('Recomputer', () => {
+  describe('pending (a recompute asked for, not sent yet)', () => {
+    const pending = (model: ModelStore<BodyMesh>) => model.getState().pending;
+    /**
+     * Every (status, pending) the store goes through, repeats dropped. A "ready" with
+     * nothing pending must be the current document's result: `wrong` lists any that isn't.
+     */
+    const watch = (model: ModelStore<BodyMesh>, document: DocumentStore) => {
+      const seen: string[] = [];
+      const wrong: string[] = [];
+      model.subscribe(({ status, pending, doc }) => {
+        const now = pending ? `${status}+pending` : status;
+        if (seen.at(-1) !== now) seen.push(now);
+        if (status === 'ready' && !pending && doc !== document.getState().doc) wrong.push(now);
+      });
+      return { seen, wrong };
+    };
+    const rename = (document: DocumentStore, name: string) =>
+      document.getState().dispatch(renameFeature({ id: 'f2' as FeatureId, name }));
+
+    it('is set by a change and cleared by the send; the result keeps it clear', {
+      timeout: 30_000,
+    }, async () => {
+      const { model, document } = setup(chainDocument(3));
+      // The first recompute is asked for by start().
+      expect(pending(model)).toBe(true);
+      await until(() => ready(model));
+      const { seen, wrong } = watch(model, document);
+      rename(document, 'A');
+      // Synchronously: the status still says the old result's "ready".
+      expect(model.getState().status).toBe('ready');
+      expect(pending(model)).toBe(true);
+      await until(() => ready(model) && model.getState().doc === document.getState().doc);
+      expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+      expect(wrong).toEqual([]);
+    });
+
+    it('stays set through a result that lands while a newer change waits', {
+      timeout: 30_000,
+    }, async () => {
+      let gate: ReturnType<typeof deferred> | undefined;
+      const { model, document } = setup(chainDocument(3), {
+        recomputeGate: () => gate?.promise ?? Promise.resolve(),
+      });
+      await until(() => ready(model));
+      const held = deferred();
+      gate = held;
+      rename(document, 'A');
+      await until(() => model.getState().status === 'computing');
+      const { seen, wrong } = watch(model, document);
+      // B lands while the kernel holds A's result; A's result comes back at once, in
+      // microtasks, before B's gather timer fires: "ready", B still pending.
+      rename(document, 'B');
+      gate = undefined;
+      held.resolve();
+      await until(() => ready(model) && model.getState().doc?.features[1]?.name === 'B');
+      expect(seen).toEqual(['computing+pending', 'ready+pending', 'computing', 'ready']);
+      expect(wrong).toEqual([]);
+    });
+
+    it('is cleared when the gathered changes need no send, and by a cached recompute', {
+      timeout: 30_000,
+    }, async () => {
+      const { model, document, requests } = setup(chainDocument(3));
+      await until(() => ready(model));
+      const sent = requests.length;
+      // The document goes back to the very one the kernel has: nothing to send.
+      const { doc } = document.getState();
+      rename(document, 'A');
+      document.setState({ doc });
+      expect(pending(model)).toBe(true);
+      await until(() => !pending(model));
+      expect(model.getState().status).toBe('ready');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(requests.length).toBe(sent);
+      // A rename and its undo: an equal document, sent, and computed from the cache.
+      const { seen, wrong } = watch(model, document);
+      rename(document, 'A');
+      document.getState().undo();
+      await until(() => ready(model) && model.getState().doc === document.getState().doc);
+      expect(requests.length).toBe(sent + 1);
+      expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+      expect(wrong).toEqual([]);
+    });
+
+    it('stays set through a failed recompute when a change waits, and the next send clears it', {
+      timeout: 30_000,
+    }, async () => {
+      let gate: ReturnType<typeof deferred> | undefined;
+      const { model, document } = setup(chainDocument(3), {
+        recomputeGate: () => gate?.promise ?? Promise.resolve(),
+      });
+      await until(() => ready(model));
+      const held = deferred();
+      gate = held;
+      rename(document, 'A');
+      await until(() => model.getState().status === 'computing');
+      const { seen, wrong } = watch(model, document);
+      // B is gathered while A's recompute runs; A then fails (not a crash).
+      rename(document, 'B');
+      gate = undefined;
+      held.reject(new Error('the kernel refused'));
+      await until(() => ready(model) && model.getState().doc?.features[1]?.name === 'B');
+      expect(seen).toEqual(['computing+pending', 'failed+pending', 'computing', 'ready']);
+      expect(wrong).toEqual([]);
+    });
+
+    it('is cleared after a Cancel that goes back to the shown model (ADR-0111)', {
+      timeout: 30_000,
+    }, async () => {
+      const { model, document } = setup(chainDocument(3));
+      await until(() => ready(model));
+      const { seen, wrong } = watch(model, document);
+      rename(document, 'A');
+      expect(recomputer?.revertToShown()).toBe(true);
+      expect(pending(model)).toBe(true);
+      await until(() => ready(model) && model.getState().doc === document.getState().doc);
+      expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+      expect(wrong).toEqual([]);
+    });
+  });
+
   it('reverts the document to the step the shown model was computed at (ADR-0111)', {
     timeout: 30_000,
   }, async () => {

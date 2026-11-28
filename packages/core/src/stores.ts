@@ -595,6 +595,12 @@ export interface ModelProgress {
  */
 export interface ModelState<TBody> {
   status: 'idle' | 'computing' | 'ready' | 'failed';
+  /**
+   * A recompute is asked for but not sent yet: the `Recomputer` gathers changes
+   * for a moment before `computing()`, and meanwhile `status` still describes the
+   * last result. Not shown; the status bar's `data-model-pending` lets tests wait.
+   */
+  pending: boolean;
   /** Why the last recompute failed as a whole (for example, the kernel crashed). */
   error: string | undefined;
   features: Record<FeatureId, FeatureStatus>;
@@ -640,6 +646,8 @@ export interface ModelState<TBody> {
    * the current document from a stale one (body names, ADR-0030).
    */
   doc: ExtrudoDocument | undefined;
+  /** A recompute is asked for (`true`), or the ask needed no send after all (`false`). */
+  setPending(pending: boolean): void;
   computing(): void;
   computed(result: {
     features: Record<FeatureId, FeatureStatus>;
@@ -665,6 +673,7 @@ export type ModelStore<TBody> = StoreApi<ModelState<TBody>>;
 export function createModelStore<TBody>(): ModelStore<TBody> {
   const empty = () => ({
     status: 'idle' as const,
+    pending: false,
     error: undefined,
     features: {} as Record<FeatureId, FeatureStatus>,
     bodies: {} as Record<BodyId, TBody>,
@@ -679,10 +688,13 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     progress: undefined as ModelProgress | undefined,
     doc: undefined,
   });
-  return createStore<ModelState<TBody>>()((set) => ({
+  return createStore<ModelState<TBody>>()((set, get) => ({
     ...empty(),
+    setPending(pending) {
+      if (get().pending !== pending) set({ pending });
+    },
     computing() {
-      set({ status: 'computing', error: undefined, progress: undefined });
+      set({ status: 'computing', pending: false, error: undefined, progress: undefined });
     },
     computed({
       features,

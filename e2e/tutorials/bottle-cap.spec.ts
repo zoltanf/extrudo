@@ -352,7 +352,9 @@ test('Tutorial 4: a threaded bottle cap', async ({ page }) => {
     'change-parameters',
     async () => {
       await setParameters(page, { capDia: '40 mm', adapterLow: '24 mm' });
-      await kernelReady(page);
+      // Every feature and all four threads rebuild: B9's same wait took 0.7-48 s on CI
+      // (median 9 s, over 30 s in 14 of about 190 runs, 2026-11), so B9's 60 s budget.
+      await kernelReady(page, 60_000);
     },
     async () => {
       // The cap's Ø36 bore is a size's own diameter now (M36), filled in to
