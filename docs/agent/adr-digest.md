@@ -3875,10 +3875,7 @@ duration — sizes: open appMax < 400 and appTotal < 1200, orbit appMax < 100,
 **edit appMax < 150** (widened to 500 against the measured 248–499 ms
 grooves-edit kernel-message/autosave handlers, back to 150 since ADR-0102 §1
 took the thumbnail off the edit's path), undo appMax < 150, hover and
-click worst handler time < 250; the open budgets judge the faster of two opens, each in a
-fresh context with the first page closed first (amendment of 2026-11-28: a second open with
-the first page still alive measured slower; keep the second as cold as the first);
-`__extrudoRenderLog` must be set only by the spec's init script — a
+click worst handler time < 250; `__extrudoRenderLog` must be set only by the spec's init script — a
 normal visit never logs renders; the fps floor is skipped only when the
 renderer string says software (the annotation names it). The long-task
 observer never ships in
