@@ -2711,6 +2711,10 @@ design (their answers are tested; they read no box); a two-sided extrude with on
 object (the same `resolveSide`); an extrude's picked intersect up to an object (the same rule as
 the cut); previews; a script's isolated expansion.
 
+**Test time** (on one machine, run with the other `view-access` files, the machine's load about 1,
+at the last amendments' load: `view-access.test.ts` 171.9 s): `view-access-object.test.ts` 19.9 s
+and `view-access-revolve-object.test.ts` 4.8 s, new: about +25 s.
+
 **From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
 `benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
 one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body, number
