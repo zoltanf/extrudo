@@ -27,12 +27,19 @@ import {
 import { operationCsg } from '../scad-export/operation';
 import { merged2d, type ProfileRef, resolveProfiles, type To2d } from '../scad-export/profile';
 import { splitSolids } from './bodies';
-import { explicitBodies, type OperationWords, operate, operationAccess } from './operation';
+import {
+  everyBodyBox,
+  explicitBodies,
+  farOver,
+  type OperationWords,
+  operate,
+  operationAccess,
+} from './operation';
 import { type GeometryReader, lineOf } from './references';
 import type { SketchOutputData } from './sketch';
 import { type Base, centroidOf, PARALLEL_EPS, type Plane, partsOf, uniteParts } from './sources';
 import { trimSweep, trimTarget } from './to-object';
-import { add, cross, dot, length, scale, sub, unit } from './vec';
+import { add, corners, cross, dot, length, scale, sub, unit } from './vec';
 
 /**
  * The `data` of a revolve's output: where it sits, for later features and
@@ -77,8 +84,10 @@ export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
   ...revolveFeature,
   bodyAccess: (inputs) => {
     const settings = revolveSettings(inputs);
-    // A revolve to an object sizes its target from every body (`sweepToObject`); an axis on an
-    // edge or a face profile is a body's: not `add`.
+    // An axis on an edge or a face profile is a body's: not `add`. Up to a face or a plane the
+    // target is sized by `ctx.farthest` (`sweepToObject`, rule B) and the object resolved by its
+    // reference (rule R); up to a body (`trimTarget` cuts with it), or a picked cut or intersect
+    // (a view can't give every body's box), every body.
     return operationAccess(settings, {
       add:
         settings.extent === 'angle' &&
@@ -87,10 +96,14 @@ export const kernelRevolve: KernelFeatureDefinition<RevolveInputs> = {
       // About a body's straight edge, or of a body's face (`axisOf`, `partsOf`): that body alone,
       // by its reference (rule R).
       touch:
-        settings.extent === 'angle' &&
+        (settings.extent === 'angle' ||
+          (settings.toObject !== undefined && settings.toObject.kind !== 'body')) &&
         ['axis', 'sketchEntity', 'edge'].includes(settings.axis?.kind ?? '') &&
         settings.profiles.every((ref) => ['profile', 'sketchEntity', 'face'].includes(ref.kind)),
-      everyBody: settings.extent === 'to-object',
+      everyBody:
+        settings.extent === 'to-object' &&
+        (settings.toObject?.kind === 'body' ||
+          (settings.bodies.length > 0 && settings.operation !== 'join')),
     });
   },
   evaluate: evaluateRevolve,
@@ -534,12 +547,17 @@ function sweepToObject(
     roles: { end: 'cap:far' },
   });
   scope.track(tool.shape);
-  // Big enough to cross the whole ring and every body.
+  // Big enough to cross the whole ring and every body. A `touch` revolve asks the engine, which
+  // keys the tool by the answer (ADR-0024's rule B); else every body's box, measured: `farOver`
+  // either way.
   let reach = length(sub(kernel.measureBox(tool.shape).max, kernel.measureBox(tool.shape).min));
-  for (const body of ctx.bodies.values()) {
-    const { min, max } = kernel.measureBox(body);
-    reach = Math.max(reach, length(sub(max, axis.origin)), length(sub(min, axis.origin)));
-  }
+  const far = ctx.farthest
+    ? ctx.farthest(axis.origin)
+    : farOver(
+        everyBodyBox(ctx).map((box) => corners(box.min as Vec3, box.max as Vec3)),
+        axis.origin,
+      );
+  if (far !== undefined) reach = Math.max(reach, far);
   const target = trimTarget(
     ctx,
     scope,

@@ -2604,3 +2604,176 @@ Known further steps, not taken:
   exact, the same dots): one question in the key, the answers about 1.5 ms for 200 holes.
 
 A blind hole asks nothing, and one through hole asks once.
+
+## Amendment 2026-11-28: up to an object
+
+**Decision.** An extrude or a revolve up to a face, a vertex or a plane that joins, cuts or
+intersects answers `touch` with automatic participants or a picked join, and `view` for an
+extrude's picked cut or intersect, as its distance twin does. A New Body extrude or revolve up to
+an object stays `write`, where its distance twin answers `add`. Its object is keyed by its body's version (rule R: the `toObject` reference
+names it). What its target's size takes from the bodies' boxes goes through the engine's box
+questions (rule B), so it is kept only while that answer is the same.
+- **The extrude** reads the box round every body only up to a curved face (`objectSide`; a flat
+  face, a vertex or a plane is an exact distance, `objectPlane`). That box is six reaches along
+  the axes from the origin (`bodiesBox`: the extent each way is the reach that way). So it uses the
+  existing `ctx.reach`, with the reach now unclamped (`reachOver` starts at −∞; the through-all
+  extrude and the hole clamp at 0 themselves, `throughMargin` and the hole's `Math.max`, so their
+  numbers don't change).
+- **The revolve** sizes its target by the farther of each box's lowest and highest corners
+  (`corners`' first and last) from the point `axis.origin` (`sweepToObject`). That isn't a reach, so it has a second question kind,
+  `ctx.farthest(point)`, answered by `farOver` from the engine's kept corners. It is a call with no
+  `along` in the same record and key as `reach`.
+- **Up to a body** stays `write` for both: `trimTarget` cuts with that body itself, and rule R keys
+  a tool by face, edge and vertex references, not by a body reference. So does a New Body extrude
+  or revolve up to an object (`addsOnly` and the revolve's `add` take a distance or an angle only).
+- **A picked cut or intersect** of the extrude up to a curved face, and every picked cut or
+  intersect of the revolve up to an object: a view can't give every body's box. The extrude reads
+  the boxes through `everyBodyBox`, whose `size` read a view notices, so it runs as `write` (one
+  fall-back per new view key, as a cleared engine's). The revolve answers `write` for those
+  inputs (`everyBody`), since it always needs the box.
+
+The engine change: 15 lines of code added and 14 removed, comments aside (a call with no `along`,
+`ctx.farthest`). No facade change, no change to results or to body placement.
+
+**A body with an empty box** can't come before a feature: an import with no triangles or one
+manifold-3d can't make a solid of is refused (`import.ts:462`, `kernel.ts:729`), a cut that leaves
+no volume removes the body ("The cut removed a whole body", `operate`), a split keeps no empty
+side (`kernel.ts:1094`), and a B-rep box that is void reads as zeros on both paths (the facade's
+`looseBox`). So no reach meets an infinite corner (whose `Inf × 0` would make a `NaN` where the
+per-body loop ignored it).
+
+**A cost of the unclamped reach.** A through-all extrude or a through hole with every body behind
+it used to key the answer 0; it now keys the negative distance, which changes as those bodies
+move. Its numbers and results are the same (it clamps to 0 itself); only that tool is rebuilt
+more often, and only in that case, where it cuts nothing anyway.
+
+**The union box is exact.** `bodiesBox`'s maximum along +x is the largest corner x of every box,
+and its minimum the negated reach along −x: the same values as the per-body `Math.min` and
+`Math.max` it replaces, up to the sign of a zero (−(−0) for a box starting at 0). That sign only
+enters the target's size (`length(sub(hi, lo))`) through a subtraction, where it changes nothing.
+`farOver` is the revolve's `length(sub(max, origin))` and `length(sub(min, origin))` over the
+corners `corners` puts first and last, in the same maximum.
+
+**What up to an object reads** (audited for this change; `features/`):
+
+| Input | What it reads of the bodies |
+|---|---|
+| extrude: `toObject` a flat face or a vertex | `objectPlane` (`extrude.ts:504`): the face or vertex resolved by name (:515), described: rule R; `inclinedSide` (:443) the profile's box alone (:458) |
+| extrude: `toObject` a plane | an origin or construction plane: none |
+| extrude: `toObject` a curved face | `objectSide` (:539): the profile's box (:551), `bodiesBox` (:553, :586: `ctx.reach` :590, else `everyBodyBox` :588, `operation.ts:381`), `trimTarget` (`to-object.ts:49`): the face resolved (:71) and extended to the size |
+| extrude: `toObject` a body | `trimTarget` (`to-object.ts:59`): that body itself: not opted in |
+| revolve: `toObject` | `sweepToObject` (`revolve.ts:528`): the tool's box, `ctx.farthest` (:554, else `everyBodyBox`), `trimTarget` (:561), `trimSweep` (:569): the tool and the target |
+| the cut, join or intersect | `operate` as for the distance twins: `touchingBodies`, `explicitBodies` |
+
+**What no longer holds.** In the amendment on the hole, "Anything up to an object stays `write`,
+bodies picked or not". In the amendments on operations and on the other operations, their "Not
+in" lists name `to-object`. Those inputs answer as above now. Up to a body, the revolve's picked
+cut or intersect up to an object, and the rib stay `write`.
+
+**A negative control changed.** In `add-access-features.test.ts`, a revolve to a plane deliberately
+mis-answered `add` used to fail unnoticed, because it iterated the bodies. It now reads them
+through `everyBodyBox`, whose `size` read `NoBodies` notices, so it runs as `write` (one
+fall-back). The test now sits under its own describe, "a wrong `add` that reads every body is
+noticed: it runs as `write`", and expects that.
+
+**The proof** (`recompute/view-access-object.test.ts`, `recompute/view-access-revolve-object.test.ts`;
+real OCCT and manifold, strict leaks, no clock, fixed seeds):
+- **Seeded designs**, each step equal to a cleared engine (versions too) and to `write` keys, with
+  no fall-back:
+  - a cut up to a box's top face (30 edits: the object lost and back, none and back, the boxes
+    resized, a box moved into the slot's way and out, the far box taller, the operation cycle,
+    the generic edits);
+  - a picked cut up to that face (30: the picked body lost and back, none picked and back, and the
+    same);
+  - a cut up to a sphere 1 mm short of it (30);
+  - a revolve cut up to the YZ plane (24: the far box resized and taller, the operation cycle, the
+    generic edits).
+- **Never stale**, one test each:
+  - up to a sphere: the box round every body grown each way it is read (−x, +z, +y) and back runs
+    the cut, from the cache when back; a box after the cut runs alone; a box grown inside the box
+    round every body is kept;
+  - the object's box (the face's) taller, replaced by a Move of the same ID, suppressed (the
+    error, today's key) and back; the face found only by a related name: today's key;
+  - the sphere moved runs it; a box the tool cuts runs it; a box come into its way and back;
+  - a mesh body (the STL cube) in the box round every body: touched and cut as a cleared engine
+    does; the far box taller runs it;
+  - the object a body the tool cuts (the box's top face) and one it doesn't (the sphere);
+  - a picked cut up to a face: its view, a box in its way it doesn't pick runs alone;
+  - a picked cut up to a sphere: runs as `write` (one fall-back), equal to a cleared engine;
+  - a picked join up to a face: `touch`, a box come to its side touched and not joined;
+  - the revolve: the farthest box moved or grown runs it, and back from the cache; a box inside
+    the farthest corner's reach kept; the cut box runs it; up to a box's face: that box changed runs
+    it, a box inside kept;
+  - pure tests (no kernel) of `bodiesBox` and `farOver` against the plain per-body loops: no
+    bodies, one body, bodies wholly on one side of the origin each way, bodies round it;
+  - the reach unclamped: boxes wholly behind the origin give their extent.
+- **The answers:** `touch` up to a face, a vertex or a plane; a picked cut or intersect `view`, a
+  picked join `touch`; up to a body or with no object `write`; the revolve's picked join `touch`,
+  its picked cut and up to a body `write`.
+
+**Taken out, one at a time** (the source changed, the filtered tests run, the source restored):
+
+| Taken out | Tests that failed |
+|---|---|
+| the extrude's `touch` up to an object | 7: every seeded design but the picked, the counters |
+| the extrude's `view` for a picked cut up to an object | 4: the seeded picked cut, its counters, the answers |
+| `bodiesBox` asking `ctx.reach` (every body measured) | 4: the seeded cut up to a sphere, the box grown each way, the sphere moved, the mesh body |
+| the reach unclamped | the reach unclamped |
+| the revolve asking `ctx.farthest` | the farthest box moved or grown |
+| the engine's `farOver` for a call with no `along` | the seeded revolve, the farthest box |
+| the revolve's `touch` up to an object | 3: the seeded revolve, its counters, the answers |
+| the revolve's picked cut kept `write` | the revolve's answers |
+
+**Not covered** by a test (by reading only): up to a vertex or a construction plane in a seeded
+design (their answers are tested; they read no box); up to an inclined flat face (`inclinedSide`:
+the profile's box alone); a taper or a positive offset to the object (inputs alone, in the key); a
+revolve's picked join up to an object (its answer is tested); a two-sided extrude with one side up to an
+object (the same `resolveSide`); an extrude's picked intersect up to an object (the same rule as
+the cut); previews; a script's isolated expansion.
+
+**Test time** (on one machine, run with the other `view-access` files, the machine's load about 1,
+at the last amendments' load: `view-access.test.ts` 171.9 s): `view-access-object.test.ts` 19.9 s
+and `view-access-revolve-object.test.ts` 4.8 s, new: about +25 s. After the fix round (the revolve up to a face, at
+the same load, `view-access.test.ts` 173.0 s): 18.7 s and 5.4 s, and `features/reach-boxes.test.ts`
+under 1 s: still about +25 s.
+
+**Still keyed by every body, the rarer cases** (for the release notes' "a few rarer cases"): a
+reference found only by a related name or a fingerprint; a feature of a script's isolated
+expansion; a body before the feature without a version (a shape another output holds); a view key
+remembered in `#readsBodies` after a fall-back; a feature whose box questions failed at key time
+(no calls kept: evaluated with every body).
+
+**From scratch** (ad hoc, a script outside the repository): the 64 designs in `fixtures/`'s
+`benchmarks`, `examples`, `demos`, `components` and `sheets` folders with main's engine and this
+one give the same body IDs, meshes bit for bit, statuses, reports, `inspect` of every body, number
+of evaluations and versions: none of them extrudes or revolves up to an object, and the unclamped
+reach gave no through-all extrude or through hole of theirs another answer. Every feature of those
+designs, the fastest of four runs each, main → this: 10,652 → 10,644 ms over 180 features; the
+largest increase of one feature +10.7 ms (b9's thread, which this change doesn't reach). No
+fixture redoes less after an early edit, since none has an object to reach.
+
+**Measured** ad hoc, with scripts outside the repository, on one machine (load about 1.5). Kernel
+time for an edit of the first, a middle and the last of 20 plates (200 × 120 × 5 mm, 30 holes; the
+edit its distance to 6 mm), incremental with `have`, in Node, the mean of two runs, main → this.
+
+| Each plate with | First | Middle | Last | Evaluated / meshes, first |
+|---|--:|--:|--:|--:|
+| a plate 20 mm over it, a 4 mm boss joined up to that plate's bottom face (flat) | 3,002 → 202 | 1,672 → 198 | 206 → 200 | 22/20 → 3/1 |
+| a 30 mm sphere 30 mm over it, the boss up to the sphere, 1 mm short (curved) | 3,552 → 226 | 1,987 → 220 | 222 → 221 | 22/20 → 3/1 |
+
+Up to the sphere the target's size comes from the box round every body before the boss. A plate
+made thicker stays inside it (the spheres are higher), so the other bosses are kept. An edit that
+grows that box reaches every boss after it: the first sphere raised 10 mm makes the box taller
+for the 19 bosses after it, which all run again, as before (3,572 → 3,532 ms, 21/21 both). The
+last sphere raised: 214 → 220 ms, 2/2 both (only its own boss comes after it).
+
+**A walk with nothing changed** (110 plates, in Node, the median of 21 walks, two runs, main →
+this): with one cut up to a sphere (six questions), 9.9, 10.0 → 10.6, 10.6 ms; with one revolve
+up to a plane (one question), 9.6, 9.8 → 10.1, 10.2 ms.
+
+In the app (the first design as a file, production build, Chrome, 1280 × 800, 4 interleaved runs:
+median and range, ms, main → this), until the model is ready: committing an edit of the first
+plate in its dialog 2,924 (2,882–2,981) → 313 (303–314); undoing it 324 (322–324) → 324 (323–324);
+opening the design 2,276 (2,191–2,530) → 2,352 (2,182–2,581), the ranges overlap. The page's
+blocked time: commit 52 → 52, undo 0 → 0, open 438 (423–472) → 447 (430–612).
+

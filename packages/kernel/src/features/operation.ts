@@ -21,7 +21,7 @@ import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { BodyAccess, EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
 import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
-import { add, corners, dot, scale, sub } from './vec';
+import { add, corners, dot, length, scale, sub } from './vec';
 
 /**
  * Distances (mm) at or below which shapes touch. The facade's `kTouch` is the
@@ -91,8 +91,9 @@ export interface OperationSettings {
  * engine keeps the tool by those bodies' versions); else `write`. `tool`: what each answer needs,
  * `add` (the tool reads no body: every reference upstream or none) and `touch` (it reads none, or
  * only through such references: true wherever `add` is); and whether it sizes its tool from every
- * body other than through `EvalContext.reach` (`everyBody`: `write`; a revolve to an object sizes
- * its target from every body, `sweepToObject`).
+ * body other than through `EvalContext.reach` or `farthest` (`everyBody`: `write`; a revolve up to
+ * a body, which cuts with that body, or a picked cut up to an object, whose view can't give every
+ * body's box).
  */
 export function operationAccess(
   settings: { operation: BodyOperation; bodies: readonly string[] },
@@ -319,11 +320,12 @@ export interface Box {
 export const LENGTH_EPS = 1e-6;
 
 /**
- * How far boxes reach past `point` along the unit `along`: the farthest corner's distance, 0 when
- * none reaches past it, undefined for no boxes. What an extrude through all (`throughAll`, with
- * `throughMargin`) and a through hole (`throughLength`) take from the bodies, and what the engine
- * keys such a tool by (ADR-0024's rule B, `EvalContext.reach`): one function, so the two can't
- * differ.
+ * How far boxes reach past `point` along the unit `along`: the farthest corner's distance,
+ * negative when every box lies behind `point` (unclamped), undefined for no boxes. A caller that
+ * needs at least 0 clamps itself (`throughMargin` for an extrude through all, the hole's
+ * `Math.max` in `throughLength`); `bodiesBox` reads the boxes' extent along each axis from it.
+ * What those tools take from the bodies, and what the engine keys such a tool by (ADR-0024's rule
+ * B, `EvalContext.reach`): one function, so the two can't differ.
  */
 export function reachAlong(
   boxes: readonly Box[],
@@ -344,11 +346,43 @@ export function reachOver(
   along: readonly number[],
 ): number | undefined {
   if (cornerSets.length === 0) return undefined;
-  let far = 0;
+  // Unclamped: negative when every box lies behind `point` (its callers clamp at 0 themselves),
+  // so the reach along an axis from the origin is the boxes' extent that way (`bodiesBox`).
+  let far = Number.NEGATIVE_INFINITY;
   for (const set of cornerSets) {
     for (const c of set) far = Math.max(far, dot(sub(c, point as Vec3), along as Vec3));
   }
   return far;
+}
+
+/**
+ * How far from `point` the boxes' lowest and highest corners (`corners`' first and last) lie at
+ * most, undefined for no boxes: what a revolve up to an object sizes its target by
+ * (`sweepToObject`), and what the engine keys it by (`EvalContext.farthest`, rule B).
+ */
+export function farOver(
+  cornerSets: readonly (readonly Vec3[])[],
+  point: readonly number[],
+): number | undefined {
+  if (cornerSets.length === 0) return undefined;
+  let far = Number.NEGATIVE_INFINITY;
+  for (const set of cornerSets) {
+    const lo = length(sub(set[0] as Vec3, point as Vec3));
+    far = Math.max(far, length(sub(set[set.length - 1] as Vec3, point as Vec3)), lo);
+  }
+  return far;
+}
+
+/**
+ * Every body's box, for an evaluator that sizes a tool from them without the engine's questions.
+ * It reads `size` first: a `view` evaluator can't see every body, and that read is noticed there,
+ * so it runs as `write`.
+ */
+export function everyBodyBox(ctx: EvalContext): Box[] {
+  // Not only a shortcut: this `size` read is what a view notices (a picked cut up to a curved face
+  // falls back to `write` here), where iterating the bodies would go unnoticed.
+  if (ctx.bodies.size === 0) return [];
+  return [...ctx.bodies.values()].map((shape) => ctx.kernel.measureBox(shape));
 }
 
 /** An extrude's through-all length from `reachAlong`'s: 0 for none, else 5% more (≥ 1 mm). */
