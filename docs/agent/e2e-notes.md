@@ -162,15 +162,26 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
 - **Every open project starts a kernel worker** (P2-01), so every e2e test
   compiles the OCCT WASM. Wait for the first recompute with
   `kernelReady(page)` (`e2e/helpers.ts`: the status bar's "Kernel" output,
-  `data-model-status="ready"`) before screenshots or status checks. **After
-  an edit, `kernelReady` alone can pass on the previous recompute's "ready"**:
-  the `Recomputer` gathers changes for 30 ms (`delayMs`) before it says
-  "computing", so a check right after a dialog's OK can read the old model
-  (an extrude's `data-bodies` still empty: user-fonts, text and
-  import-drawing were flaky that way, 2026-11). Poll for the result itself
-  (`expect.poll` on the body count, `toHaveAttribute('data-bodies', /./)`);
-  a local build with `delayMs` raised to 500 makes such a race fail every
-  time. The
+  `data-model-status="ready"`) before screenshots or status checks. **It
+  passes only with no recompute pending** (`data-model-pending` absent, read in
+  the same locator check as the status): the `Recomputer` gathers changes for
+  30 ms (`delayMs`) before it says "computing", and the model store's `pending`
+  flag covers that window (set when the gather starts, cleared by the send or
+  when nothing needs sending), so right after a synchronous edit (a dialog's
+  OK, a keypress, a parameter) the old result's "ready" no longer passes; this
+  is what made user-fonts, text and import-drawing flaky (2026-11). **It still
+  can't see an edit the app hasn't made yet**: flows that await before their
+  command (Insert Design and Add font read and store the file first, plugin
+  commands and Remove Faces ask the kernel first, Restore version reads
+  IndexedDB first, a sketch on a face waits for the face's reference) leave
+  the status "ready" and nothing pending until the command lands, so wait for
+  that command's own sign (a chip, a toast, the panel) before `kernelReady`.
+  Specs that read `data-model-status` themselves (perf, recompute,
+  kernel-cancel, kernel-waits) don't get this. A local or CI build with
+  `delayMs` raised to 500 makes such early reads fail every time (the whole
+  suite passed so on 2026-11-28, one flaky test aside: joints' "Check
+  clearance" clicked inside the window is stopped by the recompute and ends
+  idle, which at 30 ms nothing reaches). The
   Wall bracket template computes one body, "Bracket" (40×80×60 mm, 12
   faces); Fillet1 computes since P3-01, and only rolling forward brings in
   Plane1, the template's placeholder of the old `plane` type, which stays an
