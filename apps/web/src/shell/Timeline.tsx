@@ -1062,6 +1062,7 @@ function MacroRecording({ macro, store }: { macro: MacroStore; store: DocumentSt
 /** What the kernel is doing: starting, computing, or how long the last recompute took. */
 function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
   const status = useStore(model, (s) => s.status);
+  const pending = useStore(model, (s) => s.pending);
   const stats = useStore(model, (s) => s.stats);
   const progress = useStore(model, (s) => s.progress);
   const error = useStore(model, (s) => s.error);
@@ -1070,6 +1071,7 @@ function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
       <output
         aria-label="Kernel"
         data-model-status={status}
+        data-model-pending={pending ? '' : undefined}
         data-kernel-state
         className={`-ml-1 font-mono text-[11px] whitespace-nowrap tabular-nums ${status === 'failed' ? 'text-error' : 'text-muted'}`}
       >

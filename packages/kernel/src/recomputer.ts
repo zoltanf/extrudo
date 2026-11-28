@@ -1272,6 +1272,8 @@ export class Recomputer {
       this.#timer = undefined;
       void this.#send();
     }, this.#delayMs);
+    // Until the send says `computing`, the status still describes the last result.
+    this.#model.getState().setPending(true);
   }
 
   /** After a kernel restart: the new kernel has an empty cache and needs the document again. */
@@ -1444,7 +1446,10 @@ export class Recomputer {
 
   async #send(): Promise<void> {
     const doc = this.#document.getState().doc;
-    if (doc === this.#sent || this.#disposed) return;
+    if (doc === this.#sent || this.#disposed) {
+      this.#model.getState().setPending(false);
+      return;
+    }
     const state = this.#document.getState();
     const step = state.transactionDepth === 0 ? { step: state.lastStepId() } : undefined;
     this.#sent = doc;

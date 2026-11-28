@@ -251,6 +251,112 @@ function extrude(
 }
 
 describe('Recomputer', () => {
+  describe('pending (a recompute asked for, not sent yet)', () => {
+    const pending = (model: ModelStore<BodyMesh>) => model.getState().pending;
+    /** Every (status, pending) the store goes through, repeats dropped. */
+    const watch = (model: ModelStore<BodyMesh>) => {
+      const seen: string[] = [];
+      model.subscribe(({ status, pending }) => {
+        const now = pending ? `${status}+pending` : status;
+        if (seen.at(-1) !== now) seen.push(now);
+      });
+      return seen;
+    };
+    const rename = (document: DocumentStore, name: string) =>
+      document.getState().dispatch(renameFeature({ id: 'f2' as FeatureId, name }));
+
+    it('is set by a change and cleared by the send; the result keeps it clear', {
+      timeout: 30_000,
+    }, async () => {
+      const { model, document } = setup(chainDocument(3));
+      // The first recompute is asked for by start().
+      expect(pending(model)).toBe(true);
+      await until(() => ready(model));
+      const seen = watch(model);
+      rename(document, 'A');
+      // Synchronously: the status still says the old result's "ready".
+      expect(model.getState().status).toBe('ready');
+      expect(pending(model)).toBe(true);
+      await until(() => ready(model) && model.getState().doc === document.getState().doc);
+      expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+    });
+
+    it('stays set through a result that lands while a newer change waits', {
+      timeout: 30_000,
+    }, async () => {
+      let gate: ReturnType<typeof deferred> | undefined;
+      const { model, document } = setup(chainDocument(3), {
+        recomputeGate: () => gate?.promise ?? Promise.resolve(),
+      });
+      await until(() => ready(model));
+      const held = deferred();
+      gate = held;
+      rename(document, 'A');
+      await until(() => model.getState().status === 'computing');
+      const seen = watch(model);
+      // B lands while the kernel holds A's result.
+      rename(document, 'B');
+      gate = undefined;
+      held.resolve();
+      await until(() => ready(model) && model.getState().doc?.features[1]?.name === 'B');
+      // "ready" without pending comes only with B's result.
+      expect(seen.filter((x) => x === 'ready')).toHaveLength(1);
+      expect(seen.at(-1)).toBe('ready');
+    });
+
+    it('is cleared when the gathered changes need no send, and by a cached recompute', {
+      timeout: 30_000,
+    }, async () => {
+      const { model, document, requests } = setup(chainDocument(3));
+      await until(() => ready(model));
+      const sent = requests.length;
+      // The document goes back to the very one the kernel has: nothing to send.
+      const { doc } = document.getState();
+      rename(document, 'A');
+      document.setState({ doc });
+      expect(pending(model)).toBe(true);
+      await until(() => !pending(model));
+      expect(model.getState().status).toBe('ready');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(requests.length).toBe(sent);
+      // A rename and its undo: an equal document, sent, and computed from the cache.
+      const seen = watch(model);
+      rename(document, 'A');
+      document.getState().undo();
+      await until(() => ready(model) && model.getState().doc === document.getState().doc);
+      expect(requests.length).toBe(sent + 1);
+      expect(seen).toEqual(['ready+pending', 'computing', 'ready']);
+    });
+
+    it('is cleared on a failed recompute', { timeout: 30_000 }, async () => {
+      let gate: ReturnType<typeof deferred> | undefined;
+      const { model, document } = setup(chainDocument(3), {
+        recomputeGate: () => gate?.promise ?? Promise.resolve(),
+      });
+      await until(() => ready(model));
+      const held = deferred();
+      gate = held;
+      rename(document, 'A');
+      await until(() => model.getState().status === 'computing');
+      held.reject(new Error('the kernel refused'));
+      await until(() => model.getState().status === 'failed');
+      expect(pending(model)).toBe(false);
+    });
+
+    it('is cleared after a Cancel that goes back to the shown model (ADR-0111)', {
+      timeout: 30_000,
+    }, async () => {
+      const { model, document } = setup(chainDocument(3));
+      await until(() => ready(model));
+      const seen = watch(model);
+      rename(document, 'A');
+      expect(recomputer?.revertToShown()).toBe(true);
+      await until(() => ready(model) && model.getState().doc === document.getState().doc);
+      expect(pending(model)).toBe(false);
+      expect(seen.at(-1)).toBe('ready');
+    });
+  });
+
   it('reverts the document to the step the shown model was computed at (ADR-0111)', {
     timeout: 30_000,
   }, async () => {
