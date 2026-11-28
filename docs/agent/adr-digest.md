@@ -249,8 +249,14 @@ counts errors and shows the kernel state. **The model store's `pending`
 `computing()` clears it, and `#send` clears it when nothing needs sending;
 **`computed()` and `failed()` must not clear it** (a change gathered while a
 recompute runs keeps it set through the old result); the status bar shows it
-only as `data-model-pending`, which `kernelReady` (e2e) reads with the status
-(tests: "pending" in `recomputer.test.ts`). Engine tests use the test
+only as `data-model-pending`, which `kernelReady` (e2e) reads with the status.
+Cost: one more model-store notification per gather (changes inside one window
+share it; the clear rides on `computing()`'s), and one on a send not needed,
+which notified nothing before: every `model.subscribe` listener and selector
+runs once, only the Kernel output re-renders; a listener that works on every
+"ready" notification runs again on it (`followModelCache` rebuilds and compares
+its body IDs). Tests: "pending" in `recomputer.test.ts` and
+`recomputer-stop.test.ts`. Engine tests use the test
 features in `recompute/testing.ts` (real OCCT, call counters). ADR-0025
 (P2-02) turned sketches into faces: the evaluator
 (`src/features/sketch.ts`) stages exact curves in entity ID order

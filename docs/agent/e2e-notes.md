@@ -176,8 +176,17 @@ Moved out of `CLAUDE.md` on 2026-10-12. Read the entries for the specs you write
   IndexedDB first, a sketch on a face waits for the face's reference) leave
   the status "ready" and nothing pending until the command lands, so wait for
   that command's own sign (a chip, a toast, the panel) before `kernelReady`.
-  Specs that read `data-model-status` themselves (perf, recompute,
-  kernel-cancel, kernel-waits) don't get this. A local or CI build with
+  **Nor a worker restart between recomputes**: after a result the memory
+  recycle (`#recycleIfBig`, a `heap()` call, then `client.restart()`) or a
+  crash between recomputes ends the worker and boots a new one; while it boots
+  (the WASM loads) the status stays "ready" with nothing pending, then
+  `onRestart` asks for the resend (pending, "computing") and the same
+  document's result comes back cold. The model on screen is right throughout;
+  a test that times or counts recomputes can see the extra one. Specs that
+  still read `data-model-status` themselves: perf (the first open, and its
+  own round-trip observer), kernel-cancel's first load, and insert-design's and
+  primitives' "not `failed`" checks; every read after an edit goes through
+  `kernelReady`. A local or CI build with
   `delayMs` raised to 500 makes such early reads fail every time (the whole
   suite passed so on 2026-11-28, one flaky test aside: joints' "Check
   clearance" clicked inside the window is stopped by the recompute and ends
