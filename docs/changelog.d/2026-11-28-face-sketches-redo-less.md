@@ -1,0 +1,1 @@
+- 2026-11-28 · **Quicker edits for sketches and construction geometry on other bodies' faces**: changing one body no longer redoes the sketches, construction planes, axes, points and canvases on other bodies' faces, nor the New Body extrudes and fillets made from them, while the bodies they sit on come out unchanged.

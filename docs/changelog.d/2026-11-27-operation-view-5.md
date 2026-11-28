@@ -1,1 +1,0 @@
-- 2026-11-27 · **Quicker edits around holes**: holes, blind or through, on a face or a plane, are no longer redone while the bodies they cut and the body they sit on come out unchanged and, for a through hole, no body's box changes how far it reaches. Holes that overlap or touch each other, anything up to an object (bodies picked or not), and ribs are still redone as before.
